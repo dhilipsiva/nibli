@@ -3,10 +3,8 @@ name = "nibli-lexicon"
 version = "0.1.0"
 edition = "2024"
 
-[dependencies]
-phf = "0.13.1"
+# The dictionary IS committed Rust source (src/corpus/) — no build script, no
+# build-time data files, no runtime deps. `tools/lexigen` regenerates the
+# corpus from a lensisku export when needed.
 
-[build-dependencies]
-phf_codegen = "0.13.1"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+[dependencies]

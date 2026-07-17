@@ -302,12 +302,10 @@ impl<'a> Renderer<'a> {
                 Conversion::Swap14 => 4,
                 Conversion::Swap15 => 5,
             };
-            if nibli_lexicon::curated::CONVERTED_ALIASES
-                .iter()
-                .any(|(_, g, swap)| {
-                    nibli_lexicon::canonical_alias(g) == Some(word.as_str()) && *swap == place
-                })
-            {
+            if nibli_lexicon::corpus::corpus_entries().any(|e| {
+                e.swap
+                    .is_some_and(|s| s.base == word.as_str() && s.with == place)
+            }) {
                 return Ok((id, IDENTITY));
             }
         }
@@ -390,8 +388,7 @@ impl<'a> Renderer<'a> {
             nibli_lexicon::canonical_alias(word).unwrap_or(word)
         };
         if let Some(entry) = nibli_lexicon::alias(alias_name)
-            && let Some(label) = entry.place_labels.get(place)
-            && !label.is_empty()
+            && let Some(label) = entry.places.get(place)
         {
             return (*label).to_owned();
         }
@@ -444,16 +441,12 @@ impl<'a> Renderer<'a> {
                     Conversion::Swap14 => 4,
                     Conversion::Swap15 => 5,
                 };
-                // Curated converted alias first (works everywhere)…
-                if let Some((alias, _, _)) =
-                    nibli_lexicon::curated::CONVERTED_ALIASES
-                        .iter()
-                        .find(|(_, g, swap)| {
-                            nibli_lexicon::canonical_alias(g) == Some(word.as_str())
-                                && *swap == place
-                        })
-                {
-                    return Ok((*alias).to_owned());
+                // Curated converted entry first (works everywhere)…
+                if let Some(converted) = nibli_lexicon::corpus::corpus_entries().find(|e| {
+                    e.swap
+                        .is_some_and(|s| s.base == word.as_str() && s.with == place)
+                }) {
+                    return Ok(converted.name.to_owned());
                 }
                 // …else the place selector, in restrictor position only (O8).
                 if selector_ok {

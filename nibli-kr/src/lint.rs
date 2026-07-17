@@ -185,7 +185,7 @@ fn push(notes: &mut Vec<LintNote>, input: &str, at: usize, code: &'static str, m
 /// rejects it; the linter stays quiet).
 fn resolved_word(word: &str) -> Option<&str> {
     if let Some(entry) = nibli_lexicon::alias(word) {
-        return Some(entry.gismu);
+        return Some(entry.source_gismu);
     }
     nibli_lexicon::get_arity(word).map(|_| word)
 }
@@ -413,11 +413,13 @@ impl Walk<'_> {
             // aliases are quiet — they resolve to themselves since the
             // predicate-name flip, so there is nothing to disclose.
             if let Some(entry) = nibli_lexicon::alias(word)
-                && let Some(n) = entry.swap
+                && let Some(swap) = entry.swap
                 && self.linter.seen_aliases.insert(word.clone())
             {
-                let base = nibli_lexicon::canonical_alias(entry.gismu).unwrap_or(entry.gismu);
-                let msg = format!("{word} \u{21a6} {base}\u{27e8}x1\u{2194}x{n}\u{27e9}");
+                let msg = format!(
+                    "{word} \u{21a6} {}\u{27e8}x1\u{2194}x{}\u{27e9}",
+                    swap.base, swap.with
+                );
                 push(self.notes, self.input, at, "L4", msg);
             }
         }

@@ -72,37 +72,35 @@ const EXAMPLES: &str = "Examples:
 - \"Adam and the cat eat\" → \"eats(Adam) & eats(some cat).\"
 - \"The home is owned by Adam\" → \"owned(some home, Adam).\"";
 
-/// One line per shipped alias, sorted: `- alias(place1, place2, …) — predicate`,
-/// where each place is the surface label if the entry has one, else `xN` — so the
-/// model sees both the arity and the named places. Generated from the shipped
-/// `nibli_lexicon::ALIASES` (full ~1,341 map locally, curated core in a fallback
-/// build), so it can never drift from what the resolver actually accepts.
+/// One line per corpus predicate, sorted: `- name(place1, place2, …) — gloss`.
+/// Every place is NAMED (the committed corpus has zero positional places), so
+/// the model sees the arity and the named-argument vocabulary. Generated from
+/// the shipped `nibli_lexicon` corpus (the committed ~1,342-entry table — one
+/// build mode, always the full map), so it can never drift from what the
+/// resolver actually accepts. The source gismu is deliberately ABSENT: gismu
+/// spellings no longer resolve, and showing them would invite the model to
+/// emit words that fail closed. Compounds get their own short section.
 fn dictionary_block() -> String {
-    let mut entries: Vec<(&str, &nibli_lexicon::AliasEntry)> = nibli_lexicon::ALIASES
-        .entries()
-        .map(|(name, entry)| (*name, entry))
-        .collect();
-    entries.sort_unstable_by_key(|(name, _)| *name);
-
     let mut out = String::from(
-        "Predicates — the valid predicate words and their argument places, `alias(places…) — predicate`. Use these names:\n",
+        "Predicates — the valid predicate words and their argument places, `name(places…) — gloss`. Use these names:\n",
     );
-    for (name, entry) in entries {
-        let places: Vec<String> = (0..entry.arity as usize)
-            .map(|i| {
-                let label = entry.place_labels.get(i).copied().unwrap_or("");
-                if label.is_empty() {
-                    format!("x{}", i + 1)
-                } else {
-                    label.to_string()
-                }
-            })
-            .collect();
+    for entry in nibli_lexicon::corpus::corpus_entries() {
         out.push_str(&format!(
             "- {}({}) — {}\n",
-            name,
-            places.join(", "),
-            entry.gismu
+            entry.name,
+            entry.places.join(", "),
+            entry.gloss
+        ));
+    }
+    out.push_str(
+        "\nCompound predicates — spelled with `+`, resolve only via these entries (an undefined compound is a compile error):\n",
+    );
+    for c in nibli_lexicon::corpus::corpus_compounds() {
+        out.push_str(&format!(
+            "- {}({}) — {}\n",
+            c.name,
+            c.places.join(", "),
+            c.gloss
         ));
     }
     out
@@ -157,8 +155,8 @@ mod tests {
     }
 
     /// The grounding actually shipped: the assembled prompt embeds the exact pest
-    /// grammar and a dictionary block generated from the shipped alias map. Dual-mode
-    /// — the alias floor is the fallback curated-core count (a full build has ~1,341).
+    /// grammar and a dictionary block generated from the committed corpus (one
+    /// build mode — always the full ~1,342-entry table).
     #[test]
     fn assembled_prompt_is_grounded() {
         let prompt = system_prompt();
@@ -166,16 +164,24 @@ mod tests {
             prompt.contains(nibli_kr::GRAMMAR.trim_end()),
             "system prompt does not embed the pest grammar"
         );
-        // A known curated alias line is present in both build modes.
+        // Known corpus lines are present, gismu-free.
         assert!(
-            prompt.contains("- goes("),
-            "system prompt missing the dictionary block (or a known alias)"
+            prompt.contains("- goes(goer, destination"),
+            "system prompt missing the dictionary block (or the goes entry)"
         );
-        // Alias lines have the `) — ` signature (close-paren, em-dash, predicate).
-        let alias_lines = prompt.lines().filter(|l| l.contains(") — ")).count();
         assert!(
-            alias_lines >= 65,
-            "dictionary block too small: {alias_lines} alias lines (fallback floor is 65)"
+            prompt.contains("- computer+user("),
+            "system prompt missing the compound section"
+        );
+        assert!(
+            !prompt.contains("— klama"),
+            "gismu leaked into the dictionary block (they no longer resolve as input)"
+        );
+        // Entry lines have the `) — ` signature (close-paren, em-dash, gloss).
+        let entry_lines = prompt.lines().filter(|l| l.contains(") — ")).count();
+        assert!(
+            entry_lines >= 1300,
+            "dictionary block too small: {entry_lines} entry lines (the committed corpus is ~1,342)"
         );
     }
 }

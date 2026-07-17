@@ -59,20 +59,20 @@ pub fn resolve_all(input: &str, statements: &[Statement]) -> Vec<ParseError> {
     errors
 }
 
-/// A resolved predicate: its arity plus the alias entry when the name came
-/// from the alias map (identity-passthrough word/lujvo have no entry — raw
-/// `xN` labels only).
+/// A resolved predicate: its arity plus the corpus entry when the name came
+/// from the corpus (the TEMPORARY gismu-passthrough compat has no entry — raw
+/// `xN` labels only; it dies at the gismu-input-death commit).
 pub(crate) struct PredInfo {
     pub(crate) surface: String,
     pub(crate) arity: u8,
-    pub(crate) entry: Option<&'static nibli_lexicon::AliasEntry>,
+    pub(crate) entry: Option<&'static nibli_lexicon::PredicateEntry>,
 }
 
 pub(crate) fn lookup(word: &str) -> Result<PredInfo, String> {
     if let Some(entry) = nibli_lexicon::alias(word) {
         return Ok(PredInfo {
             surface: word.to_owned(),
-            arity: entry.arity,
+            arity: entry.arity(),
             entry: Some(entry),
         });
     }
@@ -92,7 +92,7 @@ pub(crate) fn lookup(word: &str) -> Result<PredInfo, String> {
 /// Resolve a named-argument label to a 0-based SURFACE place index.
 pub(crate) fn label_index(info: &PredInfo, label: &str) -> Option<usize> {
     match info.entry {
-        Some(entry) => nibli_lexicon::label_index(entry, label),
+        Some(entry) => entry.place_index(label),
         None => {
             // Identity passthrough: raw x1..x5 only.
             let rest = label.strip_prefix('x')?;

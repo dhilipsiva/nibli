@@ -54,6 +54,14 @@ fn english_name(name: &str) -> String {
         .unwrap_or_else(|| name.to_owned())
 }
 
+/// The canonical BASE relation name for a resolved corpus entry: a swapped
+/// (converted) entry names its base sibling by type; a plain entry is its own
+/// canonical name. `Root` always takes this PLAIN form — the `Converted`
+/// wrapper carries the swap.
+fn base_name(entry: &nibli_lexicon::PredicateEntry) -> String {
+    entry.swap.map(|s| s.base).unwrap_or(entry.name).to_owned()
+}
+
 /// Emit resolved statements into an `AstBuffer` (one root per statement).
 pub fn emit(input: &str, statements: &[Statement]) -> Result<AstBuffer, ParseError> {
     let mut emitter = Emitter {
@@ -247,7 +255,7 @@ impl<'a> Emitter<'a> {
             let word = self
                 .resolved(tag.pred.last().expect("tag pred non-empty"), tag.span.start)?
                 .entry
-                .map(|e| english_name(e.gismu))
+                .map(base_name)
                 .unwrap_or_else(|| english_name(tag.pred.last().unwrap()));
             let modal_predicate = self.push_predicate(Predicate::Root(word));
             let inner = self.term(&tag.term, tag.span.start)?;
@@ -368,7 +376,7 @@ impl<'a> Emitter<'a> {
                         let info = self.resolved(part, at)?;
                         word_parts.push(
                             info.entry
-                                .map(|e| english_name(e.gismu))
+                                .map(base_name)
                                 .unwrap_or_else(|| english_name(part)),
                         );
                     }
@@ -377,7 +385,7 @@ impl<'a> Emitter<'a> {
                 let word = &parts[0];
                 let info = self.resolved(word, at)?;
                 let (word, swap) = match info.entry {
-                    Some(entry) => (english_name(entry.gismu), entry.swap),
+                    Some(entry) => (base_name(entry), entry.swap.map(|s| s.with)),
                     None => (english_name(word), None),
                 };
                 let root = self.push_predicate(Predicate::Root(word));
@@ -454,7 +462,7 @@ impl<'a> Emitter<'a> {
             RestrKind::Selected { pred, label } => {
                 let info = self.resolved(pred, at)?;
                 let (word, alias_swap) = match info.entry {
-                    Some(entry) => (english_name(entry.gismu), entry.swap),
+                    Some(entry) => (base_name(entry), entry.swap.map(|s| s.with)),
                     None => (english_name(pred), None),
                 };
                 let mut idx = self.push_predicate(Predicate::Root(word));

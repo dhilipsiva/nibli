@@ -16,9 +16,9 @@
 //!   label — "every arity must be named" cannot be violated by construction;
 //! - a swapped (converted) entry names its canonical base BY TYPE ([`Swap`]).
 //!
-//! During the migration series this module coexists with the build.rs-generated
-//! `DICTIONARY`/`ALIASES` (the bridge cross-check test pins their agreement);
-//! at THE SWAP it becomes the only source.
+//! Since THE SWAP this module is the ONLY dictionary source (build.rs and the
+//! FULL/FALLBACK dual mode are gone; the bridge cross-check that pinned the
+//! migration agreement retired with them).
 
 /// Generation quality of an entry's place names (worst place wins). Everything
 /// below `Lensisku` carries a greppable `TODO(corpus):` comment in the data
@@ -488,83 +488,6 @@ mod tests {
 
     /// Pinned by lexigen bootstrap; lower it as entries are refined.
     const CORPUS_TODO_BASELINE: usize = predicates::TODO_BASELINE;
-
-    /// THE BRIDGE CROSS-CHECK (dies with build.rs at THE SWAP): every
-    /// build.rs-generated alias must agree with the committed corpus on every
-    /// shared field. In a FULL build this pins all ~1,342 entries (the
-    /// load-bearing drift oracle before the swap); a fallback build pins the
-    /// curated-core containment.
-    #[test]
-    fn bridge_cross_check_with_generated_artifacts() {
-        let mut offenders = Vec::new();
-        for (name, ae) in crate::ALIASES.entries() {
-            let Some(e) = corpus_predicate(name) else {
-                offenders.push(format!("{name}: absent from the committed corpus"));
-                continue;
-            };
-            if e.source_gismu != ae.gismu {
-                offenders.push(format!(
-                    "{name}: source_gismu {:?} != generated {:?}",
-                    e.source_gismu, ae.gismu
-                ));
-            }
-            if e.arity() != ae.arity {
-                offenders.push(format!(
-                    "{name}: arity {} != generated {}",
-                    e.arity(),
-                    ae.arity
-                ));
-            }
-            match (e.swap, ae.swap) {
-                (None, None) => {}
-                (Some(s), Some(k)) => {
-                    if s.with != k {
-                        offenders.push(format!("{name}: swap.with {} != generated {k}", s.with));
-                    }
-                    if Some(s.base) != crate::canonical_alias(ae.gismu) {
-                        offenders.push(format!(
-                            "{name}: swap.base {:?} != canonical_alias({:?})",
-                            s.base, ae.gismu
-                        ));
-                    }
-                }
-                (a, b) => offenders.push(format!("{name}: swap {a:?} != generated {b:?}")),
-            }
-            for (i, label) in ae.place_labels.iter().enumerate() {
-                if !label.is_empty() && e.places.get(i).copied() != Some(*label) {
-                    offenders.push(format!(
-                        "{name}: place x{} {:?} != generated {label:?}",
-                        i + 1,
-                        e.places.get(i)
-                    ));
-                }
-            }
-            if let Some(d) = crate::DICTIONARY.get(ae.gismu) {
-                if e.gloss != d.gloss {
-                    offenders.push(format!(
-                        "{name}: gloss {:?} != generated {:?}",
-                        e.gloss, d.gloss
-                    ));
-                }
-                let corpus_template = e.template.unwrap_or("");
-                if corpus_template != d.template {
-                    offenders.push(format!(
-                        "{name}: template {corpus_template:?} != generated {:?}",
-                        d.template
-                    ));
-                }
-            }
-        }
-        assert!(offenders.is_empty(), "{}", offenders.join("\n"));
-        // Full build: exact cardinality (no extra corpus entries either).
-        if crate::ALIASES.len() >= 1000 {
-            assert_eq!(
-                PREDICATES.len(),
-                crate::ALIASES.len(),
-                "corpus and generated alias map must have the same entry count in a full build"
-            );
-        }
-    }
 
     #[test]
     fn lookup_and_place_index() {

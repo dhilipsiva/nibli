@@ -163,12 +163,6 @@ pub const EXAMPLES: &[Example] = &[
 mod tests {
     use super::EXAMPLES;
 
-    fn full_mode() -> bool {
-        // Same probe as nibli-verify's alias-map differential: the full
-        // dictionary long tail only exists in a full (dictionary-en.json) build.
-        nibli_lexicon::DICTIONARY.len() >= 1000
-    }
-
     fn compile_nibli_kr(line: &str) -> Result<(), String> {
         let ast = nibli_kr::parse_checked(line).map_err(|e| e.to_string())?;
         nibli_semantics::compile_from_ast(ast).map_err(|e| e.to_string())?;
@@ -177,31 +171,26 @@ mod tests {
 
     #[test]
     fn shipped_examples_compile() {
-        let full = full_mode();
+        // ONE mode since the committed-corpus milestone: every KB line and
+        // every preset query must compile — the vocab-skip discipline died
+        // with the FULL/FALLBACK build split.
         let mut checked = 0usize;
-        let mut skipped = 0usize;
         for ex in EXAMPLES {
             for (i, raw) in ex.kb.lines().enumerate() {
                 let line = raw.trim();
                 if line.is_empty() || line.starts_with('#') {
                     continue;
                 }
-                match compile_nibli_kr(line) {
-                    Ok(()) => checked += 1,
-                    // The fail-closed resolve error for a word only the full
-                    // (generated) alias map knows — same key as the
-                    // the fallback-build vocab skips.
-                    Err(e) if !full && e.contains("unknown predicate") => skipped += 1,
-                    Err(e) => panic!(
+                compile_nibli_kr(line).unwrap_or_else(|e| {
+                    panic!(
                         "example {:?} KB line {} does not compile: {line:?} — {e}",
                         ex.name,
                         i + 1
-                    ),
-                }
+                    )
+                });
+                checked += 1;
             }
             for q in ex.queries {
-                // Queries never skip: curated-core vocabulary by policy, so the
-                // dropdown works even in a fallback-built bundle.
                 compile_nibli_kr(q.query).unwrap_or_else(|e| {
                     panic!(
                         "example {:?} query {:?} does not compile: {e}",
@@ -211,18 +200,9 @@ mod tests {
                 checked += 1;
             }
         }
-        if !full {
-            println!(
-                "shipped_examples_compile: FALLBACK MODE — {skipped} long-tail KB lines vocab-skipped"
-            );
-        }
         assert!(
-            checked >= if full { 40 } else { 20 },
-            "example coverage collapsed: only {checked} lines checked (full={full})"
-        );
-        assert!(
-            full || skipped < 40,
-            "fallback build skipped too much ({skipped}) — curate more corpus vocabulary"
+            checked >= 40,
+            "example coverage collapsed: only {checked} lines checked"
         );
     }
 }

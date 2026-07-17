@@ -20,20 +20,12 @@ const DEFAULT_RANDOM_COUNT: u64 = 200;
 /// Minimum curated stratified-NAF cases the ASP gate must actually check.
 const MIN_CHECKED_NAF: usize = 8;
 
-/// Minimum Predilex-taxonomy cases that must reach the Vampire oracle
-/// (first run checked 74; the lib tests separately floor the edge extraction).
-/// Full-dictionary builds only — the fallback build's curated vocabulary
-/// leaves few resolvable edges, so it gets `MIN_CHECKED_TAXONOMY_FALLBACK`.
-const MIN_CHECKED_TAXONOMY: usize = 40;
-
-/// Fallback-build taxonomy floor: the fail-closed KR resolve pre-filter keeps
-/// only edges whose BOTH words are in the curated fallback tables, so the
-/// surviving set is small — but it must never be empty (gate vacuous).
-const MIN_CHECKED_TAXONOMY_FALLBACK: usize = 1;
-
-/// Dictionary-size threshold separating a full lensisku build from the
-/// curated fallback build (same value as `predilex_differential.rs`).
-const FULL_DICT_MIN: usize = 1000;
+/// Minimum Predilex-taxonomy cases that must reach the Vampire oracle.
+/// Measured 39 on the committed corpus (gismu-derived — Predilex lujvo-lemma
+/// edges no longer resolve; the pre-swap full build measured 74 with lujvo);
+/// floor pinned at measured − margin. The lib tests separately floor the edge
+/// extraction.
+const MIN_CHECKED_TAXONOMY: usize = 35;
 
 /// How many random stratified-NAF cases the ASP gate runs; override with
 /// `NIBLI_VERIFY_NAF_RANDOM_COUNT`.
@@ -184,21 +176,9 @@ fn predilex_taxonomy_agrees_with_vampire() {
 
     // Non-vacuity: the edge extraction is floor-pinned in the lib tests
     // (>= 20 edges); the case families multiply that. A compile-prune or
-    // filter regression that guts the set must fail loudly. Dual-mode: the
-    // fallback build's curated vocabulary leaves few edges the fail-closed
-    // KR resolve accepts, so its floor is lower (never zero).
-    let full_mode = nibli_lexicon::DICTIONARY.len() >= FULL_DICT_MIN;
-    let floor = if full_mode {
-        MIN_CHECKED_TAXONOMY
-    } else {
-        eprintln!(
-            "taxonomy gate: FALLBACK MODE — dictionary has {} entries (curated fallback \
-             build); floor relaxed to {MIN_CHECKED_TAXONOMY_FALLBACK}. Full validation \
-             needs `just fetch-dict` + rebuild.",
-            nibli_lexicon::DICTIONARY.len()
-        );
-        MIN_CHECKED_TAXONOMY_FALLBACK
-    };
+    // filter regression that guts the set must fail loudly. ONE mode since the
+    // committed-corpus milestone (the corpus is identical in every build).
+    let floor = MIN_CHECKED_TAXONOMY;
     assert!(
         report.checked() >= floor,
         "only {} taxonomy cases reached the oracle (need >= {floor}); gate near-vacuous",

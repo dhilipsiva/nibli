@@ -11,15 +11,12 @@
 pub struct LexiconSchema;
 
 impl LexiconSchema {
-    /// Retrieves the arity of a predicate in O(1) time. Since the predicate-name
-    /// de-Lojbanization, the canonical relation names in the IR are ENGLISH
-    /// aliases, so this tries the gismu-keyed forward dictionary first, then the
-    /// alias map (English alias → arity). The two can't collide — the alias
-    /// build's dictionary-shadow guard forbids any alias that is itself a
-    /// dictionary word. Returns None for unknown words (cmavo, non-predicates).
+    /// Retrieves the arity of a predicate. The canonical relation names in the
+    /// IR are ENGLISH corpus names; `nibli_lexicon::get_arity` resolves them
+    /// directly (and, TEMPORARILY, a raw gismu via the provenance compat —
+    /// dies at the gismu-input-death commit). Returns None for unknown words.
     pub fn get_arity(word: &str) -> Option<usize> {
         nibli_lexicon::get_arity(word)
-            .or_else(|| nibli_lexicon::alias(word).map(|e| e.arity as usize))
     }
 
     /// Retrieves the arity, defaulting to 2 for unknown words.

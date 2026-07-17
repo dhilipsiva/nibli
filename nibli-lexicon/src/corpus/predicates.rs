@@ -10,6 +10,7 @@
 use super::{CorpusTier, PredicateEntry, Swap};
 
 /// The `TODO(corpus)` marker count — the label-quality ratchet.
+#[allow(dead_code)] // consumed by the ratchet test only
 pub(crate) const TODO_BASELINE: usize = 1278;
 
 pub(crate) static PREDICATES: &[PredicateEntry] = &[

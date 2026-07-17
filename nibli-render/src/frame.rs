@@ -9,12 +9,12 @@ use nibli_lexicon::{alias, get_arity, get_gloss, get_template};
 
 use crate::overlay;
 
-/// Map an IR relation — since the predicate-name de-Lojbanization it is the plain
-/// ENGLISH alias — back to its gismu, so the gismu-keyed domain overlays and the
-/// curated dictionary frames still resolve. A residual gismu (identity
-/// passthrough, or a fallback build) passes through unchanged.
+/// Map an IR relation — the plain ENGLISH name — back to its source gismu, so
+/// the still-gismu-keyed domain overlays resolve. TEMPORARY shape: the overlay
+/// tables re-key to English at the gismu-input-death commit and this un-mapping
+/// dies with them (templates/glosses already resolve English-first via compat).
 fn frame_key(relation: &str) -> &str {
-    alias(relation).map(|e| e.gismu).unwrap_or(relation)
+    alias(relation).map(|e| e.source_gismu).unwrap_or(relation)
 }
 
 /// Resolve a fill-template (a string with `{x1}`..`{xN}` placeholders) for a

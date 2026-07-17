@@ -22,11 +22,11 @@ clean-wasm-all:
     rm -f target/wasm32-wasip2/debug/*.wasm
     rm -f target/wasm32-wasip2/release/*.wasm
 
-# Download the maintained lensisku English dictionary (the nibli-lexicon build reads
-# ../dictionary-en.json). lensisku's cached dumps are public — no login needed. The
-# nightly-regenerated cached export lives at /api/export/cached/{lang}/{format} (GET only;
-# HEAD 401s). Gitignored; without it the build falls back to the in-tree dictionary
-# (same as CI).
+# Download the maintained lensisku English dictionary — since the committed-corpus
+# milestone this is ONLY the input of `just regen-lexicon` (tools/lexigen); no build
+# reads it. lensisku's cached dumps are public — no login needed. The nightly-
+# regenerated cached export lives at /api/export/cached/{lang}/{format} (GET only;
+# HEAD 401s). Gitignored.
 fetch-dict:
     curl -fsSL "https://lensisku.lojban.org/api/export/cached/en/json" \
       -o dictionary-en.json
@@ -209,9 +209,9 @@ smoke-host-collapse: build-wasm build-host
 # Backend-unavailable smoke: an external compute predicate (exponential) with NO
 # backend configured must yield UNKNOWN (backend-unavailable), NEVER a definitive
 # FALSE — a backend outage is not a derived falsehood. Exercises the four-valued
-# reason end-to-end across the WIT boundary. The `exponential` alias is curated
-# (pinned in nibli-lexicon's fallback tables, so the CI fallback build resolves it
-# too), mapping to the external `tenfa` gismu. NOT in `ci` (needs the WASM build).
+# reason end-to-end across the WIT boundary. `exponential` is a committed corpus
+# entry (source gismu tenfa), so it resolves in every build. NOT in `ci` (needs
+# the WASM build).
 smoke-host-backend-unavailable: build-wasm build-host
     @echo "Smoke-testing gasnu backend-unavailable verdict (no compute backend configured)..."
     @out=$(printf ':compute exponential\n? exponential(8, 2, 3).\n' \
@@ -426,7 +426,8 @@ verify-book: build-validate
 # Manuscript gate, vocab-only (fast; no build needed). book/ is a SEPARATE repo
 # (gitignored here), so it is absent on a fresh checkout / in CI — skip gracefully
 # then, mirroring verify_book.py's own dictionary-absent skip (the vocab check
-# reads dictionary-en.json, `just fetch-dict`). Runs the gate when present.
+# reads dictionary-en.json, `just fetch-dict` — a book-repo dependency; the engine
+# no longer reads the JSON). Runs the gate when present.
 verify-book-vocab:
     @if [ -f book/tools/verify_book.py ]; then \
         python3 book/tools/verify_book.py --vocab-only; \
@@ -476,10 +477,9 @@ verify-soundness:
 # validity, reserved/label integrity from the shipped map) plus a behavioral leg,
 # for EVERY shipped alias: a plain alias must compile canonically EQUAL to itself
 # under explicit xN labels (named = positional routing); a converted alias must
-# equal its CANONICAL BASE alias under the permuted labels. Dual-mode and never skips: a full
-# local build checks all ~1,341 aliases; the CI fallback build checks the curated core
-# with a loud FALLBACK MODE banner. Since the fold, alias↔dictionary arity agreement
-# holds by construction (one crate, one parse).
+# equal its CANONICAL BASE alias under the permuted labels. ONE mode since the
+# committed-corpus milestone: every build checks the full ~1,342-entry committed
+# corpus (the shipped-artifact re-assertion of the const-eval validation).
 verify-alias-map:
     cargo test -p nibli-verify --test alias_differential {{cargo_profile_flag}} -- --nocapture --test-threads=1
 
@@ -508,9 +508,9 @@ verify-nibli-kr-seam:
 
 # Dictionary-arity differential gate: the shipped nibli-lexicon arities must COVER the
 # independent Predilex bounds (vendored CC0 thesaurus, nibli-verify/vendor/predilex/) —
-# an undercount means the dictionary truncates places the word supports. Dual-mode and
-# never skips: a full local build (`just fetch-dict`) checks ~198 words; the CI fallback
-# build checks the curated core set with a loud FALLBACK MODE banner.
+# an undercount means the corpus truncates places the word supports. ONE mode since
+# the committed-corpus milestone: every build checks the gismu ∩ Predilex set (~132
+# words) through the provenance bridge; lujvo lemmas are structurally unmapped.
 verify-dict:
     cargo test -p nibli-verify --test predilex_differential {{cargo_profile_flag}} -- --nocapture --test-threads=1
 

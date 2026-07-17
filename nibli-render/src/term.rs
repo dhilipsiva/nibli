@@ -11,8 +11,7 @@ pub(crate) fn collapse_role_name(name: &str) -> Option<String> {
     let base = role_base(name)?;
     let idx = role_index(name)?;
     let place = nibli_lexicon::alias(base)
-        .and_then(|e| e.place_labels.get(idx - 1).copied())
-        .filter(|l| !l.is_empty())
+        .and_then(|e| e.places.get(idx - 1).copied())
         .map(str::to_owned)
         .unwrap_or_else(|| format!("x{idx}"));
     Some(format!("{base}.{place}"))
@@ -101,8 +100,15 @@ mod tests {
             Some("goes.destination")
         );
         assert_eq!(collapse_role_name("goes_x1").as_deref(), Some("goes.goer"));
-        // …an unlabeled place (a class predicate's subject) keeps the x<N> fallback.
-        assert_eq!(collapse_role_name("dog_x1").as_deref(), Some("dog.x1"));
+        // …and since the committed corpus EVERY place is named, so the old
+        // `dog.x1` positional fallback no longer occurs for corpus relations
+        // (dog's places are ["dog", "breed"]). The x<N> fallback survives only
+        // for relations unknown to the corpus.
+        assert_eq!(collapse_role_name("dog_x1").as_deref(), Some("dog.dog"));
+        assert_eq!(
+            collapse_role_name("mystery_x1").as_deref(),
+            Some("mystery.x1")
+        );
     }
 
     #[test]

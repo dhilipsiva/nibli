@@ -125,13 +125,14 @@ fn js_err(msg: impl std::fmt::Display) -> JsError {
     JsError::new(&msg.to_string())
 }
 
-/// DEPRECATED compatibility shim (dies at the "nibli KR" rename milestone):
-/// the word-by-word Lojban lexical gloss the pre-DROP playground JS calls.
-/// Kept so deployed-site JS written against the dual-front-end API keeps
-/// loading; meaningless for KR input (it echoes unknown tokens).
+/// DEPRECATED compatibility shim — now a pure ECHO no-op: the word-by-word
+/// Lojban lexical gloss it once produced died with the cmavo layer at the
+/// committed-corpus milestone. Kept only so deployed-site JS written against
+/// the dual-front-end API keeps loading; the site-migration bullet owns the
+/// deletion of this and `set_language` together.
 #[wasm_bindgen]
 pub fn back_translate(word: &str) -> String {
-    nibli_lexicon::back_translate(word)
+    word.to_string()
 }
 
 /// IR-driven back-translation: parse + compile to FOL, then render structure-
