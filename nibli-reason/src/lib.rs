@@ -261,7 +261,7 @@ impl KnowledgeBase {
             }
         }
 
-        let mut had_du = false;
+        let mut had_equals = false;
         for fact in &typed_leaves {
             if still_asserted.contains(fact) {
                 continue; // Another live record still asserts this fact — keep it.
@@ -280,13 +280,13 @@ impl KnowledgeBase {
             }
             if let StoredFact::Bare(gf) = fact {
                 if gf.relation == "equals" {
-                    had_du = true;
+                    had_equals = true;
                 }
             }
         }
 
         // If du facts were removed, rebuild equivalence from remaining du facts.
-        if had_du {
+        if had_equals {
             inner.equivalence_parent.clear();
             inner.equivalence_classes.clear();
             let all_facts: Vec<StoredFact> = inner.fact_store.all_facts().iter().cloned().collect();
@@ -1215,7 +1215,7 @@ impl KnowledgeBase {
         // INEQUALITY; it is handled by section 5 (union-find aware) rather than
         // the store-membership check here, because equality can hold
         // transitively (`du(X,Z) ∧ du(Z,Y)`) without `du(X,Y)` ever being stored.
-        fn flat_du_pair(group: &[StoredFact]) -> Option<(&GroundTerm, &GroundTerm)> {
+        fn flat_equals_pair(group: &[StoredFact]) -> Option<(&GroundTerm, &GroundTerm)> {
             if group.len() == 1 {
                 if let StoredFact::Bare(gf) = &group[0] {
                     if gf.relation == "equals" && gf.args.len() == 2 {
@@ -1227,7 +1227,7 @@ impl KnowledgeBase {
         }
 
         for group in &inner.negative_facts {
-            if flat_du_pair(group).is_some() {
+            if flat_equals_pair(group).is_some() {
                 continue;
             }
             if negative_group_holds(group, &*inner.fact_store) {
@@ -1249,7 +1249,7 @@ impl KnowledgeBase {
         //    (`du(X, Z) ∧ du(Z, Y)`) that a store-membership check would miss.
         //    (Reflexive `na du(a, a)` is correctly always a contradiction.)
         for group in &inner.negative_facts {
-            if let Some((x, y)) = flat_du_pair(group) {
+            if let Some((x, y)) = flat_equals_pair(group) {
                 let rx = find_canonical_readonly(&inner.equivalence_parent, x);
                 let ry = find_canonical_readonly(&inner.equivalence_parent, y);
                 if rx == ry {

@@ -112,7 +112,7 @@ impl Settings {
 /// Single-shot English→KB formalize via nibli-formalize's transport — used by the
 /// query formalize and the modal key-test (the agentic Source formalize uses
 /// `translate_agentic`). Returns the cleaned KB text or a user-facing error.
-async fn fanva_translate(cfg: &LlmConfig, english: &str) -> Result<String, String> {
+async fn formalize_translate(cfg: &LlmConfig, english: &str) -> Result<String, String> {
     use nibli_formalize::llm::{Chat, HttpChat, Turn, clean_output, system_prompt};
     let request = format!("Formalize into nibli KR: {}", english.trim());
     let turns = [Turn::user(request)];
@@ -753,7 +753,7 @@ fn QueryTabs(
         translating.set(true);
         translate_error.set(None);
         spawn(async move {
-            match fanva_translate(&cfg.llm, &text).await {
+            match formalize_translate(&cfg.llm, &text).await {
                 Ok(formal) => {
                     query_text.set(formal);
                     query_tab.set(ActiveTab::Kb);
@@ -1351,7 +1351,7 @@ fn LlmConfigModal(settings: Signal<Option<Settings>>, modal_open: Signal<bool>) 
         testing.set(true);
         test_msg.set(None);
         spawn(async move {
-            match fanva_translate(&s.llm, "Adam is a dog").await {
+            match formalize_translate(&s.llm, "Adam is a dog").await {
                 Ok(formal) => test_msg.set(Some((true, format!("OK \u{2014} {formal}")))),
                 Err(e) => test_msg.set(Some((false, e))),
             }

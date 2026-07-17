@@ -126,11 +126,11 @@ impl SemanticCompiler {
                 self.canon_form(b, vars, out);
                 out.push(')');
             }
-            LogicalForm::Past(i) => self.canon_wrap("pu", i, vars, out),
-            LogicalForm::Present(i) => self.canon_wrap("ca", i, vars, out),
-            LogicalForm::Future(i) => self.canon_wrap("ba", i, vars, out),
-            LogicalForm::Obligatory(i) => self.canon_wrap("ei", i, vars, out),
-            LogicalForm::Permitted(i) => self.canon_wrap("ee", i, vars, out),
+            LogicalForm::Past(i) => self.canon_wrap("past", i, vars, out),
+            LogicalForm::Present(i) => self.canon_wrap("now", i, vars, out),
+            LogicalForm::Future(i) => self.canon_wrap("future", i, vars, out),
+            LogicalForm::Obligatory(i) => self.canon_wrap("oblig", i, vars, out),
+            LogicalForm::Permitted(i) => self.canon_wrap("perm", i, vars, out),
             LogicalForm::Count { var, count, body } => {
                 out.push('#');
                 out.push_str(&count.to_string());

@@ -112,8 +112,8 @@ pub fn random_case(seed: u64) -> GeneratedCase {
     // equivalence index; the Vampire side sees native `=` (congruence), so the mix
     // exercises substitutivity through fact lookup AND rule firing. A self-link
     // (`E = E`) or a duplicate link is harmless (reflexivity / idempotent union).
-    let n_du = rng.below(3);
-    for _ in 0..n_du {
+    let n_equals = rng.below(3);
+    for _ in 0..n_equals {
         kb.push(format!("{} = {}.", rng.pick(ENTITIES), rng.pick(ENTITIES)));
     }
     // 0..=3 universal (Horn) rules `Q(every P).`. Cycles are fine — definite Horn stays sound;
@@ -320,7 +320,7 @@ mod tests {
                     .or_else(|| line.strip_prefix("future "))
                     .unwrap_or(line);
                 let is_rule = body.contains("(every ");
-                let is_du = body.contains(" = ");
+                let is_equals = body.contains(" = ");
                 let is_and = body.contains(" & ");
                 let is_fact = body.ends_with(").")
                     && body
@@ -328,13 +328,13 @@ mod tests {
                         .next()
                         .is_some_and(|ch| ch.is_ascii_lowercase());
                 assert!(
-                    is_rule || is_du || is_and || is_fact,
+                    is_rule || is_equals || is_and || is_fact,
                     "unexpected generated line: {line}"
                 );
                 // A tense prefix only ever appears on an atomic fact/query —
                 // never a rule, And-fact, or identity link.
                 assert!(
-                    body == line || (is_fact && !is_rule && !is_du && !is_and),
+                    body == line || (is_fact && !is_rule && !is_equals && !is_and),
                     "tense prefix on a non-atomic line: {line}"
                 );
                 assert!(

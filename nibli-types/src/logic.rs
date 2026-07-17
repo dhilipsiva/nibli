@@ -247,11 +247,11 @@ pub enum ProofRule {
     #[cfg_attr(feature = "serde", serde(rename = "proof_ref"))]
     ProofRef { fact: String },
     /// Equality substitution: fact proved by substituting equivalent terms.
-    /// Fields: original fact, du facts used, substituted fact that was found.
+    /// Fields: original fact, equality facts used, substituted fact that was found.
     #[cfg_attr(feature = "serde", serde(rename = "equality_substitution"))]
     EqualitySubstitution {
         original: String,
-        du_facts: String,
+        equality_facts: String,
         substituted: String,
     },
     /// Rule was tried but a condition failed.

@@ -15,7 +15,7 @@ use bindings::nibli::engine::logic_types as export_logic;
 
 // Canonical pipeline types (shared across nibli-kr/nibli-semantics/logji)
 use nibli_types::error as pipeline_err;
-use nibli_types::logic as logji_logic;
+use nibli_types::logic;
 
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -39,23 +39,21 @@ pub struct Session {
 
 // ─── Type conversion: logji → lasna export boundary ───
 
-fn convert_logical_term_to_export(t: &logji_logic::LogicalTerm) -> export_logic::LogicalTerm {
+fn convert_logical_term_to_export(t: &logic::LogicalTerm) -> export_logic::LogicalTerm {
     match t {
-        logji_logic::LogicalTerm::Variable(v) => export_logic::LogicalTerm::Variable(v.clone()),
-        logji_logic::LogicalTerm::Constant(c) => export_logic::LogicalTerm::Constant(c.clone()),
-        logji_logic::LogicalTerm::Description(d) => {
-            export_logic::LogicalTerm::Description(d.clone())
-        }
-        logji_logic::LogicalTerm::Number(n) => export_logic::LogicalTerm::Number(*n),
-        logji_logic::LogicalTerm::Unspecified => export_logic::LogicalTerm::Unspecified,
+        logic::LogicalTerm::Variable(v) => export_logic::LogicalTerm::Variable(v.clone()),
+        logic::LogicalTerm::Constant(c) => export_logic::LogicalTerm::Constant(c.clone()),
+        logic::LogicalTerm::Description(d) => export_logic::LogicalTerm::Description(d.clone()),
+        logic::LogicalTerm::Number(n) => export_logic::LogicalTerm::Number(*n),
+        logic::LogicalTerm::Unspecified => export_logic::LogicalTerm::Unspecified,
     }
 }
 
 /// Convert one logji `LogicNode` to the WIT export node (pure 1:1 — the WIT
 /// `logic-node` variant mirrors `nibli_types::logic::LogicNode` exactly).
-fn convert_logic_node_to_export(n: &logji_logic::LogicNode) -> export_logic::LogicNode {
+fn convert_logic_node_to_export(n: &logic::LogicNode) -> export_logic::LogicNode {
     use export_logic::LogicNode as E;
-    use logji_logic::LogicNode as L;
+    use logic::LogicNode as L;
     match n {
         L::Predicate((rel, args)) => E::Predicate((
             rel.clone(),
@@ -81,31 +79,29 @@ fn convert_logic_node_to_export(n: &logji_logic::LogicNode) -> export_logic::Log
 
 /// Convert the full logji `LogicBuffer` to the WIT export buffer (typed IR
 /// crosses the boundary; the host renders it — no S-expression string).
-fn convert_logic_buffer_to_export(buf: &logji_logic::LogicBuffer) -> export_logic::LogicBuffer {
+fn convert_logic_buffer_to_export(buf: &logic::LogicBuffer) -> export_logic::LogicBuffer {
     export_logic::LogicBuffer {
         nodes: buf.nodes.iter().map(convert_logic_node_to_export).collect(),
         roots: buf.roots.clone(),
     }
 }
 
-fn convert_logical_term_from_export(t: &export_logic::LogicalTerm) -> logji_logic::LogicalTerm {
+fn convert_logical_term_from_export(t: &export_logic::LogicalTerm) -> logic::LogicalTerm {
     match t {
-        export_logic::LogicalTerm::Variable(v) => logji_logic::LogicalTerm::Variable(v.clone()),
-        export_logic::LogicalTerm::Constant(c) => logji_logic::LogicalTerm::Constant(c.clone()),
-        export_logic::LogicalTerm::Description(d) => {
-            logji_logic::LogicalTerm::Description(d.clone())
-        }
-        export_logic::LogicalTerm::Number(n) => logji_logic::LogicalTerm::Number(*n),
-        export_logic::LogicalTerm::Unspecified => logji_logic::LogicalTerm::Unspecified,
+        export_logic::LogicalTerm::Variable(v) => logic::LogicalTerm::Variable(v.clone()),
+        export_logic::LogicalTerm::Constant(c) => logic::LogicalTerm::Constant(c.clone()),
+        export_logic::LogicalTerm::Description(d) => logic::LogicalTerm::Description(d.clone()),
+        export_logic::LogicalTerm::Number(n) => logic::LogicalTerm::Number(*n),
+        export_logic::LogicalTerm::Unspecified => logic::LogicalTerm::Unspecified,
     }
 }
 
 /// Convert one WIT import node back to the logji `LogicNode` (pure 1:1 inverse
 /// of `convert_logic_node_to_export`; `CountNode`'s middle field is a COUNT,
 /// not a node index — copied verbatim, never remapped).
-fn convert_logic_node_from_export(n: &export_logic::LogicNode) -> logji_logic::LogicNode {
+fn convert_logic_node_from_export(n: &export_logic::LogicNode) -> logic::LogicNode {
     use export_logic::LogicNode as E;
-    use logji_logic::LogicNode as L;
+    use logic::LogicNode as L;
     match n {
         E::Predicate((rel, args)) => L::Predicate((
             rel.clone(),
@@ -131,8 +127,8 @@ fn convert_logic_node_from_export(n: &export_logic::LogicNode) -> logji_logic::L
 
 /// Convert a WIT import buffer back to the logji `LogicBuffer` (inverse of
 /// `convert_logic_buffer_to_export`) — the `assert-buffer-with-id` replay path.
-fn convert_logic_buffer_from_export(buf: &export_logic::LogicBuffer) -> logji_logic::LogicBuffer {
-    logji_logic::LogicBuffer {
+fn convert_logic_buffer_from_export(buf: &export_logic::LogicBuffer) -> logic::LogicBuffer {
+    logic::LogicBuffer {
         nodes: buf
             .nodes
             .iter()
@@ -142,32 +138,32 @@ fn convert_logic_buffer_from_export(buf: &export_logic::LogicBuffer) -> logji_lo
     }
 }
 
-fn convert_query_result_to_export(result: &logji_logic::QueryResult) -> export_logic::QueryResult {
+fn convert_query_result_to_export(result: &logic::QueryResult) -> export_logic::QueryResult {
     match result {
-        logji_logic::QueryResult::True => export_logic::QueryResult::True,
-        logji_logic::QueryResult::False => export_logic::QueryResult::False,
-        logji_logic::QueryResult::Unknown(logji_logic::UnknownReason::CycleCut) => {
+        logic::QueryResult::True => export_logic::QueryResult::True,
+        logic::QueryResult::False => export_logic::QueryResult::False,
+        logic::QueryResult::Unknown(logic::UnknownReason::CycleCut) => {
             export_logic::QueryResult::Unknown(export_logic::UnknownReason::CycleCut)
         }
-        logji_logic::QueryResult::Unknown(logji_logic::UnknownReason::IncompleteKnowledge) => {
+        logic::QueryResult::Unknown(logic::UnknownReason::IncompleteKnowledge) => {
             export_logic::QueryResult::Unknown(export_logic::UnknownReason::IncompleteKnowledge)
         }
-        logji_logic::QueryResult::Unknown(logji_logic::UnknownReason::NafDependent) => {
+        logic::QueryResult::Unknown(logic::UnknownReason::NafDependent) => {
             export_logic::QueryResult::Unknown(export_logic::UnknownReason::NafDependent)
         }
-        logji_logic::QueryResult::Unknown(logji_logic::UnknownReason::BackendUnavailable) => {
+        logic::QueryResult::Unknown(logic::UnknownReason::BackendUnavailable) => {
             export_logic::QueryResult::Unknown(export_logic::UnknownReason::BackendUnavailable)
         }
-        logji_logic::QueryResult::Unknown(logji_logic::UnknownReason::NonFinite) => {
+        logic::QueryResult::Unknown(logic::UnknownReason::NonFinite) => {
             export_logic::QueryResult::Unknown(export_logic::UnknownReason::NonFinite)
         }
-        logji_logic::QueryResult::ResourceExceeded(logji_logic::ResourceKind::Depth) => {
+        logic::QueryResult::ResourceExceeded(logic::ResourceKind::Depth) => {
             export_logic::QueryResult::ResourceExceeded(export_logic::ResourceKind::Depth)
         }
-        logji_logic::QueryResult::ResourceExceeded(logji_logic::ResourceKind::Fuel) => {
+        logic::QueryResult::ResourceExceeded(logic::ResourceKind::Fuel) => {
             export_logic::QueryResult::ResourceExceeded(export_logic::ResourceKind::Fuel)
         }
-        logji_logic::QueryResult::ResourceExceeded(logji_logic::ResourceKind::Memory) => {
+        logic::QueryResult::ResourceExceeded(logic::ResourceKind::Memory) => {
             export_logic::QueryResult::ResourceExceeded(export_logic::ResourceKind::Memory)
         }
     }
@@ -175,79 +171,71 @@ fn convert_query_result_to_export(result: &logji_logic::QueryResult) -> export_l
 
 // logji's `ProofRule` is now the named-field canonical type; the WIT export type
 // stays tuple-shaped (generated from world.wit), so this maps named fields → tuples.
-fn convert_proof_rule(r: &logji_logic::ProofRule) -> export_logic::ProofRule {
+fn convert_proof_rule(r: &logic::ProofRule) -> export_logic::ProofRule {
     match r {
-        logji_logic::ProofRule::Conjunction => export_logic::ProofRule::Conjunction,
-        logji_logic::ProofRule::DisjunctionCheck { detail } => {
+        logic::ProofRule::Conjunction => export_logic::ProofRule::Conjunction,
+        logic::ProofRule::DisjunctionCheck { detail } => {
             export_logic::ProofRule::DisjunctionCheck(detail.clone())
         }
-        logji_logic::ProofRule::DisjunctionIntro { side } => {
+        logic::ProofRule::DisjunctionIntro { side } => {
             export_logic::ProofRule::DisjunctionIntro(side.clone())
         }
-        logji_logic::ProofRule::Negation => export_logic::ProofRule::Negation,
-        logji_logic::ProofRule::ModalPassthrough { kind } => {
+        logic::ProofRule::Negation => export_logic::ProofRule::Negation,
+        logic::ProofRule::ModalPassthrough { kind } => {
             export_logic::ProofRule::ModalPassthrough(kind.clone())
         }
-        logji_logic::ProofRule::ExistsWitness { var, term } => {
-            export_logic::ProofRule::ExistsWitness((
-                var.clone(),
-                convert_logical_term_to_export(term),
-            ))
-        }
-        logji_logic::ProofRule::ExistsFailed => export_logic::ProofRule::ExistsFailed,
-        logji_logic::ProofRule::ForallVacuous => export_logic::ProofRule::ForallVacuous,
-        logji_logic::ProofRule::ForallVerified { entities } => {
-            export_logic::ProofRule::ForallVerified(
-                entities
-                    .iter()
-                    .map(convert_logical_term_to_export)
-                    .collect(),
-            )
-        }
-        logji_logic::ProofRule::ForallCounterexample { entity } => {
+        logic::ProofRule::ExistsWitness { var, term } => export_logic::ProofRule::ExistsWitness((
+            var.clone(),
+            convert_logical_term_to_export(term),
+        )),
+        logic::ProofRule::ExistsFailed => export_logic::ProofRule::ExistsFailed,
+        logic::ProofRule::ForallVacuous => export_logic::ProofRule::ForallVacuous,
+        logic::ProofRule::ForallVerified { entities } => export_logic::ProofRule::ForallVerified(
+            entities
+                .iter()
+                .map(convert_logical_term_to_export)
+                .collect(),
+        ),
+        logic::ProofRule::ForallCounterexample { entity } => {
             export_logic::ProofRule::ForallCounterexample(convert_logical_term_to_export(entity))
         }
-        logji_logic::ProofRule::CountResult { expected, actual } => {
+        logic::ProofRule::CountResult { expected, actual } => {
             export_logic::ProofRule::CountResult((*expected, *actual))
         }
-        logji_logic::ProofRule::PredicateCheck { method, detail } => {
+        logic::ProofRule::PredicateCheck { method, detail } => {
             export_logic::ProofRule::PredicateCheck((method.clone(), detail.clone()))
         }
-        logji_logic::ProofRule::ComputeCheck { method, detail } => {
+        logic::ProofRule::ComputeCheck { method, detail } => {
             export_logic::ProofRule::ComputeCheck((method.clone(), detail.clone()))
         }
-        logji_logic::ProofRule::Asserted { fact } => {
-            export_logic::ProofRule::Asserted(fact.clone())
-        }
-        logji_logic::ProofRule::Derived { label, fact } => {
+        logic::ProofRule::Asserted { fact } => export_logic::ProofRule::Asserted(fact.clone()),
+        logic::ProofRule::Derived { label, fact } => {
             export_logic::ProofRule::Derived((label.clone(), fact.clone()))
         }
-        logji_logic::ProofRule::ProofRef { fact } => {
-            export_logic::ProofRule::ProofRef(fact.clone())
-        }
-        logji_logic::ProofRule::EqualitySubstitution {
+        logic::ProofRule::ProofRef { fact } => export_logic::ProofRule::ProofRef(fact.clone()),
+        logic::ProofRule::EqualitySubstitution {
             original,
-            du_facts,
+            equality_facts,
             substituted,
         } => export_logic::ProofRule::EqualitySubstitution((
             original.clone(),
-            du_facts.clone(),
+            equality_facts.clone(),
             substituted.clone(),
         )),
-        logji_logic::ProofRule::RuleAttemptFailed {
+        logic::ProofRule::RuleAttemptFailed {
             rule_label,
             failed_condition,
         } => export_logic::ProofRule::RuleAttemptFailed((
             rule_label.clone(),
             failed_condition.clone(),
         )),
-        logji_logic::ProofRule::PredicateNotFound { predicate } => {
+        logic::ProofRule::PredicateNotFound { predicate } => {
             export_logic::ProofRule::PredicateNotFound(predicate.clone())
         }
     }
 }
 
-fn convert_proof_trace(t: logji_logic::ProofTrace) -> export_logic::ProofTrace {
+fn convert_proof_trace(t: logic::ProofTrace) -> export_logic::ProofTrace {
     export_logic::ProofTrace {
         steps: t
             .steps
@@ -270,7 +258,7 @@ fn convert_proof_trace(t: logji_logic::ProofTrace) -> export_logic::ProofTrace {
 }
 
 fn convert_witness_bindings(
-    wbs: Vec<Vec<logji_logic::WitnessBinding>>,
+    wbs: Vec<Vec<logic::WitnessBinding>>,
 ) -> Vec<Vec<export_logic::WitnessBinding>> {
     wbs.into_iter()
         .map(|bindings| {
@@ -285,7 +273,7 @@ fn convert_witness_bindings(
         .collect()
 }
 
-fn convert_fact_summaries(fs: Vec<logji_logic::FactSummary>) -> Vec<export_logic::FactSummary> {
+fn convert_fact_summaries(fs: Vec<logic::FactSummary>) -> Vec<export_logic::FactSummary> {
     fs.into_iter()
         .map(|f| export_logic::FactSummary {
             id: f.id,
@@ -313,7 +301,7 @@ fn convert_pipeline_error(e: pipeline_err::NibliError) -> export_err::NibliError
 
 // ─── Compute dispatch bridge (logji → lasna WIT import) ───
 
-fn eval_via_host(rel: &str, args: &[logji_logic::LogicalTerm]) -> Result<bool, String> {
+fn eval_via_host(rel: &str, args: &[logic::LogicalTerm]) -> Result<bool, String> {
     let converted: Vec<export_logic::LogicalTerm> =
         args.iter().map(convert_logical_term_to_export).collect();
     cb::evaluate(rel, &converted).map_err(|e| match e {
@@ -345,7 +333,7 @@ fn batch_eval_via_host(requests: &[nibli_reason::ComputeRequest]) -> Vec<Result<
 fn compile_pipeline(
     text: &str,
     compute_predicates: &HashSet<String>,
-) -> Result<logji_logic::LogicBuffer, export_err::NibliError> {
+) -> Result<logic::LogicBuffer, export_err::NibliError> {
     // The mirror of nibli-engine's `compile_text`, so native and WASM agree.
     let ast = nibli_kr::parse_checked(text).map_err(convert_pipeline_error)?;
     let mut buf = nibli_semantics::compile_from_ast(ast).map_err(convert_pipeline_error)?;
@@ -401,13 +389,13 @@ impl Session {
         args: Vec<export_logic::LogicalTerm>,
         id: Option<u64>,
     ) -> Result<u64, export_err::NibliError> {
-        let logji_args: Vec<logji_logic::LogicalTerm> =
+        let logic_args: Vec<logic::LogicalTerm> =
             args.iter().map(convert_logical_term_from_export).collect();
         let label = format!(":assert {}", relation);
         // Event-decompose to the SAME shape a surface assertion produces, so the
         // injected fact is matched by surface text queries (not just raw-FOL /
         // same-shape direct queries). `du` stays flat — see compile_injected_fact.
-        let buf = nibli_semantics::compile_injected_fact(&relation, &logji_args);
+        let buf = nibli_semantics::compile_injected_fact(&relation, &logic_args);
         match id {
             Some(i) => {
                 self.kb

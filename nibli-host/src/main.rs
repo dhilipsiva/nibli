@@ -252,10 +252,10 @@ fn rule_to_proto(rule: &ProofRule) -> ProtoRule {
             fact: fact.clone(),
         },
         ProofRule::ProofRef(fact) => ProtoRule::ProofRef { fact: fact.clone() },
-        ProofRule::EqualitySubstitution((original, du_facts, substituted)) => {
+        ProofRule::EqualitySubstitution((original, equality_facts, substituted)) => {
             ProtoRule::EqualitySubstitution {
                 original: original.clone(),
-                du_facts: du_facts.clone(),
+                equality_facts: equality_facts.clone(),
                 substituted: substituted.clone(),
             }
         }
@@ -1831,12 +1831,12 @@ mod tests {
     fn test_format_nibli_error_syntax() {
         use pipeline_bind::nibli::engine::error_types::SyntaxDetail;
         let e = NibliError::Syntax(SyntaxDetail {
-            message: "expected selbri or terms".to_string(),
+            message: "expected predicate or terms".to_string(),
             line: 3,
             column: 7,
         });
         let out = format_nibli_error(&e);
-        assert_eq!(out, "[Syntax Error] line 3:7: expected selbri or terms");
+        assert_eq!(out, "[Syntax Error] line 3:7: expected predicate or terms");
     }
 
     #[test]

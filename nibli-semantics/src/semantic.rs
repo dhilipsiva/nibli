@@ -39,11 +39,11 @@ pub(crate) enum QuantifierKind {
     Existential,
     /// ro lo → ∀x (veridical universal, restrictor = predicate predicate)
     Universal,
-    /// ro le → ∀x (referential universal, restrictor = opaque le_domain predicate)
+    /// ro le → ∀x (referential universal, restrictor = opaque the_domain predicate)
     UniversalLe,
     /// PA lo → exactly N (veridical, restrictor = predicate predicate)
     ExactCount(u32),
-    /// PA le → exactly N (referential, restrictor = opaque le_domain predicate)
+    /// PA le → exactly N (referential, restrictor = opaque the_domain predicate)
     ExactCountLe(u32),
 }
 
@@ -3590,7 +3590,7 @@ mod tests {
 
     #[test]
     fn test_ro_le_uses_opaque_domain_restrictor() {
-        // ro le gerku cu sutra → ForAll(_v0, Or(Not(le_domain_dog(_v0)), ...))
+        // ro le gerku cu sutra → ForAll(_v0, Or(Not(the_domain_dog(_v0)), ...))
         let predicates = vec![
             Predicate::Root("dog".into()),
             Predicate::Root("fast".into()),
@@ -3611,10 +3611,10 @@ mod tests {
             "expected ForAll, got {:?}",
             form
         );
-        // The restrictor should be le_domain_dog (not gerku)
+        // The restrictor should be the_domain_dog (not gerku)
         assert!(
-            has_pred(&form, "le_domain_dog", &compiler),
-            "expected opaque le_domain_dog restrictor"
+            has_pred(&form, "the_domain_dog", &compiler),
+            "expected opaque the_domain_dog restrictor"
         );
         assert!(
             !has_pred(&form, "dog", &compiler),
@@ -3650,14 +3650,14 @@ mod tests {
             "expected veridical gerku restrictor for ro lo"
         );
         assert!(
-            !has_pred(&form, "le_domain_dog", &compiler),
-            "le_domain_dog should NOT appear for ro lo"
+            !has_pred(&form, "the_domain_dog", &compiler),
+            "the_domain_dog should NOT appear for ro lo"
         );
     }
 
     #[test]
     fn test_pa_le_uses_opaque_domain_restrictor() {
-        // re le gerku cu sutra → Count with le_domain_dog restrictor
+        // re le gerku cu sutra → Count with the_domain_dog restrictor
         let predicates = vec![
             Predicate::Root("dog".into()),
             Predicate::Root("fast".into()),
@@ -3682,8 +3682,8 @@ mod tests {
             form
         );
         assert!(
-            has_pred(&form, "le_domain_dog", &compiler),
-            "expected opaque le_domain_dog restrictor for PA le"
+            has_pred(&form, "the_domain_dog", &compiler),
+            "expected opaque the_domain_dog restrictor for PA le"
         );
         assert!(
             !has_pred(&form, "dog", &compiler),
@@ -3722,8 +3722,8 @@ mod tests {
             "expected veridical gerku restrictor for PA lo"
         );
         assert!(
-            !has_pred(&form, "le_domain_dog", &compiler),
-            "le_domain_dog should NOT appear for PA lo"
+            !has_pred(&form, "the_domain_dog", &compiler),
+            "the_domain_dog should NOT appear for PA lo"
         );
     }
 }

@@ -202,12 +202,12 @@ pub fn label(rule: &ProofRule) -> String {
         ProofRule::ProofRef { fact } => format!("(proved above): {}", humanize_fact(fact)),
         ProofRule::EqualitySubstitution {
             original,
-            du_facts,
+            equality_facts,
             substituted,
         } => format!(
             "Equality: {} via {} → {}",
             humanize_fact(original),
-            du_facts,
+            equality_facts,
             humanize_fact(substituted)
         ),
         ProofRule::RuleAttemptFailed {
@@ -276,12 +276,12 @@ pub fn trace_display(rule: &ProofRule, result: bool) -> String {
         ProofRule::ProofRef { fact } => format!("(see above): {} -> {}", humanize_fact(fact), tag),
         ProofRule::EqualitySubstitution {
             original,
-            du_facts,
+            equality_facts,
             substituted,
         } => format!(
             "Equality: {} via {} → {} -> {}",
             humanize_fact(original),
-            du_facts,
+            equality_facts,
             humanize_fact(substituted),
             tag
         ),

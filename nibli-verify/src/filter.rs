@@ -175,7 +175,7 @@ mod tests {
     }
 
     /// The one accepted `du` shape: sole root, two constants — a bare fact/query.
-    fn ground_du() -> LogicBuffer {
+    fn ground_equals() -> LogicBuffer {
         LogicBuffer {
             nodes: vec![LogicNode::Predicate((
                 "equals".into(),
@@ -192,8 +192,8 @@ mod tests {
     fn ground_sole_root_du_is_mappable_in_both_fragments() {
         // `la .X. cu du la .Y.` — Vampire judges it as native `=`; the ASP translator
         // canonicalizes the equivalence class away. Accepted by BOTH filters.
-        assert_eq!(buffer_non_classical(&ground_du()), None);
-        assert_eq!(buffer_asp_mappable(&ground_du()), None);
+        assert_eq!(buffer_non_classical(&ground_equals()), None);
+        assert_eq!(buffer_asp_mappable(&ground_equals()), None);
     }
 
     #[test]

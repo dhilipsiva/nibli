@@ -9,7 +9,7 @@ use std::collections::HashSet;
 use wasm_bindgen::prelude::*;
 
 use nibli_types::error::NibliError as PipelineError;
-use nibli_types::logic as logji_logic;
+use nibli_types::logic;
 
 // The canonical proof types ARE the wire types now; `nibli_protocol` only
 // supplies the JSON helper. Readable rendering lives in `nibli-render`.
@@ -110,7 +110,7 @@ impl Session {
 }
 
 impl Session {
-    fn compile_text(&self, input: &str) -> Result<logji_logic::LogicBuffer, String> {
+    fn compile_text(&self, input: &str) -> Result<logic::LogicBuffer, String> {
         // Fail-closed KR parse + smuni compile + compute-node marking.
         // String-error surface preserved via `to_string`.
         let ast = nibli_kr::parse_checked(input).map_err(|e: PipelineError| e.to_string())?;
@@ -150,7 +150,7 @@ pub fn back_translate_ir(text: &str) -> String {
 
 /// Parse + compile a line to the FOL `LogicBuffer` for rendering (no compute
 /// transform, no assertion — display only).
-fn compile_for_render(input: &str) -> Result<logji_logic::LogicBuffer, String> {
+fn compile_for_render(input: &str) -> Result<logic::LogicBuffer, String> {
     let ast = nibli_kr::parse_checked(input).map_err(|e: PipelineError| e.to_string())?;
     nibli_semantics::compile_from_ast(ast).map_err(|e: PipelineError| e.to_string())
 }

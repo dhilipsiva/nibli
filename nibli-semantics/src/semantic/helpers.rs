@@ -112,7 +112,7 @@ impl SemanticCompiler {
             }
             QuantifierKind::UniversalLe => {
                 let le_restrictor =
-                    self.build_le_domain_restrictor(entry.desc_id, entry.var, predicates);
+                    self.build_the_domain_restrictor(entry.desc_id, entry.var, predicates);
                 let matrix = match entry.incidental_restrictor {
                     Some(noi) => LogicalForm::And(Box::new(form_to_wrap), Box::new(noi)),
                     None => form_to_wrap,
@@ -133,7 +133,7 @@ impl SemanticCompiler {
             }
             QuantifierKind::ExactCountLe(n) => {
                 let le_restrictor =
-                    self.build_le_domain_restrictor(entry.desc_id, entry.var, predicates);
+                    self.build_the_domain_restrictor(entry.desc_id, entry.var, predicates);
                 let mut body = LogicalForm::And(Box::new(le_restrictor), Box::new(form_to_wrap));
 
                 if let Some(rel_restrictor) = entry.restrictor {
@@ -231,15 +231,15 @@ impl SemanticCompiler {
         )
     }
 
-    /// Builds an opaque le_domain_X restrictor predicate for le descriptions.
-    pub(crate) fn build_le_domain_restrictor(
+    /// Builds an opaque the_domain_X restrictor predicate for le descriptions.
+    pub(crate) fn build_the_domain_restrictor(
         &mut self,
         desc_id: u32,
         var: lasso::Spur,
         predicates: &[Predicate],
     ) -> LogicalForm {
         let head_name = self.get_predicate_head_name(desc_id, predicates);
-        let domain_name = format!("le_domain_{}", head_name);
+        let domain_name = format!("the_domain_{}", head_name);
         LogicalForm::Predicate {
             relation: self.interner.get_or_intern(&domain_name),
             args: vec![LogicalTerm::Variable(var)],

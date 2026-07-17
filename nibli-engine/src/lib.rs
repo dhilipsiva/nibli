@@ -21,7 +21,7 @@ pub use nibli_types::logic::{
 /// re-exported so embedders, tests, and the server can pattern-match the error
 /// CLASS instead of string-parsing the `[Xxx Error]` Display prefix.
 pub use nibli_types::error::NibliError as EngineError;
-use nibli_types::logic as logji_logic;
+use nibli_types::logic;
 
 mod compute_client;
 
@@ -189,7 +189,7 @@ impl NibliEngine {
             .all_active_facts()
             .map_err(|e| format!("Store error: {e}"))?;
         for fact in &facts {
-            let buf: logji_logic::LogicBuffer = postcard::from_bytes(&fact.payload)
+            let buf: logic::LogicBuffer = postcard::from_bytes(&fact.payload)
                 .map_err(|e| format!("Deserialize error: {e}"))?;
             self.kb
                 .assert_fact_with_id(buf, fact.label.clone(), fact.id)
@@ -210,7 +210,7 @@ impl NibliEngine {
         self.compute_predicates.insert(name);
     }
 
-    fn compile_text(&self, input: &str) -> Result<logji_logic::LogicBuffer, EngineError> {
+    fn compile_text(&self, input: &str) -> Result<logic::LogicBuffer, EngineError> {
         // The SOLE text→AST seam — every public text method funnels through
         // here; `EngineError` is the re-exported `NibliError`.
         let ast = nibli_kr::parse_checked(input)?;

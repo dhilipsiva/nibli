@@ -1513,7 +1513,7 @@ fn typed_fact_is_asserted_with_equivalence(
 /// Format the du-equality substitution note for a proof step: the argument pairs
 /// where `orig` and `variant` differ, rendered as `"a du b, x du y"`. Shared by
 /// the asserted-via-equivalence and rule-derived-via-equivalence trace paths.
-fn du_substitution_note(orig: &StoredFact, variant: &StoredFact) -> String {
+fn equals_substitution_note(orig: &StoredFact, variant: &StoredFact) -> String {
     orig.inner()
         .args
         .iter()
@@ -2535,7 +2535,7 @@ pub(super) fn trace_predicate_provenance_typed(
     // the rule-derived equality fallback further down.
     if !inner.equivalence_parent.is_empty() {
         if let Some(variant) = typed_fact_is_asserted_with_equivalence(fact, inner) {
-            let du_note = du_substitution_note(fact, &variant);
+            let equals_note = equals_substitution_note(fact, &variant);
             let substituted = variant.to_display_string();
             let child = trace_predicate_provenance_typed(
                 &variant,
@@ -2549,7 +2549,7 @@ pub(super) fn trace_predicate_provenance_typed(
             steps.push(ProofStep {
                 rule: ProofRule::EqualitySubstitution {
                     original: display.clone(),
-                    du_facts: du_note,
+                    equality_facts: equals_note,
                     substituted,
                 },
                 holds: true,
@@ -2620,7 +2620,7 @@ pub(super) fn trace_predicate_provenance_typed(
                 }
             }
             if let Some(variant) = satisfying {
-                let du_note = du_substitution_note(fact, &variant);
+                let equals_note = equals_substitution_note(fact, &variant);
                 let substituted = variant.to_display_string();
                 let child = trace_predicate_provenance_typed(
                     &variant,
@@ -2634,7 +2634,7 @@ pub(super) fn trace_predicate_provenance_typed(
                 steps.push(ProofStep {
                     rule: ProofRule::EqualitySubstitution {
                         original: display.clone(),
-                        du_facts: du_note,
+                        equality_facts: equals_note,
                         substituted,
                     },
                     holds: true,
