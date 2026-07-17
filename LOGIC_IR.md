@@ -50,8 +50,8 @@ WASM component boundary unchanged. Structural guarantees:
   **bounds checking** from the reasoner (out-of-range indices return descriptive errors, never
   panics) but no up-front cycle validation — acyclicity is the producer's responsibility.
 - **Root granularity is fact granularity.** The front-end emits *one root per statement
-  sentence*, but a *single* root for logical connectives (`.ije`/`.ija`/`ge…gi` compile to one
-  `AndNode`/`OrNode` root). `LogicBuffer::split_roots()`
+  sentence*, but a *single* root for logical connectives (a sentence-level `&`/`|` compiles
+  to one `AndNode`/`OrNode` root). `LogicBuffer::split_roots()`
   ([logic.rs](nibli-types/src/logic.rs)) splits a multi-root buffer into independently
   assertable/retractable single-root buffers by sharing the whole `nodes` arena and exposing one
   root each — no index remapping. Sibling-root nodes left in the arena are inert: every consumer
@@ -96,42 +96,46 @@ never crosses the flatten boundary.
 ## What the KR front-end emits (invariants a consumer can rely on)
 
 These shapes are pinned by the compiler-seam conformance gate (hand-verified structural golden
-cases in `nibli-verify/tests/differential_gate.rs` + `nibli-verify/src/seam.rs`), so they are
+cases in `nibli-verify/tests/nibli_kr_seam_gate.rs`, driven by the `nibli_kr_seam` generator
+module; the shared buffer probes live in `nibli-verify/src/seam.rs`), so they are
 contract, not accident:
 
-- **Neo-Davidsonian event decomposition.** `la .adam. cu gerku` compiles to
-  `∃ev. gerku(ev) ∧ gerku_x1(ev, adam) ∧ …` — a unary *type* predicate over a fresh event
+- **Neo-Davidsonian event decomposition.** `dog(Adam).` compiles to
+  `∃ev. dog(ev) ∧ dog_x1(ev, adam) ∧ …` — a unary *type* predicate over a fresh event
   variable, plus one binary *role* predicate `relation_x{i}(ev, arg)` per place (1-indexed),
   left-folded with `And`, existentially closed over the event variable. Unfilled places are
   padded with `Unspecified` up to the dictionary arity, so role predicates for a given relation
   always have consistent arity.
-- **Quantifiers.** `lo broda` (xorlo existential) → `Exists(v, And(restrictor, body))` —
-  existential import. `ro lo broda` (description universal) →
-  `ForAll(v, Or(Not(restrictor), body))` — the material-implication arrow (`ro le` is the same
-  shape over an opaque `le_domain_<name>` restrictor). `PA lo broda` (exact count) →
-  `CountNode(v, N, And(restrictor, body))`. Prenex `ro da … zo'u BODY` → nested `ForAll`
+- **Quantifiers.** `some dog` (xorlo existential) → `Exists(v, And(restrictor, body))` —
+  existential import. `every dog` (description universal) →
+  `ForAll(v, Or(Not(restrictor), body))` — the material-implication arrow (`every the dog` is
+  the same shape over an opaque `le_domain_<name>` restrictor). `exactly N dog` (exact count) →
+  `CountNode(v, N, And(restrictor, body))`. Prenex `all $x: BODY` → nested `ForAll`
   wrapping the compiled body **directly** — no restrictor, no arrow — so a `ForAllNode` body is
-  the implication shape for description universals but not for prenex ones. Bare `da/de/di`
-  close as `Exists` with the literal variable names `"da"/"de"/"di"`.
-- **Connectives.** Sentence/predicate/argument conjunction → `AndNode`, disjunction → `OrNode`,
-  `ganai…gi` (conditional) → `Or(Not(left), right)`; biconditional/xor arrive pre-expanded as
+  the implication shape for description universals but not for prenex ones. Free `$x`
+  variables close as `Exists` with the literal `$x` names (the user's spellings are
+  preserved; there is no fixed variable pool).
+- **Connectives.** Sentence-level conjunction → `AndNode`, disjunction → `OrNode`,
+  `->` (implication) → `Or(Not(left), right)`; biconditional/xor arrive pre-expanded as
   above.
 - **Tense and deontics** wrap the whole predication: `PastNode`/`PresentNode`/`FutureNode` and
-  `ObligatoryNode`/`PermittedNode` around the compiled form. (`se bilga`/`se curmi` are plain
-  predicates, not deontic nodes.)
-- **Abstractions are opaque.** `nu`/`du'u`/`ka`/`ni`/`si'o` bodies compile to
+  `ObligatoryNode`/`PermittedNode` around the compiled form. (The converted aliases
+  `obligated`/`permitted` are plain predicates, not deontic nodes.)
+- **Abstractions are opaque.** `event { }`/`fact { }`/`property { }`/`amount { }`/
+  `concept { }` bodies compile to
   `And(type_pred, And(__abs_<hash>(referent), body))` where `__abs_<hash>` is a content-hashed
   unary marker predicate. The reasoner *matches* the marker (same content unifies) but *skips*
-  the body behind it — asserting `mi krici lo du'u P` never makes a bare query `P` true.
+  the body behind it — asserting `believe(me, fact { P })` never makes a bare query `P` true.
   Consumers should key on the `__abs_` prefix; the hash digits are an internal identity with
   only intra-process stability.
 - **Not every atom is event-decomposed.** Four flat-atom families exist alongside the
-  Neo-Davidsonian groups: `du` (equality) stays a flat two-argument `du(x1, x2)` atom because
-  the reasoner's union-find ingestion matches exactly that shape; BAI/`fi'o` **modal tags**
-  emit their underlying gismu as a flat n-ary atom conjoined into the matrix (`ri'a X` yields a
-  flat `rinka(…)` — so the same relation name can appear both flat and event-decomposed across
-  buffers); `ro le`/`PA le` emit a flat unary `le_domain_<name>` restrictor atom; and
-  abstraction *type* predicates (`nu`/`duhu`/`ka`/`ni`/`siho`) and `__abs_` markers are flat
+  Neo-Davidsonian groups: `equals` (the `=` identity) stays a flat two-argument
+  `equals(x1, x2)` atom because the reasoner's union-find ingestion matches exactly that
+  shape; `via` **modal tags** emit the tag's English-canonical predicate as a flat n-ary
+  atom conjoined into the matrix (so the same relation name can appear both flat and
+  event-decomposed across buffers); definite-description universals/counts emit a flat
+  unary `le_domain_<name>` restrictor atom; and abstraction *type* predicates
+  (`event`/`fact`/`property`/`amount`/`concept`) and `__abs_` markers are flat
   unary. Main-predication claims are always event-decomposed.
 - **Queries compile identically to assertions.** The divergence between asserting and querying
   is entirely post-buffer.
@@ -141,7 +145,8 @@ contract, not accident:
 The front-end never emits `ComputeNode` — it always emits `Predicate`. The rewrite
 `nibli_reason::transform_compute_nodes(&mut buf, &preds)` converts `Predicate` → `ComputeNode` (same
 payload) for every relation name in the set; `nibli_reason::default_compute_predicates()` is
-`{pilji, sumji, dilcu}` (×, +, ÷). Every first-party embedder runs this immediately after
+`{product, sum, quotient}` (×, +, ÷ — the pre-flip gismu names were `pilji`/`sumji`/`dilcu`).
+Every first-party embedder runs this immediately after
 compilation. **If you build buffers yourself and want compute dispatch, you must run it too** —
 `assert_fact`/`query_entailment` do not call it internally, and a compute relation left as a
 plain `Predicate` is treated as an ordinary fact predicate. A backend `true` reply is
@@ -175,7 +180,7 @@ fragment filter scans source tokens for exactly this reason). Scope details live
 - **Persistence** uses postcard (binary) over the same serde derives — `nibli-engine` stores
   each asserted root's `LogicBuffer` verbatim; a round-trip test covers every node and term
   variant.
-- **WIT** ([wit/world.wit](wit/world.wit), package `lojban:nibli@0.2.0` — the package NAME rename rides the identifier-purge milestone) declares a 1:1 mirror
+- **WIT** ([wit/world.wit](wit/world.wit), package `nibli:engine@0.2.0`) declares a 1:1 mirror
   of the same types for the WASM component boundary: kebab-case variant names
   (`for-all-node` ↔ `ForAllNode`), identical declaration order (the component-model discriminant
   is positional), tuple-shaped payloads.
@@ -188,7 +193,7 @@ native (`nibli_engine::NibliEngine::compile_debug`) and the WIT session
 `nibli_semantics::compile_from_ast` (remember `transform_compute_nodes` afterward; the browser
 `Session` does not export a compile-only method). Programmatic
 single facts: `nibli_semantics::compile_injected_fact(relation, args)` — event-decomposes and arity-pads
-exactly like surface text (with the flat-`du` exception).
+exactly like surface text (with the flat-`equals` exception).
 
 **Consume/reason over a buffer** (the BYO-IR surface, `nibli_reason::KnowledgeBase`):
 `assert_fact(buffer, label) -> u64`, `query_entailment(buffer)`,
@@ -202,7 +207,7 @@ without touching the IR:
 
 | Surface | Shape | Notes |
 |---|---|---|
-| `nibli_engine::NibliEngine` (native Rust) | `assert_text -> Vec<u64>`, `query_text_with_proof`, `query_find_text`, `retract_fact`, `compile_debug`, optional redb persistence | Splits roots: a bare-`.i` multi-sentence text becomes N independent facts |
+| `nibli_engine::NibliEngine` (native Rust) | `assert_text -> Vec<u64>`, `query_text_with_proof`, `query_find_text`, `retract_fact`, `compile_debug`, optional redb persistence | Splits roots: a multi-statement text becomes N independent facts |
 | `nibli-wasm` `Session` (browser JS) | `assert_text -> Vec<u64>`, `query_with_proof -> JSON string`, `list_facts -> JSON`, `retract_fact`, `reset` | The query JSON has keys `status`, `detail`, `naf_dependent`, `cwa_false`, `proof_text`, `why`, `proof` (the full `ProofTrace`) |
 | `nibli-pipeline` WASM component (WIT world `nibli-pipeline`) | `assert-text -> list<(fact-id, logic-buffer)>`, `assert-buffer-with-id` (recompile-free replay), `query-text-with-proof -> (query-result, proof-trace)`, `compile-debug -> logic-buffer`, `assert-fact`, `set-strict`, … | Imports `compute-backend` from the host. Splits roots like the native surfaces; each pair carries the root's compiled buffer so a persisting host (nibli-host) stores the FACT itself. `assert-text-with-id` remains as a legacy replay path for pre-buffer text-payload store rows |
 
@@ -216,19 +221,19 @@ The two shipped external consumers are the templates, and they also define the d
 "mappable" fragments:
 
 - [`nibli-verify/src/tptp.rs`](nibli-verify/src/tptp.rs) (→ Vampire): classical Horn/NAF-free
-  fragment — walks `Predicate`/`And`/`Or`/`Not`/`Exists`/`ForAll`, maps 2-arg `du` to TPTP
+  fragment — walks `Predicate`/`And`/`Or`/`Not`/`Exists`/`ForAll`, maps 2-arg `equals` to TPTP
   native `=`, maps `Unspecified` to a rigid shared constant, renames variables per-formula, and
   **hard-errors on any other node kind** rather than mistranslating.
 - [`nibli-verify/src/asp.rs`](nibli-verify/src/asp.rs) (→ clingo): stratified-Datalog+NAF
   fragment — regroups the event decomposition back to surface atoms
   (`∃ev. rel(ev) ∧ rel_x1(ev,a1) ∧ …` collapses to `rel(a1,…,aN)`), accepts `NotNode` (NAF) and
-  abstraction markers (as opaque constants), canonicalizes `du` classes.
+  abstraction markers (as opaque constants), canonicalizes `equals` classes.
 - [`nibli-verify/src/filter.rs`](nibli-verify/src/filter.rs) documents the fragment criteria
   both rely on.
 
 A **producer** (an alternative front-end) must emit the invariant shapes above — most importantly
 the event decomposition with consistent role arities, the ∀-as-implication arrow, and flat
-2-arg `du` — and hand the buffer to the `nibli-reason` entry points (running
+2-arg `equals` — and hand the buffer to the `nibli-reason` entry points (running
 `transform_compute_nodes` if it uses compute relations). The reasoner rejects non-stratifiable
 rule sets at assert time (the stratification criterion is Lean-proved and
 differentially tested), so a producer gets soundness checking for free.
@@ -246,7 +251,7 @@ differentially tested), so a producer gets soundness checking for free.
 - The `ProofRule`/`ProofStep`/`ProofTrace` JSON contract, and the `[Syntax Error]` /
   `[Semantic Error]` / `[Reasoning Error]` / `[Backend Error]` prefixes of `NibliError`'s
   `Display` (documented in-source as a formal cross-consumer contract).
-- The WIT `logic-types` interface (`lojban:nibli@0.2.0`).
+- The WIT `logic-types` interface (`nibli:engine@0.2.0`).
 
 **Internal (may change without notice):**
 - Variable naming (`_v0…`, `_ev0…`), Skolem names (`sk_N` — minted by the reasoner, never in a
@@ -257,7 +262,7 @@ differentially tested), so a producer gets soundness checking for free.
 - `AggregateOp` and the compute wire structs are Rust-side auxiliaries, not buffer types.
 
 **Versioning:** the buffer itself carries no version field. The WIT package version
-(`lojban:nibli@0.2.0`) and the persistence layers' fail-closed schema versions (`nibli-store`)
+(`nibli:engine@0.2.0`) and the persistence layers' fail-closed schema versions (`nibli-store`)
 are the only version markers; adding a `LogicNode`/`LogicalTerm` variant is a breaking change
 across every conversion site (an in-source exhaustiveness guard enumerates them). Treat the
 format as pre-1.0: pin a commit if you build against it, and expect additive evolution.

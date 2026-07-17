@@ -45,8 +45,9 @@ use reasoning::*;
 use rules::*;
 
 /// The built-in arithmetic predicates marked as `ComputeNode` by default —
-/// `pilji` (×), `sumji` (+), `dilcu` (÷). The shared default for every embedder
-/// (nibli-engine, lasna, nibli-wasm), paired with `transform_compute_nodes`.
+/// `product` (×), `sum` (+), `quotient` (÷). The shared default for every
+/// embedder (nibli-engine, nibli-pipeline, nibli-wasm), paired with
+/// `transform_compute_nodes`.
 pub fn default_compute_predicates() -> HashSet<String> {
     ["product", "sum", "quotient"]
         .iter()
