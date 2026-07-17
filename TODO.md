@@ -240,7 +240,155 @@ native/Wasmtime/V8).
   is committed — no build reads the JSON). If the site needs the old engine
   meanwhile, pin the `v0.1-lojban-final` tag in `build_nibli.sh`.
 
-Engine bullets (language-independent; the KR program above takes precedence):
+Engine bullets (language-independent; the KR program above takes precedence).
+Pipeline-audit backlog (2026-07-17; three-agent audit of front-end / middle IRs /
+back-end — effort tags S/M/L; ordered quick-wins → correctness → structure →
+performance → future-facing):
+
+- **Display-leak + doc-drift sweep (S)** — `LogicalTerm::display`/`trace_display`
+  render `Description` as `le_{s}` / `lo {s}` (nibli-types/src/logic.rs:31,49 —
+  the LAST user-visible Lojban, missed by the residual pass; pick English forms
+  and re-pin consumers); NIBLI_KR.md:140 documents `le_domain_gerku` but the code
+  emits `the_domain_` (doc bug); the 11 stale Lojban doc-lines in
+  nibli-types/src/ast.rs (`se=x1↔x2`, `je=AND`, `lo/le`, `lu…li'u`, `zo'e`,
+  `li + PA`, `ke…ke'e`, `be/bei`, `nu/du'u/ka/ni/si'o`, the `ro da zo'u`/da-de-di
+  Prenex doc); wit/world.wit:261 "nibli-kr → smuni → logji chain" + :215
+  `tenfa`/`dugri` examples; render.rs:350,369 present-tense "the Lojban front-end
+  tolerates"; nibli-ui/src/main.rs:221 "pilji/sumji/dilcu" comment; the stale
+  "shared by build.rs via #[path]" headers in nibli-lexicon
+  arity.rs:18/label.rs:8/reserved.rs:3; CLAUDE.md's nibli-reason crate row
+  "lib.rs (single file, all logic)" (it is 7 files / ~21k lines); NIBLI_KR.md
+  §14.3's compute-set note (the rename half landed — only "configurable"
+  remains).
+- **Drop the `seeming` keyword (S)** — reserved and grammar'd but NO production
+  rule uses it (nibli_kr.pest:67,89; reserved.rs:34), and NIBLI_KR.md:573's own
+  decision table says it was DROPPED (contradicting §2's "reserved for a future
+  veridicality distinction"). Remove from grammar + reserved list (fix the
+  len==36 assertion + the membership test; the grammar↔reserved conformance test
+  keeps the two in sync) and fix §2.
+- **De-provenance the L7 lint (S)** — `lint.rs:186 resolved_word` returns
+  `entry.source_gismu` and L7 matches `"bilga" | "curmi"` — classifying deontic
+  predicates through RETIRED gismu provenance (documented "never resolvable");
+  any `source_gismu` re-key silently breaks L7. Key on English names (a const
+  DEONTIC_PREDICATES set) or, better, a classification field on
+  `PredicateEntry`; retire `resolved_word`'s gismu return (this is its only
+  consumer).
+- **Move arity.rs + label.rs into tools/lexigen (S)** — consumed ONLY by lexigen
+  (main.rs:189,190,284); their "#[path]-shared with build.rs" rationale died at
+  the committed-corpus milestone; ~395 lines off the library's public surface.
+- **Back-end hygiene bundle (S)** — revisit nibli-engine's crate-root
+  `#![allow(dead_code)]` (the rustc ICE it worked around is fixed in the pinned
+  1.94) and fix whatever real dead code it was masking; verify the
+  `__fallback__` rule bucket (reasoning.rs:2307) is unreachable post-migration
+  and delete the branch; remove dead pub `ProofTrace::naf_dependent_steps`
+  (logic.rs:311, zero callers); the duplicated "ENGINE WRAPPER" banner
+  (nibli-engine/src/lib.rs:48-54); note: `compound_by_relation`'s linear scan
+  (nibli-lexicon/src/lib.rs:49) needs an index only if the compound table grows.
+- **Single-source the magic relation names (M)** — the `equals` identity
+  special-case is string-matched at ≥5 sites (nibli-semantics predicate.rs:189,
+  lib.rs:367, compile.rs:178; nibli-reason kb.rs:1786,1951, reasoning.rs:1636);
+  the compute-predicate set {product,sum,quotient,exponential,logarithm} + the
+  comparisons {greater,less,num_equal} are duplicated across ≥8 places
+  (nibli-reason lib.rs:51 + compute.rs:172,230, nibli-types arithmetic.rs,
+  nibli-semantics dictionary.rs:129, the corpus entries, nibli-host main.rs:293,
+  python HANDLERS, render/protocol mentions). One const module in nibli-types
+  (`IDENTITY_REL`, builtin/external compute sets) consumed everywhere; the
+  Python mirror pinned by a generated fixture test.
+- **Injected-fact arity policy (M)** — `LexiconSchema::get_arity_or_default`
+  guesses 2 and `fit_args` then silently TRUNCATES unknown-relation injected
+  facts (nibli-import RDF predicates and WIT/REPL `:assert` →
+  `compile_injected_fact`, nibli-semantics lib.rs:374 + helpers.rs:735); the
+  over-arity fail-closed reject (compile.rs:184) fires only for KNOWN relations,
+  so unknown relations lose arguments with no error. Make the fallback an
+  explicit policy (Error | Default(n); injection callers pass their arg count as
+  ground truth) — the first concrete step toward NIBLI_KR §14.1's injectable
+  schema registry at the `LexiconSchema` seam.
+- **Lower the remaining block determiners (M–L)** — the grammar accepts
+  `exactly N X $v:` / `the X $v:` / `every the X $v:` blocks and rel-clauses on
+  block restrictors, but emit fails closed (emit.rs:300-306,333-338 — the
+  recorded emitter limitations). Implement the Count/definite lowerings so
+  parse-accepts ⇒ emit-lowers across the board.
+- **Single-resolution front-end (L)** — resolve.rs validates, then emit.rs
+  RE-resolves every word (7 unreachable "internal (post-resolve)" error arms),
+  and lint.rs resolves a THIRD time via raw nibli_lexicon calls. Thread resolved
+  `PredInfo` from resolve into emit (side-table or annotated tree), delete
+  emit's re-resolution helpers + arms; lint reuses
+  `resolve::lookup`/`lookup_compound`. Sub-items: `resolve_all` has NO external
+  caller while `parse_text` (nibli-ui's per-line recovery — the one consumer
+  that needs resolve separable from emit) reports only the FIRST resolve error
+  per statement — either wire `resolve_all` in or demote it. Well-tested seam
+  (emit goldens + the render fixpoint de-risk it).
+- **AST naming/shape bundle (S each, one commit)** — `Connective::Whether`→`Xor`;
+  `Determiner::UniversalIndefinite/UniversalDefinite`→`Every`/`EveryThe`;
+  `Argument::Pronoun(String)` is a misnamed catch-all (pronouns + `$vars` +
+  markers — rename to `Atom`, or split out `Variable`/`Marker` so render stops
+  string-sniffing at render.rs:484-503); collapse single-variant
+  `ModalTag::Custom` to a newtype; unify the duplicated Tense/Deontic enums
+  (nibli-kr ast.rs:80,87 vs nibli-types ast.rs:132,140 + the emit.rs:199-207
+  bridge); rename nibli-semantics ir.rs `LogicalTerm`/`LogicalForm` →
+  `IrTerm`/`IrForm` (kills the `WitTerm` alias collision); hoist the pronoun
+  collision sextet {me,you,we,this,that,yonder} (resolve.rs:374 + render.rs:686)
+  into one shared const. Each rename rides the `__ast_parity_guard` checklist.
+- **Collapse head_terms/tail_terms (M)** — the Proposition split is a Lojban SVO
+  artifact: emit puts the first positional in head, everything else in tail;
+  nibli-semantics immediately re-chains them (compile.rs:29-34,94-97) and the
+  ONLY information the split carries is "is x1 explicitly present"
+  (compile.rs:65 + render's bare-sugar check). Replace with
+  `terms: Vec<ArgumentId>` + `x1_present: bool` (~120 test-literal touches).
+- **Document AstBuffer's real role (S)** — do NOT remove it (nibli-semantics
+  must not depend on nibli-kr; it is render's input and the validated
+  programmatic-build target via `validate_ast_buffer`), but its doc still
+  implies a WIT-boundary purpose that no longer exists — document it as the
+  render/injection interchange, and note the intern-then-resolve boundary
+  (lasso Spurs never survive into LogicBuffer) in ir.rs.
+- **Test-suite hygiene (M)** — nibli-reason/src/tests.rs is 11,713 lines / 369
+  tests in ONE file (keep `mod flat_vs_surface` intact); nibli-semantics
+  semantic.rs is 96% tests (3,577 of 3,727 lines) — split both into topical
+  `#[path]` submodules; migrate semantic-shape tests that hand-build flat
+  AstBuffers toward KR-text level (nibli-engine/nibli-kr) per the
+  flat-vs-surface discipline; VERIFY whether `--test-threads=1` is now vestigial
+  for `--lib` (the thread_local dispatch that motivated it became per-KB fn
+  pointers — kb.rs:600-607) and drop it from the Justfile recipes if so
+  (parallel test time).
+- **Drop InMemoryFactStore's double storage (M)** — every fact is stored twice
+  (`facts: HashSet` + `predicate_index`, fact_store.rs:60-61) purely so
+  `all_facts()` can return `&HashSet`; return an iterator instead.
+- **Shared CoreSession (L)** — the compile chain (`parse_checked →
+  compile_from_ast → transform_compute_nodes`) + the compute-predicate registry
+  + assert/query wrappers are hand-mirrored across nibli-engine (lib.rs:213),
+  nibli-pipeline (lib.rs:333 — its comment literally says "the mirror of
+  nibli-engine's compile_text, so native and WASM agree"), nibli-wasm
+  (lib.rs:113), and nibli-ui (main.rs:230) (+ verify/formalize call sites);
+  `assert_fact_inner` is duplicated engine↔pipeline. Extract one shared core (in
+  nibli-engine or a small crate) that pipeline/wasm/ui wrap with only boundary
+  conversion. Related sub-item (may split out — 0.2.x ABI touch): align the WIT
+  `proof-rule` tuple shape with the canonical named-field enum so pipeline's
+  ~260-line `convert_proof_rule` glue can go.
+- **Sound tabling for the deep-chain cliff (L)** — confirmed root cause:
+  `pred_cache` stores only DEFINITIVE verdicts (reasoning.rs:1736-1746);
+  depth-cut/cycle-cut results are context-dependent and uncached, so iterative
+  deepening re-derives every horizon-cut subgoal (~30×/hop since the
+  predicate-cache soundness fix — do NOT revert that fix). SLG-style answer +
+  negative subgoal tables with depth/stratum context; also bound the du-class
+  equivalence-variant Cartesian fan-out (reasoning.rs:1700-1716). The single
+  biggest correctness-preserving perf lever.
+- **Existential-import witness flag (M)** — the xorlo rule mints presupposition
+  witnesses unconditionally (kb.rs:632-638); NIBLI_KR §14 keeps "witness minting
+  behind a flag, off for clean-core" as a live option. Add a KB config flag
+  (the strict/verbose precedent), oracle re-pins ride along. Also the
+  SignatureSource oddity: synthetic `rel_xN` role predicates register as
+  `Inferred` and get arity-validated like real predicates — exclude them or add
+  a `Synthetic` source so the warnings stop being misleading.
+- **Tense×NAF (L, soundness-adjacent — design decision first)** —
+  `NegatedExistsGroup` carries no tense (kb.rs:464-469): NAF restrictors
+  evaluate tenselessly (a bare witness blocks a flavored query), documented
+  un-oracled in GUARANTEES. Either add tense flavor to the group + flavorize
+  NAF in the ASP oracle, or close the question formally.
+- **Store schema v3 migration (M)** — `StoredAssertion::Text` is "LEGACY:
+  Lojban source text — no longer written" and `StoredFactRecord.label` is
+  documented as Lojban source (nibli-store lib.rs:48,68); a v3 MIGRATION
+  (recompile-once on open — never a silent drop; old DBs must replay) retires
+  the Text replay path + the WIT legacy `assert-text-with-id` seam.
 
 - **Ontology-row import (brismu/zatske interchange)** — korvo proposed flat rows
   `[P, Q, mapping]` (predicate subrelation with place mapping: identity
@@ -262,8 +410,8 @@ Engine bullets (language-independent; the KR program above takes precedence):
   `nibli_lexicon::by_provenance`, the permanent gismu→English bridge (the same
   one the Predilex gates key through); the importer itself is
   language-independent.
-- **logji: upgrade the reversed material-conditional arm (`Or(Q, Not P)`)** — a
-  negation on the RIGHT operand of an asserted disjunction (KR:
+- **nibli-reason: upgrade the reversed material-conditional arm (`Or(Q, Not P)`)** —
+  a negation on the RIGHT operand of an asserted disjunction (KR:
   `goes(me) | ~eats(me).`) registers a conditional whose condition templates carry
   the assertion's own event-Skolem CONSTANTS, so it can never unify with a later
   assertion's fresh event Skolem — the rule is inert (modus ponens never fires;
@@ -271,8 +419,16 @@ Engine bullets (language-independent; the KR program above takes precedence):
   via the Lojban `.i ja … na` spelling — the same IR shape is reachable from KR).
   The forward arm (Not-on-left) was upgraded to `compile_forall_to_rule` (ev__
   pattern vars) precisely for this; mirror it in the reversed arm
-  (`register_ground_material_conditional`, logji kb.rs) and add the
+  (`register_ground_material_conditional`, nibli-reason kb.rs) and add the
   `Q→P + Q ⊢ P` engine test the adversarial review used to confirm the gap.
+  AUDIT CONFIRMATIONS (2026-07-17): the reversed arm is kb.rs:1143-1159 (bakes
+  the Skolem constants via `collect_ground_facts` + `register_rule`; the forward
+  arm's `compile_forall_to_rule` at kb.rs:1123-1130 is the model). Two
+  same-family findings ride along: the `^`/Xor assert path flattens to
+  And(Or, Not(And)) and registers nothing (kb.rs:1800 — fails closed rather than
+  reasons), and the self-labeled "SURFACE-UNREACHABLE dead-defensive"
+  tense/deontic strip inside the same fn (kb.rs:1102-1113) should become a
+  debug_assert or be deleted.
 - **Determinism corpus: add a negative-conjunct line** — the corpus predates the
   shape: add an `A & ~B.` assert + contradiction-check sequence (KR spelling) so
   all three runtime surfaces pin it (requires re-pinning the corpus verdicts on
