@@ -256,12 +256,6 @@ performance → future-facing):
   free-var + scope-marker passes still `starts_with('$')`), so it is a
   HALF-win, and it costs ~70 semantic.rs test-literal rewrites. Deferred from
   the naming bundle (user chose the `Atom` rename) for that reason.
-- **Document AstBuffer's real role (S)** — do NOT remove it (nibli-semantics
-  must not depend on nibli-kr; it is render's input and the validated
-  programmatic-build target via `validate_ast_buffer`), but its doc still
-  implies a WIT-boundary purpose that no longer exists — document it as the
-  render/injection interchange, and note the intern-then-resolve boundary
-  (lasso Spurs never survive into LogicBuffer) in ir.rs.
 - **Test-suite hygiene (M)** — nibli-reason/src/tests.rs is 11,713 lines / 369
   tests in ONE file (keep `mod flat_vs_surface` intact); nibli-semantics
   semantic.rs is 96% tests (3,577 of 3,727 lines) — split both into topical

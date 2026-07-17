@@ -1,7 +1,23 @@
-//! AST types produced by the nibli-kr emitter.
+//! AST types produced by the nibli-kr emitter — the INTERNAL interchange
+//! between the front-end and the semantic compiler, NOT a WIT boundary.
 //!
-//! Flat index-based representation: `AstBuffer` contains parallel arrays of
-//! `Predicate`, `Argument`, and `Sentence` nodes, referenced by `u32` indices.
+//! `AstBuffer` is produced by nibli-kr's validating emit walk and consumed by
+//! `nibli_semantics::compile_from_ast` over a plain Rust function call; only
+//! `logic.rs`'s `LogicBuffer` crosses the WASM component boundary. The type
+//! lives HERE (not in nibli-kr) for three reasons:
+//! - dependency direction: nibli-semantics must not depend on nibli-kr;
+//! - it is render's INPUT: `nibli_kr::render` spells buffers back to KR text
+//!   (the fixpoint / round-trip layer);
+//! - it is the validated PROGRAMMATIC-BUILD target: hand-built buffers enter
+//!   compilation through `validate_ast_buffer` (index-bounds + acyclicity —
+//!   the "corrupt AST buffer" reject), so tools may construct ASTs directly.
+//!
+//! The flat shape — parallel `Predicate`/`Argument`/`Sentence` arrays with
+//! `u32` child indices — is a WIT-era inheritance KEPT for properties that
+//! are load-bearing today: `parse_text`'s per-statement recovery rolls a
+//! failed statement back by truncating the four Vecs, and structural
+//! validation is an iterative index-walk (no recursion to overflow on
+//! adversarially deep inputs).
 
 /// Index into the `predicates` array of an `AstBuffer`.
 pub type PredicateId = u32;
@@ -209,13 +225,16 @@ pub enum Sentence {
     Quantified((BlockQuant, String, PredicateId, Option<u32>, u32)),
 }
 
-/// Flat AST buffer: parallel arrays indexed by u32 IDs.
+/// Flat AST buffer: parallel arrays indexed by u32 IDs — the
+/// nibli-kr→nibli-semantics interchange and render's input (see the module
+/// doc; never crosses WASM). Hand-built buffers are validated at the compile
+/// boundary by `validate_ast_buffer`.
 #[derive(Clone, Debug)]
 pub struct AstBuffer {
     pub predicates: Vec<Predicate>,
     pub arguments: Vec<Argument>,
     pub sentences: Vec<Sentence>,
-    /// Root sentence indices (top-level sentences to compile).
+    /// Root sentence indices — one top-level sentence per statement.
     pub roots: Vec<u32>,
 }
 
