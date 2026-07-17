@@ -7,5 +7,6 @@ pub mod arithmetic;
 pub mod ast;
 pub mod error;
 pub mod logic;
+pub mod relations;
 
 pub use arithmetic::eval_arithmetic;

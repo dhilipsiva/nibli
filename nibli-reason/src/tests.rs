@@ -11712,3 +11712,25 @@ fn strict_mode_is_inert_during_rebuild() {
         "fact {id}: a previously-accepted mismatch must survive a strict-era rebuild"
     );
 }
+
+#[test]
+fn numeric_comparison_set_matches_the_evaluator_domain() {
+    // Conformance: try_numeric_comparison handles exactly
+    // relations::NUMERIC_COMPARISONS (the single-source name sets) —
+    // built-in arithmetic falls through to the tolerant evaluator instead.
+    use nibli_types::logic::LogicalTerm;
+    let subs = std::collections::HashMap::new();
+    let args = vec![LogicalTerm::Number(2.0), LogicalTerm::Number(1.0)];
+    for r in nibli_types::relations::NUMERIC_COMPARISONS {
+        assert!(
+            crate::compute::try_numeric_comparison(r, &args, &subs).is_some(),
+            "{r} must be a decidable comparison"
+        );
+    }
+    for r in nibli_types::relations::BUILTIN_ARITHMETIC {
+        assert!(
+            crate::compute::try_numeric_comparison(r, &args, &subs).is_none(),
+            "{r} must not be treated as a comparison"
+        );
+    }
+}

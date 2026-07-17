@@ -245,16 +245,6 @@ Pipeline-audit backlog (2026-07-17; three-agent audit of front-end / middle IRs 
 back-end — effort tags S/M/L; ordered quick-wins → correctness → structure →
 performance → future-facing):
 
-- **Single-source the magic relation names (M)** — the `equals` identity
-  special-case is string-matched at ≥5 sites (nibli-semantics predicate.rs:189,
-  lib.rs:367, compile.rs:178; nibli-reason kb.rs:1786,1951, reasoning.rs:1636);
-  the compute-predicate set {product,sum,quotient,exponential,logarithm} + the
-  comparisons {greater,less,num_equal} are duplicated across ≥8 places
-  (nibli-reason lib.rs:51 + compute.rs:172,230, nibli-types arithmetic.rs,
-  nibli-semantics dictionary.rs:129, the corpus entries, nibli-host main.rs:293,
-  python HANDLERS, render/protocol mentions). One const module in nibli-types
-  (`IDENTITY_REL`, builtin/external compute sets) consumed everywhere; the
-  Python mirror pinned by a generated fixture test.
 - **Injected-fact arity policy (M)** — `LexiconSchema::get_arity_or_default`
   guesses 2 and `fit_args` then silently TRUNCATES unknown-relation injected
   facts (nibli-import RDF predicates and WIT/REPL `:assert` →

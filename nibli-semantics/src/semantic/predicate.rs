@@ -179,17 +179,19 @@ impl SemanticCompiler {
     ) -> LogicalForm {
         match &predicates[predicate_id as usize] {
             Predicate::Root(g) => {
-                // `du` (identity) is a pure binary equivalence relation with no
-                // event structure. It MUST stay a flat 2-arg `du(x1, x2)`
-                // predicate — nibli-reason's union-find ingestion and du-query arm only
-                // match `relation == "equals" && args.len() == 2`, so the
+                // The identity relation is a pure binary equivalence with no
+                // event structure. It MUST stay a flat 2-arg predicate —
+                // nibli-reason's union-find ingestion and identity-query arm
+                // only match `relations::IDENTITY` at arity 2, so the
                 // Neo-Davidsonian event form would silently disable equality
                 // reasoning. (The >2-place fail-closed reject lives in
                 // `compile_proposition`, where the dropped-overflow argument are visible.)
-                if g == "equals" {
+                if g == nibli_types::relations::IDENTITY {
                     let fitted = Self::fit_args(args, 2);
                     return LogicalForm::Predicate {
-                        relation: self.interner.get_or_intern("equals"),
+                        relation: self
+                            .interner
+                            .get_or_intern(nibli_types::relations::IDENTITY),
                         args: fitted,
                     };
                 }

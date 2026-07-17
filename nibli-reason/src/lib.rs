@@ -49,7 +49,7 @@ use rules::*;
 /// embedder (nibli-engine, nibli-pipeline, nibli-wasm), paired with
 /// `transform_compute_nodes`.
 pub fn default_compute_predicates() -> HashSet<String> {
-    ["product", "sum", "quotient"]
+    nibli_types::relations::BUILTIN_ARITHMETIC
         .iter()
         .map(|s| s.to_string())
         .collect()

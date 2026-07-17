@@ -169,7 +169,7 @@ pub(super) fn try_evaluate_numeric_group(
             }
             LogicNode::Predicate((rel, args))
                 if is_head_var(args)
-                    && matches!(rel.as_str(), "greater" | "less" | "num_equal") =>
+                    && nibli_types::relations::is_numeric_comparison(rel.as_str()) =>
             {
                 if head.is_some() {
                     return None;
@@ -227,10 +227,10 @@ pub(super) fn try_evaluate_numeric_group(
             .filter_map(|t| extract_num_value(t, subs))
             .collect();
         let non_finite = match rel {
-            "product" | "sum" | "quotient" => {
+            r if nibli_types::relations::is_builtin_arithmetic(r) => {
                 operands.len() == 3 && nibli_types::eval_arithmetic(rel, &operands).is_none()
             }
-            "greater" | "less" | "num_equal" => {
+            r if nibli_types::relations::is_numeric_comparison(r) => {
                 operands.len() >= 2 && operands.iter().take(2).any(|n| !n.is_finite())
             }
             _ => false,

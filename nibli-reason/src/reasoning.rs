@@ -63,7 +63,7 @@ fn ensure_candidates<'a>(
 /// every candidate and would otherwise pessimistically keep the entire
 /// members^k cartesian product alive.
 fn condition_is_index_decidable(relation: &str, inner: &KnowledgeBaseInner) -> bool {
-    relation != "equals"
+    !nibli_types::relations::is_identity(relation)
         && inner.equivalence_parent.is_empty()
         && !inner.universal_rules.contains_key(relation)
 }
@@ -1633,7 +1633,7 @@ pub(super) fn check_predicate_in_kb_typed(
 
     // du reflexivity + transitivity: du(x,x) always holds; du(a,b) holds
     // if a and b are in the same equivalence class.
-    if fact.relation() == "equals" {
+    if fact.relation() == nibli_types::relations::IDENTITY {
         let args = &fact.inner().args;
         if args.len() == 2 {
             if args[0] == args[1] {
@@ -1682,7 +1682,7 @@ pub(super) fn check_predicate_in_kb_typed(
     // own derivation, but `fact` itself stays guarded until the loop ends.
     if result.is_false()
         && !inner.equivalence_parent.is_empty()
-        && fact.relation() != "equals"
+        && fact.relation() != nibli_types::relations::IDENTITY
         && !visited.contains(&cycle_key(fact))
     {
         let gf = fact.inner();
@@ -2303,7 +2303,7 @@ fn try_backward_chain_core<S: TraceSink>(
         // fallback could rewrite the goal into a provable variant). Every
         // registered rule is relation-indexed by conclusion — register_rule
         // fails closed on empty conclusions, so no unindexed bucket exists.
-        if fact.relation() != "equals"
+        if fact.relation() != nibli_types::relations::IDENTITY
             && inner.equivalence_parent.is_empty()
             && !any_rule_conclusion_unifies(fact, inner)
         {
@@ -2593,7 +2593,7 @@ pub(super) fn trace_predicate_provenance_typed(
     // rule), so it terminates as well. No extra depth gate is needed here, and
     // adding one would wrongly suppress the fallback on shallow iterative-
     // deepening passes.
-    if !inner.equivalence_parent.is_empty() && fact.relation() != "equals" {
+    if !inner.equivalence_parent.is_empty() && fact.relation() != nibli_types::relations::IDENTITY {
         let gf = fact.inner();
         let equiv_args: Vec<Vec<GroundTerm>> = gf
             .args

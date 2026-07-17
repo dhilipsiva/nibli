@@ -56,6 +56,20 @@ mod tests {
 
     #[test]
     fn integer_cases_exact() {
+        // Conformance: the evaluator's domain is exactly relations::BUILTIN_ARITHMETIC
+        // (the single-source name sets) — comparisons are NOT tolerant arithmetic.
+        for r in crate::relations::BUILTIN_ARITHMETIC {
+            assert!(
+                eval_arithmetic(r, &[6.0, 2.0, 3.0]).is_some(),
+                "{r} must be evaluable"
+            );
+        }
+        for r in crate::relations::NUMERIC_COMPARISONS {
+            assert!(
+                eval_arithmetic(r, &[6.0, 2.0, 3.0]).is_none(),
+                "{r} must not be tolerant arithmetic"
+            );
+        }
         assert_eq!(eval_arithmetic("product", &[6.0, 2.0, 3.0]), Some(true)); // 6 = 2*3
         assert_eq!(eval_arithmetic("product", &[7.0, 2.0, 3.0]), Some(false));
         assert_eq!(eval_arithmetic("sum", &[5.0, 2.0, 3.0]), Some(true)); // 5 = 2+3

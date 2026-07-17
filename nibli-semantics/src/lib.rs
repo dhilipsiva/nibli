@@ -353,10 +353,10 @@ pub fn compile_from_ast(ast: flat_ast::AstBuffer) -> Result<LogicBuffer, NibliEr
 /// `assert_fact_direct`, nibli-pipeline's WIT `assert-fact`, the REPL `:assert`). Mirrors
 /// `apply_predicate`'s `Predicate::Root` arm exactly so the stored shape is identical
 /// to text assertion: `fit_args` pads to `get_arity_or_default`, then
-/// `event_decompose`. `du` is the one exception — it stays a FLAT 2-arg
-/// `du(x1, x2)` predicate (NOT event-decomposed), because nibli-reason's union-find
-/// equality interception only fires on `relation == "equals" && args.len() == 2`;
-/// the Neo-Davidsonian form would silently disable equality reasoning.
+/// `event_decompose`. The identity relation is the one exception — it stays a
+/// FLAT 2-arg predicate (NOT event-decomposed), because nibli-reason's
+/// union-find equality interception only fires on `relations::IDENTITY` at
+/// arity 2; the Neo-Davidsonian form would silently disable equality reasoning.
 pub fn compile_injected_fact(relation: &str, args: &[WitTerm]) -> LogicBuffer {
     let mut compiler = SemanticCompiler::new();
     let ir_args: Vec<LogicalTerm> = args
@@ -364,10 +364,12 @@ pub fn compile_injected_fact(relation: &str, args: &[WitTerm]) -> LogicBuffer {
         .map(|t| wit_term_to_ir(t, &mut compiler.interner))
         .collect();
 
-    let form = if relation == "equals" {
+    let form = if relation == nibli_types::relations::IDENTITY {
         let fitted = SemanticCompiler::fit_args(&ir_args, 2);
         LogicalForm::Predicate {
-            relation: compiler.interner.get_or_intern("equals"),
+            relation: compiler
+                .interner
+                .get_or_intern(nibli_types::relations::IDENTITY),
             args: fitted,
         }
     } else {
