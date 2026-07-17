@@ -7,6 +7,7 @@ edition = "2024"
 [dependencies]
 nibli-kr = { path = "../nibli-kr" }
 nibli-semantics = { path = "../nibli-semantics" }
+nibli-session = { path = "../nibli-session" }
 nibli-reason = { path = "../nibli-reason" }
 nibli-types = { path = "../nibli-types", features = ["serde"] }
 nibli-protocol = { path = "../nibli-protocol", features = ["compute-client"] }

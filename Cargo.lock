@@ -2668,6 +2668,7 @@ dependencies = [
  "nibli-reason",
  "nibli-render",
  "nibli-semantics",
+ "nibli-session",
  "nibli-store",
  "nibli-types",
  "postcard",
@@ -2784,6 +2785,16 @@ version = "0.1.0"
 dependencies = [
  "lasso",
  "nibli-lexicon",
+ "nibli-types",
+]
+
+[[package]]
+name = "nibli-session"
+version = "0.1.0"
+dependencies = [
+ "nibli-kr",
+ "nibli-reason",
+ "nibli-semantics",
  "nibli-types",
 ]
 

@@ -12,6 +12,7 @@ members = [
     "nibli-lexicon",
     "tools/lexigen",
     "nibli-kr",
+    "nibli-session",
     "nibli-store",
     "nibli-types",
     "nibli-import",

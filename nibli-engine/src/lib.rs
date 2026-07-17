@@ -2,7 +2,6 @@
 //! No WASM, no Wasmtime — full stack traces for debugging.
 
 use std::cell::RefCell;
-use std::collections::HashSet;
 use std::path::Path;
 
 use nibli_store::NibliStore;
@@ -49,8 +48,10 @@ pub fn display_query_result(result: &EngineQueryResult) -> String {
 // ═══════════════════════════════════════════════════════════════════════
 
 pub struct NibliEngine {
-    kb: nibli_reason::KnowledgeBase,
-    compute_predicates: HashSet<String>,
+    /// The shared compile/assert/query core (nibli-session) — the same
+    /// CoreSession the pipeline/wasm/ui surfaces wrap, so native and WASM
+    /// agree BY CONSTRUCTION.
+    core: nibli_session::CoreSession,
     store: RefCell<Option<NibliStore>>,
 }
 
@@ -63,7 +64,7 @@ impl Default for NibliEngine {
 impl NibliEngine {
     /// Access the underlying KnowledgeBase for sort/constraint declarations.
     pub fn kb(&self) -> &nibli_reason::KnowledgeBase {
-        &self.kb
+        self.core.kb()
     }
 
     /// Install a cooperative cancellation flag on the underlying reasoning core.
@@ -73,12 +74,12 @@ impl NibliEngine {
     /// wall-clock budget elapses, instead of letting a pathological query run to
     /// completion. No clock is read inside the engine.
     pub fn set_cancel_flag(&self, flag: std::sync::Arc<std::sync::atomic::AtomicBool>) {
-        self.kb.set_cancel_flag(flag);
+        self.core.kb().set_cancel_flag(flag);
     }
 
     /// Remove any installed cancellation flag.
     pub fn clear_cancel_flag(&self) {
-        self.kb.clear_cancel_flag();
+        self.core.kb().clear_cancel_flag();
     }
 
     /// Enable/disable the engine's informational stdout diagnostics
@@ -87,7 +88,7 @@ impl NibliEngine {
     /// per-query corpus re-assertion. Interactive callers (the native `nibli`
     /// REPL) opt in. Configuration — survives `reset()`.
     pub fn set_verbose(&self, verbose: bool) {
-        self.kb.set_verbose(verbose);
+        self.core.kb().set_verbose(verbose);
     }
 
     /// Enable/disable STRICT MODE (default off — permissive warn-and-insert):
@@ -97,7 +98,7 @@ impl NibliEngine {
     /// runtime surfaces read `NIBLI_STRICT=1` — nibli-host forwards it into the
     /// guest, where `nibli-pipeline::Session::new` applies it).
     pub fn set_strict(&self, strict: bool) {
-        self.kb.set_strict(strict);
+        self.core.kb().set_strict(strict);
     }
 
     /// Register this engine's external compute dispatch (per-instance). Without
@@ -110,7 +111,7 @@ impl NibliEngine {
         eval: fn(&str, &[EngineLogicalTerm]) -> Result<bool, String>,
         batch_eval: fn(&[nibli_reason::ComputeRequest]) -> Vec<Result<bool, String>>,
     ) {
-        self.kb.set_compute_dispatch(eval, batch_eval);
+        self.core.kb().set_compute_dispatch(eval, batch_eval);
     }
 
     /// Enable external compute dispatch to a Python-style JSON-Lines backend at
@@ -126,7 +127,7 @@ impl NibliEngine {
     /// plaintext, unauthenticated peer in the trusted computing base.
     pub fn enable_compute_backend(&self, addr: &str) {
         compute_client::set_addr(addr);
-        self.kb.set_compute_dispatch(
+        self.core.kb().set_compute_dispatch(
             compute_client::native_eval_fn,
             compute_client::native_batch_eval_fn,
         );
@@ -135,8 +136,7 @@ impl NibliEngine {
     /// Create an engine without persistence (existing behavior).
     pub fn new() -> Self {
         NibliEngine {
-            kb: nibli_reason::KnowledgeBase::new(),
-            compute_predicates: nibli_reason::default_compute_predicates(),
+            core: nibli_session::CoreSession::new(),
             store: RefCell::new(None),
         }
     }
@@ -166,8 +166,9 @@ impl NibliEngine {
         }
 
         let engine = NibliEngine {
-            kb: nibli_reason::KnowledgeBase::with_store(Box::new(typed_store)),
-            compute_predicates: nibli_reason::default_compute_predicates(),
+            core: nibli_session::CoreSession::with_kb(nibli_reason::KnowledgeBase::with_store(
+                Box::new(typed_store),
+            )),
             store: RefCell::new(Some(store)),
         };
         engine.replay_from_store()?;
@@ -186,7 +187,8 @@ impl NibliEngine {
         for fact in &facts {
             let buf: logic::LogicBuffer = postcard::from_bytes(&fact.payload)
                 .map_err(|e| format!("Deserialize error: {e}"))?;
-            self.kb
+            self.core
+                .kb()
                 .assert_fact_with_id(buf, fact.label.clone(), fact.id)
                 .map_err(|e| format!("Replay error (fact {}): {e}", fact.id))?;
         }
@@ -202,21 +204,19 @@ impl NibliEngine {
 
     /// Register a predicate name for external compute dispatch.
     pub fn register_compute_predicate(&mut self, name: String) {
-        self.compute_predicates.insert(name);
+        self.core.register_compute_predicate(name);
     }
 
     fn compile_text(&self, input: &str) -> Result<logic::LogicBuffer, EngineError> {
         // The SOLE text→AST seam — every public text method funnels through
-        // here; `EngineError` is the re-exported `NibliError`.
-        let ast = nibli_kr::parse_checked(input)?;
-        let mut buf = nibli_semantics::compile_from_ast(ast)?;
-        nibli_reason::transform_compute_nodes(&mut buf, &self.compute_predicates);
-        Ok(buf)
+        // here, delegating to the SHARED chain (nibli-session), the same core
+        // the WASM surfaces wrap; `EngineError` is the re-exported `NibliError`.
+        self.core.compile_text(input)
     }
 
     /// Reset the knowledge base, clearing all facts and rules.
     pub fn reset(&self) {
-        self.kb.reset().ok();
+        self.core.kb().reset().ok();
         if let Ok(mut store) = self.store.try_borrow_mut()
             && let Some(s) = store.as_mut()
         {
@@ -231,50 +231,58 @@ impl NibliEngine {
     /// single root and stay one fact). Returns the minted ids in root order. A
     /// single-sentence text yields exactly one id.
     pub fn assert_text(&self, text: &str) -> Result<Vec<u64>, EngineError> {
-        let buf = self.compile_text(text)?;
-        let label = text.to_string();
         let mut store = self.store.try_borrow_mut().map_err(|_| {
             EngineError::Reasoning("Store error: persistence state is already borrowed".to_string())
         })?;
 
+        // No-store path: the shared core's assert loop IS this behavior.
+        let Some(s) = store.as_mut() else {
+            return Ok(self
+                .core
+                .assert_text(text)?
+                .into_iter()
+                .map(|(id, _)| id)
+                .collect());
+        };
+
+        // Store write-through path (engine-specific): the durable registry
+        // mints the ids, so the per-root loop runs here with the store in the
+        // middle — compile through the shared chain, then per root: persist
+        // FIRST, then assert under the store's id.
+        let buf = self.compile_text(text)?;
+        let label = text.to_string();
         let parts = buf.split_roots();
         let mut ids = Vec::with_capacity(parts.len());
         for sub in parts {
-            if let Some(s) = store.as_mut() {
-                let payload = postcard::to_allocvec(&sub)
-                    .map_err(|e| EngineError::Reasoning(format!("Serialize error: {e}")))?;
-                let fact_id = s
-                    .next_fact_id()
-                    .map_err(|e| EngineError::Reasoning(format!("Store error: {e}")))?;
-                s.insert_fact(fact_id, label.clone(), payload)
-                    .map_err(|e| EngineError::Reasoning(format!("Store error: {e}")))?;
-                // nibli-reason's `assert_fact_with_id` returns String (it predates the typed
-                // KB API); the assert IS the reasoning stage, so classify as Reasoning
-                // (the old `Semantic` here was a mislabel).
-                self.kb
-                    .assert_fact_with_id(sub, label.clone(), fact_id)
-                    .map_err(EngineError::Reasoning)?;
-                ids.push(fact_id);
-            } else {
-                ids.push(self.kb.assert_fact(sub, label.clone())?);
-            }
+            let payload = postcard::to_allocvec(&sub)
+                .map_err(|e| EngineError::Reasoning(format!("Serialize error: {e}")))?;
+            let fact_id = s
+                .next_fact_id()
+                .map_err(|e| EngineError::Reasoning(format!("Store error: {e}")))?;
+            s.insert_fact(fact_id, label.clone(), payload)
+                .map_err(|e| EngineError::Reasoning(format!("Store error: {e}")))?;
+            // nibli-reason's `assert_fact_with_id` returns String (it predates the typed
+            // KB API); the assert IS the reasoning stage, so classify as Reasoning
+            // (the old `Semantic` here was a mislabel).
+            self.core
+                .kb()
+                .assert_fact_with_id(sub, label.clone(), fact_id)
+                .map_err(EngineError::Reasoning)?;
+            ids.push(fact_id);
         }
         Ok(ids)
     }
 
-    /// Assert a fact directly by relation name and arguments, bypassing text parsing.
+    /// Assert a fact directly by relation name and arguments, bypassing text
+    /// parsing. Delegates to the shared core (label `":assert {relation}"`;
+    /// event-decomposed to the surface shape — see
+    /// `CoreSession::assert_fact_direct`).
     pub fn assert_fact_direct(
         &self,
         relation: String,
         args: Vec<EngineLogicalTerm>,
     ) -> Result<u64, EngineError> {
-        let label = format!(":assert {}", relation);
-        // Event-decompose to the SAME shape a surface assertion produces, so the
-        // injected fact is matched by surface text queries (not just raw-FOL /
-        // same-shape direct queries). Identity stays flat; arity follows the
-        // injected-arity policy (fail-closed) — see compile_injected_fact.
-        let buf = nibli_semantics::compile_injected_fact(&relation, &args)?;
-        self.kb.assert_fact(buf, label)
+        self.core.assert_fact_direct(&relation, &args, None)
     }
 
     /// Parse KR query, run entailment check, return result + formatted proof + JSON proof.
@@ -282,8 +290,7 @@ impl NibliEngine {
         &self,
         text: &str,
     ) -> Result<(EngineQueryResult, String, String), EngineError> {
-        let buf = self.compile_text(text)?;
-        let (result, trace) = self.kb.query_entailment_with_proof(buf)?;
+        let (result, trace) = self.core.query_text_with_proof(text)?;
         // `trace` IS the wire `ProofTrace` (canonical == wire now) — no conversion.
         let formatted = nibli_render::render_proof_text(&trace, nibli_render::Register::Spec);
         let json = nibli_protocol::proof_trace_to_json(&trace);
@@ -298,14 +305,12 @@ impl NibliEngine {
         &self,
         text: &str,
     ) -> Result<(EngineQueryResult, nibli_protocol::ProofTrace), EngineError> {
-        let buf = self.compile_text(text)?;
-        self.kb.query_entailment_with_proof(buf)
+        self.core.query_text_with_proof(text)
     }
 
     /// Evaluate a KR query against the KB and return the typed query result.
     pub fn query_holds(&self, text: &str) -> Result<EngineQueryResult, EngineError> {
-        let buf = self.compile_text(text)?;
-        self.kb.query_entailment(buf)
+        self.core.query_text(text)
     }
 
     /// Parse a KR query and extract all satisfying witness bindings.
@@ -313,15 +318,13 @@ impl NibliEngine {
         &self,
         text: &str,
     ) -> Result<Vec<Vec<EngineWitnessBinding>>, EngineError> {
-        let buf = self.compile_text(text)?;
-        self.kb.query_find(buf)
+        self.core.query_find_text(text)
     }
 
     /// Count the number of distinct witness binding sets satisfying a KR query.
     /// Exposes `nibli_reason::KnowledgeBase::count_witnesses` at the embedding level.
     pub fn count_witnesses_text(&self, text: &str) -> Result<usize, EngineError> {
-        let buf = self.compile_text(text)?;
-        self.kb.count_witnesses(buf)
+        self.core.count_witnesses_text(text)
     }
 
     /// Aggregate the numeric values bound to `variable` across all witness binding
@@ -333,8 +336,7 @@ impl NibliEngine {
         variable: &str,
         op: nibli_types::logic::AggregateOp,
     ) -> Result<Option<f64>, EngineError> {
-        let buf = self.compile_text(text)?;
-        self.kb.aggregate(buf, variable, op)
+        self.core.aggregate_text(text, variable, op)
     }
 
     /// Compile KR text to the typed FOL `LogicBuffer` without asserting.
@@ -348,7 +350,7 @@ impl NibliEngine {
 
     /// List all active (non-retracted) facts with their IDs and labels.
     pub fn list_facts(&self) -> Result<Vec<EngineFactSummary>, EngineError> {
-        self.kb.list_facts()
+        self.core.kb().list_facts()
     }
 
     /// Retract a fact by ID and rebuild derived state.
@@ -359,7 +361,7 @@ impl NibliEngine {
     /// validates the ID and rebuilds derived state); the durable tombstone is only
     /// written if that succeeds, keeping both layers consistent.
     pub fn retract_fact(&self, id: u64) -> Result<(), EngineError> {
-        self.kb.retract_fact(id)?;
+        self.core.kb().retract_fact(id)?;
 
         let mut store = self.store.try_borrow_mut().map_err(|_| {
             EngineError::Reasoning("Store error: persistence state is already borrowed".to_string())
@@ -380,22 +382,22 @@ impl NibliEngine {
 
     /// Scan the KB for contradictions. Returns human-readable descriptions.
     pub fn check_contradictions(&self) -> Vec<String> {
-        self.kb.check_contradictions()
+        self.core.kb().check_contradictions()
     }
 
     /// Enable tracing for a predicate (interactive debugging).
     pub fn trace_predicate(&self, predicate: &str) {
-        self.kb.trace_predicate(predicate);
+        self.core.kb().trace_predicate(predicate);
     }
 
     /// Disable tracing for a predicate.
     pub fn untrace_predicate(&self, predicate: &str) {
-        self.kb.untrace_predicate(predicate);
+        self.core.kb().untrace_predicate(predicate);
     }
 
     /// List all currently traced predicates.
     pub fn traced_predicates(&self) -> Vec<String> {
-        self.kb.traced_predicates()
+        self.core.kb().traced_predicates()
     }
 }
 
