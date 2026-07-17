@@ -289,7 +289,7 @@ impl KnowledgeBase {
         if had_equals {
             inner.equivalence_parent.clear();
             inner.equivalence_classes.clear();
-            let all_facts: Vec<StoredFact> = inner.fact_store.all_facts().iter().cloned().collect();
+            let all_facts: Vec<StoredFact> = inner.fact_store.all_facts().cloned().collect();
             for fact in &all_facts {
                 if let StoredFact::Bare(gf) = fact {
                     if gf.relation == "equals" && gf.args.len() == 2 {

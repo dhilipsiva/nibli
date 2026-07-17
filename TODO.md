@@ -266,9 +266,6 @@ performance → future-facing):
   nibli-semantics→nibli-kr dev-dep, and the crate has no KR-text helper) —
   keep the corrupt-buffer negative controls where they are (they exist to
   exercise the programmatic-build path).
-- **Drop InMemoryFactStore's double storage (M)** — every fact is stored twice
-  (`facts: HashSet` + `predicate_index`, fact_store.rs:60-61) purely so
-  `all_facts()` can return `&HashSet`; return an iterator instead.
 - **Shared CoreSession (L)** — the compile chain (`parse_checked →
   compile_from_ast → transform_compute_nodes`) + the compute-predicate registry
   + assert/query wrappers are hand-mirrored across nibli-engine (lib.rs:213),

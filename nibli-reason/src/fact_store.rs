@@ -34,8 +34,10 @@ pub trait FactStore: Send {
     /// Remove all facts (for reset/rebuild).
     fn clear(&mut self);
 
-    /// Iterate over all stored facts.
-    fn all_facts(&self) -> &HashSet<StoredFact>;
+    /// Iterate over all stored facts, in no particular order. Boxed because
+    /// `FactStore` is used as a trait object (`Box<dyn FactStore>` in the KB) —
+    /// an RPITIT return would break dyn-compatibility.
+    fn all_facts(&self) -> Box<dyn Iterator<Item = &StoredFact> + '_>;
 
     /// Number of facts stored.
     fn len(&self) -> usize;
@@ -52,19 +54,18 @@ pub trait FactStore: Send {
     fn clone_box(&self) -> Box<dyn FactStore>;
 }
 
-/// In-memory fact store backed by HashSet + predicate index HashMap.
-/// This is a direct extraction of the previous `typed_facts` +
-/// `typed_predicate_facts` fields from `KnowledgeBaseInner`.
+/// In-memory fact store: the predicate index (relation name → fact set) IS the
+/// single storage — `all_facts()` iterates the buckets. (The old shape kept a
+/// second flat `HashSet` purely so `all_facts()` could return `&HashSet`,
+/// deep-cloning every fact into both — 2× the fact-corpus heap.)
 #[derive(Clone)]
 pub struct InMemoryFactStore {
-    facts: HashSet<StoredFact>,
     predicate_index: HashMap<String, HashSet<StoredFact>>,
 }
 
 impl InMemoryFactStore {
     pub fn new() -> Self {
         Self {
-            facts: HashSet::new(),
             predicate_index: HashMap::new(),
         }
     }
@@ -91,35 +92,28 @@ impl FactStore for InMemoryFactStore {
 
     fn insert(&mut self, fact: StoredFact) {
         let rel = fact.relation().to_string();
-        self.predicate_index
-            .entry(rel)
-            .or_default()
-            .insert(fact.clone());
-        self.facts.insert(fact);
+        self.predicate_index.entry(rel).or_default().insert(fact);
     }
 
     fn clear(&mut self) {
-        self.facts.clear();
         self.predicate_index.clear();
     }
 
-    fn all_facts(&self) -> &HashSet<StoredFact> {
-        &self.facts
+    fn all_facts(&self) -> Box<dyn Iterator<Item = &StoredFact> + '_> {
+        Box::new(self.predicate_index.values().flatten())
     }
 
     fn len(&self) -> usize {
-        self.facts.len()
+        self.predicate_index.values().map(HashSet::len).sum()
     }
 
     fn remove(&mut self, fact: &StoredFact) -> bool {
-        let removed = self.facts.remove(fact);
-        if removed {
-            if let Some(set) = self.predicate_index.get_mut(fact.relation()) {
-                set.remove(fact);
-                if set.is_empty() {
-                    self.predicate_index.remove(fact.relation());
-                }
-            }
+        let Some(set) = self.predicate_index.get_mut(fact.relation()) else {
+            return false;
+        };
+        let removed = set.remove(fact);
+        if removed && set.is_empty() {
+            self.predicate_index.remove(fact.relation());
         }
         removed
     }

@@ -36,10 +36,10 @@ pub struct RedbFactStore {
     db: Database,
     /// In-memory predicate index: relation → set of fact IDs on disk.
     pred_index: HashMap<String, Vec<u64>>,
-    /// Cached facts per predicate (loaded lazily from disk).
+    /// Cached facts per predicate (loaded lazily from disk) — the single
+    /// in-memory authority; `all_facts()` iterates its buckets. (The old
+    /// shape kept a second flat union set, deep-cloning every fact twice.)
     cache: HashMap<String, HashSet<StoredFact>>,
-    /// All cached facts (union of all predicate caches).
-    all_facts_cache: HashSet<StoredFact>,
     /// Next fact ID (monotonic).
     next_id: u64,
 }
@@ -87,7 +87,6 @@ impl RedbFactStore {
         // Eagerly load all facts into memory from disk.
         // (Lazy per-predicate loading reserved for WASI backend.)
         let mut cache: HashMap<String, HashSet<StoredFact>> = HashMap::new();
-        let mut all_facts_cache: HashSet<StoredFact> = HashSet::new();
         let mut pred_index: HashMap<String, Vec<u64>> = HashMap::new();
         let mut max_id: u64 = 0;
         {
@@ -110,12 +109,11 @@ impl RedbFactStore {
                 })?;
                 let relation = fact.relation().to_string();
                 pred_index.entry(relation.clone()).or_default().push(id);
-                cache.entry(relation).or_default().insert(fact.clone());
-                all_facts_cache.insert(fact);
+                cache.entry(relation).or_default().insert(fact);
             }
         }
 
-        let count = all_facts_cache.len();
+        let count: usize = cache.values().map(HashSet::len).sum();
         if count > 0 {
             println!("[TypedStore] Loaded {} persisted facts", count);
         }
@@ -124,7 +122,6 @@ impl RedbFactStore {
             db,
             pred_index,
             cache,
-            all_facts_cache,
             next_id: max_id,
         })
     }
@@ -229,8 +226,7 @@ impl FactStore for RedbFactStore {
             .or_default()
             .push(id);
 
-        // Update in-memory cache.
-        self.all_facts_cache.insert(fact.clone());
+        // Update in-memory cache (the single in-memory copy).
         self.cache.entry(relation).or_default().insert(fact);
 
         // Periodically flush the predicate index (every 100 inserts).
@@ -244,7 +240,6 @@ impl FactStore for RedbFactStore {
     fn clear(&mut self) {
         self.pred_index.clear();
         self.cache.clear();
-        self.all_facts_cache.clear();
         self.next_id = 0;
 
         // Clear disk tables. A failure here leaves the DISK holding facts the
@@ -257,29 +252,28 @@ impl FactStore for RedbFactStore {
         }
     }
 
-    fn all_facts(&self) -> &HashSet<StoredFact> {
-        &self.all_facts_cache
+    fn all_facts(&self) -> Box<dyn Iterator<Item = &StoredFact> + '_> {
+        Box::new(self.cache.values().flatten())
     }
 
     fn len(&self) -> usize {
-        self.all_facts_cache.len()
+        self.cache.values().map(HashSet::len).sum()
     }
 
     fn remove(&mut self, fact: &StoredFact) -> bool {
-        let removed = self.all_facts_cache.remove(fact);
-        if removed && let Some(set) = self.cache.get_mut(fact.relation()) {
-            set.remove(fact);
-        }
         // Note: disk cleanup deferred to compaction. In-memory state is authoritative.
-        removed
+        match self.cache.get_mut(fact.relation()) {
+            Some(set) => set.remove(fact),
+            None => false,
+        }
     }
 
     fn clone_box(&self) -> Box<dyn FactStore> {
         // For hypothetical reasoning on persistent stores, clone the in-memory
-        // caches into an InMemoryFactStore (detached from disk). The hypothetical
+        // cache into an InMemoryFactStore (detached from disk). The hypothetical
         // KB operates purely in memory — no disk writes.
         let mut mem = nibli_reason::fact_store::InMemoryFactStore::new();
-        for fact in &self.all_facts_cache {
+        for fact in self.cache.values().flatten() {
             mem.insert(fact.clone());
         }
         Box::new(mem)

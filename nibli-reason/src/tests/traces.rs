@@ -318,9 +318,9 @@ fn non_ground_fact_is_dropped_at_the_assert_boundary() {
         &mut inner,
     );
     assert!(
-        inner.fact_store.all_facts().is_empty(),
+        inner.fact_store.is_empty(),
         "non-ground facts must be dropped at the boundary, store has: {:?}",
-        inner.fact_store.all_facts()
+        inner.fact_store.all_facts().collect::<Vec<_>>()
     );
 
     // A genuinely ground fact (skolem dependency and all) still inserts.
@@ -335,7 +335,7 @@ fn non_ground_fact_is_dropped_at_the_assert_boundary() {
         &mut inner,
     );
     assert_eq!(
-        inner.fact_store.all_facts().len(),
+        inner.fact_store.len(),
         1,
         "a ground fact must still insert normally"
     );
@@ -406,7 +406,6 @@ fn trace_soundness_conformance() {
         let fact_displays: std::collections::HashSet<String> = inner
             .fact_store
             .all_facts()
-            .iter()
             .map(|f| f.to_display_string())
             .collect();
         let rule_labels: std::collections::HashSet<&str> = inner
