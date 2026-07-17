@@ -2736,6 +2736,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "nibli-lexigen"
+version = "0.1.0"
+dependencies = [
+ "nibli-lexicon",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "nibli-pipeline"
 version = "0.1.0"
 dependencies = [

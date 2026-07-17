@@ -10,6 +10,7 @@ members = [
     "nibli-engine",
     "nibli-protocol",
     "nibli-lexicon",
+    "tools/lexigen",
     "nibli-kr",
     "nibli-store",
     "nibli-types",

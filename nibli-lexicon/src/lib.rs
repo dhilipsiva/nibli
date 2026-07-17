@@ -119,6 +119,7 @@ pub struct AliasEntry {
 
 include!(concat!(env!("OUT_DIR"), "/generated_aliases.rs"));
 
+pub mod corpus;
 pub mod curated;
 pub mod label;
 pub mod reserved;

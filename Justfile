@@ -483,6 +483,14 @@ verify-soundness:
 verify-alias-map:
     cargo test -p nibli-verify --test alias_differential {{cargo_profile_flag}} -- --nocapture --test-threads=1
 
+# Regenerate/refresh the committed corpus (nibli-lexicon/src/corpus/predicates.rs)
+# from a lensisku export. `fetch-dict` is the INPUT step (the JSON is lexigen's
+# input only — never a build input). `regen` emits candidate NEW entries to a
+# scratch file + a drift report; it never rewrites committed entries.
+# One-time full seed: `cargo run -p nibli-lexigen -- bootstrap`.
+regen-lexicon:
+    cargo run -p nibli-lexigen {{cargo_profile_flag}} -- regen --dict dictionary-en.json
+
 # The KR→smuni seam-conformance gate — the KR front-end's LOJBAN-FREE
 # independent oracle, built to outlive THE DROP (TODO.md): hand-verified
 # FOL structural goldens for the core construct classes (event decomposition,

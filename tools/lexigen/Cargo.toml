@@ -1,0 +1,15 @@
+[package]
+name = "nibli-lexigen"
+version = "0.1.0"
+edition = "2024"
+
+# The corpus regeneration tool — NEVER a build dependency of anything: the
+# committed corpus is the source of truth; this tool only bootstraps/refreshes
+# it from a lensisku export (dictionary-en.json, fetched via `just fetch-dict`).
+# It depends on nibli-lexicon so the COMPILED corpus/alias artifacts are its
+# pin source (no syn-parsing, no drift).
+
+[dependencies]
+nibli-lexicon = { path = "../../nibli-lexicon" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
