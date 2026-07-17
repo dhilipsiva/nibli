@@ -245,16 +245,6 @@ Pipeline-audit backlog (2026-07-17; three-agent audit of front-end / middle IRs 
 back-end — effort tags S/M/L; ordered quick-wins → correctness → structure →
 performance → future-facing):
 
-- **Single-resolution front-end (L)** — resolve.rs validates, then emit.rs
-  RE-resolves every word (7 unreachable "internal (post-resolve)" error arms),
-  and lint.rs resolves a THIRD time via raw nibli_lexicon calls. Thread resolved
-  `PredInfo` from resolve into emit (side-table or annotated tree), delete
-  emit's re-resolution helpers + arms; lint reuses
-  `resolve::lookup`/`lookup_compound`. Sub-items: `resolve_all` has NO external
-  caller while `parse_text` (nibli-ui's per-line recovery — the one consumer
-  that needs resolve separable from emit) reports only the FIRST resolve error
-  per statement — either wire `resolve_all` in or demote it. Well-tested seam
-  (emit goldens + the render fixpoint de-risk it).
 - **AST naming/shape bundle (S each, one commit)** — `Connective::Whether`→`Xor`;
   `Determiner::UniversalIndefinite/UniversalDefinite`→`Every`/`EveryThe`;
   `Argument::Pronoun(String)` is a misnamed catch-all (pronouns + `$vars` +
@@ -264,8 +254,9 @@ performance → future-facing):
   (nibli-kr ast.rs:80,87 vs nibli-types ast.rs:132,140 + the emit.rs:199-207
   bridge); rename nibli-semantics ir.rs `LogicalTerm`/`LogicalForm` →
   `IrTerm`/`IrForm` (kills the `WitTerm` alias collision); hoist the pronoun
-  collision sextet {me,you,we,this,that,yonder} (resolve.rs:374 + render.rs:686)
-  into one shared const. Each rename rides the `__ast_parity_guard` checklist.
+  collision sextet {me,you,we,this,that,yonder} (emit.rs's Name arm — moved
+  there by the single-resolution merge — + render.rs:686) into one shared
+  const. Each rename rides the `__ast_parity_guard` checklist.
 - **Collapse head_terms/tail_terms (M)** — the Proposition split is a Lojban SVO
   artifact: emit puts the first positional in head, everything else in tail;
   nibli-semantics immediately re-chains them (compile.rs:29-34,94-97) and the

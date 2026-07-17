@@ -4,6 +4,33 @@
 //! surface) consumes. Flattener discipline: child indices come from
 //! push-return values, never from length arithmetic.
 //!
+//! THE SINGLE VALIDATING WALK (single-resolution merge, 2026-07-17): this walk
+//! also owns every dictionary-driven static check the retired standalone
+//! resolve pass performed (NIBLI_KR §13) — each word resolves exactly ONCE, at
+//! the site that emits it. Checks (all fail closed, targeted positioned
+//! errors):
+//! 1. NAME RESOLUTION — every predicate word (predication heads incl. all
+//!    pair units and compound spellings, restrictors, selected preds, bare
+//!    clause bodies, `via` tag preds) must be a corpus name (English; gismu
+//!    never resolve — provenance only). Anything else is a compile error —
+//!    an unknown word NEVER silently mints a relation.
+//! 2. PLACE CHECKS against the head's arity (pair arity = the LAST unit's
+//!    entry): positional overflow, unknown labels, refills. Labels address
+//!    SURFACE places (a converted alias's swap applies at emission).
+//! 3. LINKED ARGS on restrictors: positionals fill x2.. (the bound variable
+//!    takes x1, like be/bei); a NAMED `it` marks the bound place instead; at
+//!    most one `it`; x1 must stay free for the bound variable otherwise.
+//! 4. POSITION RULES: `it` only inside rel-clause bodies or as a named
+//!    linked-arg marker; `slot` only inside `property { }` bodies.
+//! 5. NAME↔PRONOUN COLLISION: a single-word Name that lowercases onto a
+//!    pronoun constant (`Me` → `me`) is rejected — the two would silently
+//!    co-refer in the fact store.
+//! Tag (`via`) predicates additionally need arity ≥ 2, mirroring
+//! nibli-semantics's fail-closed modal check (spec §5). Error precedence is
+//! the retired pass's source order: per-argument place checks run BEFORE the
+//! argument's term is walked, and a block restrictor's head resolves BEFORE
+//! its rel-clause bodies (pinned by `error_precedence_*` tests).
+//!
 //! Emission map (NIBLI_KR §13; design-review decisions):
 //! - predicate names resolve to their corpus entry's canonical BASE name
 //!   (`emit_name`: a converted entry's `swap.base`, a plain entry itself, a
@@ -15,7 +42,7 @@
 //!   (no fixed `da`/`de`/`di` pool, no 3-variable cap); pronoun keyterms emit
 //!   their KR spellings verbatim (`me`, `you`, `this`, `it_a`…; `?`, `it`, and
 //!   `slot` are consumed by nibli-semantics as witness/bound-entity/open-place
-//!   markers, never constants). Resolve fail-closes a capitalized Name that
+//!   markers, never constants). The walk fail-closes a capitalized Name that
 //!   would lower onto a pronoun constant (`Me` vs `me`)
 //! - named args → `Argument::Tagged((place_index, arg))` (the u8 index
 //!   addresses SURFACE places — those of the possibly-Converted predicate)
@@ -63,28 +90,56 @@ fn emit_name(entry: &ResolvedEntry) -> (String, Option<u8>) {
     }
 }
 
-/// Emit resolved statements into an `AstBuffer` (one root per statement).
+/// Validate + emit statements into an `AstBuffer` (one root per statement),
+/// failing closed on the first (source-order) error.
 pub fn emit(input: &str, statements: &[Statement]) -> Result<AstBuffer, ParseError> {
-    let mut emitter = Emitter {
-        input,
-        block_it_var: None,
-        buffer: AstBuffer {
-            predicates: Vec::new(),
-            arguments: Vec::new(),
-            sentences: Vec::new(),
-            roots: Vec::new(),
-        },
-    };
+    let mut emitter = Emitter::new(input);
     for statement in statements {
-        let root = emitter.claim(&statement.claim, statement.span.start)?;
+        let root = emitter.statement(statement)?;
         emitter.buffer.roots.push(root);
     }
     Ok(emitter.buffer)
 }
 
+/// Per-statement RECOVERY variant (the `parse_text` contract): each statement
+/// validates + emits independently; a failing statement's partial nodes are
+/// truncated back out (SAFE: child indices come from push-return values and
+/// never cross statement boundaries), its error collected, and the walk
+/// continues. The returned buffer holds exactly the surviving statements.
+pub(crate) fn emit_recovering(
+    input: &str,
+    statements: &[Statement],
+) -> (AstBuffer, Vec<ParseError>) {
+    let mut emitter = Emitter::new(input);
+    let mut errors = Vec::new();
+    for statement in statements {
+        let snapshot = emitter.snapshot();
+        match emitter.statement(statement) {
+            Ok(root) => emitter.buffer.roots.push(root),
+            Err(e) => {
+                emitter.truncate(snapshot);
+                emitter.reset_walk_state();
+                errors.push(e);
+            }
+        }
+    }
+    (emitter.buffer, errors)
+}
+
 struct Emitter<'a> {
     input: &'a str,
     buffer: AstBuffer,
+    /// Statement anchor for the position-rule errors (`it`/`slot` outside
+    /// their scopes, Name↔pronoun collisions) — those point at the statement,
+    /// not the offending term.
+    statement_start: usize,
+    /// Inside a term-position rel-clause's Full body, `it` (the relativized
+    /// entity) is legal and emits as the plain `it` marker.
+    in_clause_body: bool,
+    /// Inside a `property { … }` body, `slot` (the open place) is legal.
+    /// Deliberately NOT cleared by nested non-property abstractions
+    /// (mirrors the retired resolve pass).
+    in_property: bool,
     /// While emitting a BLOCK determiner rel-clause's Full body, `it` maps to
     /// the block's `$var` (the block binds the relativized entity by name);
     /// nested term-position clauses suspend it so their `it` still binds the
@@ -93,8 +148,70 @@ struct Emitter<'a> {
 }
 
 impl<'a> Emitter<'a> {
+    fn new(input: &'a str) -> Self {
+        Emitter {
+            input,
+            buffer: AstBuffer {
+                predicates: Vec::new(),
+                arguments: Vec::new(),
+                sentences: Vec::new(),
+                roots: Vec::new(),
+            },
+            statement_start: 0,
+            in_clause_body: false,
+            in_property: false,
+            block_it_var: None,
+        }
+    }
+
+    fn statement(&mut self, statement: &Statement) -> Result<u32, ParseError> {
+        self.statement_start = statement.span.start;
+        self.claim(&statement.claim, statement.span.start)
+    }
+
+    /// Buffer lengths for per-statement rollback (`emit_recovering`).
+    fn snapshot(&self) -> (usize, usize, usize, usize) {
+        (
+            self.buffer.predicates.len(),
+            self.buffer.arguments.len(),
+            self.buffer.sentences.len(),
+            self.buffer.roots.len(),
+        )
+    }
+
+    fn truncate(
+        &mut self,
+        (predicates, arguments, sentences, roots): (usize, usize, usize, usize),
+    ) {
+        self.buffer.predicates.truncate(predicates);
+        self.buffer.arguments.truncate(arguments);
+        self.buffer.sentences.truncate(sentences);
+        self.buffer.roots.truncate(roots);
+    }
+
+    /// An error mid-statement early-returns past the save/restore pairs —
+    /// reset the walk flags so the NEXT recovered statement starts clean.
+    fn reset_walk_state(&mut self) {
+        self.in_clause_body = false;
+        self.in_property = false;
+        self.block_it_var = None;
+    }
+
     fn fail(&self, at: usize, message: impl Into<String>) -> ParseError {
         err_at(self.input, at, message)
+    }
+
+    /// The main-predication refill message (the linked-args variant omits the
+    /// §5 tail — a deliberate historical distinction, both test-pinned).
+    fn refill_error(&self, at: usize, index: usize, info: &PredInfo) -> ParseError {
+        self.fail(
+            at,
+            format!(
+                "place x{} of {:?} is filled twice (NIBLI_KR §5 fail-closed)",
+                index + 1,
+                info.surface
+            ),
+        )
     }
 
     fn push_predicate(&mut self, s: Predicate) -> u32 {
@@ -119,16 +236,17 @@ impl<'a> Emitter<'a> {
     }
 
     fn resolved(&self, word: &str, at: usize) -> Result<PredInfo, ParseError> {
-        lookup(word).map_err(|m| self.fail(at, format!("internal (post-resolve): {m}")))
+        lookup(word).map_err(|m| self.fail(at, m))
     }
 
     /// The head unit's PredInfo (label/arity source): last unit, descending
     /// through groups; a multi-part unit resolves as a compound entry —
-    /// NEVER as its last part (mirrors the resolve pass's `seq`).
+    /// NEVER as its last part.
     fn resolved_head(&self, seq: &PredSeq, at: usize) -> Result<PredInfo, ParseError> {
         match seq.0.last().expect("pred_seq is non-empty") {
-            PredUnit::Word(parts) if parts.len() > 1 => lookup_compound(parts)
-                .map_err(|m| self.fail(at, format!("internal (post-resolve): {m}"))),
+            PredUnit::Word(parts) if parts.len() > 1 => {
+                lookup_compound(parts).map_err(|m| self.fail(at, m))
+            }
             PredUnit::Word(parts) => self.resolved(&parts[0], at),
             PredUnit::Group(inner) => self.resolved_head(inner, at),
         }
@@ -241,19 +359,38 @@ impl<'a> Emitter<'a> {
         tense: Option<AstTense>,
         deontic: Option<DeonticMood>,
     ) -> Result<Proposition, ParseError> {
-        let info = self.resolved_head(&p.seq, p.span.start)?;
+        // pred_seq resolves the units LEFT to RIGHT (the first unknown word
+        // reports), then the head's info drives the place checks.
         let relation = self.pred_seq(&p.seq, p.span.start)?;
+        let info = self.resolved_head(&p.seq, p.span.start)?;
 
+        // Ordinary argument list: positionals fill x1.. . Each argument's
+        // place check runs BEFORE its term is walked (error precedence).
         let mut head_terms = Vec::new();
         let mut tail_terms = Vec::new();
-        let mut first_positional = true;
+        let mut filled = [false; 5];
+        let mut next_positional = 0usize;
         for arg in &p.args {
             match &arg.label {
                 None => {
+                    let index = next_positional;
+                    next_positional += 1;
+                    if index >= info.arity as usize {
+                        return Err(self.fail(
+                            arg.span.start,
+                            format!(
+                                "too many arguments for {:?} (arity {})",
+                                info.surface, info.arity
+                            ),
+                        ));
+                    }
+                    if filled[index] {
+                        return Err(self.refill_error(arg.span.start, index, &info));
+                    }
+                    filled[index] = true;
                     let idx = self.term(&arg.term, arg.span.start)?;
-                    if first_positional {
+                    if index == 0 {
                         head_terms.push(idx);
-                        first_positional = false;
                     } else {
                         tail_terms.push(idx);
                     }
@@ -262,9 +399,17 @@ impl<'a> Emitter<'a> {
                     let place = label_index(&info, label).ok_or_else(|| {
                         self.fail(
                             arg.span.start,
-                            format!("internal (post-resolve): label {label:?} did not resolve"),
+                            format!(
+                                "unknown place label {label:?} for {:?} (arity {}; dictionary \
+                                 labels or raw x1..x{} only)",
+                                info.surface, info.arity, info.arity
+                            ),
                         )
                     })?;
+                    if filled[place] {
+                        return Err(self.refill_error(arg.span.start, place, &info));
+                    }
+                    filled[place] = true;
                     let inner = self.term(&arg.term, arg.span.start)?;
                     tail_terms.push(self.push_argument(Argument::Tagged((place as u8, inner))));
                 }
@@ -272,12 +417,20 @@ impl<'a> Emitter<'a> {
         }
         for tag in &p.tags {
             let info = if tag.pred.len() > 1 {
-                lookup_compound(&tag.pred).map_err(|m| {
-                    self.fail(tag.span.start, format!("internal (post-resolve): {m}"))
-                })?
+                lookup_compound(&tag.pred).map_err(|m| self.fail(tag.span.start, m))?
             } else {
                 self.resolved(&tag.pred[0], tag.span.start)?
             };
+            if info.arity < 2 {
+                return Err(self.fail(
+                    tag.span.start,
+                    format!(
+                        "modal tag predicate {:?} has arity {} — `via` predicates \
+                         need arity >= 2 to link the tagged term (NIBLI_KR §5)",
+                        info.surface, info.arity
+                    ),
+                ));
+            }
             let (word, _) = emit_name(&info.entry);
             let modal_predicate = self.push_predicate(Predicate::Root(word));
             let inner = self.term(&tag.term, tag.span.start)?;
@@ -313,11 +466,38 @@ impl<'a> Emitter<'a> {
         // is keyed by head name). The block form does not survive into the
         // AST — render yields the substituted spelling.
         if det == Det::The {
+            // Validate the restrictor even when `$v` never occurs in the
+            // body — the substitution would otherwise never walk it.
+            // Emit-then-discard: the throwaway nodes truncate back out.
+            let snapshot = self.snapshot();
+            self.term(
+                &Term::Det {
+                    det: Det::The,
+                    restr: restr.clone(),
+                },
+                at,
+            )?;
+            self.truncate(snapshot);
             let desugared = substitute_var_in_claim(body, var, restr);
             return self.claim(&desugared, at);
         }
 
         let particle = self.var_particle(var, at)?;
+        // The restrictor core resolves+emits FIRST — error precedence: an
+        // unknown restrictor head reports before an unknown word in a
+        // rel-clause body (the retired resolve pass's order).
+        let quant_kind = match det {
+            Det::Exactly(n) => Some(BlockQuant::ExactCount(n)),
+            Det::ExactlyThe(n) => Some(BlockQuant::ExactCountDefinite(n)),
+            Det::EveryThe => Some(BlockQuant::UniversalDefinite),
+            _ => None,
+        };
+        let restr_core = match quant_kind {
+            // Quantified blocks carry the bare restrictor PREDICATE.
+            Some(_) => self.restr_predicate(restr)?,
+            // every/some blocks carry `<restr>(<var>)` as a proposition.
+            None => self.restr_proposition_sentence(restr, &particle)?,
+        };
         // Restrictor rel-clauses: `where` folds on the DOMAIN side, `also`
         // on the BODY (matrix) side — mirroring close_quantifier's
         // term-position placement.
@@ -331,10 +511,23 @@ impl<'a> Emitter<'a> {
             }
         }
 
+        if let Some(kind) = quant_kind {
+            let clause = match where_sents.len() {
+                0 => None,
+                _ => {
+                    let first = where_sents[0];
+                    Some(self.and_chain(first, &where_sents[1..]))
+                }
+            };
+            let body_idx = self.claim(body, at)?;
+            let matrix = self.and_chain(body_idx, &also_sents);
+            return Ok(self.push_sentence(Sentence::Quantified((
+                kind, particle, restr_core, clause, matrix,
+            ))));
+        }
         match det {
             Det::Every => {
-                let restr_sentence = self.restr_proposition_sentence(restr, &particle)?;
-                let antecedent = self.and_chain(restr_sentence, &where_sents);
+                let antecedent = self.and_chain(restr_core, &where_sents);
                 let body_idx = self.claim(body, at)?;
                 let matrix = self.and_chain(body_idx, &also_sents);
                 let impl_idx = self.push_sentence(Sentence::Connected((
@@ -345,12 +538,11 @@ impl<'a> Emitter<'a> {
                 Ok(self.push_sentence(Sentence::Prenex((vec![particle], impl_idx))))
             }
             Det::Some => {
-                let restr_sentence = self.restr_proposition_sentence(restr, &particle)?;
                 // A free `$v` closes existentially at its first occurrence
                 // (the restrictor proposition) — one flat conjunction keeps
                 // every conjunct in one fact; where/also placement is
                 // logically identical under ∃∧.
-                let with_wheres = self.and_chain(restr_sentence, &where_sents);
+                let with_wheres = self.and_chain(restr_core, &where_sents);
                 let body_idx = self.claim(body, at)?;
                 let with_body = self.push_sentence(Sentence::Connected((
                     SentenceConnective::And,
@@ -359,28 +551,7 @@ impl<'a> Emitter<'a> {
                 )));
                 Ok(self.and_chain(with_body, &also_sents))
             }
-            Det::Exactly(_) | Det::ExactlyThe(_) | Det::EveryThe => {
-                let kind = match det {
-                    Det::Exactly(n) => BlockQuant::ExactCount(n),
-                    Det::ExactlyThe(n) => BlockQuant::ExactCountDefinite(n),
-                    Det::EveryThe => BlockQuant::UniversalDefinite,
-                    _ => unreachable!("matched above"),
-                };
-                let restr_pred = self.restr_predicate_for_block(restr)?;
-                let clause = match where_sents.len() {
-                    0 => None,
-                    _ => {
-                        let first = where_sents[0];
-                        Some(self.and_chain(first, &where_sents[1..]))
-                    }
-                };
-                let body_idx = self.claim(body, at)?;
-                let matrix = self.and_chain(body_idx, &also_sents);
-                Ok(self.push_sentence(Sentence::Quantified((
-                    kind, particle, restr_pred, clause, matrix,
-                ))))
-            }
-            Det::The => unreachable!("handled by the substitution desugar above"),
+            _ => unreachable!("quantified kinds returned above; The desugared"),
         }
     }
 
@@ -425,13 +596,6 @@ impl<'a> Emitter<'a> {
                 idx
             }
         }
-    }
-
-    /// The restrictor PREDICATE of a Quantified block (negation, selectors,
-    /// linked args — everything `restr_predicate` supports; rel-clauses are
-    /// handled by the caller).
-    fn restr_predicate_for_block(&mut self, restr: &Restr) -> Result<u32, ParseError> {
-        self.restr_predicate(restr)
     }
 
     /// `<restr>(<var>)` as a Simple sentence — the antecedent/witness proposition of
@@ -505,12 +669,52 @@ impl<'a> Emitter<'a> {
             Term::Number(n) => Argument::Number(*n),
             Term::Str(s) => Argument::QuotedLiteral(s.clone()),
             Term::Var(v) => Argument::Pronoun(self.var_particle(v, at)?),
-            Term::Key(KeyTerm::It) if self.block_it_var.is_some() => {
+            Term::Key(KeyTerm::It) => match &self.block_it_var {
                 // Inside a block rel-clause body, `it` IS the block's `$var`.
-                Argument::Pronoun(self.block_it_var.clone().expect("checked above"))
+                Some(v) => Argument::Pronoun(v.clone()),
+                None if self.in_clause_body => Argument::Pronoun("it".into()),
+                None => {
+                    return Err(self.fail(
+                        self.statement_start,
+                        "`it` (the relativized entity) is only meaningful inside a \
+                         where/also clause body, or as a named bound-place marker in \
+                         restrictor linked args (NIBLI_KR §7)",
+                    ));
+                }
+            },
+            Term::Key(KeyTerm::Slot) => {
+                if !self.in_property {
+                    return Err(self.fail(
+                        self.statement_start,
+                        "`slot` (the open place) is only meaningful inside a \
+                         `property { … }` body (NIBLI_KR §3)",
+                    ));
+                }
+                Argument::Pronoun(keyterm_particle(KeyTerm::Slot).into())
             }
             Term::Key(k) => Argument::Pronoun(keyterm_particle(*k).into()),
             Term::Name { name, rel_clauses } => {
+                // A single-word Name that lowercases onto a pronoun constant
+                // (`Me` → "me") would silently co-refer with the pronoun in
+                // the fact store — fail closed instead. Compound names are
+                // safe (`We_All` → "we all" ≠ `we_all`), and `It`/`Slot`/`?`
+                // never compile to constants.
+                if !name.contains('_')
+                    && matches!(
+                        name.to_lowercase().as_str(),
+                        "me" | "you" | "we" | "this" | "that" | "yonder"
+                    )
+                {
+                    return Err(self.fail(
+                        self.statement_start,
+                        format!(
+                            "the name `{name}` collides with the pronoun `{}` — after \
+                             lowering both would denote the same constant; pick a \
+                             different name (NIBLI_KR §3)",
+                            name.to_lowercase()
+                        ),
+                    ));
+                }
                 let mut idx =
                     self.push_argument(Argument::Name(name.to_lowercase().replace('_', " ")));
                 for rc in rel_clauses {
@@ -520,9 +724,14 @@ impl<'a> Emitter<'a> {
                 return Ok(idx);
             }
             Term::Abstraction { kind, body } => {
-                let body_idx = self.claim(body, at)?;
+                let saved = self.in_property;
+                if *kind == AbsKind::Property {
+                    self.in_property = true;
+                }
+                let body_idx = self.claim(body, at);
+                self.in_property = saved;
                 let predicate = self
-                    .push_predicate(Predicate::Abstraction((abstraction_kind(*kind), body_idx)));
+                    .push_predicate(Predicate::Abstraction((abstraction_kind(*kind), body_idx?)));
                 Argument::Description((Determiner::Indefinite, predicate))
             }
             Term::Det { det, restr } => {
@@ -572,7 +781,11 @@ impl<'a> Emitter<'a> {
                 let place = label_index(&info, label).ok_or_else(|| {
                     self.fail(
                         at,
-                        format!("internal (post-resolve): selector {label:?} did not resolve"),
+                        format!(
+                            "unknown selector place {label:?} for {pred:?} (arity {}; \
+                             dictionary labels or raw x1..x{} only)",
+                            info.arity, info.arity
+                        ),
                     )
                 })? + 1;
                 if place > 1 {
@@ -585,36 +798,86 @@ impl<'a> Emitter<'a> {
                 let mut idx = self.pred_seq(seq, at)?;
                 if !linked_args.is_empty() {
                     let info = self.resolved_head(seq, at)?;
-                    // Surface place of the bound variable: 1 unless a NAMED
-                    // `it` marks another place (resolve enforced the shape).
-                    let mut bound_place = 1usize;
-                    let mut placed: Vec<(usize, &Arg)> = Vec::new();
-                    let mut next_positional = 2usize;
+                    // Linked args (be/bei): positionals fill x2.. — the bound
+                    // variable takes x1 — and a NAMED `it` marks the bound
+                    // place instead. Checks run per argument in SOURCE order,
+                    // each place check before its term is walked; term nodes
+                    // therefore also emit in source order (tree edges carry
+                    // the placement, so storage order is free).
+                    let mut filled = [false; 5];
+                    let mut it_place: Option<usize> = None;
+                    let mut placed: Vec<(usize, u32)> = Vec::new();
+                    let mut next_positional = 1usize; // x2 onward (0-based)
                     for arg in linked_args {
-                        let surface_place = match &arg.label {
+                        let is_it = matches!(arg.term, Term::Key(KeyTerm::It));
+                        let index = match &arg.label {
                             None => {
-                                let p = next_positional;
+                                if is_it {
+                                    return Err(self.fail(
+                                        arg.span.start,
+                                        "mark the bound place with a NAMED `it` (e.g. `x2: it` \
+                                         or `loved: it`) — a positional `it` is ambiguous",
+                                    ));
+                                }
+                                let i = next_positional;
                                 next_positional += 1;
-                                p
-                            }
-                            Some(label) => {
-                                label_index(&info, label).ok_or_else(|| {
-                                    self.fail(
+                                if i >= info.arity as usize {
+                                    return Err(self.fail(
                                         arg.span.start,
                                         format!(
-                                            "internal (post-resolve): label {label:?} did \
-                                             not resolve"
+                                            "too many linked arguments for {:?} (arity {}; \
+                                             positional links fill x2 onward — the bound \
+                                             variable takes x1)",
+                                            info.surface, info.arity
                                         ),
-                                    )
-                                })? + 1
+                                    ));
+                                }
+                                i
                             }
+                            Some(label) => label_index(&info, label).ok_or_else(|| {
+                                self.fail(
+                                    arg.span.start,
+                                    format!(
+                                        "unknown place label {label:?} for {:?} (arity {})",
+                                        info.surface, info.arity
+                                    ),
+                                )
+                            })?,
                         };
-                        if matches!(arg.term, Term::Key(KeyTerm::It)) {
-                            bound_place = surface_place;
+                        if filled[index] {
+                            return Err(self.fail(
+                                arg.span.start,
+                                format!(
+                                    "place x{} of {:?} is filled twice",
+                                    index + 1,
+                                    info.surface
+                                ),
+                            ));
+                        }
+                        filled[index] = true;
+                        if is_it {
+                            if it_place.is_some() {
+                                return Err(self.fail(
+                                    arg.span.start,
+                                    "at most one `it` may mark the bound place of a restrictor",
+                                ));
+                            }
+                            it_place = Some(index);
                         } else {
-                            placed.push((surface_place, arg));
+                            let term_idx = self.term(&arg.term, arg.span.start)?;
+                            placed.push((index + 1, term_idx));
                         }
                     }
+                    if it_place.is_none() && filled[0] {
+                        return Err(self.fail(
+                            at,
+                            "these linked arguments fill x1, but the bound variable needs it — \
+                             mark the bound place explicitly with `it` (e.g. `x2: it`)",
+                        ));
+                    }
+                    // Surface place of the bound variable: 1 unless the NAMED
+                    // `it` marked another place.
+                    let bound_place = it_place.map(|i| i + 1).unwrap_or(1);
                     if bound_place > 1 {
                         idx = self.push_predicate(Predicate::Converted((
                             conversion_for(bound_place as u8),
@@ -625,9 +888,9 @@ impl<'a> Emitter<'a> {
                     // swap (x1 ↔ bound_place relabels: surface 1 → converted
                     // bound_place; everything else keeps its number), then
                     // fill be/bei positions x2.. with Unspecified gaps.
-                    let mut by_converted: Vec<(usize, &Arg)> = placed
+                    let mut by_converted: Vec<(usize, u32)> = placed
                         .into_iter()
-                        .map(|(q, arg)| (if q == 1 { bound_place } else { q }, arg))
+                        .map(|(q, t)| (if q == 1 { bound_place } else { q }, t))
                         .collect();
                     by_converted.sort_by_key(|(p, _)| *p);
                     let max_place = by_converted.last().map(|(p, _)| *p).unwrap_or(1);
@@ -635,9 +898,8 @@ impl<'a> Emitter<'a> {
                     let mut iter = by_converted.into_iter().peekable();
                     for place in 2..=max_place {
                         if iter.peek().map(|(p, _)| *p) == Some(place) {
-                            let (_, arg) = iter.next().unwrap();
-                            let idx = self.term(&arg.term, arg.span.start)?;
-                            be_args.push(idx);
+                            let (_, term_idx) = iter.next().unwrap();
+                            be_args.push(term_idx);
                         } else {
                             be_args.push(self.push_argument(Argument::Unspecified));
                         }
@@ -660,27 +922,35 @@ impl<'a> Emitter<'a> {
             RelKind::Also => RelClauseKind::Incidental,
         };
         // A term-position clause's `it` binds ITS OWN entity (nibli-semantics'
-        // rel_clause_var) — suspend any enclosing block's `it` mapping.
+        // rel_clause_var) — suspend any enclosing block's `it` mapping; a Full
+        // body is a clause body for the `it` position rule.
         let suspended = self.block_it_var.take();
         let body_sentence = match &rc.body {
             ClauseBody::Bare { negated, seq } => {
-                let relation = self.pred_seq(seq, rc.span.start)?;
-                let head = self.push_argument(Argument::Pronoun("it".into()));
-                self.push_sentence(Sentence::Simple(Proposition {
-                    relation,
-                    head_terms: vec![head],
-                    tail_terms: vec![],
-                    negated: *negated,
-                    tense: None,
-                    deontic: None,
-                }))
+                self.pred_seq(seq, rc.span.start).map(|relation| {
+                    let head = self.push_argument(Argument::Pronoun("it".into()));
+                    self.push_sentence(Sentence::Simple(Proposition {
+                        relation,
+                        head_terms: vec![head],
+                        tail_terms: vec![],
+                        negated: *negated,
+                        tense: None,
+                        deontic: None,
+                    }))
+                })
             }
-            ClauseBody::Full(claim) => self.claim(claim, rc.span.start)?,
+            ClauseBody::Full(claim) => {
+                let saved = self.in_clause_body;
+                self.in_clause_body = true;
+                let result = self.claim(claim, rc.span.start);
+                self.in_clause_body = saved;
+                result
+            }
         };
         self.block_it_var = suspended;
         Ok(RelClause {
             kind,
-            body_sentence,
+            body_sentence: body_sentence?,
         })
     }
 }
@@ -835,7 +1105,7 @@ fn conversion_for(place: u8) -> Conversion {
         3 => Conversion::Swap13,
         4 => Conversion::Swap14,
         5 => Conversion::Swap15,
-        other => unreachable!("conversion place {other} (resolve bounds places to 2..=5)"),
+        other => unreachable!("conversion place {other} (the place checks bound places to 2..=5)"),
     }
 }
 
@@ -1019,7 +1289,7 @@ mod tests {
             "must past ~goes(me).",
             "[big fast] dog(Rex).",
         ] {
-            nibli_kr_lb(text); // panics if resolve/emit/nibli-semantics rejects
+            nibli_kr_lb(text); // panics if the walk or nibli-semantics rejects
         }
     }
 
@@ -1069,7 +1339,7 @@ mod tests {
             "some dog where big $d: goes($d).",
             "exactly 2 dog where big $d: goes($d).",
         ] {
-            nibli_kr_lb(text); // panics if resolve/emit/smuni rejects
+            nibli_kr_lb(text); // panics if the walk or nibli-semantics rejects
         }
     }
 
@@ -1144,6 +1414,195 @@ mod tests {
         ] {
             let e = parse_checked(text).unwrap_err();
             assert!(format!("{e}").contains(needle), "{text}: {e}");
+        }
+    }
+
+    /// The validation battery — migrated verbatim from the retired standalone
+    /// resolve pass (single-resolution merge): the checks now live in this
+    /// walk, so the pins key through `parse_statements` + `emit`.
+    mod checks {
+        use crate::emit::emit;
+        use crate::parser::{ParseError, parse_statements};
+
+        fn ok(input: &str) {
+            let statements =
+                parse_statements(input).unwrap_or_else(|e| panic!("parse {input:?}: {e}"));
+            if let Err(e) = emit(input, &statements) {
+                panic!("emit failed for {input:?}: {e}");
+            }
+        }
+
+        fn bad(input: &str) -> ParseError {
+            let statements =
+                parse_statements(input).unwrap_or_else(|e| panic!("parse {input:?}: {e}"));
+            match emit(input, &statements) {
+                Ok(_) => panic!("expected emit error for {input:?}"),
+                Err(e) => e,
+            }
+        }
+
+        #[test]
+        fn corpus_names_resolve_and_gismu_reject() {
+            ok("goes(me, destination: some market).");
+            ok("animal(every dog).");
+            // GISMU-INPUT DEATH: the raw gismu spelling is a compile error — the
+            // English corpus name is the ONLY spelling (source gismu = provenance).
+            let e = bad("klama(me, x2: some market).");
+            assert!(e.message.contains("unknown predicate"), "{e}");
+            // Converted aliases resolve.
+            ok("obligated(every data, x2: this).");
+        }
+
+        #[test]
+        fn unknown_names_fail_closed() {
+            let e = bad("zzq(me).");
+            assert!(e.message.contains("unknown predicate"), "{e}");
+            let e = bad("goes(every zzq dog).");
+            assert!(e.message.contains("unknown predicate"), "{e}");
+            let e = bad("goes(some dog where zzq).");
+            assert!(e.message.contains("unknown predicate"), "{e}");
+        }
+
+        #[test]
+        fn place_checks() {
+            // dog is 2-place: 3 positionals overflow.
+            let e = bad("dog(Adam, you, me).");
+            assert!(e.message.contains("too many arguments"), "{e}");
+            let e = bad("goes(me, zzlabel: you).");
+            assert!(e.message.contains("unknown place label"), "{e}");
+            let e = bad("goes(me, x1: you).");
+            assert!(e.message.contains("filled twice"), "{e}");
+            // Raw labels are arity-bounded.
+            let e = bad("dog(Adam, x3: you).");
+            assert!(e.message.contains("unknown place label"), "{e}");
+            // Dictionary labels work: goer/destination via the alias.
+            ok("goes(goer: me, destination: some market).");
+        }
+
+        #[test]
+        fn selector_places() {
+            // loved = the loves x2 label.
+            ok("permitted(every loves.loved).");
+            ok("permitted(every loves.x2).");
+            let e = bad("permitted(every loves.zzplace).");
+            assert!(e.message.contains("unknown selector place"), "{e}");
+        }
+
+        #[test]
+        fn linked_args_and_the_bound_place() {
+            // Positional links fill x2.. (bound var takes x1): tends =
+            // [carer, charge].
+            ok("permitted(every tends(some data)).");
+            ok("permitted(every tends(charge: some data)).");
+            // Named `it` moves the bound place.
+            ok("goes(every loves(x2: it)).");
+            ok("goes(every loves(loved: it)).");
+            // x1 filled with no `it` marker: the bound variable has nowhere to go.
+            let e = bad("goes(every loves(x1: you)).");
+            assert!(e.message.contains("bound variable needs it"), "{e}");
+            // Positional `it` is ambiguous; two `it`s are worse.
+            let e = bad("goes(every loves(it)).");
+            assert!(e.message.contains("NAMED `it`"), "{e}");
+            let e = bad("goes(every loves(x1: it, x2: it)).");
+            assert!(e.message.contains("at most one `it`"), "{e}");
+        }
+
+        #[test]
+        fn many_variables_ok() {
+            // The da/de/di 3-variable cap is LIFTED — user `$var` names are
+            // preserved (never lowered onto a fixed pool), so any number of
+            // distinct variables per statement compiles.
+            ok("all $x, $y, $z: loves($x, $y) & dog($z).");
+            ok("dog($a) & dog($b) & dog($c) & dog($d).");
+            // A free body variable beyond the prenex binders is fine (existential).
+            ok("all $x, $y, $z: loves($x, $w).");
+        }
+
+        #[test]
+        fn name_colliding_with_pronoun_fails() {
+            // A single-word Name that lowercases onto a pronoun constant would
+            // silently co-refer with the pronoun in the fact store — fail closed.
+            let e = bad("goes(Me).");
+            assert!(e.message.contains("collides with the pronoun `me`"), "{e}");
+            let e = bad("loves(Adam, You).");
+            assert!(e.message.contains("collides with the pronoun `you`"), "{e}");
+            let e = bad("dog(This).");
+            assert!(
+                e.message.contains("collides with the pronoun `this`"),
+                "{e}"
+            );
+            // Case-insensitive: any capitalization lowers onto the same constant.
+            let e = bad("dog(YONDER).");
+            assert!(
+                e.message.contains("collides with the pronoun `yonder`"),
+                "{e}"
+            );
+            // Compound names are safe — emit maps `_` to a space (`We_All`
+            // becomes the constant "we all", never the pronoun "we_all").
+            ok("goes(We_All).");
+            // Non-colliding names are untouched.
+            ok("dog(Metis).");
+        }
+
+        #[test]
+        fn it_and_slot_positions() {
+            let e = bad("goes(it).");
+            assert!(e.message.contains("where/also clause body"), "{e}");
+            let e = bad("goes(slot).");
+            assert!(e.message.contains("property"), "{e}");
+            ok("able(me, property { fast(slot) }).");
+            // `slot` in a non-property abstraction is still an error.
+            let e = bad("desires(me, event { fast(slot) }).");
+            assert!(e.message.contains("property"), "{e}");
+            // `it` in a clause body is fine, incl. through an abstraction.
+            ok("goes(some dog where big(it)).");
+            ok("goes(some dog where desires(me, event { eats(it) })).");
+        }
+
+        #[test]
+        fn tag_predicates() {
+            ok("goes(me) via uses(this).");
+            ok("goes(me) via reason(this) via entails(this).");
+            // person is 1-place — cannot link a tagged term.
+            let e = bad("goes(me) via person(this).");
+            assert!(e.message.contains("arity >= 2"), "{e}");
+            let e = bad("goes(me) via zzq(this).");
+            assert!(e.message.contains("unknown predicate"), "{e}");
+        }
+
+        #[test]
+        fn bare_clause_bodies_resolve() {
+            ok("goes(every person where approves).");
+            ok("goes(every chemical where increases where thin).");
+            // Tanru in restr and clause bodies resolve every unit.
+            ok("goes(every healthy data).");
+            let e = bad("goes(every person where zzq big).");
+            assert!(e.message.contains("unknown predicate"), "{e}");
+        }
+
+        // ── error precedence: the retired resolve pass's source order holds ──
+
+        #[test]
+        fn error_precedence_place_check_before_term() {
+            // The unknown label reports, NOT the `it`-position error hiding in
+            // the argument's term.
+            let e = bad("goes(zzlabel: it).");
+            assert!(e.message.contains("unknown place label"), "{e}");
+        }
+
+        #[test]
+        fn error_precedence_block_head_before_clause_bodies() {
+            // A block restrictor's head resolves before its rel-clause bodies.
+            let e = bad("every zzhead where zzbody $d: goes($d).");
+            assert!(e.message.contains("zzhead"), "{e}");
+        }
+
+        #[test]
+        fn the_block_restrictor_validated_when_var_unused() {
+            // The `the X $v:` substitution never walks the restrictor when the
+            // body drops `$v` — the explicit pre-validation must still reject.
+            let e = bad("the zzz $v: goes(me).");
+            assert!(e.message.contains("unknown predicate"), "{e}");
         }
     }
 }

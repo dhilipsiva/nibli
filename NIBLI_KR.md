@@ -471,8 +471,9 @@ BUILT and gated in `ci` as of 2026-07-12):
    (`tests/nibli_kr_seam_gate.rs` — per-line canonicalized-buffer equality + the
    nibli KR determinism leg; the Lojban twins battery retired at THE DROP).
 4. **Fuzzing**: a `fuzz-parse`-style libFuzzer target for the nibli KR parser. **Built:
-   `just fuzz-nibli-kr`** (parse→resolve→emit with a corrupt-buffer oracle; seeded and run
-   in the `fuzz-ci` gate).
+   `just fuzz-nibli-kr`** (parse → the single validating emit walk, with the
+   corrupt-buffer oracle over both `parse_checked` and `parse_text`'s per-statement
+   recovery buffer; seeded and run in the `fuzz-ci` gate).
 
 **Fixed-in-synthesis defects** (from the judge panel, so they don't regress):
 maximal-munch keyword-boundary behavior (kills the `everyday`→`every day`,

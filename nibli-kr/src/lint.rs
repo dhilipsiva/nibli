@@ -403,13 +403,15 @@ impl Walk<'_> {
             // `a+b` resolves only via its corpus entry, whose relation ident
             // and places are conventional (never derivable from the parts) —
             // make them visible. An uncurated compound is a compile error;
-            // the linter stays quiet.
-            let spelling = parts.join("+");
-            if let Some(entry) = nibli_lexicon::compound(&spelling)
-                && self.linter.seen_aliases.insert(spelling.clone())
+            // the linter stays quiet. (Resolution rides the same lookup seam
+            // as the emit walk — `crate::resolve`.)
+            if let Ok(info) = crate::resolve::lookup_compound(parts)
+                && let crate::resolve::ResolvedEntry::Compound(entry) = info.entry
+                && self.linter.seen_aliases.insert(info.surface.clone())
             {
                 let msg = format!(
-                    "{spelling} \u{21a6} {}({})",
+                    "{} \u{21a6} {}({})",
+                    info.surface,
                     entry.relation,
                     entry.places.join(", ")
                 );
@@ -426,7 +428,8 @@ impl Walk<'_> {
         // silently reroutes arguments; make it visible. Plain (unswapped)
         // aliases are quiet — they resolve to themselves since the
         // predicate-name flip, so there is nothing to disclose.
-        if let Some(entry) = nibli_lexicon::alias(word)
+        if let Ok(info) = crate::resolve::lookup(word)
+            && let crate::resolve::ResolvedEntry::Atomic(entry) = info.entry
             && let Some(swap) = entry.swap
             && self.linter.seen_aliases.insert(word.clone())
         {

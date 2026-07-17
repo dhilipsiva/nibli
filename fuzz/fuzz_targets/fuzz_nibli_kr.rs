@@ -3,13 +3,19 @@
 use libfuzzer_sys::fuzz_target;
 
 // Fuzz the nibli KR front-end: arbitrary UTF-8 through `nibli_kr::parse_checked`
-// (pest parse -> fail-closed resolve -> emit). Any `Ok(AstBuffer)` has passed
-// nibli-kr's own name/place checks, so handing nibli-semantics a STRUCTURALLY invalid
-// buffer (out-of-bounds index, reference cycle — nibli-semantics's `validate_ast_buffer`
-// rejects both with the stable "corrupt AST buffer" message) is a nibli-kr
-// emitter bug: the oracle panics on that error class. Other nibli-semantics Semantic
-// rejections (arity overflow, n-ary `du`, ambiguous injection, ...) are
-// legitimate and ignored. Panics/leaks anywhere are caught by libFuzzer/LSan.
+// (pest parse -> the single validating emit walk). Any `Ok(AstBuffer)` has
+// passed nibli-kr's own name/place checks, so handing nibli-semantics a
+// STRUCTURALLY invalid buffer (out-of-bounds index, reference cycle —
+// nibli-semantics's `validate_ast_buffer` rejects both with the stable
+// "corrupt AST buffer" message) is a nibli-kr emitter bug: the oracle panics
+// on that error class. Other nibli-semantics Semantic rejections (arity
+// overflow, n-ary `du`, ambiguous injection, ...) are legitimate and ignored.
+// Panics/leaks anywhere are caught by libFuzzer/LSan.
+//
+// The same oracle also runs over `nibli_kr::parse_text`'s SURVIVOR buffer —
+// the per-statement recovery path truncates a failing statement's partial
+// nodes back out, and a dangling index left behind by that rollback would be
+// exactly a "corrupt AST buffer" rejection.
 fuzz_target!(|data: &[u8]| {
     if let Ok(input) = std::str::from_utf8(data) {
         if let Ok(buffer) = nibli_kr::parse_checked(input) {
@@ -20,6 +26,15 @@ fuzz_target!(|data: &[u8]| {
                     "nibli-kr emitted a structurally invalid AstBuffer for {input:?}: {msg}"
                 );
             }
+        }
+        let recovered = nibli_kr::parse_text(input);
+        if let Err(e) = nibli_semantics::compile_from_ast(recovered.buffer) {
+            let msg = format!("{e}");
+            assert!(
+                !msg.contains("corrupt AST buffer"),
+                "parse_text's recovery rollback left a structurally invalid \
+                 survivor buffer for {input:?}: {msg}"
+            );
         }
     }
 });

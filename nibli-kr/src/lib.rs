@@ -11,12 +11,14 @@
 //! grammar and the parser cannot drift by construction.
 //!
 //! Pipeline: [`parser`] (pest walker → tree [`ast`], §6/§7 errata as targeted
-//! errors) → [`resolve`] (dictionary-driven fail-closed checks: name
-//! resolution alias→identity-word→COMPILE ERROR, place checks, the
-//! 3-variable lowering cap, `it`/`slot` position rules) → [`emit`]
-//! (tree → `AstBuffer`, `$vars` lowered to da/de/di, aliases to word with
-//! `Converted` swaps). [`parse_checked`] is the engine's fail-closed
-//! text→AST seam.
+//! errors) → [`emit`] — THE single validating walk (single-resolution merge,
+//! 2026-07-17): every dictionary-driven fail-closed check (name resolution →
+//! COMPILE ERROR on unknown words, place checks, linked-args rules,
+//! `it`/`slot` position rules, Name↔pronoun collisions) runs at the site that
+//! lowers the construct into the `AstBuffer` (`$vars` preserved verbatim,
+//! corpus entries to their canonical base with `Converted` swaps). [`resolve`]
+//! is the lookup module both emit and lint share. [`parse_checked`] is the
+//! engine's fail-closed text→AST seam.
 
 pub mod ast;
 pub mod emit;
@@ -43,59 +45,75 @@ fn to_nibli(e: parser::ParseError) -> NibliError {
     })
 }
 
-/// FAIL CLOSED: parse + resolve + emit, or the first (source-order) error.
-/// Feed the result to `nibli_semantics::compile_from_ast`.
+/// FAIL CLOSED: parse + the validating emit walk, or the first (source-order)
+/// error. Feed the result to `nibli_semantics::compile_from_ast`.
 pub fn parse_checked(text: &str) -> Result<AstBuffer, NibliError> {
     let statements = parser::parse_statements(text).map_err(to_nibli)?;
-    resolve::resolve(text, &statements).map_err(to_nibli)?;
     emit::emit(text, &statements).map_err(to_nibli)
 }
 
 /// Per-statement recovery variant (the `ParseResult` contract): every
-/// statement that parses, resolves, AND emits lands in the buffer; every
-/// failure is reported. `errors` non-empty ⇒ the buffer is PARTIAL — callers
-/// wanting fail-closed behavior use [`parse_checked`].
+/// statement that parses AND emits lands in the buffer (a failing statement's
+/// partial nodes roll back); every failure is reported, first error per
+/// statement. `errors` non-empty ⇒ the buffer is PARTIAL — callers wanting
+/// fail-closed behavior use [`parse_checked`].
 pub fn parse_text(text: &str) -> ParseResult {
     let (statements, parse_errors) = parser::parse_text_with_errors(text);
-    let mut errors: Vec<nibli_types::ast::ParseError> = parse_errors
+    let (buffer, emit_errors) = emit::emit_recovering(text, &statements);
+    let errors = parse_errors
         .into_iter()
+        .chain(emit_errors)
         .map(|e| nibli_types::ast::ParseError {
             message: e.message,
             line: e.line,
             column: e.column,
         })
         .collect();
+    ParseResult { buffer, errors }
+}
 
-    let mut good = Vec::new();
-    for statement in statements {
-        let single = std::slice::from_ref(&statement);
-        if let Err(e) = resolve::resolve(text, single) {
-            errors.push(nibli_types::ast::ParseError {
-                message: e.message,
-                line: e.line,
-                column: e.column,
-            });
-            continue;
-        }
-        good.push(statement);
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_text_recovers_per_statement_with_rollback() {
+        // Bad middle statement: its partial nodes truncate back out; the
+        // survivors form a structurally intact buffer (compiles + renders —
+        // no dangling indices after the rollback).
+        let r = parse_text("dog(Rex). zzq(me). goes(me, some market).");
+        assert_eq!(r.errors.len(), 1, "{:?}", r.errors);
+        assert!(
+            r.errors[0].message.contains("unknown predicate"),
+            "{:?}",
+            r.errors
+        );
+        assert_eq!(r.buffer.roots.len(), 2, "two survivors");
+        let rendered = render::render(&r.buffer).unwrap();
+        assert!(rendered.contains("dog(Rex)"), "{rendered}");
+        assert!(rendered.contains("goes(me, some market)"), "{rendered}");
+        assert!(!rendered.contains("zzq"), "{rendered}");
+        nibli_semantics::compile_from_ast(r.buffer).unwrap();
     }
-    match emit::emit(text, &good) {
-        Ok(buffer) => ParseResult { buffer, errors },
-        Err(e) => {
-            errors.push(nibli_types::ast::ParseError {
-                message: e.message,
-                line: e.line,
-                column: e.column,
-            });
-            ParseResult {
-                buffer: AstBuffer {
-                    predicates: Vec::new(),
-                    arguments: Vec::new(),
-                    sentences: Vec::new(),
-                    roots: Vec::new(),
-                },
-                errors,
-            }
-        }
+
+    #[test]
+    fn parse_text_resets_walk_state_after_a_failed_statement() {
+        // Statement 1 fails INSIDE a block rel-clause body (mid-walk state
+        // set); statement 2's bare `it` must still hit the position rule —
+        // a polluted `block_it_var`/`in_clause_body` would let it through.
+        let r = parse_text("every dog where zzq(it, you) $d: big($d). big(it).");
+        assert_eq!(r.errors.len(), 2, "{:?}", r.errors);
+        assert!(
+            r.errors[0].message.contains("unknown predicate"),
+            "{:?}",
+            r.errors
+        );
+        assert!(
+            r.errors[1].message.contains("where/also clause body"),
+            "{:?}",
+            r.errors
+        );
+        assert!(r.buffer.roots.is_empty(), "no survivors");
+        assert!(r.buffer.sentences.is_empty(), "rollback left nodes behind");
     }
 }
