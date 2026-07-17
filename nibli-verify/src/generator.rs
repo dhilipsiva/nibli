@@ -15,12 +15,24 @@ pub struct GeneratedCase {
     pub query: String,
 }
 
-/// Class/property predicates (identity-gismu spellings), all present in the in-tree FALLBACK
-/// dictionary — so generated cases resolve in CI with no data file. Used one-place as
-/// `<pred>(X).` (arity padding fills the rest with unspecified).
+/// Class/property predicates (curated English aliases), all present in the in-tree
+/// FALLBACK alias map — so generated cases resolve in CI with no data file. Used
+/// one-place as `<pred>(X).` (arity padding fills the rest with unspecified).
 const PREDS: &[&str] = &[
-    "gerku", "mlatu", "danlu", "jmive", "prenu", "morsi", "sutra", "barda", "cmalu", "melbi",
-    "blanu", "xunre", "pelxu", "crino",
+    "dog",
+    "cat",
+    "animal",
+    "alive",
+    "person",
+    "dead",
+    "fast",
+    "big",
+    "small",
+    "beautiful",
+    "blue",
+    "red",
+    "yellow",
+    "green",
 ];
 
 /// KR rigid Names (Capitalized).
@@ -135,15 +147,15 @@ pub fn random_case(seed: u64) -> GeneratedCase {
 /// BASE predicates: used ONLY in facts and as the negated restrictor `R`. Because a base
 /// predicate is never a rule head, no negative edge can ever close an SCC — every generated
 /// NAF program is **stratified by construction**, for every seed.
-const NAF_BASE: &[&str] = &["gerku", "mlatu", "morsi", "sutra"];
+const NAF_BASE: &[&str] = &["dog", "cat", "dead", "fast"];
 
 /// DERIVED predicates: used ONLY as rule heads (and positive Horn-rule bodies) — never
 /// negated. Disjoint from [`NAF_BASE`].
-const NAF_DERIVED: &[&str] = &["danlu", "jmive", "melbi", "barda"];
+const NAF_DERIVED: &[&str] = &["animal", "alive", "beautiful", "big"];
 
-/// The fixed domain type every entity is asserted to have (so the `ro lo prenu poi na R`
-/// rule has a non-empty, safe domain to range over).
-const NAF_DOMAIN: &str = "prenu";
+/// The fixed domain type every entity is asserted to have (so the
+/// `every person where ~R` rule has a non-empty, safe domain to range over).
+const NAF_DOMAIN: &str = "person";
 
 /// Generate a random **stratified negation-as-failure** case for `seed`: a domain, one
 /// `ro lo prenu poi na R cu Q` NAF rule (`R` base, `Q` derived), an optional positive Horn

@@ -36,35 +36,43 @@ mod tests {
     // ─── get_arity tests ─────────────────────────────────────────
 
     #[test]
-    fn test_get_arity_known_gismu_klama() {
-        // klama is a well-known 5-place gismu
-        let arity = LexiconSchema::get_arity("klama");
+    fn test_get_arity_known_alias_goes() {
+        // goes (klama) is the canonical 5-place motion predicate
+        let arity = LexiconSchema::get_arity("goes");
         assert!(arity.is_some());
         assert_eq!(arity.unwrap(), 5);
     }
 
     #[test]
-    fn test_get_arity_known_gismu_gerku() {
-        // gerku (dog) is a standard 2-place gismu
-        let arity = LexiconSchema::get_arity("gerku");
+    fn test_get_arity_known_alias_dog() {
+        // dog (gerku) is a standard 2-place class predicate
+        let arity = LexiconSchema::get_arity("dog");
         assert!(arity.is_some());
         assert_eq!(arity.unwrap(), 2);
     }
 
     #[test]
-    fn test_get_arity_known_gismu_prami() {
-        // prami (love) is a standard 2-place gismu
-        let arity = LexiconSchema::get_arity("prami");
+    fn test_get_arity_known_alias_loves() {
+        // loves (prami) is a standard 2-place predicate
+        let arity = LexiconSchema::get_arity("loves");
         assert!(arity.is_some());
         assert_eq!(arity.unwrap(), 2);
     }
 
     #[test]
-    fn test_get_arity_known_gismu_tavla() {
-        // tavla (talk) has 4 places
-        let arity = LexiconSchema::get_arity("tavla");
+    fn test_get_arity_known_alias_talks() {
+        // talks (tavla) has 4 places
+        let arity = LexiconSchema::get_arity("talks");
         assert!(arity.is_some());
         assert_eq!(arity.unwrap(), 4);
+    }
+
+    #[test]
+    fn test_gismu_identity_passthrough_still_resolves() {
+        // The RAW gismu spelling still resolves via the forward dictionary —
+        // the identity-passthrough path. This test FLIPS to a None pin at the
+        // committed-corpus milestone (gismu-input death): English-only lookups.
+        assert_eq!(LexiconSchema::get_arity("klama"), Some(5));
     }
 
     #[test]
@@ -87,8 +95,8 @@ mod tests {
     // ─── get_arity_or_default tests ──────────────────────────────
 
     #[test]
-    fn test_get_arity_or_default_known_gismu() {
-        assert_eq!(LexiconSchema::get_arity_or_default("klama"), 5);
+    fn test_get_arity_or_default_known_alias() {
+        assert_eq!(LexiconSchema::get_arity_or_default("goes"), 5);
     }
 
     #[test]
@@ -113,21 +121,22 @@ mod tests {
     // ─── Dictionary coverage spot-checks ─────────────────────────
 
     #[test]
-    fn test_various_gismu_arities() {
-        // Spot-check a range of common gismu with different arities
+    fn test_various_alias_arities() {
+        // Spot-check a range of common curated aliases with different arities
         let checks = vec![
-            ("mlatu", 2), // cat: x1 is a cat of species x2
-            ("barda", 3), // big: x1 is big in property x2 by standard x3
-            ("sutra", 2), // fast: x1 is fast at x2
-            ("prenu", 1), // person: x1 is a person
-            ("cmene", 3), // name: x1 is a name of x2 used by x3
-            ("dunda", 3), // give: x1 gives x2 to x3
-            ("pilji", 3), // multiply: x1 is product of x2 and x3
-            ("sumji", 3), // sum: x1 is sum of x2 and x3
+            ("cat", 2),      // mlatu: x1 is a cat of species x2
+            ("big", 3),      // barda: x1 is big in property x2 by standard x3
+            ("fast", 2),     // sutra: x1 is fast at x2
+            ("person", 1),   // prenu: x1 is a person
+            ("name", 3),     // cmene: x1 is a name of x2 used by x3
+            ("gives", 3),    // dunda: x1 gives x2 to x3
+            ("product", 3),  // pilji: x1 is product of x2 and x3
+            ("sum", 3),      // sumji: x1 is sum of x2 and x3
+            ("quantity", 3), // klani: x1 measures x2 on scale x3
         ];
         for (word, expected) in checks {
             let actual = LexiconSchema::get_arity(word);
-            assert!(actual.is_some(), "expected {} to be in dictionary", word);
+            assert!(actual.is_some(), "expected {} to resolve", word);
             assert_eq!(
                 actual.unwrap(),
                 expected,
@@ -150,7 +159,7 @@ mod tests {
     #[test]
     fn test_get_arity_consistent_with_default() {
         // For known words, both methods should agree
-        let word = "klama";
+        let word = "goes";
         let arity = LexiconSchema::get_arity(word).unwrap();
         let default_arity = LexiconSchema::get_arity_or_default(word);
         assert_eq!(arity, default_arity);

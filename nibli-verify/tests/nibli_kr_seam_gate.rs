@@ -280,11 +280,11 @@ fn kr_smuni_seam_conformance() {
     );
     metamorphic += 1;
 
-    // Converted alias ≡ raw gismu with explicit xN labels.
+    // Converted alias ≡ its canonical base alias with explicit xN labels.
     assert_eq!(
         canonical(&kompile("owned(Rex, Adam).").unwrap()),
-        canonical(&kompile("ponse(x2: Rex, x1: Adam).").unwrap()),
-        "converted alias must equal the label-permuted base predicate"
+        canonical(&kompile("owns(x2: Rex, x1: Adam).").unwrap()),
+        "converted alias must equal the label-permuted canonical base predicate"
     );
     metamorphic += 1;
 

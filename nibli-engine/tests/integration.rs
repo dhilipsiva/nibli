@@ -3055,13 +3055,13 @@ fn ddi_regimen_count_aggregation() {
 /// NibliEngine::aggregate_text over event-decomposed numeric facts.
 #[test]
 fn ddi_dose_sum_aggregation() {
-    // klani(drug, amount): "drug measures <amount>". Numbers via `li`.
+    // quantity(drug, amount): "drug measures <amount>" (the curated klani alias).
     let engine = engine_with_facts(&[
-        "klani(Varfarin, 5).", // 5
-        "klani(Fenitoin, 7).", // 7
+        "quantity(Varfarin, 5).", // 5
+        "quantity(Fenitoin, 7).", // 7
     ]);
     let total = engine
-        .aggregate_text("klani($da, $de).", "$de", EngineAggregateOp::Sum)
+        .aggregate_text("quantity($da, $de).", "$de", EngineAggregateOp::Sum)
         .unwrap();
     assert_eq!(total, Some(12.0), "Summed dose across drugs should be 12");
 }

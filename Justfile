@@ -473,9 +473,10 @@ verify-soundness:
 
 # Alias-map differential gate: the SHIPPED nibli-lexicon alias map's intra-crate
 # invariants (per-alias arity self-consistency, GISMU_TO_ALIAS round-trips, swap
-# validity, reserved/label integrity from the shipped map) plus a behavioral leg:
-# alias(A, B, ...) must compile canonically EQUAL to the raw-gismu spelling with
-# explicit permuted xN labels, for EVERY shipped alias. Dual-mode and never skips: a full
+# validity, reserved/label integrity from the shipped map) plus a behavioral leg,
+# for EVERY shipped alias: a plain alias must compile canonically EQUAL to itself
+# under explicit xN labels (named = positional routing); a converted alias must
+# equal its CANONICAL BASE alias under the permuted labels. Dual-mode and never skips: a full
 # local build checks all ~1,341 aliases; the CI fallback build checks the curated core
 # with a loud FALLBACK MODE banner. Since the fold, alias↔dictionary arity agreement
 # holds by construction (one crate, one parse).

@@ -248,6 +248,15 @@ pub const CURATED_ALIASES: &[(&str, &str, u8, [&str; 5])] = &[
         3,
         ["premise", "conclusion", "logic", "", ""],
     ),
+    // Promoted from ALIAS_PINS so the identity-free `quantity(...)` spelling
+    // resolves in BOTH dictionary modes (the engine dose-aggregation test uses
+    // it; the gismu spelling retires with the committed-corpus milestone).
+    (
+        "quantity",
+        "klani",
+        3,
+        ["measured", "number", "scale", "", ""],
+    ),
     ("reason", "krinu", 2, ["", "outcome", "", "", ""]),
     ("bird", "cipni", 2, ["", "species", "", "", ""]),
     ("fish", "finpe", 2, ["", "species", "", "", ""]),
@@ -360,7 +369,6 @@ pub const ALIAS_PINS: &[(&str, &str)] = &[
     ("balvi", "later"),      // gloss "future"
     ("fasnu", "occurrence"), // gloss "event"
     ("fatci", "actual"),     // gloss "fact"
-    ("klani", "quantity"),   // gloss "amount"
     ("purci", "earlier"),    // gloss "past"
     // No gloss_keywords in the export at all.
     ("jegvo", "abrahamic"),

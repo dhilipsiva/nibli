@@ -73,10 +73,10 @@ pub fn stratifiable(edges: &[Edge]) -> bool {
         .all(|(src, tgt, _)| !reaches(edges, tgt, src))
 }
 
-/// Predicates for the rule pool — all in the in-tree fallback dictionary. Any of
-/// them may appear as a head OR a negated restrictor (unlike the stratified-by-
-/// construction NAF generator), so negative cycles genuinely occur.
-const STRAT_PREDS: &[&str] = &["gerku", "mlatu", "danlu", "jmive", "melbi"];
+/// Predicates for the rule pool — all curated English aliases (fallback-safe).
+/// Any of them may appear as a head OR a negated restrictor (unlike the
+/// stratified-by-construction NAF generator), so negative cycles genuinely occur.
+const STRAT_PREDS: &[&str] = &["dog", "cat", "animal", "alive", "beautiful"];
 
 /// Entities for the fact base + query battery.
 const STRAT_ENTITIES: &[&str] = &["Adam", "Bel"];

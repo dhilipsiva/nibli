@@ -14,11 +14,13 @@
 //!    exclusion and label integrity re-asserted from the shipped map, coverage
 //!    floors.
 //! 2. `alias_behavioral_battery` — for EVERY shipped alias, `alias(A, B, …)`
-//!    compiled through nibli-kr+nibli-semantics must equal the RAW-GISMU spelling
-//!    with explicit permuted `xN` labels (the identity-passthrough twin) at the
-//!    canonicalized-LogicBuffer level — an end-to-end property of the compile
-//!    path, unaffected by the fold: raw `xN` labels route places directly, so the
-//!    oracle side never touches the alias under test.
+//!    compiled through nibli-kr+nibli-semantics must equal its twin at the
+//!    canonicalized-LogicBuffer level: a PLAIN alias twins with ITSELF under
+//!    explicit `xN:` labels (named ≡ positional routing), a CONVERTED alias
+//!    twins with its CANONICAL BASE alias under the permuted labels its surface
+//!    order implies — the cross-entry conversion oracle. (The old raw-gismu
+//!    identity-passthrough twin retired with the committed-corpus milestone:
+//!    gismu spellings stop resolving as input.)
 //!
 //! Mode is read from the shipped artifact (`DICTIONARY.len()` — a compile-time
 //! phf property; checking the json file's presence could lie about a stale build).
@@ -229,10 +231,12 @@ fn alias_behavioral_battery() {
         let arity = entry.arity as usize;
         let nibli_kr_text = format!("{name}({}).", ARG_NAMES[..arity].join(", "));
 
-        // The identity-passthrough twin in the SAME surface order: raw `xN`
-        // labels route each argument to the exact underlying place a swapped
-        // alias's surface order implies (se/te/ve/xe = x1↔xk, others fixed),
-        // so the twin exercises the routing WITHOUT the alias under test.
+        // The twin never uses a raw gismu spelling (the corpus milestone
+        // retires gismu input): a PLAIN alias twins with ITSELF under explicit
+        // `xN:` labels (named ≡ positional routing on the same predicate); a
+        // CONVERTED alias twins with its CANONICAL BASE alias under the
+        // permuted labels its surface order implies (se/te/ve/xe = x1↔xk) —
+        // the genuine cross-entry conversion oracle.
         let place_of = |pos: usize| -> usize {
             match entry.swap {
                 None => pos,
@@ -248,12 +252,21 @@ fn alias_behavioral_battery() {
                 }
             }
         };
+        let twin_head: &str = match entry.swap {
+            None => name,
+            Some(_) => nibli_lexicon::canonical_alias(entry.gismu).unwrap_or_else(|| {
+                panic!(
+                    "{name}: converted alias's gismu {:?} has no canonical base",
+                    entry.gismu
+                )
+            }),
+        };
         let twin_args: Vec<String> = ARG_NAMES[..arity]
             .iter()
             .enumerate()
             .map(|(i, a)| format!("x{}: {a}", place_of(i + 1)))
             .collect();
-        let twin_text = format!("{}({}).", entry.gismu, twin_args.join(", "));
+        let twin_text = format!("{twin_head}({}).", twin_args.join(", "));
 
         let nibli_kr_buf = match kompile(&nibli_kr_text) {
             Ok(buf) => buf,
@@ -265,7 +278,7 @@ fn alias_behavioral_battery() {
         let twin_buf = match kompile(&twin_text) {
             Ok(buf) => buf,
             Err(e) => {
-                failures.push(format!("{name}: identity twin failed: {twin_text}\n  {e}"));
+                failures.push(format!("{name}: twin failed: {twin_text}\n  {e}"));
                 continue;
             }
         };

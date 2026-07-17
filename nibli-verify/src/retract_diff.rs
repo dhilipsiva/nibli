@@ -24,7 +24,7 @@ use crate::generator::Lcg;
 /// Ordered predicate pool. Indexes 0..=1 are BASE (facts + NAF restrictors only,
 /// never rule heads); rule heads come from indexes 2.. — so every generated rule
 /// set is stratified AND acyclic-positive by construction.
-const PREDS: &[&str] = &["gerku", "mlatu", "danlu", "jmive", "melbi"];
+const PREDS: &[&str] = &["dog", "cat", "animal", "alive", "beautiful"];
 const N_BASE: usize = 2;
 
 const ENTS: &[&str] = &["Adam", "Bel"];
