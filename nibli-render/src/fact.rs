@@ -5,7 +5,7 @@
 //! `Obligatory(…)`/`Permitted(…)`, with args that may be `sk_N(dep)` Skolem
 //! functions, `(a, b)` DepPairs, `le foo` descriptions, `_` (zo'e), numbers, or
 //! plain constants — and renders it readably: role predicates collapse
-//! (`gerku_x1` -> `gerku.x1`), event Skolems are hidden, witness Skolems become
+//! (`gerku_x1` -> `dog.dog`), event Skolems are hidden, witness Skolems become
 //! `#N`.
 //!
 //! This replaces nibli-protocol's S-expr `humanize_fact`, which expected the
@@ -198,24 +198,24 @@ mod tests {
 
     #[test]
     fn simple_flat_predicate() {
-        assert_eq!(humanize_fact("danlu(adam)"), "danlu(adam)");
+        assert_eq!(humanize_fact("animal(adam)"), "animal(adam)");
     }
 
     #[test]
     fn type_predicate_hides_event_skolem() {
-        // gerku(sk_2): the lone arg is the event Skolem -> hidden -> bare "gerku".
-        assert_eq!(humanize_fact("gerku(sk_2)"), "gerku");
+        // dog(sk_2): the lone arg is the event Skolem -> hidden -> bare "dog".
+        assert_eq!(humanize_fact("dog(sk_2)"), "dog");
     }
 
     #[test]
     fn role_predicate_collapses_and_keeps_filler() {
-        // gerku_x1(sk_2, adam): collapse to gerku.x1, hide the event Skolem.
-        assert_eq!(humanize_fact("gerku_x1(sk_2, adam)"), "gerku.x1(adam)");
+        // gerku_x1(sk_2, adam): collapse to dog.dog, hide the event Skolem.
+        assert_eq!(humanize_fact("dog_x1(sk_2, adam)"), "dog.dog(adam)");
     }
 
     #[test]
     fn witness_skolem_becomes_hash() {
-        assert_eq!(humanize_fact("danlu(sk_1(adam))"), "danlu(#1(adam))");
+        assert_eq!(humanize_fact("animal(sk_1(adam))"), "animal(#1(adam))");
     }
 
     #[test]
@@ -229,33 +229,33 @@ mod tests {
     #[test]
     fn tense_wrapper() {
         assert_eq!(
-            humanize_fact("Past(klama(adam, paris))"),
-            "[past] klama(adam, paris)"
+            humanize_fact("Past(goes(adam, paris))"),
+            "[past] goes(adam, paris)"
         );
     }
 
     #[test]
     fn deontic_wrapper() {
         assert_eq!(
-            humanize_fact("Obligatory(curmi(adam))"),
-            "[obligatory] curmi(adam)"
+            humanize_fact("Obligatory(permits(adam))"),
+            "[obligatory] permits(adam)"
         );
     }
 
     #[test]
     fn zoe_and_description_args() {
-        assert_eq!(humanize_fact("klama(adam, _)"), "klama(adam, _)");
-        assert_eq!(humanize_fact("klama(le gerku)"), "klama(le gerku)");
+        assert_eq!(humanize_fact("goes(adam, _)"), "goes(adam, _)");
+        assert_eq!(humanize_fact("goes(le dog)"), "goes(le dog)");
     }
 
     #[test]
     fn zero_arg_predicate() {
-        assert_eq!(humanize_fact("gerku"), "gerku");
+        assert_eq!(humanize_fact("dog"), "dog");
     }
 
     #[test]
     fn stray_s_expr_passes_through() {
-        let s = r#"(Pred "gerku" (Cons (Const "adam") (Nil)))"#;
+        let s = r#"(Pred "dog" (Cons (Const "adam") (Nil)))"#;
         assert_eq!(humanize_fact(s), s);
     }
 

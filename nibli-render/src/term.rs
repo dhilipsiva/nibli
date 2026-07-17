@@ -5,7 +5,7 @@
 /// Detect a Neo-Davidsonian role predicate name (`goes_x2`) and return its
 /// collapsed, ARGUMENT-NAMED form for the proof narrative: the curated place
 /// label where the alias carries one (`goes_x2` → `goes.destination`), else the
-/// positional `x<N>` fallback (`dog_x1` → `dog.x1`, since a class predicate's
+/// positional `x<N>` fallback (`dog_x1` → `dog.dog`, since a class predicate's
 /// subject place has no argument name). Returns `None` for non-role names.
 pub(crate) fn collapse_role_name(name: &str) -> Option<String> {
     let base = role_base(name)?;
@@ -17,7 +17,7 @@ pub(crate) fn collapse_role_name(name: &str) -> Option<String> {
     Some(format!("{base}.{place}"))
 }
 
-/// Base relation of a role predicate (`gerku_x1` -> `Some("gerku")`).
+/// Base relation of a role predicate (`gerku_x1` -> `Some("dog")`).
 pub(crate) fn role_base(name: &str) -> Option<&str> {
     let u = name.rfind('_')?;
     let suffix = &name[u + 1..];
@@ -84,12 +84,12 @@ mod tests {
 
     #[test]
     fn role_detection() {
-        assert_eq!(collapse_role_name("gerku_x1").as_deref(), Some("gerku.x1"));
-        assert_eq!(role_base("gerku_x2"), Some("gerku"));
-        assert_eq!(role_index("gerku_x2"), Some(2));
-        assert_eq!(collapse_role_name("gerku"), None);
+        assert_eq!(collapse_role_name("dog_x1").as_deref(), Some("dog.dog"));
+        assert_eq!(role_base("dog_x2"), Some("dog"));
+        assert_eq!(role_index("dog_x2"), Some(2));
+        assert_eq!(collapse_role_name("dog"), None);
         assert_eq!(collapse_role_name("se_katna"), None); // not _xN
-        assert_eq!(role_base("danlu"), None);
+        assert_eq!(role_base("animal"), None);
     }
 
     #[test]
@@ -101,7 +101,7 @@ mod tests {
         );
         assert_eq!(collapse_role_name("goes_x1").as_deref(), Some("goes.goer"));
         // …and since the committed corpus EVERY place is named, so the old
-        // `dog.x1` positional fallback no longer occurs for corpus relations
+        // `dog.dog` positional fallback no longer occurs for corpus relations
         // (dog's places are ["dog", "breed"]). The x<N> fallback survives only
         // for relations unknown to the corpus.
         assert_eq!(collapse_role_name("dog_x1").as_deref(), Some("dog.dog"));

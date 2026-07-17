@@ -478,16 +478,21 @@ pub fn run_random(count: u64, base_seed: u64, cfg: &OracleConfig) -> Report {
 pub fn run_predilex_taxonomy(cfg: &OracleConfig) -> Report {
     let engine = kr_engine();
 
-    // Prune lemmas the KR front-end cannot compile: malformed word shapes
-    // (e.g. the vowel-initial `ukta` mapped alongside `cukta`) AND — in the
-    // fallback dictionary build — words outside the curated core (KR fails
-    // closed on unknown names where the retired Lojban front-end tolerated
-    // them at arity 2). A compile failure inside `run_lines` is a hard
-    // `Error` that fails the gate, not a skip — mirror `run_corpus_slice`'s
-    // pre-validation. The differential-gate test asserts a non-vacuity floor
-    // so this filter can never silently empty the leg.
+    // Predilex edges arrive as LOJBAN lemmas; map each through the PERMANENT
+    // provenance bridge to its English corpus name (gismu no longer resolve
+    // as input — an unported lemma, e.g. a lujvo, prunes here). Then prune
+    // anything the KR front-end still cannot compile (malformed shapes): a
+    // compile failure inside `run_lines` is a hard `Error` that fails the
+    // gate, not a skip — mirror `run_corpus_slice`'s pre-validation. The
+    // differential-gate test asserts a non-vacuity floor so this filter can
+    // never silently empty the leg.
     let edges: Vec<(String, String)> = predilex::taxonomy_edges()
         .into_iter()
+        .filter_map(|(a, b)| {
+            let a = nibli_lexicon::by_provenance(&a)?.name.to_string();
+            let b = nibli_lexicon::by_provenance(&b)?.name.to_string();
+            Some((a, b))
+        })
         .filter(|(a, b)| {
             [a, b]
                 .into_iter()

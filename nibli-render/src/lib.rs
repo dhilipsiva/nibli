@@ -51,29 +51,29 @@ mod tests {
     use super::*;
     use nibli_types::logic::{LogicBuffer, LogicNode, LogicalTerm};
 
-    /// Hand-build the compiled IR for `ro lo gerku cu danlu` ("every dog is an
-    /// animal"): `∀v0. (∃ev0. gerku(ev0) ∧ gerku_x1(ev0,v0) ∧ gerku_x2(ev0,zo'e))
-    /// → (∃ev1. danlu(ev1) ∧ danlu_x1(ev1,v0) ∧ danlu_x2(ev1,zo'e))`.
+    /// Hand-build the compiled IR for `ro lo dog cu animal` ("every dog is an
+    /// animal"): `∀v0. (∃ev0. dog(ev0) ∧ gerku_x1(ev0,v0) ∧ gerku_x2(ev0,zo'e))
+    /// → (∃ev1. animal(ev1) ∧ danlu_x1(ev1,v0) ∧ danlu_x2(ev1,zo'e))`.
     fn syllogism_buffer() -> LogicBuffer {
         let v0 = || LogicalTerm::Variable("_v0".to_string());
         let ev0 = || LogicalTerm::Variable("_ev0".to_string());
         let ev1 = || LogicalTerm::Variable("_ev1".to_string());
         let nodes = vec![
-            LogicNode::Predicate(("gerku".into(), vec![ev0()])), // 0
-            LogicNode::Predicate(("gerku_x1".into(), vec![ev0(), v0()])), // 1
-            LogicNode::Predicate(("gerku_x2".into(), vec![ev0(), LogicalTerm::Unspecified])), // 2
-            LogicNode::AndNode((0, 1)),                          // 3
-            LogicNode::AndNode((3, 2)),                          // 4
-            LogicNode::ExistsNode(("_ev0".into(), 4)),           // 5
-            LogicNode::NotNode(5),                               // 6
-            LogicNode::Predicate(("danlu".into(), vec![ev1()])), // 7
-            LogicNode::Predicate(("danlu_x1".into(), vec![ev1(), v0()])), // 8
-            LogicNode::Predicate(("danlu_x2".into(), vec![ev1(), LogicalTerm::Unspecified])), // 9
-            LogicNode::AndNode((7, 8)),                          // 10
-            LogicNode::AndNode((10, 9)),                         // 11
-            LogicNode::ExistsNode(("_ev1".into(), 11)),          // 12
-            LogicNode::OrNode((6, 12)),                          // 13
-            LogicNode::ForAllNode(("_v0".into(), 13)),           // 14
+            LogicNode::Predicate(("dog".into(), vec![ev0()])), // 0
+            LogicNode::Predicate(("dog_x1".into(), vec![ev0(), v0()])), // 1
+            LogicNode::Predicate(("dog_x2".into(), vec![ev0(), LogicalTerm::Unspecified])), // 2
+            LogicNode::AndNode((0, 1)),                        // 3
+            LogicNode::AndNode((3, 2)),                        // 4
+            LogicNode::ExistsNode(("_ev0".into(), 4)),         // 5
+            LogicNode::NotNode(5),                             // 6
+            LogicNode::Predicate(("animal".into(), vec![ev1()])), // 7
+            LogicNode::Predicate(("animal_x1".into(), vec![ev1(), v0()])), // 8
+            LogicNode::Predicate(("animal_x2".into(), vec![ev1(), LogicalTerm::Unspecified])), // 9
+            LogicNode::AndNode((7, 8)),                        // 10
+            LogicNode::AndNode((10, 9)),                       // 11
+            LogicNode::ExistsNode(("_ev1".into(), 11)),        // 12
+            LogicNode::OrNode((6, 12)),                        // 13
+            LogicNode::ForAllNode(("_v0".into(), 13)),         // 14
         ];
         LogicBuffer {
             nodes,
@@ -121,10 +121,10 @@ mod tests {
 
     #[test]
     fn flat_fact_back_translation() {
-        // A directly-asserted flat fact danlu(adam) -> "adam is an animal."
+        // A directly-asserted flat fact animal(adam) -> "adam is an animal."
         let buf = LogicBuffer {
             nodes: vec![LogicNode::Predicate((
-                "danlu".into(),
+                "animal".into(),
                 vec![LogicalTerm::Constant("adam".into())],
             ))],
             roots: vec![0],
@@ -137,17 +137,17 @@ mod tests {
 
     #[test]
     fn interior_unspecified_place_is_not_dropped() {
-        // `klama fi le zarci` — x1 is unspecified (zo'e) but x3 is filled (le zarci).
+        // `goes fi le market` — x1 is unspecified (zo'e) but x3 is filled (le market).
         // The English gloss must NOT collapse to empty (the pre-fix `:debug` bug);
         // the interior/leading x1 renders the generic "something".
         let ev0 = || LogicalTerm::Variable("_ev0".to_string());
         let buf = LogicBuffer {
             nodes: vec![
-                LogicNode::Predicate(("klama".into(), vec![ev0()])), // 0
-                LogicNode::Predicate(("klama_x1".into(), vec![ev0(), LogicalTerm::Unspecified])), // 1
+                LogicNode::Predicate(("goes".into(), vec![ev0()])), // 0
+                LogicNode::Predicate(("goes_x1".into(), vec![ev0(), LogicalTerm::Unspecified])), // 1
                 LogicNode::Predicate((
-                    "klama_x3".into(),
-                    vec![ev0(), LogicalTerm::Description("zarci".into())],
+                    "goes_x3".into(),
+                    vec![ev0(), LogicalTerm::Description("market".into())],
                 )), // 2
                 LogicNode::AndNode((0, 1)),                // 3
                 LogicNode::AndNode((3, 2)),                // 4
@@ -176,12 +176,9 @@ mod tests {
         assert!(tree.contains("\n    \u{00ac}:\n"), "tree:\n{tree}");
         assert!(tree.contains("\n      \u{2203} _ev0:\n"), "tree:\n{tree}");
         // Functional term notation (never LISP S-expr).
-        assert!(tree.contains("gerku(_ev0)\n"), "tree:\n{tree}");
-        assert!(tree.contains("gerku_x1(_ev0, _v0)\n"), "tree:\n{tree}");
-        assert!(
-            tree.contains("gerku_x2(_ev0, something)\n"),
-            "tree:\n{tree}"
-        );
+        assert!(tree.contains("dog(_ev0)\n"), "tree:\n{tree}");
+        assert!(tree.contains("dog_x1(_ev0, _v0)\n"), "tree:\n{tree}");
+        assert!(tree.contains("dog_x2(_ev0, something)\n"), "tree:\n{tree}");
         assert!(!tree.contains("(Pred"), "S-expr leaked: {tree}");
         assert!(!tree.contains("(Cons"), "S-expr leaked: {tree}");
     }
@@ -223,12 +220,12 @@ mod tests {
     fn logic_tree_flat_fact() {
         let buf = LogicBuffer {
             nodes: vec![LogicNode::Predicate((
-                "danlu".into(),
+                "animal".into(),
                 vec![LogicalTerm::Constant("adam".into())],
             ))],
             roots: vec![0],
         };
-        assert_eq!(render_logic_tree(&buf, Register::Spec), "danlu(adam)\n");
+        assert_eq!(render_logic_tree(&buf, Register::Spec), "animal(adam)\n");
     }
 
     #[test]

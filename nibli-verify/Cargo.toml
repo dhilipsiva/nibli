@@ -12,16 +12,13 @@ nibli-types = { path = "../nibli-types" }
 nibli-kr = { path = "../nibli-kr" }
 nibli-semantics = { path = "../nibli-semantics" }
 nibli-reason = { path = "../nibli-reason" }
+# The Predilex gates key their Lojban lemmas through the provenance bridge
+# (nibli_lexicon::by_provenance) — a regular dep since the taxonomy leg
+# (src/lib.rs::run_predilex_taxonomy) re-keys edges to English corpus names;
+# the corpus/alias differential tests use the same crate.
+nibli-lexicon = { path = "../nibli-lexicon" }
 
 [dev-dependencies]
-# The Predilex arity gate (tests/predilex_differential.rs) joins the vendored
-# Predilex expectations against the SHIPPED dictionary arities. Dev-only so the
-# library's data layer (src/predilex.rs) stays a pure parser.
-nibli-lexicon = { path = "../nibli-lexicon" }
-# The alias-map differential gate (tests/alias_differential.rs) checks the shipped
-# alias map's intra-crate invariants (round-trips, swap/label integrity, the
-# identity-passthrough behavioral battery); since the fold both maps live in
-# nibli-lexicon, so arity agreement holds by construction.
 
 [[bin]]
 name = "nibli-verify"

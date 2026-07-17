@@ -65,11 +65,11 @@ mod tests {
     }
 
     #[test]
-    fn test_gismu_identity_passthrough_still_resolves() {
-        // The RAW gismu spelling still resolves via the forward dictionary —
-        // the identity-passthrough path. This test FLIPS to a None pin at the
-        // committed-corpus milestone (gismu-input death): English-only lookups.
-        assert_eq!(LexiconSchema::get_arity("klama"), Some(5));
+    fn test_gismu_never_resolves() {
+        // GISMU-INPUT DEATH: the raw gismu spelling is provenance metadata,
+        // never a resolvable word — English corpus names only.
+        assert_eq!(LexiconSchema::get_arity("klama"), None);
+        assert_eq!(LexiconSchema::get_arity("gerku"), None);
     }
 
     #[test]

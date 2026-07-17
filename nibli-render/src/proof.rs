@@ -303,7 +303,7 @@ pub fn trace_display(rule: &ProofRule, result: bool) -> String {
 // ── Rule-label humanization (ported verbatim) ──
 
 /// Collapse event decomposition predicates in a rule label.
-/// "gerku ∧ gerku_x1 ∧ gerku_x2 → danlu ∧ danlu_x1 ∧ danlu_x2" → "gerku → danlu".
+/// "dog ∧ gerku_x1 ∧ gerku_x2 → animal ∧ danlu_x1 ∧ danlu_x2" → "dog → animal".
 pub(crate) fn humanize_rule_label(label: &str) -> String {
     if let Some((lhs, rhs)) = label.split_once(" → ") {
         format!(
@@ -316,7 +316,7 @@ pub(crate) fn humanize_rule_label(label: &str) -> String {
     }
 }
 
-/// Given "gerku ∧ gerku_x1 ∧ gerku_x2", return just "gerku".
+/// Given "dog ∧ gerku_x1 ∧ gerku_x2", return just "dog".
 fn collapse_role_predicates(s: &str) -> String {
     let parts: Vec<&str> = s.split(" ∧ ").collect();
     let bases: Vec<&str> = parts
@@ -363,13 +363,13 @@ mod tests {
         // The bug this whole change fixes: args must survive.
         let t = trace(
             ProofRule::Asserted {
-                fact: "gerku_x1(sk_2, adam)".to_string(),
+                fact: "dog_x1(sk_2, adam)".to_string(),
             },
             true,
         );
         assert_eq!(
             render_proof_text(&t, Register::Spec),
-            "Fact: gerku.x1(adam) -> TRUE\n"
+            "Fact: dog.dog(adam) -> TRUE\n"
         );
     }
 
@@ -377,8 +377,8 @@ mod tests {
     fn rendered_node_carries_metadata() {
         let t = trace(
             ProofRule::Derived {
-                label: "gerku ∧ gerku_x1 → danlu ∧ danlu_x1".to_string(),
-                fact: "danlu(adam)".to_string(),
+                label: "dog ∧ gerku_x1 → animal ∧ danlu_x1".to_string(),
+                fact: "animal(adam)".to_string(),
             },
             true,
         );
@@ -387,7 +387,7 @@ mod tests {
         assert_eq!(node.css_class, "proof-derived");
         assert!(node.holds);
         assert!(node.is_leaf);
-        assert_eq!(node.label, "Derived (gerku → danlu): danlu(adam)");
+        assert_eq!(node.label, "Derived (dog → animal): animal(adam)");
     }
 
     #[test]

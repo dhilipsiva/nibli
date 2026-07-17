@@ -708,35 +708,35 @@ mod tests {
 
     fn derived(fact: &str) -> ProofRule {
         ProofRule::Derived {
-            label: "gerku ∧ gerku_x1 ∧ gerku_x2 → danlu ∧ danlu_x1 ∧ danlu_x2".to_string(),
+            label: "dog ∧ gerku_x1 ∧ gerku_x2 → animal ∧ danlu_x1 ∧ danlu_x2".to_string(),
             fact: fact.to_string(),
         }
     }
 
-    /// The exact ~15-step shape gasnu captures for `? la .adam. cu danlu` over
-    /// `gerku(adam)` + `ro lo gerku cu danlu`: an ExistsWitness over a left-leaning
-    /// Conjunction spine of three per-role `Derived(danlu*)` steps, each re-tracing
-    /// the same `gerku*` conditions (deduped to ProofRefs after the first). The
+    /// The exact ~15-step shape gasnu captures for `? la .adam. cu animal` over
+    /// `dog(adam)` + `ro lo dog cu animal`: an ExistsWitness over a left-leaning
+    /// Conjunction spine of three per-role `Derived(animal*)` steps, each re-tracing
+    /// the same `dog*` conditions (deduped to ProofRefs after the first). The
     /// asserted dog event is a BARE Skolem (`sk_2`); the derived animal event is a
     /// DEPENDENT Skolem (`sk_3(adam)`) — a universal rule's conclusion event
     /// depends on the quantified individual, exactly as the engine emits.
     fn syllogism_trace() -> ProofTrace {
         ProofTrace {
             steps: vec![
-                step(asserted("gerku(sk_2)"), true, vec![]),          // 0
-                step(asserted("gerku_x1(sk_2, adam)"), true, vec![]), // 1
-                step(asserted("gerku_x2(sk_2, zo'e)"), true, vec![]), // 2
-                step(derived("danlu(sk_3(adam))"), true, vec![0, 1, 2]), // 3
-                step(proofref("gerku(sk_2)"), true, vec![]),          // 4
-                step(proofref("gerku_x1(sk_2, adam)"), true, vec![]), // 5
-                step(proofref("gerku_x2(sk_2, zo'e)"), true, vec![]), // 6
-                step(derived("danlu_x1(sk_3(adam), adam)"), true, vec![4, 5, 6]), // 7
-                step(proofref("gerku(sk_2)"), true, vec![]),          // 8
-                step(proofref("gerku_x1(sk_2, adam)"), true, vec![]), // 9
-                step(proofref("gerku_x2(sk_2, zo'e)"), true, vec![]), // 10
-                step(derived("danlu_x2(sk_3(adam), zo'e)"), true, vec![8, 9, 10]), // 11
-                step(ProofRule::Conjunction, true, vec![3, 7]),       // 12
-                step(ProofRule::Conjunction, true, vec![12, 11]),     // 13
+                step(asserted("dog(sk_2)"), true, vec![]),          // 0
+                step(asserted("dog_x1(sk_2, adam)"), true, vec![]), // 1
+                step(asserted("dog_x2(sk_2, zo'e)"), true, vec![]), // 2
+                step(derived("animal(sk_3(adam))"), true, vec![0, 1, 2]), // 3
+                step(proofref("dog(sk_2)"), true, vec![]),          // 4
+                step(proofref("dog_x1(sk_2, adam)"), true, vec![]), // 5
+                step(proofref("dog_x2(sk_2, zo'e)"), true, vec![]), // 6
+                step(derived("animal_x1(sk_3(adam), adam)"), true, vec![4, 5, 6]), // 7
+                step(proofref("dog(sk_2)"), true, vec![]),          // 8
+                step(proofref("dog_x1(sk_2, adam)"), true, vec![]), // 9
+                step(proofref("dog_x2(sk_2, zo'e)"), true, vec![]), // 10
+                step(derived("animal_x2(sk_3(adam), zo'e)"), true, vec![8, 9, 10]), // 11
+                step(ProofRule::Conjunction, true, vec![3, 7]),     // 12
+                step(ProofRule::Conjunction, true, vec![12, 11]),   // 13
                 step(
                     ProofRule::ExistsWitness {
                         var: "_ev0".to_string(),
@@ -765,7 +765,7 @@ mod tests {
             "label: {}",
             node.label
         );
-        // Exactly ONE surface premise (the 3 gerku facts + their 6 ProofRef
+        // Exactly ONE surface premise (the 3 dog facts + their 6 ProofRef
         // repeats collapse to a single "is a dog" given), plus the role-detail
         // cluster.
         let premises: Vec<&RenderedNode> = node
@@ -785,7 +785,7 @@ mod tests {
         let text = render_node_text(&node, 0, false);
         // No role-level scaffolding leaks into the clean text view.
         assert!(!text.contains("role-level detail"), "text:\n{text}");
-        assert!(!text.contains("gerku.x1"), "text:\n{text}");
+        assert!(!text.contains("dog.dog"), "text:\n{text}");
         assert!(!text.contains("Conjunction"), "text:\n{text}");
         assert!(!text.contains("(see above)"), "text:\n{text}");
         // Two macro lines: the conclusion, then the given premise.
@@ -813,7 +813,7 @@ mod tests {
         assert!(with.contains("role-level detail"), "with:\n{with}");
         // The verbose role predicates surface under the cluster.
         assert!(
-            with.contains("danlu") || with.contains("gerku"),
+            with.contains("animal") || with.contains("dog"),
             "with:\n{with}"
         );
     }
@@ -823,7 +823,7 @@ mod tests {
         let trace = ProofTrace {
             steps: vec![step(
                 ProofRule::PredicateNotFound {
-                    predicate: "danlu(adam)".to_string(),
+                    predicate: "animal(adam)".to_string(),
                 },
                 false,
                 vec![],
@@ -846,7 +846,7 @@ mod tests {
     #[test]
     fn flat_given_fact_renders() {
         let trace = ProofTrace {
-            steps: vec![step(asserted("danlu(adam)"), true, vec![])],
+            steps: vec![step(asserted("animal(adam)"), true, vec![])],
             root: 0,
             naf_dependent: false,
             cwa_false: false,
@@ -859,7 +859,7 @@ mod tests {
 
     #[test]
     fn multi_hop_nests_two_rule_steps() {
-        // jmive(adam) <- danlu(adam) <- gerku(adam), each a single-role event for
+        // alive(adam) <- animal(adam) <- dog(adam), each a single-role event for
         // a compact fixture. Exercises premise-of-premise recursion.
         let dl = |lhs_base: &str, rhs: &str, fact: &str| ProofRule::Derived {
             label: format!("{lhs_base} ∧ {lhs_base}_x1 → {rhs} ∧ {rhs}_x1"),
@@ -867,9 +867,9 @@ mod tests {
         };
         let trace = ProofTrace {
             steps: vec![
-                step(asserted("gerku(sk_1)"), true, vec![]),          // 0
-                step(asserted("gerku_x1(sk_1, adam)"), true, vec![]), // 1
-                step(ProofRule::Conjunction, true, vec![0, 1]),       // 2
+                step(asserted("dog(sk_1)"), true, vec![]),          // 0
+                step(asserted("dog_x1(sk_1, adam)"), true, vec![]), // 1
+                step(ProofRule::Conjunction, true, vec![0, 1]),     // 2
                 step(
                     ProofRule::ExistsWitness {
                         var: "_e".into(),
@@ -877,10 +877,10 @@ mod tests {
                     },
                     true,
                     vec![2],
-                ), // 3 (gerku event)
-                step(dl("gerku", "danlu", "danlu(sk_2)"), true, vec![3]), // 4
-                step(dl("gerku", "danlu", "danlu_x1(sk_2, adam)"), true, vec![3]), // 5
-                step(ProofRule::Conjunction, true, vec![4, 5]),       // 6
+                ), // 3 (dog event)
+                step(dl("dog", "animal", "animal(sk_2)"), true, vec![3]), // 4
+                step(dl("dog", "animal", "animal_x1(sk_2, adam)"), true, vec![3]), // 5
+                step(ProofRule::Conjunction, true, vec![4, 5]),     // 6
                 step(
                     ProofRule::ExistsWitness {
                         var: "_e".into(),
@@ -888,10 +888,10 @@ mod tests {
                     },
                     true,
                     vec![6],
-                ), // 7 (danlu event)
-                step(dl("danlu", "jmive", "jmive(sk_3)"), true, vec![7]), // 8
-                step(dl("danlu", "jmive", "jmive_x1(sk_3, adam)"), true, vec![7]), // 9
-                step(ProofRule::Conjunction, true, vec![8, 9]),       // 10
+                ), // 7 (animal event)
+                step(dl("animal", "alive", "alive(sk_3)"), true, vec![7]), // 8
+                step(dl("animal", "alive", "alive_x1(sk_3, adam)"), true, vec![7]), // 9
+                step(ProofRule::Conjunction, true, vec![8, 9]),     // 10
                 step(
                     ProofRule::ExistsWitness {
                         var: "_e".into(),
@@ -899,7 +899,7 @@ mod tests {
                     },
                     true,
                     vec![10],
-                ), // 11 (jmive event) ROOT
+                ), // 11 (alive event) ROOT
             ],
             root: 11,
             naf_dependent: false,
@@ -907,22 +907,22 @@ mod tests {
         };
         let node = collapse_proof(&trace, Register::Spec);
         let text = render_node_text(&node, 0, false);
-        // Three nesting levels: jmive <- danlu <- gerku.
-        assert_eq!(node.css_class, "proof-derived"); // jmive by rule
+        // Three nesting levels: alive <- animal <- dog.
+        assert_eq!(node.css_class, "proof-derived"); // alive by rule
         let mid: Vec<&RenderedNode> = node
             .children
             .iter()
             .filter(|c| c.css_class != "proof-role-detail")
             .collect();
         assert_eq!(mid.len(), 1, "text:\n{text}");
-        assert_eq!(mid[0].css_class, "proof-derived"); // danlu by rule
+        assert_eq!(mid[0].css_class, "proof-derived"); // animal by rule
         let leaf: Vec<&RenderedNode> = mid[0]
             .children
             .iter()
             .filter(|c| c.css_class != "proof-role-detail")
             .collect();
         assert_eq!(leaf.len(), 1, "text:\n{text}");
-        assert_eq!(leaf[0].css_class, "proof-asserted"); // gerku given
+        assert_eq!(leaf[0].css_class, "proof-asserted"); // dog given
         // No verbose scaffolding in the clean text.
         assert!(!text.contains("Conjunction"), "text:\n{text}");
         assert_eq!(text.lines().count(), 3, "text:\n{text}");

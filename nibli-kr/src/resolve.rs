@@ -6,7 +6,7 @@
 //! 1. NAME RESOLUTION — every predicate word (predication heads incl. all
 //!    pair units and zei parts, restrictors, selected preds, bare clause
 //!    bodies, `via` tag preds) must be a nibli-lexicon alias or an
-//!    identity-passthrough Lojban word (`nibli_lexicon::get_arity` hit).
+//!    corpus name (English; gismu never resolve — provenance only).
 //!    Anything else is a compile error — the deliberate tightening over
 //!    gerna's arity-2 default: an unknown word NEVER silently mints a
 //!    relation.
@@ -59,13 +59,12 @@ pub fn resolve_all(input: &str, statements: &[Statement]) -> Vec<ParseError> {
     errors
 }
 
-/// A resolved predicate: its arity plus the corpus entry when the name came
-/// from the corpus (the TEMPORARY gismu-passthrough compat has no entry — raw
-/// `xN` labels only; it dies at the gismu-input-death commit).
+/// A resolved predicate: its corpus entry (the ONLY resolution source since
+/// gismu-input death — no identity passthrough, no arity guess).
 pub(crate) struct PredInfo {
     pub(crate) surface: String,
     pub(crate) arity: u8,
-    pub(crate) entry: Option<&'static nibli_lexicon::PredicateEntry>,
+    pub(crate) entry: &'static nibli_lexicon::PredicateEntry,
 }
 
 pub(crate) fn lookup(word: &str) -> Result<PredInfo, String> {
@@ -73,40 +72,18 @@ pub(crate) fn lookup(word: &str) -> Result<PredInfo, String> {
         return Ok(PredInfo {
             surface: word.to_owned(),
             arity: entry.arity(),
-            entry: Some(entry),
-        });
-    }
-    if let Some(arity) = nibli_lexicon::get_arity(word) {
-        return Ok(PredInfo {
-            surface: word.to_owned(),
-            arity: arity.clamp(1, 5) as u8,
-            entry: None,
+            entry,
         });
     }
     Err(format!(
-        "unknown predicate {word:?}: not a nibli KR alias and not a dictionary word — \
+        "unknown predicate {word:?}: not a corpus name — \
          unknown names are a compile error, never an arity-2 guess (NIBLI_KR §13)"
     ))
 }
 
 /// Resolve a named-argument label to a 0-based SURFACE place index.
 pub(crate) fn label_index(info: &PredInfo, label: &str) -> Option<usize> {
-    match info.entry {
-        Some(entry) => entry.place_index(label),
-        None => {
-            // Identity passthrough: raw x1..x5 only.
-            let rest = label.strip_prefix('x')?;
-            if rest.len() != 1 {
-                return None;
-            }
-            let d = rest.chars().next()?.to_digit(10)?;
-            if (1..=5).contains(&d) && d as u8 <= info.arity {
-                Some((d - 1) as usize)
-            } else {
-                None
-            }
-        }
-    }
+    info.entry.place_index(label)
 }
 
 struct Ctx<'a> {
@@ -462,11 +439,13 @@ mod tests {
     }
 
     #[test]
-    fn aliases_and_identity_passthrough() {
+    fn corpus_names_resolve_and_gismu_reject() {
         ok("goes(me, destination: some market).");
         ok("animal(every dog).");
-        // Lojban words pass through with smuni's arity.
-        ok("klama(me, x2: some market).");
+        // GISMU-INPUT DEATH: the raw gismu spelling is a compile error — the
+        // English corpus name is the ONLY spelling (source gismu = provenance).
+        let e = bad("klama(me, x2: some market).");
+        assert!(e.message.contains("unknown predicate"), "{e}");
         // Converted aliases resolve.
         ok("obligated(every data, x2: this).");
     }

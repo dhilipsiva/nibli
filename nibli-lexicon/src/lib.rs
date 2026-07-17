@@ -17,9 +17,9 @@
 //!   bridge (Predilex gates, render overlays, lexigen drift reports).
 //! - [`corpus::corpus_entries`] / [`corpus::corpus_compounds`] — iteration.
 //!
-//! TEMPORARY (dies at the gismu-input-death commit of the corpus series): the
-//! `get_*` lookups also accept a raw gismu via the provenance bridge, so the
-//! identity-passthrough input path keeps working mid-series.
+//! Gismu do not resolve anywhere: the ONLY spellings are the English corpus
+//! names (and `a+b` compound spellings). The source gismu survives solely as
+//! the [`by_provenance`] bridge — provenance metadata, never input.
 
 pub mod arity;
 pub mod corpus;
@@ -63,27 +63,21 @@ pub fn canonical_alias(gismu: &str) -> Option<&'static str> {
     by_provenance(gismu).map(|e| e.name)
 }
 
-/// TEMPORARY gismu-input compat (removed at gismu-input death): an English
-/// name resolves directly; a raw gismu resolves through the provenance bridge.
-fn compat(word: &str) -> Option<&'static PredicateEntry> {
-    alias(word).or_else(|| by_provenance(word))
-}
-
-/// Arity of a predicate word (English name; TEMPORARILY also a raw gismu).
+/// Arity of a predicate name (English corpus names only).
 pub fn get_arity(word: &str) -> Option<usize> {
-    compat(word).map(|e| e.arity() as usize)
+    alias(word).map(|e| e.arity() as usize)
 }
 
-/// Primary English gloss of a predicate word.
+/// Primary English gloss of a predicate name.
 pub fn get_gloss(word: &str) -> Option<&'static str> {
-    compat(word).map(|e| e.gloss)
+    alias(word).map(|e| e.gloss)
 }
 
 /// Curated English place-frame template (`{x1}`..`{x5}` placeholders), e.g.
 /// `get_template("dog")` -> `Some("{x1} is a dog")`. `None` = no curated frame;
 /// callers build a generic frame from [`get_gloss`] + [`get_arity`].
 pub fn get_template(word: &str) -> Option<&'static str> {
-    compat(word).and_then(|e| e.template)
+    alias(word).and_then(|e| e.template)
 }
 
 #[cfg(test)]
@@ -121,10 +115,13 @@ mod tests {
     }
 
     #[test]
-    fn gismu_compat_still_resolves_mid_series() {
-        // TEMPORARY: flips to None pins at the gismu-input-death commit.
-        assert_eq!(get_arity("klama"), Some(5));
-        assert_eq!(get_template("gerku"), Some("{x1} is a dog"));
+    fn gismu_never_resolve() {
+        // GISMU-INPUT DEATH: raw gismu are provenance metadata, never input.
+        assert_eq!(get_arity("klama"), None);
+        assert_eq!(get_template("gerku"), None);
+        assert!(alias("klama").is_none());
+        // The bridge is the only gismu-keyed direction.
+        assert_eq!(by_provenance("klama").map(|e| e.name), Some("goes"));
     }
 
     #[test]

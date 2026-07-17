@@ -9067,11 +9067,13 @@ fn test_predicate_unknown_registered_as_inferred() {
 
 #[test]
 fn test_predicate_dictionary_source() {
-    // Assert a known gismu — should be registered with Dictionary source.
+    // Assert a known ENGLISH corpus relation — registered with Dictionary
+    // source (gismu spellings stopped resolving at the committed-corpus
+    // milestone; a raw gismu now registers as Inferred like any unknown word).
     let kb = new_kb();
-    assert_buf(&kb, make_assertion("alis", "gerku"));
+    assert_buf(&kb, make_assertion("alis", "dog"));
     let inner = kb.inner.borrow();
-    let sig = inner.predicate_registry.get("gerku").unwrap();
+    let sig = inner.predicate_registry.get("dog").unwrap();
     assert!(matches!(sig.source, SignatureSource::Dictionary));
 }
 

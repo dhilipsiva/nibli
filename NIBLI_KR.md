@@ -421,7 +421,8 @@ the stores, rendering, and every soundness gate are untouched.
   predicates (same scale as the existing `GISMU_PLACE_TEMPLATES`) → lensisku
   `place_keywords` where present (70/1,338 gismu; more for lujvo) → flagged prose
   heuristic → positional `x1..x5` fallback.
-- Lojban words pass through as identity aliases (a nibli KR file may use gismu directly).
+- Gismu do NOT resolve (since the committed-corpus milestone): the English corpus
+  name is the only spelling; the source gismu is provenance metadata.
 - **Unknown names are a compile error** (no arity-2 default) — stricter than gerna, and
   the right polarity for a zero-hallucination system.
 

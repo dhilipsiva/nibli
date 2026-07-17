@@ -1,7 +1,7 @@
 //! IR -> English back-translation.
 //!
 //! Walks the flat `LogicBuffer`, regroups Neo-Davidsonian role predicates
-//! (`gerku(ev) ∧ gerku_x1(ev, x) ∧ gerku_x2(ev, zo'e)`) back into one place-frame
+//! (`dog(ev) ∧ gerku_x1(ev, x) ∧ gerku_x2(ev, zo'e)`) back into one place-frame
 //! per event, fills the curated English template, and renders the surrounding
 //! quantifier / connective structure. The output is structure-exposing: quantifier
 //! scope stays visible ("For every X, if X is a dog, then X is an animal").
@@ -37,7 +37,7 @@ pub fn render_logic_buffer(buf: &LogicBuffer, register: Register) -> String {
 /// shows every node verbatim, so the reader sees the exact compiled FOL shape.
 /// The tree is always structural; `_register` is accepted only for signature
 /// symmetry with [`render_logic_buffer`] and is ignored. No LISP S-expression is
-/// ever emitted — terms render functionally (`gerku(_ev0)`, `tenfa_x1(_ev0, 1024)`).
+/// ever emitted — terms render functionally (`dog(_ev0)`, `tenfa_x1(_ev0, 1024)`).
 pub fn render_logic_tree(buf: &LogicBuffer, _register: Register) -> String {
     let mut out = String::with_capacity(256);
     for (i, &root) in buf.roots.iter().enumerate() {

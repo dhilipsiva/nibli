@@ -1,12 +1,12 @@
 //! Plain-English "Why" summary of a proof trace (render-only).
 //!
 //! The technical proof trace ([`crate::proof`]) is exhaustive but cryptic — it
-//! shows functional notation (`gerku.x1(adam)`) and the Neo-Davidsonian
+//! shows functional notation (`dog.dog(adam)`) and the Neo-Davidsonian
 //! decomposition explodes each fact into role-predicate lines. This produces a
 //! short, plain-English explanation of WHY a query holds (or fails), reusing the
 //! same place-frame machinery as the back-translation: it walks the flat
 //! `ProofTrace`, regroups the role predicates back to surface facts, and fills
-//! the curated English templates (`gerku` -> `"{x1} is a dog"`).
+//! the curated English templates (`dog` -> `"{x1} is a dog"`).
 //!
 //! Best-effort and total: anything that does not parse or has no frame falls
 //! back to the functional [`crate::fact::humanize_fact`] string — it never
@@ -306,7 +306,7 @@ pub(crate) fn render_group(
     }
 }
 
-/// `gerku → danlu` -> "every dog is an animal"; `zenba ∧ cinla ∧ xukmi → ckape`
+/// `dog → animal` -> "every dog is an animal"; `increases ∧ cinla ∧ chemical → dangerous`
 /// -> "every chemical that increases and is thin is in danger". When the rule's
 /// conditions carry a class restrictor ("{x1} is a &lt;noun&gt;") it heads the
 /// reading ("every &lt;noun&gt; …"); otherwise it falls back to "anything that …".
@@ -581,10 +581,10 @@ mod tests {
     fn fact_to_english_role_predicate() {
         // Robust across XML (curated "adam is a dog") and no-XML fallback
         // ("adam is dog") builds — assert the subject + the gloss noun.
-        let dog = fact_to_english("gerku_x1(sk_2, adam)", Register::Spec).unwrap();
+        let dog = fact_to_english("dog_x1(sk_2, adam)", Register::Spec).unwrap();
         assert!(dog.starts_with("adam"), "got: {dog}");
         assert!(dog.contains("dog"), "got: {dog}");
-        let animal = fact_to_english("danlu_x1(sk_3, adam)", Register::Spec).unwrap();
+        let animal = fact_to_english("animal_x1(sk_3, adam)", Register::Spec).unwrap();
         assert!(animal.starts_with("adam"), "got: {animal}");
         assert!(animal.contains("animal"), "got: {animal}");
     }
@@ -600,21 +600,21 @@ mod tests {
 
     #[test]
     fn summarize_syllogism_true() {
-        // The Ch 11 syllogism shape: a `danlu` event derived from `gerku` facts
-        // via the rule `gerku → danlu`. Root holds.
+        // The Ch 11 syllogism shape: a `animal` event derived from `dog` facts
+        // via the rule `dog → animal`. Root holds.
         let trace = ProofTrace {
             steps: vec![
                 step(
                     ProofRule::Asserted {
-                        fact: "gerku_x1(sk_2, adam)".to_string(),
+                        fact: "dog_x1(sk_2, adam)".to_string(),
                     },
                     true,
                     vec![],
                 ),
                 step(
                     ProofRule::Derived {
-                        label: "gerku ∧ gerku_x1 → danlu ∧ danlu_x1".to_string(),
-                        fact: "danlu_x1(sk_3, adam)".to_string(),
+                        label: "dog ∧ gerku_x1 → animal ∧ danlu_x1".to_string(),
+                        fact: "animal_x1(sk_3, adam)".to_string(),
                     },
                     true,
                     vec![0],
@@ -645,7 +645,7 @@ mod tests {
             steps: vec![
                 step(
                     ProofRule::Asserted {
-                        fact: "gerku_x1(sk_2, adam)".to_string(),
+                        fact: "dog_x1(sk_2, adam)".to_string(),
                     },
                     true,
                     vec![],
@@ -671,7 +671,7 @@ mod tests {
         let trace = ProofTrace {
             steps: vec![step(
                 ProofRule::PredicateNotFound {
-                    predicate: "danlu_x1(sk_3, adam)".to_string(),
+                    predicate: "animal_x1(sk_3, adam)".to_string(),
                 },
                 false,
                 vec![],
@@ -709,25 +709,25 @@ mod tests {
 
     #[test]
     fn rule_multi_predicate_conclusion_renders_each() {
-        // `gerku → danlu ∧ jmive`: the universal rule reading renders both
+        // `dog → animal ∧ alive`: the universal rule reading renders both
         // conclusion predicates, joined. (The "why" narrative shows the
         // instantiated fact; the multi-conclusion lives in the rule justification.)
-        let e = rule_to_english("gerku → danlu ∧ jmive").expect("renders");
+        let e = rule_to_english("dog → animal ∧ alive").expect("renders");
         assert!(e.starts_with("every dog"), "type head missing: {e}");
-        assert!(e.contains("animal"), "danlu missing: {e}");
-        assert!(e.contains("alive"), "jmive missing: {e}");
+        assert!(e.contains("animal"), "animal missing: {e}");
+        assert!(e.contains("alive"), "alive missing: {e}");
         assert!(e.contains(" and "), "multi-conclusion not joined: {e}");
     }
 
     #[test]
     fn rule_skips_abstraction_operators_no_broken_output() {
-        // `prenu → nu ∧ danlu`: the abstraction `nu` is dropped (no surface
+        // `person → nu ∧ animal`: the abstraction `nu` is dropped (no surface
         // frame); the conclusion never leaks a raw `∧` or a dangling subject.
         let trace = ProofTrace {
             steps: vec![step(
                 ProofRule::Derived {
-                    label: "prenu → nu ∧ danlu".to_string(),
-                    fact: "danlu_x1(sk_3, adam)".to_string(),
+                    label: "person → nu ∧ animal".to_string(),
+                    fact: "animal_x1(sk_3, adam)".to_string(),
                 },
                 true,
                 vec![],
@@ -736,20 +736,20 @@ mod tests {
             naf_dependent: false,
             cwa_false: false,
         };
-        let s = summarize_proof(&trace, Register::Spec).expect("renders the danlu conclusion");
+        let s = summarize_proof(&trace, Register::Spec).expect("renders the animal conclusion");
         assert!(!s.contains('∧'), "abstraction/raw-conjunction leaked: {s}");
         assert!(!s.contains(" X and X"), "broken output: {s}");
-        assert!(s.contains("animal"), "danlu conclusion missing: {s}"); // nu skipped, danlu kept
+        assert!(s.contains("animal"), "animal conclusion missing: {s}"); // nu skipped, animal kept
     }
 
     #[test]
     fn rule_multi_place_predicate_keeps_its_object() {
-        // A 2-place rule (`curmi → javni`) with no class restrictor reads as
+        // A 2-place rule (`permits → rule`) with no class restrictor reads as
         // "anything that …"; multi-place predicates keep a generic object rather
         // than collapsing to a dangling verb.
-        let e = rule_to_english("curmi → javni").expect("multi-place rule now renders");
+        let e = rule_to_english("permits → rule").expect("multi-place rule now renders");
         assert!(e.starts_with("anything that "), "got: {e}");
-        assert!(e.contains("permits something"), "curmi truncated: {e}");
+        assert!(e.contains("permits something"), "permits truncated: {e}");
         assert!(
             e.contains("is a rule about something"),
             "javni truncated: {e}"
@@ -764,10 +764,10 @@ mod tests {
         // A class restrictor heads the universal: "every dog is an animal" — no
         // bare `X`, no spurious "something" filler.
         assert_eq!(
-            rule_to_english("gerku → danlu").as_deref(),
+            rule_to_english("dog → animal").as_deref(),
             Some("every dog is an animal")
         );
-        let e = rule_to_english("gerku → danlu").unwrap();
+        let e = rule_to_english("dog → animal").unwrap();
         assert!(!e.contains("something"), "1-place leaked a filler: {e}");
         assert!(!e.contains('X'), "bare variable leaked: {e}");
     }
@@ -776,12 +776,12 @@ mod tests {
     fn deontic_wrapper_is_preserved_on_the_statement() {
         // A conclusion fact carrying an `Obligatory(…)` wrapper keeps its mood
         // ("it must be that …") — render-only, no code change (the guard).
-        let e = fact_to_english("Obligatory(prenu(adam))", Register::Spec)
+        let e = fact_to_english("Obligatory(person(adam))", Register::Spec)
             .expect("deontic flat fact renders");
         assert!(e.contains("it must be that"), "mood dropped: {e}");
         assert!(e.contains("person"), "predicate dropped: {e}");
         // Permitted likewise.
-        let p = fact_to_english("Permitted(prenu(adam))", Register::Spec).unwrap();
+        let p = fact_to_english("Permitted(person(adam))", Register::Spec).unwrap();
         assert!(p.contains("it is permitted that"), "mood dropped: {p}");
     }
 

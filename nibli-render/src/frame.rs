@@ -2,46 +2,37 @@
 //!
 //! A *frame* is an English clause schema for a predicate using `{x1}`..`{x5}`
 //! placeholders. The curated table in `nibli-lexicon` supplies frames for the
-//! predicates the corpora use (`gerku` -> `"{x1} is a dog"`); everything else
+//! predicates the corpora use (`dog` -> `"{x1} is a dog"`); everything else
 //! falls back to a generic gloss-based frame here.
 
-use nibli_lexicon::{alias, get_arity, get_gloss, get_template};
+use nibli_lexicon::{get_arity, get_gloss, get_template};
 
 use crate::overlay;
 
-/// Map an IR relation — the plain ENGLISH name — back to its source gismu, so
-/// the still-gismu-keyed domain overlays resolve. TEMPORARY shape: the overlay
-/// tables re-key to English at the gismu-input-death commit and this un-mapping
-/// dies with them (templates/glosses already resolve English-first via compat).
-fn frame_key(relation: &str) -> &str {
-    alias(relation).map(|e| e.source_gismu).unwrap_or(relation)
-}
-
 /// Resolve a fill-template (a string with `{x1}`..`{xN}` placeholders) for a
-/// relation. DRY resolution chain: the active domain overlay (if any) wins, then
-/// the curated engine dictionary template, then a generic gloss+arity frame. The
-/// overlay is just the first tier — Custom KBs and non-UI surfaces fall straight
-/// through to the dictionary.
+/// relation — everything is ENGLISH-keyed since the committed corpus (the old
+/// English→gismu `frame_key` un-mapping died with gismu input). DRY resolution
+/// chain: the active domain overlay (if any) wins, then the corpus template,
+/// then a generic gloss+arity frame. The overlay is just the first tier —
+/// Custom KBs and non-UI surfaces fall straight through to the corpus.
 pub(crate) fn frame_template(relation: &str) -> String {
-    let key = frame_key(relation);
-    if let Some(t) = overlay::active().and_then(|o| o.template(key)) {
+    if let Some(t) = overlay::active().and_then(|o| o.template(relation)) {
         return t.to_string();
     }
-    if let Some(t) = get_template(key) {
+    if let Some(t) = get_template(relation) {
         return t.to_string();
     }
     let gloss = gloss_for(relation);
-    let arity = get_arity(key).unwrap_or(1).max(1);
+    let arity = get_arity(relation).unwrap_or(1).max(1);
     generic_template(&gloss, arity)
 }
 
-/// Single-word gloss for a relation via the same overlay -> dictionary -> bare
+/// Single-word gloss for a relation via the same overlay -> corpus -> bare
 /// chain. Used for the generic frame fallback and the "a &lt;noun&gt;" rendering.
 pub(crate) fn gloss_for(relation: &str) -> String {
-    let key = frame_key(relation);
     overlay::active()
-        .and_then(|o| o.gloss(key))
-        .or_else(|| get_gloss(key))
+        .and_then(|o| o.gloss(relation))
+        .or_else(|| get_gloss(relation))
         .unwrap_or(relation)
         .to_string()
 }
@@ -109,14 +100,14 @@ pub(crate) fn strip_trailing_particle(before: &str) -> &str {
 /// place `x(i+1)`; `None` means the place was unspecified (`zo'e`) or absent.
 ///
 /// Placeholders BEYOND the last filled place are a TRAILING run and are truncated
-/// (Lojban leaves trailing places implicit, so `klama` with only x1,x2 filled
+/// (Lojban leaves trailing places implicit, so `goes` with only x1,x2 filled
 /// reads "X goes to the market", not "X goes to the market from  via  using ").
 /// The verb connective leading into the first dropped place is KEPT, minus any
 /// dangling particle — so `citka` with only x1 reads "X eats" (not "X"), and
-/// `klama` with only x1 reads "X goes" (not "X" or a dangling "X goes to").
+/// `goes` with only x1 reads "X goes" (not "X" or a dangling "X goes to").
 /// An INTERIOR or LEADING unspecified place — one where a LATER place IS filled —
 /// renders a generic "something" so the clause is not collapsed to nothing
-/// (`klama fi le zarci do` → "something goes to something from the market via do",
+/// (`goes fi le market do` → "something goes to something from the market via do",
 /// not an empty string). No sort info is available, so the filler is uniformly
 /// "something" (animacy-aware "someone" would need type info threaded through).
 pub(crate) fn fill_template(template: &str, places: &[Option<String>]) -> String {
@@ -161,9 +152,9 @@ mod tests {
 
     #[test]
     fn curated_template_used() {
-        // gerku is curated as "{x1} is a dog" (via the nibli-lexicon build).
-        assert_eq!(frame_template("gerku"), "{x1} is a dog");
-        assert_eq!(frame_template("danlu"), "{x1} is an animal");
+        // dog is curated as "{x1} is a dog" (via the nibli-lexicon build).
+        assert_eq!(frame_template("dog"), "{x1} is a dog");
+        assert_eq!(frame_template("animal"), "{x1} is an animal");
     }
 
     #[test]
@@ -178,16 +169,16 @@ mod tests {
         use crate::corpus_overlay::DRUG_INTERACTIONS_OVERLAY;
         use crate::overlay::with_overlay;
         // Fallback tier: the engine dictionary's literal proxy gloss.
-        assert_eq!(frame_template("ckape"), "{x1} is in danger");
-        // Overlay tier: the domain term wins, and `se katna` reorders its places.
+        assert_eq!(frame_template("dangerous"), "{x1} is in danger");
+        // Overlay tier: the domain term wins, and `se cuts` reorders its places.
         with_overlay(Some(&DRUG_INTERACTIONS_OVERLAY), || {
-            assert_eq!(frame_template("ckape"), "{x1} is at toxicity risk");
-            assert_eq!(frame_template("katna"), "{x2} is metabolized by {x1}");
+            assert_eq!(frame_template("dangerous"), "{x1} is at toxicity risk");
+            assert_eq!(frame_template("cuts"), "{x2} is metabolized by {x1}");
             // A relation the overlay does not cover still falls through.
-            assert_eq!(frame_template("gerku"), "{x1} is a dog");
+            assert_eq!(frame_template("dog"), "{x1} is a dog");
         });
         // Restored after the scope.
-        assert_eq!(frame_template("ckape"), "{x1} is in danger");
+        assert_eq!(frame_template("dangerous"), "{x1} is in danger");
     }
 
     #[test]

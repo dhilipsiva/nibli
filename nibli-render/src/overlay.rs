@@ -1,6 +1,6 @@
 //! Per-example domain-gloss overlay: an OPTIONAL display layer that renders a
 //! curated corpus's proxy predicates and opaque constants in real domain terms
-//! (`fanta` -> "inhibits", `flukonazol` -> "fluconazole"), scoped to a loaded
+//! (`prevents` -> "inhibits", `flukonazol` -> "fluconazole"), scoped to a loaded
 //! example.
 //!
 //! The engine dictionary (`nibli_lexicon`) is always the FALLBACK: an example
@@ -18,7 +18,7 @@ use std::cell::Cell;
 #[derive(Clone, Copy, Debug)]
 pub struct DomainGloss {
     /// Place-frame template overrides keyed by bare gismu. Placeholders `{x1}`..
-    /// may reorder, e.g. `se katna` -> "{x2} is metabolized by {x1}" (the IR has
+    /// may reorder, e.g. `se cuts` -> "{x2} is metabolized by {x1}" (the IR has
     /// already swapped the `se` args, so the template keys on the bare gismu).
     pub templates: &'static [(&'static str, &'static str)],
     /// Single-word noun-gloss overrides keyed by gismu (e.g. the "a <noun>" of an
@@ -80,16 +80,19 @@ mod tests {
     use super::*;
 
     static SAMPLE: DomainGloss = DomainGloss {
-        templates: &[("ckape", "{x1} is at toxicity risk")],
-        glosses: &[("xukmi", "drug")],
+        templates: &[("dangerous", "{x1} is at toxicity risk")],
+        glosses: &[("chemical", "drug")],
         names: &[("varfarin", "warfarin")],
     };
 
     #[test]
     fn lookups_resolve() {
-        assert_eq!(SAMPLE.template("ckape"), Some("{x1} is at toxicity risk"));
-        assert_eq!(SAMPLE.template("zenba"), None);
-        assert_eq!(SAMPLE.gloss("xukmi"), Some("drug"));
+        assert_eq!(
+            SAMPLE.template("dangerous"),
+            Some("{x1} is at toxicity risk")
+        );
+        assert_eq!(SAMPLE.template("increases"), None);
+        assert_eq!(SAMPLE.gloss("chemical"), Some("drug"));
         assert_eq!(SAMPLE.name("varfarin"), Some("warfarin"));
         assert_eq!(SAMPLE.name("adam"), None);
     }

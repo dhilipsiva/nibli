@@ -5,8 +5,10 @@
 //! push-return values, never from length arithmetic.
 //!
 //! Emission map (NIBLI_KR §13; design-review decisions):
-//! - predicate names resolve HERE to word (alias → word, identity words pass
-//!   through); an alias with a place swap emits `Predicate::Converted`
+//! - predicate names resolve to their corpus entry's canonical BASE name
+//!   (`base_name`: a converted entry's `swap.base`, a plain entry itself);
+//!   a place-swapped entry emits `Predicate::Converted`. No identity
+//!   passthrough — an unknown name is a compile error (NIBLI_KR §13)
 //! - logic variables pass through verbatim as `Pronoun("$name")` — the `$`
 //!   sigil IS the variable signal, so the user's own names survive into the IR
 //!   (no fixed `da`/`de`/`di` pool, no 3-variable cap); pronoun keyterms emit
@@ -41,18 +43,6 @@ use crate::ast::{
 };
 use crate::parser::{ParseError, err_at};
 use crate::resolve::{PredInfo, label_index, lookup};
-
-/// The canonical ENGLISH predicate name for a resolved word — the plain,
-/// unswapped alias (`klama` → `goes`), so the logic IR and every proof trace are
-/// Lojban-free. A swapped alias's `Converted` wrapper carries the swap, so `Root`
-/// takes the PLAIN English form. Falls back to the word itself when it has no
-/// alias (an identity-passthrough word, or an uncurated gismu in a fallback
-/// build).
-fn english_name(name: &str) -> String {
-    nibli_lexicon::canonical_alias(name)
-        .map(str::to_owned)
-        .unwrap_or_else(|| name.to_owned())
-}
 
 /// The canonical BASE relation name for a resolved corpus entry: a swapped
 /// (converted) entry names its base sibling by type; a plain entry is its own
@@ -254,9 +244,8 @@ impl<'a> Emitter<'a> {
         for tag in &p.tags {
             let word = self
                 .resolved(tag.pred.last().expect("tag pred non-empty"), tag.span.start)?
-                .entry
-                .map(base_name)
-                .unwrap_or_else(|| english_name(tag.pred.last().unwrap()));
+                .entry;
+            let word = base_name(word);
             let modal_predicate = self.push_predicate(Predicate::Root(word));
             let inner = self.term(&tag.term, tag.span.start)?;
             tail_terms.push(self.push_argument(Argument::ModalTagged((
@@ -374,20 +363,14 @@ impl<'a> Emitter<'a> {
                     let mut word_parts = Vec::new();
                     for part in parts {
                         let info = self.resolved(part, at)?;
-                        word_parts.push(
-                            info.entry
-                                .map(base_name)
-                                .unwrap_or_else(|| english_name(part)),
-                        );
+                        word_parts.push(base_name(info.entry));
                     }
                     return Ok(self.push_predicate(Predicate::Compound(word_parts)));
                 }
                 let word = &parts[0];
                 let info = self.resolved(word, at)?;
-                let (word, swap) = match info.entry {
-                    Some(entry) => (base_name(entry), entry.swap.map(|s| s.with)),
-                    None => (english_name(word), None),
-                };
+                let entry = info.entry;
+                let (word, swap) = (base_name(entry), entry.swap.map(|s| s.with));
                 let root = self.push_predicate(Predicate::Root(word));
                 Ok(match swap {
                     None => root,
@@ -461,10 +444,8 @@ impl<'a> Emitter<'a> {
         let core = match &restr.kind {
             RestrKind::Selected { pred, label } => {
                 let info = self.resolved(pred, at)?;
-                let (word, alias_swap) = match info.entry {
-                    Some(entry) => (base_name(entry), entry.swap.map(|s| s.with)),
-                    None => (english_name(pred), None),
-                };
+                let entry = info.entry;
+                let (word, alias_swap) = (base_name(entry), entry.swap.map(|s| s.with));
                 let mut idx = self.push_predicate(Predicate::Root(word));
                 if let Some(p) = alias_swap {
                     idx = self.push_predicate(Predicate::Converted((conversion_for(p), idx)));

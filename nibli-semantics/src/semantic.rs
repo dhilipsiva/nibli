@@ -501,8 +501,8 @@ mod tests {
         // `le zarci` is x3 and the following UNTAGGED `do` resumes at x4
         // (NOT x1, which is the pre-fix "first free slot" bug).
         let predicates = vec![
-            Predicate::Root("klama".into()), // 0
-            Predicate::Root("zarci".into()), // 1
+            Predicate::Root("goes".into()),   // 0
+            Predicate::Root("market".into()), // 1
         ];
         let arguments = vec![
             Argument::Description((Determiner::Definite, 1)), // 0: le zarci
@@ -519,19 +519,19 @@ mod tests {
         };
         let (form, compiler) = compile_one(predicates, arguments, proposition);
         assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
-        let x4 = get_pred_args(&form, "klama_x4", &compiler).expect("klama_x4 present");
+        let x4 = get_pred_args(&form, "goes_x4", &compiler).expect("goes_x4 present");
         assert_eq!(
             const_str(&compiler, &x4[1]),
             "you",
             "untagged `do` must fill x4 after fi"
         );
-        let x1 = get_pred_args(&form, "klama_x1", &compiler).expect("klama_x1 present");
+        let x1 = get_pred_args(&form, "goes_x1", &compiler).expect("goes_x1 present");
         assert!(
             !matches!(&x1[1], LogicalTerm::Constant(c) if resolve(&compiler, c) == "you"),
             "do must NOT land in x1 (pre-fix bug), got {:?}",
             x1[1]
         );
-        let x3 = get_pred_args(&form, "klama_x3", &compiler).expect("klama_x3 present");
+        let x3 = get_pred_args(&form, "goes_x3", &compiler).expect("goes_x3 present");
         assert!(
             matches!(&x3[1], LogicalTerm::Description(_)),
             "fi `le zarci` must fill x3, got {:?}",
@@ -542,7 +542,7 @@ mod tests {
     #[test]
     fn test_untagged_before_tag_still_fills_x1() {
         // Regression: `mi klama fe do` — untagged `mi` fills x1, `fe do` fills x2.
-        let predicates = vec![Predicate::Root("klama".into())];
+        let predicates = vec![Predicate::Root("goes".into())];
         let arguments = vec![
             Argument::Pronoun("me".into()),  // 0
             Argument::Pronoun("you".into()), // 1
@@ -558,8 +558,8 @@ mod tests {
         };
         let (form, compiler) = compile_one(predicates, arguments, proposition);
         assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
-        let x1 = get_pred_args(&form, "klama_x1", &compiler).expect("klama_x1");
-        let x2 = get_pred_args(&form, "klama_x2", &compiler).expect("klama_x2");
+        let x1 = get_pred_args(&form, "goes_x1", &compiler).expect("goes_x1");
+        let x2 = get_pred_args(&form, "goes_x2", &compiler).expect("goes_x2");
         assert_eq!(const_str(&compiler, &x1[1]), "me");
         assert_eq!(const_str(&compiler, &x2[1]), "you");
     }
@@ -586,7 +586,7 @@ mod tests {
         let predicates = vec![
             Predicate::Root(inner_predicate.into()), // 0
             Predicate::Abstraction((kind, 1)),       // 1 → sentences[1]
-            Predicate::Root("barda".into()),         // 2
+            Predicate::Root("big".into()),           // 2
         ];
 
         let inner_proposition = Proposition {
@@ -630,7 +630,7 @@ mod tests {
         // → Exists(_v0, And(duhu(_v0), And(klama(mi, ...), barda(_v0, ...))))
         let (form, compiler) = compile_abstraction(
             AbstractionKind::Fact,
-            "klama",
+            "goes",
             vec![Argument::Pronoun("me".into())],
         );
 
@@ -645,7 +645,7 @@ mod tests {
                     "expected 'duhu' predicate"
                 );
                 assert!(
-                    has_pred(&form, "klama", &compiler),
+                    has_pred(&form, "goes", &compiler),
                     "expected 'klama' type predicate"
                 );
             }
@@ -659,7 +659,7 @@ mod tests {
         // ce'u should resolve to the same variable as the quantified entity
         let (form, compiler) = compile_abstraction(
             AbstractionKind::Property,
-            "melbi",
+            "beautiful",
             vec![Argument::Pronoun("slot".into())],
         );
 
@@ -680,7 +680,7 @@ mod tests {
                     "ka predicate arg should be the quantified variable"
                 );
                 // melbi_x1 role pred should have the same variable as its entity arg
-                let melbi_x1_args = get_pred_args(&form, "melbi_x1", &compiler).unwrap();
+                let melbi_x1_args = get_pred_args(&form, "beautiful_x1", &compiler).unwrap();
                 let melbi_entity = match &melbi_x1_args[1] {
                     LogicalTerm::Variable(v) => resolve(&compiler, v),
                     other => panic!("expected Variable for melbi_x1 entity, got {:?}", other),
@@ -698,7 +698,7 @@ mod tests {
     fn test_ni_abstraction_produces_ni_predicate() {
         let (form, compiler) = compile_abstraction(
             AbstractionKind::Amount,
-            "gleki",
+            "happy",
             vec![Argument::Pronoun("me".into())],
         );
 
@@ -710,7 +710,7 @@ mod tests {
                     "expected 'ni' predicate"
                 );
                 assert!(
-                    has_pred(&form, "gleki", &compiler),
+                    has_pred(&form, "happy", &compiler),
                     "expected 'gleki' type predicate"
                 );
             }
@@ -722,7 +722,7 @@ mod tests {
     fn test_siho_abstraction_produces_siho_predicate() {
         let (form, compiler) = compile_abstraction(
             AbstractionKind::Concept,
-            "klama",
+            "goes",
             vec![Argument::Pronoun("me".into())],
         );
 
@@ -734,7 +734,7 @@ mod tests {
                     "expected 'siho' predicate"
                 );
                 assert!(
-                    has_pred(&form, "klama", &compiler),
+                    has_pred(&form, "goes", &compiler),
                     "expected 'klama' type predicate"
                 );
             }
@@ -746,7 +746,7 @@ mod tests {
     fn test_nu_abstraction_still_works() {
         let (form, compiler) = compile_abstraction(
             AbstractionKind::Event,
-            "klama",
+            "goes",
             vec![Argument::Pronoun("me".into())],
         );
 
@@ -758,7 +758,7 @@ mod tests {
                     "expected 'nu' predicate"
                 );
                 assert!(
-                    has_pred(&form, "klama", &compiler),
+                    has_pred(&form, "goes", &compiler),
                     "expected 'klama' type predicate"
                 );
             }
@@ -773,7 +773,7 @@ mod tests {
         // does not close `_v` fresh vars) — a non-ground form leaking toward the store.
         // Fail closed: a semantic error is accumulated (NibliError::Semantic downstream),
         // and no free variable escapes.
-        let predicates = vec![Predicate::Root("melbi".into())];
+        let predicates = vec![Predicate::Root("beautiful".into())];
         let arguments = vec![Argument::Pronoun("slot".into())];
         let proposition = Proposition {
             relation: 0,
@@ -795,8 +795,8 @@ mod tests {
             compiler.errors
         );
         // The placeholder term is the rigid Unspecified, never a free variable.
-        let x1_args =
-            get_pred_args(&form, "melbi_x1", &compiler).expect("expected melbi_x1 role predicate");
+        let x1_args = get_pred_args(&form, "beautiful_x1", &compiler)
+            .expect("expected melbi_x1 role predicate");
         assert!(
             matches!(&x1_args[1], LogicalTerm::Unspecified),
             "rejected ce'u compiles to Unspecified (no free variable), got {:?}",
@@ -813,8 +813,8 @@ mod tests {
         //   arguments: [0: mi, 1: do, 2: ModalTagged(Fio(1), 1)]
         //   predicates: [0: klama, 1: zbasu]
         let predicates = vec![
-            Predicate::Root("klama".into()), // 0
-            Predicate::Root("zbasu".into()), // 1
+            Predicate::Root("goes".into()),  // 0
+            Predicate::Root("makes".into()), // 1
         ];
         let arguments = vec![
             Argument::Pronoun("me".into()),                  // 0
@@ -834,15 +834,15 @@ mod tests {
 
         // klama is event-decomposed, zbasu is a flat modal Predicate
         assert!(
-            has_pred(&form, "klama", &compiler),
+            has_pred(&form, "goes", &compiler),
             "expected klama type predicate"
         );
         assert!(
-            has_pred(&form, "zbasu", &compiler),
+            has_pred(&form, "makes", &compiler),
             "expected zbasu modal predicate"
         );
         // zbasu is flat: zbasu(do, mi, ...)
-        let zbasu_args = get_pred_args(&form, "zbasu", &compiler).unwrap();
+        let zbasu_args = get_pred_args(&form, "makes", &compiler).unwrap();
         assert_eq!(
             zbasu_args[0],
             LogicalTerm::Constant(compiler.interner.get("you").unwrap())
@@ -862,8 +862,8 @@ mod tests {
         // is a curated-fallback arity-1 gismu, so this fires in both the XML and
         // no-XML builds.
         let predicates = vec![
-            Predicate::Root("barda".into()), // 0
-            Predicate::Root("prenu".into()), // 1 (arity 1)
+            Predicate::Root("big".into()),    // 0
+            Predicate::Root("person".into()), // 1 (arity 1)
         ];
         let arguments = vec![
             Argument::Pronoun("me".into()),                  // 0
@@ -900,8 +900,8 @@ mod tests {
         //   predicates: [0: gerku, 1: barda]
         //   proposition: { relation: 1, head_terms: [0], tail_terms: [] }
         let predicates = vec![
-            Predicate::Root("gerku".into()), // 0
-            Predicate::Root("barda".into()), // 1
+            Predicate::Root("dog".into()), // 0
+            Predicate::Root("big".into()), // 1
         ];
         let arguments = vec![
             Argument::QuantifiedDescription((2, Determiner::Indefinite, 0)), // 0
@@ -925,13 +925,10 @@ mod tests {
                 assert!(resolve(&compiler, var).starts_with("_v"));
                 // The body should contain both gerku and barda type predicates
                 assert!(
-                    has_pred(body, "gerku", &compiler),
+                    has_pred(body, "dog", &compiler),
                     "expected gerku restrictor type pred"
                 );
-                assert!(
-                    has_pred(body, "barda", &compiler),
-                    "expected barda type pred"
-                );
+                assert!(has_pred(body, "big", &compiler), "expected barda type pred");
             }
             other => panic!("expected Count, got {:?}", other),
         }
@@ -941,8 +938,8 @@ mod tests {
     fn test_no_lo_produces_count_0() {
         // no lo gerku cu barda → Count(_v0, 0, And(gerku(_v0,...), barda(_v0,...)))
         let predicates = vec![
-            Predicate::Root("gerku".into()), // 0
-            Predicate::Root("barda".into()), // 1
+            Predicate::Root("dog".into()), // 0
+            Predicate::Root("big".into()), // 1
         ];
         let arguments = vec![
             Argument::QuantifiedDescription((0, Determiner::Indefinite, 0)), // 0
@@ -967,10 +964,7 @@ mod tests {
     #[test]
     fn test_pa_lo_produces_count_1() {
         // pa lo gerku cu barda → Count(_v0, 1, ...)
-        let predicates = vec![
-            Predicate::Root("gerku".into()),
-            Predicate::Root("barda".into()),
-        ];
+        let predicates = vec![Predicate::Root("dog".into()), Predicate::Root("big".into())];
         let arguments = vec![Argument::QuantifiedDescription((
             1,
             Determiner::Indefinite,
@@ -996,10 +990,7 @@ mod tests {
     #[test]
     fn test_lo_still_produces_exists() {
         // Regression: lo gerku cu barda → Exists (not Count)
-        let predicates = vec![
-            Predicate::Root("gerku".into()),
-            Predicate::Root("barda".into()),
-        ];
+        let predicates = vec![Predicate::Root("dog".into()), Predicate::Root("big".into())];
         let arguments = vec![Argument::Description((Determiner::Indefinite, 0))];
         let proposition = Proposition {
             relation: 1,
@@ -1066,7 +1057,7 @@ mod tests {
     #[test]
     fn test_afterthought_je_compiles_to_and() {
         let conn = SentenceConnective::Afterthought(Connective::And);
-        let (form, _) = compile_connected(conn, "klama", "me", "prami", "you");
+        let (form, _) = compile_connected(conn, "goes", "me", "loves", "you");
         assert!(
             matches!(&form, LogicalForm::And(_, _)),
             "expected And, got {:?}",
@@ -1077,7 +1068,7 @@ mod tests {
     #[test]
     fn test_afterthought_ja_compiles_to_or() {
         let conn = SentenceConnective::Afterthought(Connective::Or);
-        let (form, _) = compile_connected(conn, "klama", "me", "prami", "you");
+        let (form, _) = compile_connected(conn, "goes", "me", "loves", "you");
         assert!(
             matches!(&form, LogicalForm::Or(_, _)),
             "expected Or, got {:?}",
@@ -1090,7 +1081,7 @@ mod tests {
     #[test]
     fn test_da_produces_exists() {
         // da prami mi → ∃da. event_decomposed_prami(da, mi, ...)
-        let predicates = vec![Predicate::Root("prami".into())];
+        let predicates = vec![Predicate::Root("loves".into())];
         let arguments = vec![
             Argument::Pronoun("$da".into()), // 0
             Argument::Pronoun("me".into()),  // 1
@@ -1112,17 +1103,17 @@ mod tests {
                 assert_eq!(resolve(&compiler, var), "$da");
                 // Inside should have prami type pred and role preds
                 assert!(
-                    has_pred(&form, "prami", &compiler),
+                    has_pred(&form, "loves", &compiler),
                     "expected prami type predicate"
                 );
                 // prami_x1 should have Variable(da)
-                let x1_args = get_pred_args(&form, "prami_x1", &compiler).unwrap();
+                let x1_args = get_pred_args(&form, "loves_x1", &compiler).unwrap();
                 match &x1_args[1] {
                     LogicalTerm::Variable(v) => assert_eq!(resolve(&compiler, v), "$da"),
                     other => panic!("expected Variable(da) in prami_x1, got {:?}", other),
                 }
                 // prami_x2 should have Constant(mi)
-                let x2_args = get_pred_args(&form, "prami_x2", &compiler).unwrap();
+                let x2_args = get_pred_args(&form, "loves_x2", &compiler).unwrap();
                 match &x2_args[1] {
                     LogicalTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "me"),
                     other => panic!("expected Constant(mi) in prami_x2, got {:?}", other),
@@ -1135,7 +1126,7 @@ mod tests {
     #[test]
     fn test_da_de_both_produce_nested_exists() {
         // da prami de → ∃da. ∃de. event_decomposed_prami(da, de, ...)
-        let predicates = vec![Predicate::Root("prami".into())];
+        let predicates = vec![Predicate::Root("loves".into())];
         let arguments = vec![
             Argument::Pronoun("$da".into()), // 0
             Argument::Pronoun("$de".into()), // 1
@@ -1164,7 +1155,7 @@ mod tests {
                         assert_eq!(names, vec!["$da", "$de"]);
                         // The body is now an event-decomposed form (Exists wrapping event)
                         assert!(
-                            has_pred(&form, "prami", &compiler),
+                            has_pred(&form, "loves", &compiler),
                             "expected prami type predicate"
                         );
                     }
@@ -1178,7 +1169,7 @@ mod tests {
     #[test]
     fn test_da_repeated_wraps_once() {
         // da prami da → ∃da. event_decomposed_prami(da, da, ...) (only one entity Exists)
-        let predicates = vec![Predicate::Root("prami".into())];
+        let predicates = vec![Predicate::Root("loves".into())];
         let arguments = vec![
             Argument::Pronoun("$da".into()), // 0
             Argument::Pronoun("$da".into()), // 1 (same variable)
@@ -1221,7 +1212,7 @@ mod tests {
     #[test]
     fn test_di_produces_exists() {
         // di barda → ∃di. barda(di, ...)
-        let predicates = vec![Predicate::Root("barda".into())];
+        let predicates = vec![Predicate::Root("big".into())];
         let arguments = vec![Argument::Pronoun("$di".into())];
         let proposition = Proposition {
             relation: 0,
@@ -1246,7 +1237,7 @@ mod tests {
     fn test_da_with_negation() {
         // da na prami mi → ¬(∃da. prami(da, mi, ...))
         // negation wraps OUTSIDE the existential
-        let predicates = vec![Predicate::Root("prami".into())];
+        let predicates = vec![Predicate::Root("loves".into())];
         let arguments = vec![
             Argument::Pronoun("$da".into()),
             Argument::Pronoun("me".into()),
@@ -1279,7 +1270,7 @@ mod tests {
     fn test_afterthought_jo_compiles_to_biconditional() {
         // .i jo → Biconditional IR node (expanded at flattening)
         let conn = SentenceConnective::Afterthought(Connective::Iff);
-        let (form, _) = compile_connected(conn, "klama", "me", "prami", "you");
+        let (form, _) = compile_connected(conn, "goes", "me", "loves", "you");
         assert!(
             matches!(&form, LogicalForm::Biconditional(_, _)),
             "expected Biconditional, got {:?}",
@@ -1293,7 +1284,7 @@ mod tests {
     fn test_ma_produces_exists() {
         // ma klama → ∃_v0. event_decomposed_klama(_v0, ...)
         // Each `ma` gets a fresh variable (independent query unknowns).
-        let predicates = vec![Predicate::Root("klama".into())];
+        let predicates = vec![Predicate::Root("goes".into())];
         let arguments = vec![
             Argument::Pronoun("?".into()), // 0
         ];
@@ -1315,11 +1306,11 @@ mod tests {
                 assert!(resolve(&compiler, var).starts_with("_v"));
                 // klama type pred should exist inside
                 assert!(
-                    has_pred(&form, "klama", &compiler),
+                    has_pred(&form, "goes", &compiler),
                     "expected klama type predicate"
                 );
                 // klama_x1 should reference the ma variable
-                let x1_args = get_pred_args(&form, "klama_x1", &compiler).unwrap();
+                let x1_args = get_pred_args(&form, "goes_x1", &compiler).unwrap();
                 match &x1_args[1] {
                     LogicalTerm::Variable(v) => assert_eq!(v, var),
                     other => panic!("expected Variable in klama_x1, got {:?}", other),
@@ -1334,7 +1325,7 @@ mod tests {
         // ma nelci ma → ∃_v1. ∃_v0. event_decomposed_nelci(_v0, _v1, ...)
         // Two `ma` tokens must produce two *different* variables,
         // each wrapped in its own ∃.
-        let predicates = vec![Predicate::Root("nelci".into())];
+        let predicates = vec![Predicate::Root("likes".into())];
         let arguments = vec![
             Argument::Pronoun("?".into()), // 0
             Argument::Pronoun("?".into()), // 1
@@ -1360,8 +1351,8 @@ mod tests {
                         // The two variables must be different
                         assert_ne!(var0, var1, "two ma should produce different variables");
                         // Check that nelci_x1 and nelci_x2 reference different variables
-                        let x1_args = get_pred_args(&form, "nelci_x1", &compiler).unwrap();
-                        let x2_args = get_pred_args(&form, "nelci_x2", &compiler).unwrap();
+                        let x1_args = get_pred_args(&form, "likes_x1", &compiler).unwrap();
+                        let x2_args = get_pred_args(&form, "likes_x2", &compiler).unwrap();
                         match (&x1_args[1], &x2_args[1]) {
                             (LogicalTerm::Variable(a), LogicalTerm::Variable(b)) => {
                                 assert_ne!(a, b, "args should reference different vars");
@@ -1388,9 +1379,9 @@ mod tests {
         // rel-clause compile_proposition's drain. Pre-fix the nested drain emptied the
         // shared `question_vars`, leaving the outer ma var FREE.
         let predicates = vec![
-            Predicate::Root("prami".into()), // 0
-            Predicate::Root("gerku".into()), // 1
-            Predicate::Root("barda".into()), // 2
+            Predicate::Root("loves".into()), // 0
+            Predicate::Root("dog".into()),   // 1
+            Predicate::Root("big".into()),   // 2
         ];
         let arguments = vec![
             Argument::Pronoun("?".into()),                      // 0: ma
@@ -1436,9 +1427,9 @@ mod tests {
     /// body (sentence 1) is `barda` with implicit ke'a filling its x1.
     fn compile_ro_lo_gerku_rel_barda_klama(kind: RelClauseKind) -> (LogicalForm, SemanticCompiler) {
         let predicates = vec![
-            Predicate::Root("gerku".into()), // 0
-            Predicate::Root("barda".into()), // 1
-            Predicate::Root("klama".into()), // 2
+            Predicate::Root("dog".into()),  // 0
+            Predicate::Root("big".into()),  // 1
+            Predicate::Root("goes".into()), // 2
         ];
         let arguments = vec![
             Argument::Description((Determiner::UniversalIndefinite, 0)), // 0: ro lo gerku
@@ -1491,11 +1482,11 @@ mod tests {
         assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
         let (ante, cons) = forall_or_split(&form);
         assert!(
-            has_pred(cons, "barda", &compiler),
+            has_pred(cons, "big", &compiler),
             "noi: barda must be in the consequent (matrix)"
         );
         assert!(
-            !has_pred(ante, "barda", &compiler),
+            !has_pred(ante, "big", &compiler),
             "noi: barda must NOT be in the antecedent (domain restrictor)"
         );
     }
@@ -1508,11 +1499,11 @@ mod tests {
         assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
         let (ante, cons) = forall_or_split(&form);
         assert!(
-            has_pred(ante, "barda", &compiler),
+            has_pred(ante, "big", &compiler),
             "poi: barda must be in the antecedent (domain restrictor)"
         );
         assert!(
-            !has_pred(cons, "barda", &compiler),
+            !has_pred(cons, "big", &compiler),
             "poi: barda must NOT be in the consequent"
         );
     }
@@ -1525,9 +1516,9 @@ mod tests {
         // conjuncts. Pin the current behavior so the limitation stays discoverable.
         // `ci lo gerku noi barda cu klama` → Count{3, body} with barda IN the body.
         let predicates = vec![
-            Predicate::Root("gerku".into()), // 0
-            Predicate::Root("barda".into()), // 1
-            Predicate::Root("klama".into()), // 2
+            Predicate::Root("dog".into()),  // 0
+            Predicate::Root("big".into()),  // 1
+            Predicate::Root("goes".into()), // 2
         ];
         let arguments = vec![
             Argument::QuantifiedDescription((3, Determiner::Indefinite, 0)), // 0: ci lo gerku
@@ -1563,7 +1554,7 @@ mod tests {
             LogicalForm::Count { count, body, .. } => {
                 assert_eq!(*count, 3);
                 assert!(
-                    has_pred(body, "barda", &compiler),
+                    has_pred(body, "big", &compiler),
                     "documented residual: noi under exact-count is folded into the counted body"
                 );
             }
@@ -1575,7 +1566,7 @@ mod tests {
     fn test_da_in_be_arg_closed() {
         // `mi klama be da` — the `da` in the be-arg must be existentially closed.
         let predicates = vec![
-            Predicate::Root("klama".into()),   // 0
+            Predicate::Root("goes".into()),    // 0
             Predicate::WithArgs((0, vec![1])), // 1: klama be da
         ];
         let arguments = vec![
@@ -1604,7 +1595,7 @@ mod tests {
         // `mi djuno lo nu da broda` — the abstraction body closes its own `da`;
         // the outer existential walk must NOT re-wrap it (binder tracking).
         let predicates = vec![
-            Predicate::Root("djuno".into()),                     // 0
+            Predicate::Root("knows".into()),                     // 0
             Predicate::Abstraction((AbstractionKind::Event, 1)), // 1 → sentences[1]
             Predicate::Root("broda".into()),                     // 2
         ];
@@ -1653,8 +1644,8 @@ mod tests {
         // var is textually BEFORE the universal, so it OUTSCOPES it: ∃da.∀x.
         // RED before the fix (da was forced inside the universal → ∀x.∃da).
         let predicates = vec![
-            Predicate::Root("citka".into()), // 0
-            Predicate::Root("gerku".into()), // 1
+            Predicate::Root("eats".into()), // 0
+            Predicate::Root("dog".into()),  // 1
         ];
         let arguments = vec![
             Argument::Pronoun("$da".into()), // 0: da (x1)
@@ -1690,8 +1681,8 @@ mod tests {
         // with the before-case; the pair proves surface order now matters (the two
         // were identical before the fix).
         let predicates = vec![
-            Predicate::Root("citka".into()), // 0
-            Predicate::Root("gerku".into()), // 1
+            Predicate::Root("eats".into()), // 0
+            Predicate::Root("dog".into()),  // 1
         ];
         let arguments = vec![
             Argument::Description((Determiner::UniversalIndefinite, 1)), // 0: ro lo gerku (x1)
@@ -1726,9 +1717,9 @@ mod tests {
         // exact-count description (x1) and a universal (x3). The uniform fold
         // nests them Count > ∃da > ∀ by surface order.
         let predicates = vec![
-            Predicate::Root("klama".into()), // 0
-            Predicate::Root("gerku".into()), // 1
-            Predicate::Root("mlatu".into()), // 2
+            Predicate::Root("goes".into()), // 0
+            Predicate::Root("dog".into()),  // 1
+            Predicate::Root("cat".into()),  // 2
         ];
         let arguments = vec![
             Argument::QuantifiedDescription((2, Determiner::Indefinite, 1)), // 0: re lo gerku (x1)
@@ -1766,9 +1757,9 @@ mod tests {
         // under the universal. The deferred-position default: bound, not free,
         // not double-wrapped.
         let predicates = vec![
-            Predicate::Root("klama".into()),   // 0
+            Predicate::Root("goes".into()),    // 0
             Predicate::WithArgs((0, vec![1])), // 1: klama be da
-            Predicate::Root("gerku".into()),   // 2
+            Predicate::Root("dog".into()),     // 2
         ];
         let arguments = vec![
             Argument::Description((Determiner::UniversalIndefinite, 2)), // 0: ro lo gerku (x1)
@@ -1807,9 +1798,9 @@ mod tests {
         // Characterization lock — `da` is bound (never free) and the root stays a
         // universal.
         let predicates = vec![
-            Predicate::Root("gerku".into()), // 0
-            Predicate::Root("prami".into()), // 1
-            Predicate::Root("klama".into()), // 2
+            Predicate::Root("dog".into()),   // 0
+            Predicate::Root("loves".into()), // 1
+            Predicate::Root("goes".into()),  // 2
         ];
         let arguments = vec![
             Argument::Description((Determiner::UniversalIndefinite, 0)), // 0: ro lo gerku
@@ -1862,8 +1853,8 @@ mod tests {
         // prenex; the new surface-marker hook must respect `prenex_vars` and NOT
         // record a Bare marker for the top-level `da` arg (no existential re-wrap).
         let predicates = vec![
-            Predicate::Root("citka".into()), // 0
-            Predicate::Root("gerku".into()), // 1
+            Predicate::Root("eats".into()), // 0
+            Predicate::Root("dog".into()),  // 1
         ];
         let arguments = vec![
             Argument::Pronoun("$da".into()),                    // 0: da (x1)
@@ -1900,7 +1891,7 @@ mod tests {
         // `da citka da` — the same bare var in two places co-refers and is
         // wrapped by exactly one Exists (the surface hook's `introduced` dedup +
         // the safety-net subtraction).
-        let predicates = vec![Predicate::Root("citka".into())];
+        let predicates = vec![Predicate::Root("eats".into())];
         let arguments = vec![
             Argument::Pronoun("$da".into()), // 0: da (x1)
             Argument::Pronoun("$da".into()), // 1: da (x2)
@@ -1966,16 +1957,16 @@ mod tests {
     #[test]
     fn test_inject_variable_single_predicate_no_error() {
         // lo gerku poi barda cu klama
-        // Rel clause body "barda" has only 1 predicate with unspecified slot — no ambiguity.
+        // Rel clause body "big" has only 1 predicate with unspecified slot — no ambiguity.
         //
         // Buffer layout:
         //   predicates: [0: gerku, 1: barda, 2: klama]
         //   arguments:  [0: Description(Lo, 0), 1: Restricted(0, poi body=1)]
         //   sentences: [0: Simple(klama, head=[1]), 1: Simple(barda, head=[])]
         let predicates = vec![
-            Predicate::Root("gerku".into()), // 0
-            Predicate::Root("barda".into()), // 1
-            Predicate::Root("klama".into()), // 2
+            Predicate::Root("dog".into()),  // 0
+            Predicate::Root("big".into()),  // 1
+            Predicate::Root("goes".into()), // 2
         ];
         let arguments = vec![
             Argument::Description((Determiner::Indefinite, 0)), // 0: lo gerku
@@ -2027,9 +2018,9 @@ mod tests {
         //   arguments:  [0: Description(Lo, 0), 1: Description(Lo, 1), 2: Restricted(0, poi body=1)]
         //   sentences: [0: Simple(barda, head=[2]), 1: Simple(barda, head=[1])]
         let predicates = vec![
-            Predicate::Root("gerku".into()), // 0
-            Predicate::Root("mlatu".into()), // 1
-            Predicate::Root("barda".into()), // 2
+            Predicate::Root("dog".into()), // 0
+            Predicate::Root("cat".into()), // 1
+            Predicate::Root("big".into()), // 2
         ];
         let arguments = vec![
             Argument::Description((Determiner::Indefinite, 0)), // 0: lo gerku
@@ -2084,9 +2075,9 @@ mod tests {
         //   arguments:  [0: Description(Lo, 0), 1: Pronoun("it"), 2: Restricted(0, poi body=1)]
         //   sentences: [0: Simple(klama, head=[2]), 1: Simple(barda, head=[1])]
         let predicates = vec![
-            Predicate::Root("gerku".into()), // 0
-            Predicate::Root("barda".into()), // 1
-            Predicate::Root("klama".into()), // 2
+            Predicate::Root("dog".into()),  // 0
+            Predicate::Root("big".into()),  // 1
+            Predicate::Root("goes".into()), // 2
         ];
         let arguments = vec![
             Argument::Description((Determiner::Indefinite, 0)), // 0: lo gerku
@@ -2139,9 +2130,9 @@ mod tests {
         //   arguments:  [0: Description(Lo, 0), 1: Restricted(0, poi body=1)]
         //   sentences: [0: Simple(klama, head=[1]), 1: Simple(barda, head=[])]
         let predicates = vec![
-            Predicate::Root("gerku".into()), // 0
-            Predicate::Root("barda".into()), // 1
-            Predicate::Root("klama".into()), // 2
+            Predicate::Root("dog".into()),  // 0
+            Predicate::Root("big".into()),  // 1
+            Predicate::Root("goes".into()), // 2
         ];
         let arguments = vec![
             Argument::Description((Determiner::Indefinite, 0)), // 0: lo gerku
@@ -2178,10 +2169,10 @@ mod tests {
             "Expected no errors for a single-predicate clause, got: {:?}",
             compiler.errors
         );
-        let barda_args = get_pred_args(&form, "barda_x1", &compiler)
-            .expect("barda_x1 role predicate should be present");
-        let gerku_args = get_pred_args(&form, "gerku_x1", &compiler)
-            .expect("gerku_x1 role predicate should be present");
+        let barda_args = get_pred_args(&form, "big_x1", &compiler)
+            .expect("big_x1 role predicate should be present");
+        let gerku_args = get_pred_args(&form, "dog_x1", &compiler)
+            .expect("dog_x1 role predicate should be present");
         // The implicit ke'a (dog) variable is injected into barda's subject slot, and it
         // must be the SAME variable bound by the gerku description.
         assert!(
@@ -2191,7 +2182,7 @@ mod tests {
         );
         assert_eq!(
             barda_args[1], gerku_args[1],
-            "barda_x1 must bind the same variable as gerku_x1 (the described dog)"
+            "big_x1 must bind the same variable as gerku_x1 (the described dog)"
         );
     }
 
@@ -2205,9 +2196,9 @@ mod tests {
         // pre-filled x1 → "place already filled" reject (the shipped-language
         // defect this fixes). alis lands at x1 (lover), ke'a/dog at x2 (loved).
         let predicates = vec![
-            Predicate::Root("gerku".into()), // 0
-            Predicate::Root("prami".into()), // 1
-            Predicate::Root("danlu".into()), // 2
+            Predicate::Root("dog".into()),    // 0
+            Predicate::Root("loves".into()),  // 1
+            Predicate::Root("animal".into()), // 2
         ];
         let arguments = vec![
             Argument::Description((Determiner::UniversalIndefinite, 0)), // 0: ro lo gerku
@@ -2247,9 +2238,9 @@ mod tests {
             "explicit fe-tagged ke'a must not collide with the implicit injection: {:?}",
             compiler.errors
         );
-        let prami_x1 = get_pred_args(&form, "prami_x1", &compiler).expect("prami_x1 present");
-        let prami_x2 = get_pred_args(&form, "prami_x2", &compiler).expect("prami_x2 present");
-        let gerku_x1 = get_pred_args(&form, "gerku_x1", &compiler).expect("gerku_x1 present");
+        let prami_x1 = get_pred_args(&form, "loves_x1", &compiler).expect("loves_x1 present");
+        let prami_x2 = get_pred_args(&form, "loves_x2", &compiler).expect("loves_x2 present");
+        let gerku_x1 = get_pred_args(&form, "dog_x1", &compiler).expect("dog_x1 present");
         assert_eq!(
             const_str(&compiler, &prami_x1[1]),
             "alis",
@@ -2270,9 +2261,9 @@ mod tests {
         // injection (otherwise `fa ke'a` collides with the pre-filled x1). ke'a/
         // dog lands at x1 (lover), alis at x2 (loved).
         let predicates = vec![
-            Predicate::Root("gerku".into()), // 0
-            Predicate::Root("prami".into()), // 1
-            Predicate::Root("danlu".into()), // 2
+            Predicate::Root("dog".into()),    // 0
+            Predicate::Root("loves".into()),  // 1
+            Predicate::Root("animal".into()), // 2
         ];
         let arguments = vec![
             Argument::Description((Determiner::UniversalIndefinite, 0)), // 0: ro lo gerku
@@ -2312,9 +2303,9 @@ mod tests {
             "fa-tagged ke'a must not collide with the implicit injection: {:?}",
             compiler.errors
         );
-        let prami_x1 = get_pred_args(&form, "prami_x1", &compiler).expect("prami_x1 present");
-        let prami_x2 = get_pred_args(&form, "prami_x2", &compiler).expect("prami_x2 present");
-        let gerku_x1 = get_pred_args(&form, "gerku_x1", &compiler).expect("gerku_x1 present");
+        let prami_x1 = get_pred_args(&form, "loves_x1", &compiler).expect("loves_x1 present");
+        let prami_x2 = get_pred_args(&form, "loves_x2", &compiler).expect("loves_x2 present");
+        let gerku_x1 = get_pred_args(&form, "dog_x1", &compiler).expect("dog_x1 present");
         assert_eq!(
             prami_x1[1], gerku_x1[1],
             "the fa-tagged ke'a must bind the described dog at x1 (the lover)"
@@ -2335,9 +2326,9 @@ mod tests {
         // at x2 → prami(dog, dog) ("dog that loves itself"). x1 must stay
         // Unspecified → prami(zo'e, dog) ("dog that is loved").
         let predicates = vec![
-            Predicate::Root("gerku".into()), // 0
-            Predicate::Root("prami".into()), // 1
-            Predicate::Root("danlu".into()), // 2
+            Predicate::Root("dog".into()),    // 0
+            Predicate::Root("loves".into()),  // 1
+            Predicate::Root("animal".into()), // 2
         ];
         let arguments = vec![
             Argument::Description((Determiner::UniversalIndefinite, 0)), // 0: ro lo gerku
@@ -2371,9 +2362,9 @@ mod tests {
         ];
         let (form, compiler) = compile_sentence_full(predicates, arguments, sentences);
         assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
-        let prami_x1 = get_pred_args(&form, "prami_x1", &compiler).expect("prami_x1 present");
-        let prami_x2 = get_pred_args(&form, "prami_x2", &compiler).expect("prami_x2 present");
-        let gerku_x1 = get_pred_args(&form, "gerku_x1", &compiler).expect("gerku_x1 present");
+        let prami_x1 = get_pred_args(&form, "loves_x1", &compiler).expect("loves_x1 present");
+        let prami_x2 = get_pred_args(&form, "loves_x2", &compiler).expect("loves_x2 present");
+        let gerku_x1 = get_pred_args(&form, "dog_x1", &compiler).expect("dog_x1 present");
         assert!(
             matches!(prami_x1[1], LogicalTerm::Unspecified),
             "x1 must stay Unspecified (not double-filled with the clause var), got {:?}",
@@ -2397,9 +2388,9 @@ mod tests {
         //   arguments:  [0: Description(Lo, 0), 1: Description(Lo, 1), 2: Restricted(0, poi body=1)]
         //   sentences: [0: Simple(batci, head=[2]), 1: Simple(batci, head=[1])]
         let predicates = vec![
-            Predicate::Root("gerku".into()), // 0
-            Predicate::Root("mlatu".into()), // 1
-            Predicate::Root("batci".into()), // 2
+            Predicate::Root("dog".into()),  // 0
+            Predicate::Root("cat".into()),  // 1
+            Predicate::Root("bite".into()), // 2
         ];
         let arguments = vec![
             Argument::Description((Determiner::Indefinite, 0)), // 0: lo gerku
@@ -2441,7 +2432,7 @@ mod tests {
     #[test]
     fn test_count_unspecified_predicates_single() {
         let mut compiler = SemanticCompiler::new();
-        let rel = compiler.interner.get_or_intern("gerku");
+        let rel = compiler.interner.get_or_intern("dog");
         let form = LogicalForm::Predicate {
             relation: rel,
             args: vec![LogicalTerm::Unspecified],
@@ -2455,7 +2446,7 @@ mod tests {
     #[test]
     fn test_count_unspecified_predicates_none() {
         let mut compiler = SemanticCompiler::new();
-        let rel = compiler.interner.get_or_intern("gerku");
+        let rel = compiler.interner.get_or_intern("dog");
         let var = compiler.interner.get_or_intern("x");
         let form = LogicalForm::Predicate {
             relation: rel,
@@ -2470,8 +2461,8 @@ mod tests {
     #[test]
     fn test_count_unspecified_predicates_conjunction() {
         let mut compiler = SemanticCompiler::new();
-        let rel1 = compiler.interner.get_or_intern("gerku");
-        let rel2 = compiler.interner.get_or_intern("mlatu");
+        let rel1 = compiler.interner.get_or_intern("dog");
+        let rel2 = compiler.interner.get_or_intern("cat");
         let form = LogicalForm::And(
             Box::new(LogicalForm::Predicate {
                 relation: rel1,
@@ -2491,7 +2482,7 @@ mod tests {
     #[test]
     fn test_inject_variable_fills_first_unspecified() {
         let mut compiler = SemanticCompiler::new();
-        let rel = compiler.interner.get_or_intern("gerku");
+        let rel = compiler.interner.get_or_intern("dog");
         let var = compiler.interner.get_or_intern("_v0");
         let form = LogicalForm::Predicate {
             relation: rel,
@@ -2513,7 +2504,7 @@ mod tests {
     fn test_fa_tag_beyond_arity_errors() {
         // fu do gerku → `fu` targets x5 but gerku is 2-place: semantic error,
         // never a silent drop of `do`.
-        let predicates = vec![Predicate::Root("gerku".into())];
+        let predicates = vec![Predicate::Root("dog".into())];
         let arguments = vec![
             Argument::Pronoun("you".into()), // 0
             Argument::Tagged((4, 0)),        // 1: fu do
@@ -2541,7 +2532,7 @@ mod tests {
     #[test]
     fn test_fa_tag_within_arity_no_error() {
         // fe do gerku → `fe` targets x2; gerku is 2-place: fine.
-        let predicates = vec![Predicate::Root("gerku".into())];
+        let predicates = vec![Predicate::Root("dog".into())];
         let arguments = vec![
             Argument::Pronoun("you".into()), // 0
             Argument::Tagged((1, 0)),        // 1: fe do
@@ -2560,7 +2551,7 @@ mod tests {
             "in-range FA tag must not error, got: {:?}",
             compiler.errors
         );
-        let x2 = get_pred_args(&form, "gerku_x2", &compiler).unwrap();
+        let x2 = get_pred_args(&form, "dog_x2", &compiler).unwrap();
         let do_term = LogicalTerm::Constant(compiler.interner.get("you").unwrap());
         assert_eq!(x2[1], do_term, "fe must place `do` into gerku_x2");
     }
@@ -2570,7 +2561,7 @@ mod tests {
         // `gerku mi do ti` — gerku is a KNOWN 2-place gismu, so the 3rd untagged
         // argument (`ti`) overflows with no slot: fail closed instead of silently
         // dropping it.
-        let predicates = vec![Predicate::Root("gerku".into())];
+        let predicates = vec![Predicate::Root("dog".into())];
         let arguments = vec![
             Argument::Pronoun("me".into()),   // 0
             Argument::Pronoun("you".into()),  // 1
@@ -2627,7 +2618,7 @@ mod tests {
     fn test_tag_collision_errors() {
         // `fe do fe ti gerku` — both `fe` tags target x2: a place set twice must
         // error, not silently last-wins (dropping `do`).
-        let predicates = vec![Predicate::Root("gerku".into())];
+        let predicates = vec![Predicate::Root("dog".into())];
         let arguments = vec![
             Argument::Pronoun("you".into()),  // 0
             Argument::Pronoun("this".into()), // 1
@@ -2661,11 +2652,11 @@ mod tests {
         // slot; the firewall must not reject, and injection must fill BOTH x1
         // roles with the dog's variable.
         let predicates = vec![
-            Predicate::Root("gerku".into()), // 0
-            Predicate::Root("sutra".into()), // 1
-            Predicate::Root("bajra".into()), // 2
-            Predicate::Pair((1, 2)),         // 3: sutra bajra
-            Predicate::Root("klama".into()), // 4
+            Predicate::Root("dog".into()),  // 0
+            Predicate::Root("fast".into()), // 1
+            Predicate::Root("runs".into()), // 2
+            Predicate::Pair((1, 2)),        // 3: sutra bajra
+            Predicate::Root("goes".into()), // 4
         ];
         let arguments = vec![
             Argument::Description((Determiner::Indefinite, 0)), // 0: lo gerku
@@ -2701,9 +2692,9 @@ mod tests {
             "valid pair-in-poi clause must not be rejected, got: {:?}",
             compiler.errors
         );
-        let bajra_x1 = get_pred_args(&form, "bajra_x1", &compiler).unwrap();
-        let sutra_x1 = get_pred_args(&form, "sutra_x1", &compiler).unwrap();
-        let gerku_x1 = get_pred_args(&form, "gerku_x1", &compiler).unwrap();
+        let bajra_x1 = get_pred_args(&form, "runs_x1", &compiler).unwrap();
+        let sutra_x1 = get_pred_args(&form, "fast_x1", &compiler).unwrap();
+        let gerku_x1 = get_pred_args(&form, "dog_x1", &compiler).unwrap();
         assert_eq!(
             bajra_x1[1], gerku_x1[1],
             "pair head x1 must bind the dog variable"
@@ -2725,8 +2716,8 @@ mod tests {
         // matrix, not compiled-then-dropped. An assertion asserts both
         // conjuncts; a query requires both.
         let predicates = vec![
-            Predicate::Root("gerku".into()), // 0
-            Predicate::Root("klama".into()), // 1
+            Predicate::Root("dog".into()),  // 0
+            Predicate::Root("goes".into()), // 1
         ];
         let arguments = vec![
             Argument::Name("adam".into()), // 0
@@ -2764,9 +2755,9 @@ mod tests {
         );
         let adam = LogicalTerm::Constant(compiler.interner.get("adam").unwrap());
         let klama_x1 =
-            get_pred_args(&form, "klama_x1", &compiler).expect("matrix klama must be present");
+            get_pred_args(&form, "goes_x1", &compiler).expect("matrix klama must be present");
         assert_eq!(klama_x1[1], adam);
-        let gerku_x1 = get_pred_args(&form, "gerku_x1", &compiler)
+        let gerku_x1 = get_pred_args(&form, "dog_x1", &compiler)
             .expect("the poi clause's gerku must be conjoined, not dropped");
         assert_eq!(
             gerku_x1[1], adam,
@@ -2780,8 +2771,8 @@ mod tests {
         // slot for Adam (the cat fills batci_x1): ambiguous implicit ke'a must
         // be rejected on names too, exactly like on lo descriptions.
         let predicates = vec![
-            Predicate::Root("mlatu".into()), // 0
-            Predicate::Root("batci".into()), // 1
+            Predicate::Root("cat".into()),  // 0
+            Predicate::Root("bite".into()), // 1
         ];
         let arguments = vec![
             Argument::Name("adam".into()),                      // 0
@@ -2852,8 +2843,8 @@ mod tests {
         }
 
         let predicates = vec![
-            Predicate::Root("gerku".into()), // 0
-            Predicate::Root("citka".into()), // 1
+            Predicate::Root("dog".into()),  // 0
+            Predicate::Root("eats".into()), // 1
         ];
         let arguments = vec![
             Argument::Description((Determiner::UniversalIndefinite, 0)), // 0: ro lo gerku
@@ -2888,7 +2879,7 @@ mod tests {
     #[test]
     fn test_tense_pu_produces_past() {
         // pu mi klama → Past(klama(mi, ...))
-        let predicates = vec![Predicate::Root("klama".into())];
+        let predicates = vec![Predicate::Root("goes".into())];
         let arguments = vec![Argument::Pronoun("me".into())];
         let proposition = Proposition {
             relation: 0,
@@ -2904,7 +2895,7 @@ mod tests {
 
     #[test]
     fn test_tense_ca_produces_present() {
-        let predicates = vec![Predicate::Root("klama".into())];
+        let predicates = vec![Predicate::Root("goes".into())];
         let arguments = vec![Argument::Pronoun("me".into())];
         let proposition = Proposition {
             relation: 0,
@@ -2920,7 +2911,7 @@ mod tests {
 
     #[test]
     fn test_tense_ba_produces_future() {
-        let predicates = vec![Predicate::Root("klama".into())];
+        let predicates = vec![Predicate::Root("goes".into())];
         let arguments = vec![Argument::Pronoun("me".into())];
         let proposition = Proposition {
             relation: 0,
@@ -2938,7 +2929,7 @@ mod tests {
 
     #[test]
     fn test_deontic_ei_produces_obligatory() {
-        let predicates = vec![Predicate::Root("klama".into())];
+        let predicates = vec![Predicate::Root("goes".into())];
         let arguments = vec![Argument::Pronoun("me".into())];
         let proposition = Proposition {
             relation: 0,
@@ -2954,7 +2945,7 @@ mod tests {
 
     #[test]
     fn test_deontic_ehe_produces_permitted() {
-        let predicates = vec![Predicate::Root("klama".into())];
+        let predicates = vec![Predicate::Root("goes".into())];
         let arguments = vec![Argument::Pronoun("me".into())];
         let proposition = Proposition {
             relation: 0,
@@ -2973,7 +2964,7 @@ mod tests {
     #[test]
     fn test_predication_negation_produces_not() {
         // na mi klama → Not(klama(mi, ...))
-        let predicates = vec![Predicate::Root("klama".into())];
+        let predicates = vec![Predicate::Root("goes".into())];
         let arguments = vec![Argument::Pronoun("me".into())];
         let proposition = Proposition {
             relation: 0,
@@ -2993,7 +2984,7 @@ mod tests {
     fn test_se_conversion_swaps_args() {
         // se prami mi do → prami(do, mi, ...) (x1↔x2 swapped)
         let predicates = vec![
-            Predicate::Root("prami".into()),
+            Predicate::Root("loves".into()),
             Predicate::Converted((Conversion::Swap12, 0)),
         ];
         let arguments = vec![
@@ -3019,11 +3010,11 @@ mod tests {
             form
         );
         assert!(
-            has_pred(&form, "prami", &compiler),
+            has_pred(&form, "loves", &compiler),
             "expected prami type predicate"
         );
         // Check prami_x1 has do (originally x2, swapped to x1)
-        let x1_args = get_pred_args(&form, "prami_x1", &compiler).unwrap();
+        let x1_args = get_pred_args(&form, "loves_x1", &compiler).unwrap();
         match &x1_args[1] {
             LogicalTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "you"),
             other => panic!(
@@ -3032,7 +3023,7 @@ mod tests {
             ),
         }
         // Check prami_x2 has mi (originally x1, swapped to x2)
-        let x2_args = get_pred_args(&form, "prami_x2", &compiler).unwrap();
+        let x2_args = get_pred_args(&form, "loves_x2", &compiler).unwrap();
         match &x2_args[1] {
             LogicalTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "me"),
             other => panic!(
@@ -3046,7 +3037,7 @@ mod tests {
 
     #[test]
     fn test_zo_e_compiles_to_unspecified() {
-        let predicates = vec![Predicate::Root("klama".into())];
+        let predicates = vec![Predicate::Root("goes".into())];
         let arguments = vec![Argument::Unspecified];
         let proposition = Proposition {
             relation: 0,
@@ -3065,7 +3056,7 @@ mod tests {
         );
         // Check that klama_x1 has Unspecified (zo'e) in its entity arg
         let x1_args =
-            get_pred_args(&form, "klama_x1", &compiler).expect("expected klama_x1 role predicate");
+            get_pred_args(&form, "goes_x1", &compiler).expect("expected klama_x1 role predicate");
         assert!(
             matches!(x1_args[1], LogicalTerm::Unspecified),
             "expected Unspecified in klama_x1, got {:?}",
@@ -3078,7 +3069,7 @@ mod tests {
     #[test]
     fn test_event_decompose_basic() {
         // mi klama → ∃e. klama(e) ∧ klama_x1(e, mi) ∧ klama_x2(e, zo'e) ∧ ...
-        let predicates = vec![Predicate::Root("klama".into())];
+        let predicates = vec![Predicate::Root("goes".into())];
         let arguments = vec![Argument::Pronoun("me".into())];
         let proposition = Proposition {
             relation: 0,
@@ -3093,15 +3084,15 @@ mod tests {
         // Top level should be Exists (event variable)
         assert!(matches!(&form, LogicalForm::Exists(_, _)));
         // Type predicate exists
-        assert!(has_pred(&form, "klama", &compiler));
+        assert!(has_pred(&form, "goes", &compiler));
         // x1 role has Constant("me")
-        let x1 = get_pred_args(&form, "klama_x1", &compiler).unwrap();
+        let x1 = get_pred_args(&form, "goes_x1", &compiler).unwrap();
         assert_eq!(
             x1[1],
             LogicalTerm::Constant(compiler.interner.get("me").unwrap())
         );
         // Event variable is shared between type and role predicates
-        let type_args = get_pred_args(&form, "klama", &compiler).unwrap();
+        let type_args = get_pred_args(&form, "goes", &compiler).unwrap();
         assert!(matches!(&type_args[0], LogicalTerm::Variable(_)));
         assert_eq!(type_args[0], x1[0], "event var should be shared");
     }
@@ -3109,7 +3100,7 @@ mod tests {
     #[test]
     fn test_event_decompose_all_roles_emitted() {
         // klama has arity 5, all roles should be emitted
-        let predicates = vec![Predicate::Root("klama".into())];
+        let predicates = vec![Predicate::Root("goes".into())];
         let arguments = vec![Argument::Pronoun("me".into())];
         let proposition = Proposition {
             relation: 0,
@@ -3122,11 +3113,11 @@ mod tests {
         let (form, compiler) = compile_one(predicates, arguments, proposition);
 
         for i in 1..=5 {
-            let role = format!("klama_x{}", i);
+            let role = format!("goes_x{}", i);
             assert!(has_pred(&form, &role, &compiler), "expected {} role", role);
         }
         // No x6 for a 5-arity predicate
-        assert!(!has_pred(&form, "klama_x6", &compiler));
+        assert!(!has_pred(&form, "goes_x6", &compiler));
     }
 
     #[test]
@@ -3134,9 +3125,9 @@ mod tests {
         // sutra gerku → ∃e. gerku(e) ∧ gerku_x1(e, x1) ∧ sutra_x1(e, x1)
         // modifier and head share the SAME event variable
         let predicates = vec![
-            Predicate::Root("sutra".into()), // 0
-            Predicate::Root("gerku".into()), // 1
-            Predicate::Pair((0, 1)),         // 2
+            Predicate::Root("fast".into()), // 0
+            Predicate::Root("dog".into()),  // 1
+            Predicate::Pair((0, 1)),        // 2
         ];
         let arguments = vec![Argument::Pronoun("me".into())];
         let proposition = Proposition {
@@ -3150,15 +3141,15 @@ mod tests {
         let (form, compiler) = compile_one(predicates, arguments, proposition);
 
         // Should have head type predicate
-        assert!(has_pred(&form, "gerku", &compiler));
+        assert!(has_pred(&form, "dog", &compiler));
         // Should have head x1 role
-        assert!(has_pred(&form, "gerku_x1", &compiler));
+        assert!(has_pred(&form, "dog_x1", &compiler));
         // Should have modifier x1 role (NOT a full sutra predicate)
-        assert!(has_pred(&form, "sutra_x1", &compiler));
+        assert!(has_pred(&form, "fast_x1", &compiler));
 
         // Both roles should share the same event variable
-        let gerku_x1 = get_pred_args(&form, "gerku_x1", &compiler).unwrap();
-        let sutra_x1 = get_pred_args(&form, "sutra_x1", &compiler).unwrap();
+        let gerku_x1 = get_pred_args(&form, "dog_x1", &compiler).unwrap();
+        let sutra_x1 = get_pred_args(&form, "fast_x1", &compiler).unwrap();
         assert_eq!(
             gerku_x1[0], sutra_x1[0],
             "event var should be shared between head and modifier"
@@ -3174,11 +3165,11 @@ mod tests {
     fn test_event_pair_no_intersective_fallacy() {
         // barda gerku → NOT And(barda(x1), gerku(x1, ...))
         // Instead: ∃e. gerku(e) ∧ gerku_x1(e, x1) ∧ barda_x1(e, x1)
-        // The modifier "barda" is event-bound, not a standalone predication
+        // The modifier "big" is event-bound, not a standalone predication
         let predicates = vec![
-            Predicate::Root("barda".into()), // 0
-            Predicate::Root("gerku".into()), // 1
-            Predicate::Pair((0, 1)),         // 2
+            Predicate::Root("big".into()), // 0
+            Predicate::Root("dog".into()), // 1
+            Predicate::Pair((0, 1)),       // 2
         ];
         let arguments = vec![Argument::Pronoun("me".into())];
         let proposition = Proposition {
@@ -3191,17 +3182,17 @@ mod tests {
         };
         let (form, compiler) = compile_one(predicates, arguments, proposition);
 
-        // There should be NO standalone "barda" type predicate
-        // Only "barda_x1" role predicate (event-bound modifier)
+        // There should be NO standalone "big" type predicate
+        // Only "big_x1" role predicate (event-bound modifier)
         let preds = collect_predicates(&form, &compiler);
-        let barda_preds: Vec<_> = preds.iter().filter(|(n, _)| n == "barda").collect();
+        let barda_preds: Vec<_> = preds.iter().filter(|(n, _)| n == "big").collect();
         assert!(
             barda_preds.is_empty(),
             "should NOT have standalone barda predicate, got {:?}",
             barda_preds
         );
         assert!(
-            has_pred(&form, "barda_x1", &compiler),
+            has_pred(&form, "big_x1", &compiler),
             "should have event-bound barda_x1 role"
         );
     }
@@ -3210,8 +3201,8 @@ mod tests {
     fn test_event_decompose_with_quantifier() {
         // lo gerku cu klama → ∃x. (∃e1. gerku(e1) ∧ gerku_x1(e1, x)) ∧ (∃e2. klama(e2) ∧ klama_x1(e2, x) ∧ ...)
         let predicates = vec![
-            Predicate::Root("gerku".into()), // 0
-            Predicate::Root("klama".into()), // 1
+            Predicate::Root("dog".into()),  // 0
+            Predicate::Root("goes".into()), // 1
         ];
         let arguments = vec![
             Argument::Description((Determiner::Indefinite, 0)), // 0: lo gerku
@@ -3229,11 +3220,11 @@ mod tests {
         // Outer Exists for the description variable
         assert!(matches!(&form, LogicalForm::Exists(_, _)));
         // Both gerku and klama predicates exist
-        assert!(has_pred(&form, "gerku", &compiler));
-        assert!(has_pred(&form, "klama", &compiler));
+        assert!(has_pred(&form, "dog", &compiler));
+        assert!(has_pred(&form, "goes", &compiler));
         // Both have x1 roles
-        assert!(has_pred(&form, "gerku_x1", &compiler));
-        assert!(has_pred(&form, "klama_x1", &compiler));
+        assert!(has_pred(&form, "dog_x1", &compiler));
+        assert!(has_pred(&form, "goes_x1", &compiler));
     }
 
     #[test]
@@ -3241,7 +3232,7 @@ mod tests {
         // mi se prami do → prami(do, mi, ...) with se-swapped args
         // Event form: ∃e. prami(e) ∧ prami_x1(e, do) ∧ prami_x2(e, mi)
         let predicates = vec![
-            Predicate::Root("prami".into()),               // 0
+            Predicate::Root("loves".into()),               // 0
             Predicate::Converted((Conversion::Swap12, 0)), // 1
         ];
         let arguments = vec![
@@ -3259,8 +3250,8 @@ mod tests {
         let (form, compiler) = compile_one(predicates, arguments, proposition);
 
         // se swaps x1 and x2: mi goes to x2, do goes to x1
-        let x1 = get_pred_args(&form, "prami_x1", &compiler).unwrap();
-        let x2 = get_pred_args(&form, "prami_x2", &compiler).unwrap();
+        let x1 = get_pred_args(&form, "loves_x1", &compiler).unwrap();
+        let x2 = get_pred_args(&form, "loves_x2", &compiler).unwrap();
         assert_eq!(
             x1[1],
             LogicalTerm::Constant(compiler.interner.get("you").unwrap())
@@ -3275,7 +3266,7 @@ mod tests {
 
     #[test]
     fn test_la_name_compiles_to_constant() {
-        let predicates = vec![Predicate::Root("klama".into())];
+        let predicates = vec![Predicate::Root("goes".into())];
         let arguments = vec![Argument::Name("alis".into())];
         let proposition = Proposition {
             relation: 0,
@@ -3293,7 +3284,7 @@ mod tests {
             form
         );
         let x1_args =
-            get_pred_args(&form, "klama_x1", &compiler).expect("expected klama_x1 role predicate");
+            get_pred_args(&form, "goes_x1", &compiler).expect("expected klama_x1 role predicate");
         match &x1_args[1] {
             LogicalTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "alis"),
             other => panic!("expected Constant(alis), got {:?}", other),
@@ -3304,7 +3295,7 @@ mod tests {
 
     #[test]
     fn test_number_argument_compiles_to_number() {
-        let predicates = vec![Predicate::Root("namcu".into())];
+        let predicates = vec![Predicate::Root("number".into())];
         let arguments = vec![Argument::Number(42.0)];
         let proposition = Proposition {
             relation: 0,
@@ -3322,7 +3313,7 @@ mod tests {
             form
         );
         let x1_args =
-            get_pred_args(&form, "namcu_x1", &compiler).expect("expected namcu_x1 role predicate");
+            get_pred_args(&form, "number_x1", &compiler).expect("expected namcu_x1 role predicate");
         assert!(
             matches!(x1_args[1], LogicalTerm::Number(n) if n == 42.0),
             "expected Number(42.0) in namcu_x1, got {:?}",
@@ -3334,7 +3325,7 @@ mod tests {
 
     #[test]
     fn test_quoted_literal_compiles_to_constant() {
-        let predicates = vec![Predicate::Root("valsi".into())];
+        let predicates = vec![Predicate::Root("word".into())];
         let arguments = vec![Argument::QuotedLiteral("coi".into())];
         let proposition = Proposition {
             relation: 0,
@@ -3352,7 +3343,7 @@ mod tests {
             form
         );
         let x1_args =
-            get_pred_args(&form, "valsi_x1", &compiler).expect("expected valsi_x1 role predicate");
+            get_pred_args(&form, "word_x1", &compiler).expect("expected valsi_x1 role predicate");
         match &x1_args[1] {
             LogicalTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "coi"),
             other => panic!("expected Constant(coi), got {:?}", other),
@@ -3366,7 +3357,7 @@ mod tests {
     #[test]
     fn test_known_gismu_gets_correct_arity() {
         // klama has arity 5, so there should be 5 role predicates (klama_x1..klama_x5)
-        let predicates = vec![Predicate::Root("klama".into())];
+        let predicates = vec![Predicate::Root("goes".into())];
         let arguments = vec![Argument::Pronoun("me".into())];
         let proposition = Proposition {
             relation: 0,
@@ -3384,11 +3375,11 @@ mod tests {
             form
         );
         assert!(
-            has_pred(&form, "klama", &compiler),
+            has_pred(&form, "goes", &compiler),
             "expected klama type predicate"
         );
         for i in 1..=5 {
-            let role = format!("klama_x{}", i);
+            let role = format!("goes_x{}", i);
             assert!(
                 has_pred(&form, &role, &compiler),
                 "klama should have role predicate {}",
@@ -3442,8 +3433,8 @@ mod tests {
     fn test_sentence_connective_ge_gi_produces_and() {
         // ge mi klama gi do sutra → And(klama(mi,...), sutra(do,...))
         let predicates = vec![
-            Predicate::Root("klama".into()),
-            Predicate::Root("sutra".into()),
+            Predicate::Root("goes".into()),
+            Predicate::Root("fast".into()),
         ];
         let arguments = vec![
             Argument::Pronoun("me".into()),
@@ -3499,8 +3490,8 @@ mod tests {
     #[test]
     fn test_inject_variable_into_and() {
         let mut compiler = SemanticCompiler::new();
-        let rel1 = compiler.interner.get_or_intern("gerku");
-        let rel2 = compiler.interner.get_or_intern("barda");
+        let rel1 = compiler.interner.get_or_intern("dog");
+        let rel2 = compiler.interner.get_or_intern("big");
         let var = compiler.interner.get_or_intern("_v0");
         let form = LogicalForm::And(
             Box::new(LogicalForm::Predicate {
@@ -3537,8 +3528,8 @@ mod tests {
 
     #[test]
     fn test_predicate_with_no_explicit_args() {
-        // Just "klama" alone → should produce event-decomposed form with all Unspecified role args
-        let predicates = vec![Predicate::Root("klama".into())];
+        // Just "goes" alone → should produce event-decomposed form with all Unspecified role args
+        let predicates = vec![Predicate::Root("goes".into())];
         let arguments: Vec<Argument> = vec![];
         let proposition = Proposition {
             relation: 0,
@@ -3556,12 +3547,12 @@ mod tests {
             form
         );
         assert!(
-            has_pred(&form, "klama", &compiler),
+            has_pred(&form, "goes", &compiler),
             "expected klama type predicate"
         );
         // All role predicates should have Unspecified in entity position
         for i in 1..=5 {
-            let role = format!("klama_x{}", i);
+            let role = format!("goes_x{}", i);
             let role_args = get_pred_args(&form, &role, &compiler)
                 .unwrap_or_else(|| panic!("expected {} role predicate", role));
             assert!(
@@ -3577,11 +3568,8 @@ mod tests {
 
     #[test]
     fn test_le_description_stays_description() {
-        // le gerku cu barda → Description("gerku") in x1 role predicate
-        let predicates = vec![
-            Predicate::Root("gerku".into()),
-            Predicate::Root("barda".into()),
-        ];
+        // le gerku cu barda → Description("dog") in x1 role predicate
+        let predicates = vec![Predicate::Root("dog".into()), Predicate::Root("big".into())];
         let arguments = vec![Argument::Description((Determiner::Definite, 0))];
         let proposition = Proposition {
             relation: 1,
@@ -3593,19 +3581,19 @@ mod tests {
         };
         let (form, compiler) = compile_one(predicates, arguments, proposition);
         let args =
-            get_pred_args(&form, "barda_x1", &compiler).expect("expected barda_x1 role predicate");
+            get_pred_args(&form, "big_x1", &compiler).expect("expected barda_x1 role predicate");
         match &args[1] {
-            LogicalTerm::Description(d) => assert_eq!(resolve(&compiler, d), "gerku"),
+            LogicalTerm::Description(d) => assert_eq!(resolve(&compiler, d), "dog"),
             other => panic!("expected Description(gerku), got {:?}", other),
         }
     }
 
     #[test]
     fn test_ro_le_uses_opaque_domain_restrictor() {
-        // ro le gerku cu sutra → ForAll(_v0, Or(Not(le_domain_gerku(_v0)), ...))
+        // ro le gerku cu sutra → ForAll(_v0, Or(Not(le_domain_dog(_v0)), ...))
         let predicates = vec![
-            Predicate::Root("gerku".into()),
-            Predicate::Root("sutra".into()),
+            Predicate::Root("dog".into()),
+            Predicate::Root("fast".into()),
         ];
         let arguments = vec![Argument::Description((Determiner::UniversalDefinite, 0))];
         let proposition = Proposition {
@@ -3623,13 +3611,13 @@ mod tests {
             "expected ForAll, got {:?}",
             form
         );
-        // The restrictor should be le_domain_gerku (not gerku)
+        // The restrictor should be le_domain_dog (not gerku)
         assert!(
-            has_pred(&form, "le_domain_gerku", &compiler),
-            "expected opaque le_domain_gerku restrictor"
+            has_pred(&form, "le_domain_dog", &compiler),
+            "expected opaque le_domain_dog restrictor"
         );
         assert!(
-            !has_pred(&form, "gerku", &compiler),
+            !has_pred(&form, "dog", &compiler),
             "veridical gerku should NOT appear as restrictor for ro le"
         );
     }
@@ -3638,8 +3626,8 @@ mod tests {
     fn test_ro_lo_still_veridical() {
         // ro lo gerku cu sutra → ForAll with veridical gerku restrictor
         let predicates = vec![
-            Predicate::Root("gerku".into()),
-            Predicate::Root("sutra".into()),
+            Predicate::Root("dog".into()),
+            Predicate::Root("fast".into()),
         ];
         let arguments = vec![Argument::Description((Determiner::UniversalIndefinite, 0))];
         let proposition = Proposition {
@@ -3658,21 +3646,21 @@ mod tests {
         );
         // The restrictor should use veridical gerku (event-decomposed)
         assert!(
-            has_pred(&form, "gerku", &compiler),
+            has_pred(&form, "dog", &compiler),
             "expected veridical gerku restrictor for ro lo"
         );
         assert!(
-            !has_pred(&form, "le_domain_gerku", &compiler),
-            "le_domain_gerku should NOT appear for ro lo"
+            !has_pred(&form, "le_domain_dog", &compiler),
+            "le_domain_dog should NOT appear for ro lo"
         );
     }
 
     #[test]
     fn test_pa_le_uses_opaque_domain_restrictor() {
-        // re le gerku cu sutra → Count with le_domain_gerku restrictor
+        // re le gerku cu sutra → Count with le_domain_dog restrictor
         let predicates = vec![
-            Predicate::Root("gerku".into()),
-            Predicate::Root("sutra".into()),
+            Predicate::Root("dog".into()),
+            Predicate::Root("fast".into()),
         ];
         let arguments = vec![Argument::QuantifiedDescription((
             2,
@@ -3694,11 +3682,11 @@ mod tests {
             form
         );
         assert!(
-            has_pred(&form, "le_domain_gerku", &compiler),
-            "expected opaque le_domain_gerku restrictor for PA le"
+            has_pred(&form, "le_domain_dog", &compiler),
+            "expected opaque le_domain_dog restrictor for PA le"
         );
         assert!(
-            !has_pred(&form, "gerku", &compiler),
+            !has_pred(&form, "dog", &compiler),
             "veridical gerku should NOT appear for PA le"
         );
     }
@@ -3707,8 +3695,8 @@ mod tests {
     fn test_pa_lo_still_veridical() {
         // re lo gerku cu sutra → Count with veridical gerku restrictor
         let predicates = vec![
-            Predicate::Root("gerku".into()),
-            Predicate::Root("sutra".into()),
+            Predicate::Root("dog".into()),
+            Predicate::Root("fast".into()),
         ];
         let arguments = vec![Argument::QuantifiedDescription((
             2,
@@ -3730,12 +3718,12 @@ mod tests {
             form
         );
         assert!(
-            has_pred(&form, "gerku", &compiler),
+            has_pred(&form, "dog", &compiler),
             "expected veridical gerku restrictor for PA lo"
         );
         assert!(
-            !has_pred(&form, "le_domain_gerku", &compiler),
-            "le_domain_gerku should NOT appear for PA lo"
+            !has_pred(&form, "le_domain_dog", &compiler),
+            "le_domain_dog should NOT appear for PA lo"
         );
     }
 }
