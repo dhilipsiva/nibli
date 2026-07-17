@@ -381,9 +381,12 @@ never invoke the linter.
 - **L3 — scope-by-written-order:** warn when one call contains 2+ quantified arguments
   (`eats($x, every dog)` is ∃∀; reordering args flips it) — args are *not* order-free
   when quantified.
-- **L4 — alias echo:** on first use of each alias per file/session, echo the resolved
-  gismu + place permutation (`metabolized_by ↦ katna⟨x1↔x2⟩`) — the alias map is trusted
-  base and a wrong permutation silently reroutes arguments; make it visible.
+- **L4 — converted-alias echo:** on first use of each place-converted alias per
+  file/session, echo the canonical predicate + place permutation
+  (`metabolized_by ↦ cuts⟨x1↔x2⟩`) — the alias map is trusted base and a wrong
+  permutation silently reroutes arguments; make it visible. Plain (unswapped)
+  aliases are quiet: since the predicate-name flip they resolve to themselves,
+  so there is nothing to disclose.
 - **L5 — constraint echo:** note when a disjunctive universal conclusion registers as an
   integrity constraint rather than a rule.
 - **L6 — tense×NAF advisory:** `past ~P` composes legally but lands in the corner the

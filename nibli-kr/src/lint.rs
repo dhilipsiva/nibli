@@ -13,8 +13,8 @@
 //! never call the linter.
 //!
 //! [`Linter`] is stateful ON PURPOSE: L1 (what `some`/`every` introduced),
-//! L4 (first-use alias echo), and L7 (mixing, fired once) are per-FILE or
-//! per-SESSION judgments. A REPL holds one `Linter` across lines and resets
+//! L4 (first-use converted-alias echo), and L7 (mixing, fired once) are
+//! per-FILE or per-SESSION judgments. A REPL holds one `Linter` across lines and resets
 //! it with the KB; batch surfaces lint a whole text through a fresh one.
 //!
 //! The pass parses with per-statement RECOVERY and lints whatever parsed —
@@ -42,7 +42,7 @@ pub struct LintNote {
 /// (batch): state carries across [`Linter::lint`] calls until [`Linter::reset`].
 #[derive(Debug, Default)]
 pub struct Linter {
-    /// L4: aliases already echoed this session.
+    /// L4: converted aliases already echoed this session.
     seen_aliases: BTreeSet<String>,
     /// L1: restrictor heads introduced by a `some`/`every`/`exactly`
     /// determiner (in walk order, so `owns(some dog, the dog)` is quiet).
@@ -398,7 +398,8 @@ impl Walk<'_> {
         }
     }
 
-    /// Per predicate word: L4 (first-use alias echo) + the L7 predicate side.
+    /// Per predicate word: L4 (first-use converted-alias echo) + the L7
+    /// predicate side.
     fn words(&mut self, parts: &[String], at: usize) {
         for word in parts {
             if let Some(word) = resolved_word(word) {
@@ -406,20 +407,18 @@ impl Walk<'_> {
                     self.linter.norm_pred_seen = true;
                 }
             }
-            // L4 — echo the resolved word + permutation on first use: the
-            // alias map is trusted base, and a wrong permutation silently
-            // reroutes arguments; make it visible.
-            if let Some(entry) = nibli_lexicon::alias(word) {
-                if self.linter.seen_aliases.insert(word.clone()) {
-                    let msg = match entry.swap {
-                        Some(n) => format!(
-                            "{word} \u{21a6} {}\u{27e8}x1\u{2194}x{n}\u{27e9}",
-                            entry.gismu
-                        ),
-                        None => format!("{word} \u{21a6} {}", entry.gismu),
-                    };
-                    push(self.notes, self.input, at, "L4", msg);
-                }
+            // L4 — echo a CONVERTED alias's canonical predicate + permutation on
+            // first use: the alias map is trusted base, and a wrong permutation
+            // silently reroutes arguments; make it visible. Plain (unswapped)
+            // aliases are quiet — they resolve to themselves since the
+            // predicate-name flip, so there is nothing to disclose.
+            if let Some(entry) = nibli_lexicon::alias(word)
+                && let Some(n) = entry.swap
+                && self.linter.seen_aliases.insert(word.clone())
+            {
+                let base = nibli_lexicon::canonical_alias(entry.gismu).unwrap_or(entry.gismu);
+                let msg = format!("{word} \u{21a6} {base}\u{27e8}x1\u{2194}x{n}\u{27e9}");
+                push(self.notes, self.input, at, "L4", msg);
             }
         }
     }
@@ -506,26 +505,30 @@ mod tests {
         assert!(!codes("eats(Adam, every cat).").contains(&"L3"));
     }
 
-    // ── L4 — alias echo, first use per session ──
+    // ── L4 — converted-alias echo, first use per session ──
 
     #[test]
-    fn l4_echoes_alias_and_swap_once() {
+    fn l4_echoes_converted_alias_swap_once() {
         let mut linter = Linter::new();
         let notes = linter.lint("dog(Adam).\nmetabolized_by(Adam, Betis).");
         let l4: Vec<_> = notes.iter().filter(|n| n.code == "L4").collect();
-        assert!(
-            l4.iter().any(|n| n.message == "dog \u{21a6} gerku"),
-            "{l4:?}"
-        );
+        // The converted alias discloses its ENGLISH canonical base + the
+        // permutation — Lojban-free (the plain base alias of katna is `cuts`).
         assert!(
             l4.iter()
-                .any(|n| n.message == "metabolized_by \u{21a6} katna\u{27e8}x1\u{2194}x2\u{27e9}"),
+                .any(|n| n.message == "metabolized_by \u{21a6} cuts\u{27e8}x1\u{2194}x2\u{27e9}"),
             "{l4:?}"
         );
+        // A PLAIN alias is quiet — it resolves to itself since the
+        // predicate-name flip; there is nothing to disclose.
+        assert_eq!(l4.len(), 1, "plain `dog` must not echo: {l4:?}");
         // Second use: no re-echo.
         assert!(
-            !linter.lint("dog(Betis).").iter().any(|n| n.code == "L4"),
-            "alias must echo only on first use per session"
+            !linter
+                .lint("metabolized_by(Betis, Kim).")
+                .iter()
+                .any(|n| n.code == "L4"),
+            "a converted alias must echo only on first use per session"
         );
     }
 
@@ -628,10 +631,11 @@ mod tests {
     fn acceptance_corpus_lints_without_panicking() {
         let corpus = include_str!("../tests/acceptance.nibli");
         let notes = lint_once(corpus);
-        // The corpus exercises aliases, so at minimum L4 echoes fire.
+        // The corpus exercises CONVERTED aliases (metabolized_by, obligated,
+        // permitted), so at minimum L4 echoes fire.
         assert!(
             notes.iter().any(|n| n.code == "L4"),
-            "expected alias echoes over the acceptance corpus"
+            "expected converted-alias echoes over the acceptance corpus"
         );
     }
 }
