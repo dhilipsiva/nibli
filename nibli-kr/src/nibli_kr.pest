@@ -64,7 +64,6 @@ kw_no        = @{ "no" ~ !ident_char }
 kw_now       = @{ "now" ~ !ident_char }
 kw_past      = @{ "past" ~ !ident_char }
 kw_property  = @{ "property" ~ !ident_char }
-kw_seeming   = @{ "seeming" ~ !ident_char }
 kw_slot      = @{ "slot" ~ !ident_char }
 kw_some      = @{ "some" ~ !ident_char }
 kw_that      = @{ "that" ~ !ident_char }
@@ -86,7 +85,7 @@ keyword = _{
   | kw_it_a | kw_it_e | kw_it_i | kw_it_o | kw_it_u
   | kw_all | kw_also | kw_amount | kw_concept | kw_event | kw_every
   | kw_exactly | kw_fact | kw_future | kw_it | kw_may | kw_me | kw_must
-  | kw_no | kw_now | kw_past | kw_property | kw_seeming | kw_slot | kw_some
+  | kw_no | kw_now | kw_past | kw_property | kw_slot | kw_some
   | kw_that | kw_the | kw_this | kw_via | kw_we | kw_where | kw_yonder | kw_you
 }
 

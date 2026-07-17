@@ -95,7 +95,8 @@ The token-level behavior (however implemented) is:
   `some the every exactly no all where also via past now future must may`
   `event fact property amount concept`
   `me you we we_all we_others you_all this that yonder it it_a it_e it_i it_o it_u slot`
-  `seeming` (unused; reserved for a future veridicality distinction, §11).
+  (`seeming`, once reserved for a future veridicality distinction, was dropped
+  2026-07-17 — the distinction died with `voi`, §14.2.)
 - **Token classes by leading character:** lowercase = predicate/label identifier
   (`[a-z][a-z0-9_]*`), Uppercase = rigid name, `$x` = logic variable, `?` = witness,
   `_` = unspecified, digits = number, `"` = string, `#` = line comment,
@@ -359,7 +360,7 @@ Lojban today (future work if the engine grows correlated find).
 
 Each pair below compiles to the **identical** `LogicBuffer` shape today, so nibli KR spells
 them one way. If the engine ever distinguishes a pair, nibli KR needs a new surface form
-there (the reserved `seeming` keyword pre-books the `voi` case):
+there:
 
 `su'o lo` = `lo` → `some` · `voi` = `poi` → `where` (non-veridicality unmodeled) ·
 `zo` = `zoi` → `"…"` · BAI = `fi'o` → `via` · forethought = afterthought connectives →
@@ -570,7 +571,7 @@ pred obligated(who, duty).
 | da/de/di 3-variable lowering cap | cmavo inventory | **Lifted** — arbitrary distinct `$vars` per scope (resolves O1). |
 | builtin BAI tag names (`cause entails motive reason tool instead_of`) | BAI→gismu table | **Demoted** to a standard-library schema prelude; the `via` mechanism itself is unchanged. |
 | `every the` (`ro le`) | gadri product | Gone with `the` (resolves O4). |
-| `seeming` keyword reservation | `voi` placeholder | Dropped — with `le` and `voi` gone there is no veridicality distinction left to reserve for. |
+| `seeming` keyword reservation | `voi` placeholder | **Already dropped in v0.1** (2026-07-17) — with `le` and `voi` gone there is no veridicality distinction left to reserve for. |
 | gismu identity aliases (writing `klama(...)` directly) | Lojban interop | **Already gone in v0.1** (the committed-corpus milestone: gismu never resolve; provenance-field only). |
 
 ### 14.3 Kept — deliberately, with reasons

@@ -31,7 +31,6 @@ pub const RESERVED_WORDS: &[&str] = &[
     "now",
     "past",
     "property",
-    "seeming",
     "slot",
     "some",
     "that",
@@ -70,9 +69,10 @@ mod tests {
 
     #[test]
     fn expected_membership() {
-        // The NIBLI_KR §2 list — 36 keywords.
-        assert_eq!(RESERVED_WORDS.len(), 36);
-        for kw in ["must", "it_a", "seeming", "some", "the", "every", "slot"] {
+        // The NIBLI_KR §2 list — 35 keywords (`seeming` dropped 2026-07-17:
+        // the veridicality distinction it pre-booked died with `voi`).
+        assert_eq!(RESERVED_WORDS.len(), 35);
+        for kw in ["must", "it_a", "some", "the", "every", "slot"] {
             assert!(is_reserved(kw), "{kw} must be reserved");
         }
         assert!(!is_reserved("goes"));

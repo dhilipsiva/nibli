@@ -245,12 +245,6 @@ Pipeline-audit backlog (2026-07-17; three-agent audit of front-end / middle IRs 
 back-end — effort tags S/M/L; ordered quick-wins → correctness → structure →
 performance → future-facing):
 
-- **Drop the `seeming` keyword (S)** — reserved and grammar'd but NO production
-  rule uses it (nibli_kr.pest:67,89; reserved.rs:34), and NIBLI_KR.md:573's own
-  decision table says it was DROPPED (contradicting §2's "reserved for a future
-  veridicality distinction"). Remove from grammar + reserved list (fix the
-  len==36 assertion + the membership test; the grammar↔reserved conformance test
-  keeps the two in sync) and fix §2.
 - **De-provenance the L7 lint (S)** — `lint.rs:186 resolved_word` returns
   `entry.source_gismu` and L7 matches `"bilga" | "curmi"` — classifying deontic
   predicates through RETIRED gismu provenance (documented "never resolvable");
