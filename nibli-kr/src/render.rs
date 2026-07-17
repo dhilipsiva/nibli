@@ -194,24 +194,20 @@ impl<'a> Renderer<'a> {
             prefix.push('~');
         }
 
-        // du with exactly one head and one tail term is the equality spelling
-        // (with an injected implicit bound entity, the head IS `it`).
+        // du with exactly an explicit x1 + one more term is the equality
+        // spelling (with an injected implicit bound entity, x1 IS `it`).
         if let Predicate::Root(root) = self.predicate(proposition.relation)?
             && root == "equals"
         {
-            if !inject_it && proposition.head_terms.len() == 1 && proposition.tail_terms.len() == 1
-            {
+            if !inject_it && proposition.x1_present && proposition.terms.len() == 2 {
                 return Ok(format!(
                     "{prefix}{} = {}",
-                    self.term(proposition.head_terms[0])?,
-                    self.term(proposition.tail_terms[0])?
+                    self.term(proposition.terms[0])?,
+                    self.term(proposition.terms[1])?
                 ));
             }
-            if inject_it && proposition.head_terms.is_empty() && proposition.tail_terms.len() == 1 {
-                return Ok(format!(
-                    "{prefix}it = {}",
-                    self.term(proposition.tail_terms[0])?
-                ));
+            if inject_it && !proposition.x1_present && proposition.terms.len() == 1 {
+                return Ok(format!("{prefix}it = {}", self.term(proposition.terms[0])?));
             }
         }
 
@@ -225,10 +221,10 @@ impl<'a> Renderer<'a> {
         let head_word = self.head_word(relation_id)?;
         let relation = self.predication_predicate(relation_id)?;
 
-        // Argument places: heads fill x1.., then the tail runs the CLL
-        // counter (an untagged term takes the next place; a FA tag jumps the
-        // counter). SURFACE places map through the peeled permutation onto the
-        // plain relation's places. Render positionally while plain places stay
+        // Argument places: the CLL counter runs over `terms` in emission order
+        // (an untagged term takes the next place; a FA tag jumps the counter).
+        // SURFACE places map through the peeled permutation onto the plain
+        // relation's places. Render positionally while plain places stay
         // contiguous from x1, then switch to named args; modal tags render as
         // `via` after the argument list.
         let mut placed: Vec<(usize, Option<u32>)> = Vec::new();
@@ -238,12 +234,8 @@ impl<'a> Renderer<'a> {
             placed.push((counter, None)); // the implicit bound entity — spelled `it`
             counter += 1;
         }
-        for &head in &proposition.head_terms {
-            placed.push((counter, Some(head)));
-            counter += 1;
-        }
-        for &tail in &proposition.tail_terms {
-            match self.argument(tail)? {
+        for &term_id in &proposition.terms {
+            match self.argument(term_id)? {
                 Argument::Tagged((tag, inner)) => {
                     let place = *tag as usize;
                     placed.push((place, Some(*inner)));
@@ -261,7 +253,7 @@ impl<'a> Renderer<'a> {
                 | Argument::Restricted(_)
                 | Argument::Number(_)
                 | Argument::QuantifiedDescription(_) => {
-                    placed.push((counter, Some(tail)));
+                    placed.push((counter, Some(term_id)));
                     counter += 1;
                 }
             }
@@ -628,24 +620,27 @@ impl<'a> Renderer<'a> {
             RelClauseKind::Restrictive => "where",
             RelClauseKind::Incidental => "also",
         };
-        // Bare-predicate sugar: a body of shape `it <predicate>` (no tail, no
-        // prefixes) prints as the sugar form.
-        // The bound entity is either an explicit `it` head (nibli-kr-emitted
-        // buffers) or IMPLICIT (a hand-built buffer may leave the head empty and
-        // nibli-semantics injects the bound entity at x1) — both print as the
+        // Bare-predicate sugar: a body of shape `it <predicate>` (no further
+        // terms, no prefixes) prints as the sugar form.
+        // The bound entity is either an explicit `it` x1 (nibli-kr-emitted
+        // buffers) or IMPLICIT (a hand-built buffer may leave x1 implicit and
+        // nibli-semantics injects the bound entity there) — both print as the
         // sugar.
-        let head_is_kehah = |proposition: &Proposition| -> R<bool> {
-            Ok(match proposition.head_terms.as_slice() {
-                [] => true,
-                [only] => matches!(self.argument(*only)?, Argument::Atom(w) if w == "it"),
-                _ => false,
-            })
+        let body_is_bare_it = |proposition: &Proposition| -> R<bool> {
+            Ok(
+                match (proposition.x1_present, proposition.terms.as_slice()) {
+                    (false, []) => true,
+                    (true, [only]) => {
+                        matches!(self.argument(*only)?, Argument::Atom(w) if w == "it")
+                    }
+                    _ => false,
+                },
+            )
         };
         if let Sentence::Simple(proposition) = self.sentence_node(clause.body_sentence)?
-            && proposition.tail_terms.is_empty()
             && proposition.tense.is_none()
             && proposition.deontic.is_none()
-            && head_is_kehah(proposition)?
+            && body_is_bare_it(proposition)?
             && self.bare_body_predicate(proposition.relation)
         {
             let neg = if proposition.negated { "~" } else { "" };
@@ -654,17 +649,18 @@ impl<'a> Renderer<'a> {
                 self.predicate_text(proposition.relation, false)?
             ));
         }
-        // Full-claim body. A hand-built Simple body may leave the head EMPTY
-        // (nibli-semantics injects the bound entity at x1) — spell that implicit
-        // binding as `it` so the rendered KR re-parses (§7 mandatory-it). nibli
-        // KR-emitted bodies carry an explicit `it` (head, or a tail term —
-        // nibli-semantics skips its implicit-x1 injection when the body already
-        // contains an explicit `it`) and render through the normal path.
+        // Full-claim body. A hand-built Simple body may leave x1 IMPLICIT
+        // (nibli-semantics injects the bound entity there) — spell that
+        // implicit binding as `it` so the rendered KR re-parses (§7
+        // mandatory-it). nibli KR-emitted bodies carry an explicit `it` (x1,
+        // or a later term — nibli-semantics skips its implicit-x1 injection
+        // when the body already contains an explicit `it`) and render through
+        // the normal path.
         let has_explicit_keha = |proposition: &Proposition| -> R<bool> {
-            for &tail in &proposition.tail_terms {
-                let inner = match self.argument(tail)? {
+            for &term_id in &proposition.terms {
+                let inner = match self.argument(term_id)? {
                     Argument::Tagged((_, inner)) => *inner,
-                    _ => tail,
+                    _ => term_id,
                 };
                 if matches!(self.argument(inner)?, Argument::Atom(w) if w == "it") {
                     return Ok(true);
@@ -674,7 +670,7 @@ impl<'a> Renderer<'a> {
         };
         let body = match self.sentence_node(clause.body_sentence)? {
             Sentence::Simple(proposition)
-                if proposition.head_terms.is_empty() && !has_explicit_keha(proposition)? =>
+                if !proposition.x1_present && !has_explicit_keha(proposition)? =>
             {
                 self.proposition_with_it(proposition)?
             }
@@ -901,8 +897,8 @@ mod tests {
             arguments: vec![argument],
             sentences: vec![Sentence::Simple(Proposition {
                 relation: 0,
-                head_terms: vec![0],
-                tail_terms: vec![],
+                terms: vec![0],
+                x1_present: true,
                 negated: false,
                 tense: None,
                 deontic: None,

@@ -98,8 +98,7 @@ fn validate_ast_buffer(ast: &flat_ast::AstBuffer) -> Result<(), NibliError> {
             Kind::Sen => match &ast.sentences[idx as usize] {
                 Sentence::Simple(b) => {
                     let mut v = vec![(Kind::Sel, b.relation)];
-                    v.extend(b.head_terms.iter().map(|t| (Kind::Sum, *t)));
-                    v.extend(b.tail_terms.iter().map(|t| (Kind::Sum, *t)));
+                    v.extend(b.terms.iter().map(|t| (Kind::Sum, *t)));
                     v
                 }
                 Sentence::Connected((_, l, r)) => vec![(Kind::Sen, *l), (Kind::Sen, *r)],
@@ -428,11 +427,12 @@ mod ast_buffer_validation_tests {
     use super::compile_from_ast;
     use nibli_types::ast::*;
 
-    fn bare_proposition(relation: u32, head: Vec<u32>) -> Sentence {
+    fn bare_proposition(relation: u32, terms: Vec<u32>) -> Sentence {
+        let x1_present = !terms.is_empty();
         Sentence::Simple(Proposition {
             relation,
-            head_terms: head,
-            tail_terms: vec![],
+            terms,
+            x1_present,
             negated: false,
             tense: None,
             deontic: None,

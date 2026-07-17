@@ -143,12 +143,20 @@ pub enum DeonticMood {
     Permission,
 }
 
-/// A proposition (predication): predicate + head terms + tail terms + modifiers.
+/// A proposition (predication): predicate + argument terms + modifiers.
 #[derive(Clone, Debug)]
 pub struct Proposition {
     pub relation: PredicateId,
-    pub head_terms: Vec<ArgumentId>,
-    pub tail_terms: Vec<ArgumentId>,
+    /// All argument ids in EMISSION order: the explicit-x1 positional (when
+    /// present) FIRST, then the remaining positionals/tagged/modal args.
+    /// Consumers' place counters and surface-ordered scope markers depend on
+    /// this order (the old head/tail split's chained order).
+    pub terms: Vec<ArgumentId>,
+    /// Whether an explicit untagged x1 positional was written — when true it
+    /// is `terms[0]`. False ⇒ x1 is implicit: the rel-clause bound-entity
+    /// injection point in nibli-semantics, and render's bare-sugar /
+    /// inject-`it` spelling.
+    pub x1_present: bool,
     pub negated: bool,
     pub tense: Option<Tense>,
     pub deontic: Option<DeonticMood>,

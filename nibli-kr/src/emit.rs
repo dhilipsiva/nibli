@@ -331,8 +331,8 @@ impl<'a> Emitter<'a> {
                 let tail = self.term(rhs, at)?;
                 Proposition {
                     relation,
-                    head_terms: vec![head],
-                    tail_terms: vec![tail],
+                    terms: vec![head, tail],
+                    x1_present: true,
                     negated,
                     tense,
                     deontic,
@@ -357,8 +357,14 @@ impl<'a> Emitter<'a> {
 
         // Ordinary argument list: positionals fill x1.. . Each argument's
         // place check runs BEFORE its term is walked (error precedence).
-        let mut head_terms = Vec::new();
-        let mut tail_terms = Vec::new();
+        //
+        // The explicit x1 positional is HOISTED to the front of `terms` even
+        // when a named arg precedes it in source (`goes(x2: foo, bar)` emits
+        // `[bar, Tagged(foo)]`): nibli-semantics' CLL FA place counter and
+        // surface-ordered scope markers, plus render's positional counter,
+        // all consume terms in x1-first order.
+        let mut x1_term: Option<u32> = None;
+        let mut rest_terms = Vec::new();
         let mut filled = [false; 5];
         let mut next_positional = 0usize;
         for arg in &p.args {
@@ -381,9 +387,9 @@ impl<'a> Emitter<'a> {
                     filled[index] = true;
                     let idx = self.term(&arg.term, arg.span.start)?;
                     if index == 0 {
-                        head_terms.push(idx);
+                        x1_term = Some(idx);
                     } else {
-                        tail_terms.push(idx);
+                        rest_terms.push(idx);
                     }
                 }
                 Some(label) => {
@@ -402,7 +408,7 @@ impl<'a> Emitter<'a> {
                     }
                     filled[place] = true;
                     let inner = self.term(&arg.term, arg.span.start)?;
-                    tail_terms.push(self.push_argument(Argument::Tagged((place as u8, inner))));
+                    rest_terms.push(self.push_argument(Argument::Tagged((place as u8, inner))));
                 }
             }
         }
@@ -425,14 +431,16 @@ impl<'a> Emitter<'a> {
             let (word, _) = emit_name(&info.entry);
             let modal_predicate = self.push_predicate(Predicate::Root(word));
             let inner = self.term(&tag.term, tag.span.start)?;
-            tail_terms.push(
+            rest_terms.push(
                 self.push_argument(Argument::ModalTagged((ModalTag(modal_predicate), inner))),
             );
         }
+        let x1_present = x1_term.is_some();
+        let terms: Vec<u32> = x1_term.into_iter().chain(rest_terms).collect();
         Ok(Proposition {
             relation,
-            head_terms,
-            tail_terms,
+            terms,
+            x1_present,
             negated,
             tense,
             deontic,
@@ -572,8 +580,8 @@ impl<'a> Emitter<'a> {
                 let head = self.push_argument(Argument::Atom(particle.to_owned()));
                 Ok(self.push_sentence(Sentence::Simple(Proposition {
                     relation,
-                    head_terms: vec![head],
-                    tail_terms: vec![],
+                    terms: vec![head],
+                    x1_present: true,
                     negated: false,
                     tense: None,
                     deontic: None,
@@ -599,8 +607,8 @@ impl<'a> Emitter<'a> {
         let head = self.push_argument(Argument::Atom(particle.to_owned()));
         Ok(self.push_sentence(Sentence::Simple(Proposition {
             relation,
-            head_terms: vec![head],
-            tail_terms: vec![],
+            terms: vec![head],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -915,8 +923,8 @@ impl<'a> Emitter<'a> {
                     let head = self.push_argument(Argument::Atom("it".into()));
                     self.push_sentence(Sentence::Simple(Proposition {
                         relation,
-                        head_terms: vec![head],
-                        tail_terms: vec![],
+                        terms: vec![head],
+                        x1_present: true,
                         negated: *negated,
                         tense: None,
                         deontic: None,

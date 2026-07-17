@@ -256,12 +256,6 @@ performance → future-facing):
   free-var + scope-marker passes still `starts_with('$')`), so it is a
   HALF-win, and it costs ~70 semantic.rs test-literal rewrites. Deferred from
   the naming bundle (user chose the `Atom` rename) for that reason.
-- **Collapse head_terms/tail_terms (M)** — the Proposition split is a Lojban SVO
-  artifact: emit puts the first positional in head, everything else in tail;
-  nibli-semantics immediately re-chains them (compile.rs:29-34,94-97) and the
-  ONLY information the split carries is "is x1 explicitly present"
-  (compile.rs:65 + render's bare-sugar check). Replace with
-  `terms: Vec<ArgumentId>` + `x1_present: bool` (~120 test-literal touches).
 - **Document AstBuffer's real role (S)** — do NOT remove it (nibli-semantics
   must not depend on nibli-kr; it is render's input and the validated
   programmatic-build target via `validate_ast_buffer`), but its doc still

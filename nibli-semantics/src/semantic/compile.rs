@@ -26,13 +26,6 @@ impl SemanticCompiler {
         // enclosing proposition's pending `ma` var (mirrors `matrix_conjunct_checkpoint`).
         let ma_checkpoint = self.question_vars.len();
 
-        let all_terms: Vec<u32> = proposition
-            .head_terms
-            .iter()
-            .chain(proposition.tail_terms.iter())
-            .copied()
-            .collect();
-
         let target_arity = self.get_predicate_arity(proposition.relation, predicates);
 
         let mut positioned: Vec<Option<IrTerm>> = vec![None; target_arity];
@@ -42,30 +35,31 @@ impl SemanticCompiler {
         // x1 ARGUMENT here — BEFORE `apply_predicate` runs any `se`/`te`/`ve`/`xe`
         // conversion — so `poi se prami la .alis.` routes `it` through the
         // conversion to the correct underlying role (prami_x2), exactly as an
-        // explicit subject would. One-shot: the first empty-head proposition WITHOUT
-        // its own explicit `it` consumes it; nested proposition (abstraction bodies)
+        // explicit subject would. One-shot: the first x1-implicit proposition
+        // (`x1_present == false`) WITHOUT its own explicit `it` consumes it;
+        // nested proposition (abstraction bodies)
         // see `None`. Marking `ref_used` makes the caller skip the post-hoc
         // `inject_variable`, which cannot see conversion and would refill the
         // vacated x1 slot.
         //
         // SKIP RULE: when the proposition's own direct terms already carry an
         // explicit `it` — bare, or under a `fa`..`fu` place tag (the shape the
-        // KR front-end emits for all-named args: empty head + FA-tagged tail,
+        // KR front-end emits for all-named args: x1 implicit + FA-tagged terms,
         // e.g. `where loves(lover: Alis, loved: it)`) — the user has placed the
         // clause variable, and injecting would double-fill x1: a hard "place
         // already filled" reject for a place-tagged `it` colliding with the
         // pre-fill, or a silently self-referring x1 for a lone tagged `it`.
         // The explicit `it` resolves in the term loop below and sets `ref_used`
-        // itself, exactly like the positional spelling (whose non-empty head
+        // itself, exactly like the positional spelling (whose explicit x1
         // never reaches this branch) — so named ≡ positional, including leaving
         // `pending_clause_subject` untouched. The scan is SHALLOW: a `it`
         // nested in a Description/Restricted/Abstraction belongs to the inner
         // clause; a BAI-modal-carried `it` (`ModalTagged`) is not place-filling
         // and keeps the implicit-x1 default.
-        if proposition.head_terms.is_empty()
+        if !proposition.x1_present
             && target_arity >= 1
             && self.pending_clause_subject.is_some()
-            && !Self::terms_contain_explicit_kea(&all_terms, arguments)
+            && !Self::terms_contain_explicit_kea(&proposition.terms, arguments)
         {
             if let Some(subject) = self.pending_clause_subject.take() {
                 positioned[0] = Some(IrTerm::Variable(subject));
@@ -91,11 +85,7 @@ impl SemanticCompiler {
         // (a `it` x1 pre-fill, or an out-of-order tag).
         let mut next_place: usize = 0;
 
-        for &term_id in proposition
-            .head_terms
-            .iter()
-            .chain(proposition.tail_terms.iter())
-        {
+        for &term_id in &proposition.terms {
             match &arguments[term_id as usize] {
                 Argument::Tagged((tag, inner_id)) => {
                     let inner = &arguments[*inner_id as usize];

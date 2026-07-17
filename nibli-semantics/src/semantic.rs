@@ -441,8 +441,8 @@ mod tests {
         ];
         let proposition = Proposition {
             relation: 0,
-            head_terms: vec![0],
-            tail_terms: vec![1],
+            terms: vec![0, 1],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -470,8 +470,8 @@ mod tests {
         ];
         let proposition = Proposition {
             relation: 0,
-            head_terms: vec![0],
-            tail_terms: vec![1, 2],
+            terms: vec![0, 1, 2],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -507,8 +507,8 @@ mod tests {
         ];
         let proposition = Proposition {
             relation: 0,
-            head_terms: vec![],
-            tail_terms: vec![1, 2],
+            terms: vec![1, 2],
+            x1_present: false,
             negated: false,
             tense: None,
             deontic: None,
@@ -546,8 +546,8 @@ mod tests {
         ];
         let proposition = Proposition {
             relation: 0,
-            head_terms: vec![0],
-            tail_terms: vec![2],
+            terms: vec![0, 2],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -585,18 +585,19 @@ mod tests {
             Predicate::Root("big".into()),           // 2
         ];
 
+        let inner_x1_present = !inner_argument_ids.is_empty();
         let inner_proposition = Proposition {
             relation: 0,
-            head_terms: inner_argument_ids,
-            tail_terms: vec![],
+            terms: inner_argument_ids,
+            x1_present: inner_x1_present,
             negated: false,
             tense: None,
             deontic: None,
         };
         let outer_proposition = Proposition {
             relation: 2,
-            head_terms: vec![desc_argument_idx],
-            tail_terms: vec![],
+            terms: vec![desc_argument_idx],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -773,8 +774,8 @@ mod tests {
         let arguments = vec![Argument::Atom("slot".into())];
         let proposition = Proposition {
             relation: 0,
-            head_terms: vec![0],
-            tail_terms: vec![],
+            terms: vec![0],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -819,8 +820,8 @@ mod tests {
         ];
         let proposition = Proposition {
             relation: 0,
-            head_terms: vec![0],
-            tail_terms: vec![2],
+            terms: vec![0, 2],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -866,8 +867,8 @@ mod tests {
         ];
         let proposition = Proposition {
             relation: 0,
-            head_terms: vec![0],
-            tail_terms: vec![2],
+            terms: vec![0, 2],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -892,7 +893,7 @@ mod tests {
         // Buffer:
         //   arguments: [0: QuantifiedDescription(2, Lo, 0)]
         //   predicates: [0: gerku, 1: barda]
-        //   proposition: { relation: 1, head_terms: [0], tail_terms: [] }
+        //   proposition: { relation: 1, terms: [0], x1_present: true }
         let predicates = vec![
             Predicate::Root("dog".into()), // 0
             Predicate::Root("big".into()), // 1
@@ -902,8 +903,8 @@ mod tests {
         ];
         let proposition = Proposition {
             relation: 1,
-            head_terms: vec![0],
-            tail_terms: vec![],
+            terms: vec![0],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -940,8 +941,8 @@ mod tests {
         ];
         let proposition = Proposition {
             relation: 1,
-            head_terms: vec![0],
-            tail_terms: vec![],
+            terms: vec![0],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -966,8 +967,8 @@ mod tests {
         ))];
         let proposition = Proposition {
             relation: 1,
-            head_terms: vec![0],
-            tail_terms: vec![],
+            terms: vec![0],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -988,8 +989,8 @@ mod tests {
         let arguments = vec![Argument::Description((Determiner::Indefinite, 0))];
         let proposition = Proposition {
             relation: 1,
-            head_terms: vec![0],
-            tail_terms: vec![],
+            terms: vec![0],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -1024,16 +1025,16 @@ mod tests {
         ];
         let left_proposition = Proposition {
             relation: 0,
-            head_terms: vec![0],
-            tail_terms: vec![],
+            terms: vec![0],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
         };
         let right_proposition = Proposition {
             relation: 1,
-            head_terms: vec![1],
-            tail_terms: vec![],
+            terms: vec![1],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -1082,8 +1083,8 @@ mod tests {
         ];
         let proposition = Proposition {
             relation: 0,
-            head_terms: vec![0],
-            tail_terms: vec![1],
+            terms: vec![0, 1],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -1127,8 +1128,8 @@ mod tests {
         ];
         let proposition = Proposition {
             relation: 0,
-            head_terms: vec![0],
-            tail_terms: vec![1],
+            terms: vec![0, 1],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -1170,8 +1171,8 @@ mod tests {
         ];
         let proposition = Proposition {
             relation: 0,
-            head_terms: vec![0],
-            tail_terms: vec![1],
+            terms: vec![0, 1],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -1210,8 +1211,8 @@ mod tests {
         let arguments = vec![Argument::Atom("$di".into())];
         let proposition = Proposition {
             relation: 0,
-            head_terms: vec![0],
-            tail_terms: vec![],
+            terms: vec![0],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -1235,8 +1236,8 @@ mod tests {
         let arguments = vec![Argument::Atom("$da".into()), Argument::Atom("me".into())];
         let proposition = Proposition {
             relation: 0,
-            head_terms: vec![0],
-            tail_terms: vec![1],
+            terms: vec![0, 1],
+            x1_present: true,
             negated: true,
             tense: None,
             deontic: None,
@@ -1281,8 +1282,8 @@ mod tests {
         ];
         let proposition = Proposition {
             relation: 0,
-            head_terms: vec![0],
-            tail_terms: vec![],
+            terms: vec![0],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -1323,8 +1324,8 @@ mod tests {
         ];
         let proposition = Proposition {
             relation: 0,
-            head_terms: vec![0],
-            tail_terms: vec![1],
+            terms: vec![0, 1],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -1388,16 +1389,16 @@ mod tests {
         let sentences = vec![
             Sentence::Simple(Proposition {
                 relation: 0,
-                head_terms: vec![0],
-                tail_terms: vec![2],
+                terms: vec![0, 2],
+                x1_present: true,
                 negated: false,
                 tense: None,
                 deontic: None,
             }),
             Sentence::Simple(Proposition {
                 relation: 2, // barda (rel-clause body; implicit ke'a fills x1)
-                head_terms: vec![],
-                tail_terms: vec![],
+                terms: vec![],
+                x1_present: false,
                 negated: false,
                 tense: None,
                 deontic: None,
@@ -1435,16 +1436,16 @@ mod tests {
         let sentences = vec![
             Sentence::Simple(Proposition {
                 relation: 2,
-                head_terms: vec![1],
-                tail_terms: vec![],
+                terms: vec![1],
+                x1_present: true,
                 negated: false,
                 tense: None,
                 deontic: None,
             }),
             Sentence::Simple(Proposition {
                 relation: 1, // barda (rel-clause body; implicit ke'a fills x1)
-                head_terms: vec![],
-                tail_terms: vec![],
+                terms: vec![],
+                x1_present: false,
                 negated: false,
                 tense: None,
                 deontic: None,
@@ -1524,16 +1525,16 @@ mod tests {
         let sentences = vec![
             Sentence::Simple(Proposition {
                 relation: 2,
-                head_terms: vec![1],
-                tail_terms: vec![],
+                terms: vec![1],
+                x1_present: true,
                 negated: false,
                 tense: None,
                 deontic: None,
             }),
             Sentence::Simple(Proposition {
                 relation: 1,
-                head_terms: vec![],
-                tail_terms: vec![],
+                terms: vec![],
+                x1_present: false,
                 negated: false,
                 tense: None,
                 deontic: None,
@@ -1566,8 +1567,8 @@ mod tests {
         ];
         let proposition = Proposition {
             relation: 1,
-            head_terms: vec![0],
-            tail_terms: vec![],
+            terms: vec![0],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -1598,16 +1599,16 @@ mod tests {
         let sentences = vec![
             Sentence::Simple(Proposition {
                 relation: 0,
-                head_terms: vec![0],
-                tail_terms: vec![1],
+                terms: vec![0, 1],
+                x1_present: true,
                 negated: false,
                 tense: None,
                 deontic: None,
             }),
             Sentence::Simple(Proposition {
                 relation: 2, // broda
-                head_terms: vec![2],
-                tail_terms: vec![],
+                terms: vec![2],
+                x1_present: true,
                 negated: false,
                 tense: None,
                 deontic: None,
@@ -1644,8 +1645,8 @@ mod tests {
         ];
         let proposition = Proposition {
             relation: 0,
-            head_terms: vec![0],
-            tail_terms: vec![1],
+            terms: vec![0, 1],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -1681,8 +1682,8 @@ mod tests {
         ];
         let proposition = Proposition {
             relation: 0,
-            head_terms: vec![0],
-            tail_terms: vec![1],
+            terms: vec![0, 1],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -1719,8 +1720,8 @@ mod tests {
         ];
         let proposition = Proposition {
             relation: 0,
-            head_terms: vec![0],
-            tail_terms: vec![1, 2],
+            terms: vec![0, 1, 2],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -1758,8 +1759,8 @@ mod tests {
         ];
         let proposition = Proposition {
             relation: 1,
-            head_terms: vec![0],
-            tail_terms: vec![],
+            terms: vec![0],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -1808,16 +1809,16 @@ mod tests {
         let sentences = vec![
             Sentence::Simple(Proposition {
                 relation: 2, // klama
-                head_terms: vec![1],
-                tail_terms: vec![],
+                terms: vec![1],
+                x1_present: true,
                 negated: false,
                 tense: None,
                 deontic: None,
             }),
             Sentence::Simple(Proposition {
                 relation: 1, // prami (rel-clause body: `prami fe da`; ke'a fills x1)
-                head_terms: vec![],
-                tail_terms: vec![3],
+                terms: vec![3],
+                x1_present: false,
                 negated: false,
                 tense: None,
                 deontic: None,
@@ -1855,8 +1856,8 @@ mod tests {
             Sentence::Prenex((vec!["$da".into()], 1)),
             Sentence::Simple(Proposition {
                 relation: 0,
-                head_terms: vec![0],
-                tail_terms: vec![1],
+                terms: vec![0, 1],
+                x1_present: true,
                 negated: false,
                 tense: None,
                 deontic: None,
@@ -1889,8 +1890,8 @@ mod tests {
         ];
         let proposition = Proposition {
             relation: 0,
-            head_terms: vec![0],
-            tail_terms: vec![1],
+            terms: vec![0, 1],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -1916,8 +1917,8 @@ mod tests {
         ];
         let proposition = Proposition {
             relation: 0,
-            head_terms: vec![0],
-            tail_terms: vec![1],
+            terms: vec![0, 1],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -1972,16 +1973,16 @@ mod tests {
         let sentences = vec![
             Sentence::Simple(Proposition {
                 relation: 2,
-                head_terms: vec![1],
-                tail_terms: vec![],
+                terms: vec![1],
+                x1_present: true,
                 negated: false,
                 tense: None,
                 deontic: None,
             }),
             Sentence::Simple(Proposition {
                 relation: 1,
-                head_terms: vec![],
-                tail_terms: vec![],
+                terms: vec![],
+                x1_present: false,
                 negated: false,
                 tense: None,
                 deontic: None,
@@ -2026,17 +2027,17 @@ mod tests {
         ];
         let sentences = vec![
             Sentence::Simple(Proposition {
-                relation: 2,         // barda (main sentence)
-                head_terms: vec![2], // lo gerku poi ...
-                tail_terms: vec![],
+                relation: 2,    // barda (main sentence)
+                terms: vec![2], // lo gerku poi ...
+                x1_present: true,
                 negated: false,
                 tense: None,
                 deontic: None,
             }),
             Sentence::Simple(Proposition {
-                relation: 2,         // barda (rel clause body: lo mlatu cu barda)
-                head_terms: vec![1], // lo mlatu
-                tail_terms: vec![],
+                relation: 2,    // barda (rel clause body: lo mlatu cu barda)
+                terms: vec![1], // lo mlatu
+                x1_present: true,
                 negated: false,
                 tense: None,
                 deontic: None,
@@ -2084,16 +2085,16 @@ mod tests {
         let sentences = vec![
             Sentence::Simple(Proposition {
                 relation: 2,
-                head_terms: vec![2],
-                tail_terms: vec![],
+                terms: vec![2],
+                x1_present: true,
                 negated: false,
                 tense: None,
                 deontic: None,
             }),
             Sentence::Simple(Proposition {
                 relation: 1,
-                head_terms: vec![1], // ke'a as head term
-                tail_terms: vec![],
+                terms: vec![1], // ke'a as head term
+                x1_present: true,
                 negated: false,
                 tense: None,
                 deontic: None,
@@ -2138,16 +2139,16 @@ mod tests {
         let sentences = vec![
             Sentence::Simple(Proposition {
                 relation: 2,
-                head_terms: vec![1],
-                tail_terms: vec![],
+                terms: vec![1],
+                x1_present: true,
                 negated: false,
                 tense: None,
                 deontic: None,
             }),
             Sentence::Simple(Proposition {
                 relation: 1,
-                head_terms: vec![],
-                tail_terms: vec![],
+                terms: vec![],
+                x1_present: false,
                 negated: false,
                 tense: None,
                 deontic: None,
@@ -2208,16 +2209,16 @@ mod tests {
         let sentences = vec![
             Sentence::Simple(Proposition {
                 relation: 2, // danlu (main: `animal(every dog)`)
-                head_terms: vec![1],
-                tail_terms: vec![],
+                terms: vec![1],
+                x1_present: true,
                 negated: false,
                 tense: None,
                 deontic: None,
             }),
             Sentence::Simple(Proposition {
                 relation: 1, // prami (body: head EMPTY, all FA-tagged)
-                head_terms: vec![],
-                tail_terms: vec![4, 5],
+                terms: vec![4, 5],
+                x1_present: false,
                 negated: false,
                 tense: None,
                 deontic: None,
@@ -2273,16 +2274,16 @@ mod tests {
         let sentences = vec![
             Sentence::Simple(Proposition {
                 relation: 2, // danlu (main)
-                head_terms: vec![1],
-                tail_terms: vec![],
+                terms: vec![1],
+                x1_present: true,
                 negated: false,
                 tense: None,
                 deontic: None,
             }),
             Sentence::Simple(Proposition {
                 relation: 1, // prami (body: head EMPTY, fa ke'a + fe alis)
-                head_terms: vec![],
-                tail_terms: vec![4, 5],
+                terms: vec![4, 5],
+                x1_present: false,
                 negated: false,
                 tense: None,
                 deontic: None,
@@ -2336,16 +2337,16 @@ mod tests {
         let sentences = vec![
             Sentence::Simple(Proposition {
                 relation: 2, // danlu (main)
-                head_terms: vec![1],
-                tail_terms: vec![],
+                terms: vec![1],
+                x1_present: true,
                 negated: false,
                 tense: None,
                 deontic: None,
             }),
             Sentence::Simple(Proposition {
                 relation: 1, // prami (body: head EMPTY, only fe ke'a)
-                head_terms: vec![],
-                tail_terms: vec![3],
+                terms: vec![3],
+                x1_present: false,
                 negated: false,
                 tense: None,
                 deontic: None,
@@ -2397,16 +2398,16 @@ mod tests {
         let sentences = vec![
             Sentence::Simple(Proposition {
                 relation: 2,
-                head_terms: vec![2],
-                tail_terms: vec![],
+                terms: vec![2],
+                x1_present: true,
                 negated: false,
                 tense: None,
                 deontic: None,
             }),
             Sentence::Simple(Proposition {
                 relation: 2,
-                head_terms: vec![1], // lo mlatu fills batci_x1; batci_x2 is the dog's place
-                tail_terms: vec![],
+                terms: vec![1], // lo mlatu fills batci_x1; batci_x2 is the dog's place
+                x1_present: true,
                 negated: false,
                 tense: None,
                 deontic: None,
@@ -2502,8 +2503,8 @@ mod tests {
         ];
         let proposition = Proposition {
             relation: 0,
-            head_terms: vec![1],
-            tail_terms: vec![],
+            terms: vec![1],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -2530,8 +2531,8 @@ mod tests {
         ];
         let proposition = Proposition {
             relation: 0,
-            head_terms: vec![1],
-            tail_terms: vec![],
+            terms: vec![1],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -2560,8 +2561,8 @@ mod tests {
         ];
         let proposition = Proposition {
             relation: 0,
-            head_terms: vec![0],
-            tail_terms: vec![1, 2],
+            terms: vec![0, 1, 2],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -2591,8 +2592,8 @@ mod tests {
         ];
         let proposition = Proposition {
             relation: 0,
-            head_terms: vec![0],
-            tail_terms: vec![1, 2],
+            terms: vec![0, 1, 2],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -2618,8 +2619,8 @@ mod tests {
         ];
         let proposition = Proposition {
             relation: 0,
-            head_terms: vec![2, 3],
-            tail_terms: vec![],
+            terms: vec![2, 3],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -2662,16 +2663,16 @@ mod tests {
         let sentences = vec![
             Sentence::Simple(Proposition {
                 relation: 4,
-                head_terms: vec![1],
-                tail_terms: vec![],
+                terms: vec![1],
+                x1_present: true,
                 negated: false,
                 tense: None,
                 deontic: None,
             }),
             Sentence::Simple(Proposition {
                 relation: 3,
-                head_terms: vec![],
-                tail_terms: vec![],
+                terms: vec![],
+                x1_present: false,
                 negated: false,
                 tense: None,
                 deontic: None,
@@ -2723,16 +2724,16 @@ mod tests {
         let sentences = vec![
             Sentence::Simple(Proposition {
                 relation: 1,
-                head_terms: vec![1],
-                tail_terms: vec![],
+                terms: vec![1],
+                x1_present: true,
                 negated: false,
                 tense: None,
                 deontic: None,
             }),
             Sentence::Simple(Proposition {
                 relation: 0,
-                head_terms: vec![],
-                tail_terms: vec![],
+                terms: vec![],
+                x1_present: false,
                 negated: false,
                 tense: None,
                 deontic: None,
@@ -2779,16 +2780,16 @@ mod tests {
         let sentences = vec![
             Sentence::Simple(Proposition {
                 relation: 1,
-                head_terms: vec![2],
-                tail_terms: vec![],
+                terms: vec![2],
+                x1_present: true,
                 negated: false,
                 tense: None,
                 deontic: None,
             }),
             Sentence::Simple(Proposition {
                 relation: 1,
-                head_terms: vec![1], // lo mlatu fills batci_x1
-                tail_terms: vec![],
+                terms: vec![1], // lo mlatu fills batci_x1
+                x1_present: true,
                 negated: false,
                 tense: None,
                 deontic: None,
@@ -2843,8 +2844,8 @@ mod tests {
         ];
         let proposition = Proposition {
             relation: 1,
-            head_terms: vec![0],
-            tail_terms: vec![1],
+            terms: vec![0, 1],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -2874,8 +2875,8 @@ mod tests {
         let arguments = vec![Argument::Atom("me".into())];
         let proposition = Proposition {
             relation: 0,
-            head_terms: vec![0],
-            tail_terms: vec![],
+            terms: vec![0],
+            x1_present: true,
             negated: false,
             tense: Some(Tense::Past),
             deontic: None,
@@ -2890,8 +2891,8 @@ mod tests {
         let arguments = vec![Argument::Atom("me".into())];
         let proposition = Proposition {
             relation: 0,
-            head_terms: vec![0],
-            tail_terms: vec![],
+            terms: vec![0],
+            x1_present: true,
             negated: false,
             tense: Some(Tense::Now),
             deontic: None,
@@ -2906,8 +2907,8 @@ mod tests {
         let arguments = vec![Argument::Atom("me".into())];
         let proposition = Proposition {
             relation: 0,
-            head_terms: vec![0],
-            tail_terms: vec![],
+            terms: vec![0],
+            x1_present: true,
             negated: false,
             tense: Some(Tense::Future),
             deontic: None,
@@ -2924,8 +2925,8 @@ mod tests {
         let arguments = vec![Argument::Atom("me".into())];
         let proposition = Proposition {
             relation: 0,
-            head_terms: vec![0],
-            tail_terms: vec![],
+            terms: vec![0],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: Some(DeonticMood::Obligation),
@@ -2940,8 +2941,8 @@ mod tests {
         let arguments = vec![Argument::Atom("me".into())];
         let proposition = Proposition {
             relation: 0,
-            head_terms: vec![0],
-            tail_terms: vec![],
+            terms: vec![0],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: Some(DeonticMood::Permission),
@@ -2959,8 +2960,8 @@ mod tests {
         let arguments = vec![Argument::Atom("me".into())];
         let proposition = Proposition {
             relation: 0,
-            head_terms: vec![0],
-            tail_terms: vec![],
+            terms: vec![0],
+            x1_present: true,
             negated: true,
             tense: None,
             deontic: None,
@@ -2981,8 +2982,8 @@ mod tests {
         let arguments = vec![Argument::Atom("me".into()), Argument::Atom("you".into())];
         let proposition = Proposition {
             relation: 1,
-            head_terms: vec![0],
-            tail_terms: vec![1],
+            terms: vec![0, 1],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -3029,8 +3030,8 @@ mod tests {
         let arguments = vec![Argument::Unspecified];
         let proposition = Proposition {
             relation: 0,
-            head_terms: vec![0],
-            tail_terms: vec![],
+            terms: vec![0],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -3061,8 +3062,8 @@ mod tests {
         let arguments = vec![Argument::Atom("me".into())];
         let proposition = Proposition {
             relation: 0,
-            head_terms: vec![0],
-            tail_terms: vec![],
+            terms: vec![0],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -3092,8 +3093,8 @@ mod tests {
         let arguments = vec![Argument::Atom("me".into())];
         let proposition = Proposition {
             relation: 0,
-            head_terms: vec![0],
-            tail_terms: vec![],
+            terms: vec![0],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -3120,8 +3121,8 @@ mod tests {
         let arguments = vec![Argument::Atom("me".into())];
         let proposition = Proposition {
             relation: 2,
-            head_terms: vec![0],
-            tail_terms: vec![],
+            terms: vec![0],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -3162,8 +3163,8 @@ mod tests {
         let arguments = vec![Argument::Atom("me".into())];
         let proposition = Proposition {
             relation: 2,
-            head_terms: vec![0],
-            tail_terms: vec![],
+            terms: vec![0],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -3197,8 +3198,8 @@ mod tests {
         ];
         let proposition = Proposition {
             relation: 1,
-            head_terms: vec![0],
-            tail_terms: vec![],
+            terms: vec![0],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -3229,8 +3230,8 @@ mod tests {
         ];
         let proposition = Proposition {
             relation: 1,
-            head_terms: vec![0],
-            tail_terms: vec![1],
+            terms: vec![0, 1],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -3258,8 +3259,8 @@ mod tests {
         let arguments = vec![Argument::Name("alis".into())];
         let proposition = Proposition {
             relation: 0,
-            head_terms: vec![0],
-            tail_terms: vec![],
+            terms: vec![0],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -3287,8 +3288,8 @@ mod tests {
         let arguments = vec![Argument::Number(42.0)];
         let proposition = Proposition {
             relation: 0,
-            head_terms: vec![0],
-            tail_terms: vec![],
+            terms: vec![0],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -3317,8 +3318,8 @@ mod tests {
         let arguments = vec![Argument::QuotedLiteral("coi".into())];
         let proposition = Proposition {
             relation: 0,
-            head_terms: vec![0],
-            tail_terms: vec![],
+            terms: vec![0],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -3349,8 +3350,8 @@ mod tests {
         let arguments = vec![Argument::Atom("me".into())];
         let proposition = Proposition {
             relation: 0,
-            head_terms: vec![0],
-            tail_terms: vec![],
+            terms: vec![0],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -3383,8 +3384,8 @@ mod tests {
         let arguments = vec![Argument::Atom("me".into())];
         let proposition = Proposition {
             relation: 0,
-            head_terms: vec![0],
-            tail_terms: vec![],
+            terms: vec![0],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -3433,16 +3434,16 @@ mod tests {
             )),
             Sentence::Simple(Proposition {
                 relation: 0,
-                head_terms: vec![0],
-                tail_terms: vec![],
+                terms: vec![0],
+                x1_present: true,
                 negated: false,
                 tense: None,
                 deontic: None,
             }),
             Sentence::Simple(Proposition {
                 relation: 1,
-                head_terms: vec![1],
-                tail_terms: vec![],
+                terms: vec![1],
+                x1_present: true,
                 negated: false,
                 tense: None,
                 deontic: None,
@@ -3518,8 +3519,8 @@ mod tests {
         let arguments: Vec<Argument> = vec![];
         let proposition = Proposition {
             relation: 0,
-            head_terms: vec![],
-            tail_terms: vec![],
+            terms: vec![],
+            x1_present: false,
             negated: false,
             tense: None,
             deontic: None,
@@ -3558,8 +3559,8 @@ mod tests {
         let arguments = vec![Argument::Description((Determiner::Definite, 0))];
         let proposition = Proposition {
             relation: 1,
-            head_terms: vec![0],
-            tail_terms: vec![],
+            terms: vec![0],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -3583,8 +3584,8 @@ mod tests {
         let arguments = vec![Argument::Description((Determiner::EveryThe, 0))];
         let proposition = Proposition {
             relation: 1,
-            head_terms: vec![0],
-            tail_terms: vec![],
+            terms: vec![0],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -3617,8 +3618,8 @@ mod tests {
         let arguments = vec![Argument::Description((Determiner::Every, 0))];
         let proposition = Proposition {
             relation: 1,
-            head_terms: vec![0],
-            tail_terms: vec![],
+            terms: vec![0],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -3654,8 +3655,8 @@ mod tests {
         ))];
         let proposition = Proposition {
             relation: 1,
-            head_terms: vec![0],
-            tail_terms: vec![],
+            terms: vec![0],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
@@ -3690,8 +3691,8 @@ mod tests {
         ))];
         let proposition = Proposition {
             relation: 1,
-            head_terms: vec![0],
-            tail_terms: vec![],
+            terms: vec![0],
+            x1_present: true,
             negated: false,
             tense: None,
             deontic: None,
