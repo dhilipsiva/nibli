@@ -4,7 +4,7 @@
 //!
 //! Checks (all fail closed, targeted positioned errors):
 //! 1. NAME RESOLUTION — every predicate word (predication heads incl. all
-//!    pair units and zei parts, restrictors, selected preds, bare clause
+//!    pair units and compound spellings, restrictors, selected preds, bare clause
 //!    bodies, `via` tag preds) must be a nibli-lexicon alias or an
 //!    corpus name (English; gismu never resolve — provenance only).
 //!    Anything else is a compile error — the deliberate tightening over
@@ -59,12 +59,28 @@ pub fn resolve_all(input: &str, statements: &[Statement]) -> Vec<ParseError> {
     errors
 }
 
+/// The corpus entry behind a resolved predicate: an atomic name, or a
+/// compound's committed entry (the `a+b` spelling — NIBLI_KR §5).
+pub(crate) enum ResolvedEntry {
+    Atomic(&'static nibli_lexicon::PredicateEntry),
+    Compound(&'static nibli_lexicon::CompoundEntry),
+}
+
+impl ResolvedEntry {
+    fn place_index(&self, label: &str) -> Option<usize> {
+        match self {
+            ResolvedEntry::Atomic(e) => e.place_index(label),
+            ResolvedEntry::Compound(c) => c.place_index(label),
+        }
+    }
+}
+
 /// A resolved predicate: its corpus entry (the ONLY resolution source since
 /// gismu-input death — no identity passthrough, no arity guess).
 pub(crate) struct PredInfo {
     pub(crate) surface: String,
     pub(crate) arity: u8,
-    pub(crate) entry: &'static nibli_lexicon::PredicateEntry,
+    pub(crate) entry: ResolvedEntry,
 }
 
 pub(crate) fn lookup(word: &str) -> Result<PredInfo, String> {
@@ -72,12 +88,32 @@ pub(crate) fn lookup(word: &str) -> Result<PredInfo, String> {
         return Ok(PredInfo {
             surface: word.to_owned(),
             arity: entry.arity(),
-            entry,
+            entry: ResolvedEntry::Atomic(entry),
         });
     }
     Err(format!(
         "unknown predicate {word:?}: not a corpus name — \
          unknown names are a compile error, never an arity-2 guess (NIBLI_KR §13)"
+    ))
+}
+
+/// Resolve a multi-part `a+b` spelling: ONLY a committed compound entry —
+/// place structures are conventional, never derivable from the parts, so an
+/// uncurated compound FAILS CLOSED (NIBLI_KR §5).
+pub(crate) fn lookup_compound(parts: &[String]) -> Result<PredInfo, String> {
+    let spelling = parts.join("+");
+    if let Some(entry) = nibli_lexicon::compound(&spelling) {
+        return Ok(PredInfo {
+            surface: spelling,
+            arity: entry.arity(),
+            entry: ResolvedEntry::Compound(entry),
+        });
+    }
+    Err(format!(
+        "unknown compound predicate {spelling:?}: compounds resolve only via a \
+         committed corpus entry (place structures are conventional, never \
+         derivable) — curate one in nibli-lexicon/src/corpus/compounds.rs or \
+         use juxtaposition (NIBLI_KR §5)"
     ))
 }
 
@@ -107,7 +143,8 @@ impl<'a> Ctx<'a> {
     }
 
     /// Resolve every word of a pred_seq; return the HEAD's info (arity/name
-    /// source — the last unit's last zei part, descending through groups).
+    /// source — the last unit, descending through groups; a multi-part unit
+    /// is a compound entry).
     fn seq(&self, seq: &PredSeq, at: usize) -> Result<PredInfo, ParseError> {
         let mut head: Option<PredInfo> = None;
         for unit in &seq.0 {
@@ -119,11 +156,10 @@ impl<'a> Ctx<'a> {
     fn unit(&self, unit: &PredUnit, at: usize) -> Result<PredInfo, ParseError> {
         match unit {
             PredUnit::Word(parts) => {
-                let mut info: Option<PredInfo> = None;
-                for part in parts {
-                    info = Some(lookup(part).map_err(|m| self.fail(at, m))?);
+                if parts.len() > 1 {
+                    return lookup_compound(parts).map_err(|m| self.fail(at, m));
                 }
-                Ok(info.expect("pred_name is non-empty"))
+                lookup(&parts[0]).map_err(|m| self.fail(at, m))
             }
             PredUnit::Group(inner) => self.seq(inner, at),
         }
@@ -278,11 +314,11 @@ impl<'a> Ctx<'a> {
                 let info = self.seq(&p.seq, p.span.start)?;
                 self.args(&p.args, &info)?;
                 for tag in &p.tags {
-                    let mut tag_info: Option<PredInfo> = None;
-                    for part in &tag.pred {
-                        tag_info = Some(lookup(part).map_err(|m| self.fail(tag.span.start, m))?);
-                    }
-                    let tag_info = tag_info.expect("tag pred is non-empty");
+                    let tag_info = if tag.pred.len() > 1 {
+                        lookup_compound(&tag.pred).map_err(|m| self.fail(tag.span.start, m))?
+                    } else {
+                        lookup(&tag.pred[0]).map_err(|m| self.fail(tag.span.start, m))?
+                    };
                     if tag_info.arity < 2 {
                         return Err(self.fail(
                             tag.span.start,

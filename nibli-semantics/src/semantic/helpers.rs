@@ -163,10 +163,6 @@ impl SemanticCompiler {
             Predicate::Negated(inner_id) => self.get_predicate_arity(*inner_id, predicates),
             Predicate::Grouped(inner_id) => self.get_predicate_arity(*inner_id, predicates),
             Predicate::WithArgs((core_id, _)) => self.get_predicate_arity(*core_id, predicates),
-            Predicate::Compound(parts) => parts
-                .last()
-                .map(|s| LexiconSchema::get_arity_or_default(s.as_str()))
-                .unwrap_or(2),
             Predicate::Abstraction((_, _)) => 1,
         }
     }
@@ -186,7 +182,6 @@ impl SemanticCompiler {
             Predicate::Negated(inner_id) => self.get_predicate_head_name(*inner_id, predicates),
             Predicate::Grouped(inner_id) => self.get_predicate_head_name(*inner_id, predicates),
             Predicate::WithArgs((core_id, _)) => self.get_predicate_head_name(*core_id, predicates),
-            Predicate::Compound(parts) => parts.last().map(|s| s.as_str()).unwrap_or("entity"),
             Predicate::Abstraction((kind, _)) => match kind {
                 AbstractionKind::Event => "event",
                 AbstractionKind::Fact => "fact",

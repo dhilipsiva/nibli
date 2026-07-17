@@ -120,6 +120,32 @@ fn kr_smuni_seam_conformance() {
         structural += 1;
     }
 
+    // Compound predication: `computer+user` resolves ONLY via its committed
+    // corpus entry and emits the entry's RELATION ident (`computer_user`,
+    // arity 3 — the committed place structure, never the head part's arity 2).
+    // An uncurated compound is a compile error, not last-part semantics.
+    {
+        let b = kompile("computer+user(me).").unwrap();
+        assert!(
+            seam::pred_args(&b, "computer_user").is_some(),
+            "compound must decompose under its relation ident computer_user"
+        );
+        assert!(
+            seam::role_is_const(&b, "computer_user_x1", "me"),
+            "the single positional must land in the compound's x1 (user)"
+        );
+        assert!(
+            seam::pred_args(&b, "user").is_none() && seam::pred_args(&b, "user_x1").is_none(),
+            "no residue of the head PART's atomic relation may appear"
+        );
+        let e = kompile("dog+cat(me).");
+        assert!(
+            e.is_err(),
+            "an uncurated compound must FAIL CLOSED, got {e:?}"
+        );
+        structural += 1;
+    }
+
     // Named-argument place routing: `destination:` is klama's x2.
     {
         let b = kompile("goes(me, destination: some market).").unwrap();

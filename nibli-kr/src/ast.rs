@@ -107,18 +107,22 @@ pub struct Predication {
 #[derive(Debug, Clone, PartialEq)]
 pub struct PredSeq(pub Vec<PredUnit>);
 
-/// One pair unit: a (possibly zei-compound) word, or a bracket group.
+/// One pair unit: a (possibly compound `a+b`) word, or a bracket group.
 #[derive(Debug, Clone, PartialEq)]
 pub enum PredUnit {
-    /// `a` or `a+b+c` — zei parts in order; compiles under the LAST part.
+    /// `a` or `a+b+c` — compound parts in order. Multi-part spellings resolve
+    /// ONLY via a committed corpus CompoundEntry (NIBLI_KR §5) — resolve/emit
+    /// join the parts with `+`, never compile under the last part.
     Word(Vec<String>),
     /// `[ big fast ]` — explicit grouping (ke…ke'e).
     Group(PredSeq),
 }
 
 impl PredSeq {
-    /// The head word (arity/name source): last zei part of the last unit,
-    /// descending through bracket groups.
+    /// The last SINGLE word of the head unit, descending through bracket
+    /// groups — a display convenience (lint messages). NOT the resolution
+    /// head for multi-part units: those resolve as compound entries
+    /// (resolve's `seq` / emit's `resolved_head`).
     pub fn head_word(&self) -> &str {
         match self.0.last().expect("pred_seq is non-empty") {
             PredUnit::Word(parts) => parts.last().expect("pred_name is non-empty"),
@@ -130,7 +134,7 @@ impl PredSeq {
 /// `via pred(term)` — a modal tag.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Tag {
-    /// The modal predicate (zei parts, like a [`PredUnit::Word`]).
+    /// The modal predicate (compound parts, like a [`PredUnit::Word`]).
     pub pred: Vec<String>,
     pub term: Term,
     pub span: Range<usize>,

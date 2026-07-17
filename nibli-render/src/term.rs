@@ -10,8 +10,8 @@
 pub(crate) fn collapse_role_name(name: &str) -> Option<String> {
     let base = role_base(name)?;
     let idx = role_index(name)?;
-    let place = nibli_lexicon::alias(base)
-        .and_then(|e| e.places.get(idx - 1).copied())
+    let place = nibli_lexicon::relation_places(base)
+        .and_then(|p| p.get(idx - 1).copied())
         .map(str::to_owned)
         .unwrap_or_else(|| format!("x{idx}"));
     Some(format!("{base}.{place}"))

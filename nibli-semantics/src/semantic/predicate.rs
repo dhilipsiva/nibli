@@ -2,7 +2,7 @@
 //!
 //! Handles root predicates, pair, conversion (se/te/ve/xe), negation,
 //! ke...ke'e grouping, be...bei...be'o arguments, connected predicate,
-//! zei compounds, and abstraction (nu/du'u/ka/ni/si'o). All predicates
+//! and abstraction (event/fact/property/amount/concept). All predicates
 //! are event-decomposed into Neo-Davidsonian form.
 use super::*;
 use lasso::Spur;
@@ -314,12 +314,6 @@ impl SemanticCompiler {
                 }
 
                 form
-            }
-            Predicate::Compound(parts) => {
-                let head = parts.last().map(|s| s.as_str()).unwrap_or("unknown");
-                let arity = LexiconSchema::get_arity_or_default(head);
-                let fitted = Self::fit_args(args, arity);
-                self.event_decompose(head, &fitted)
             }
             Predicate::Abstraction((kind, body_sentence_idx)) => {
                 let type_name = match kind {

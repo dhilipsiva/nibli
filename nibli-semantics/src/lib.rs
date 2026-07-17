@@ -63,7 +63,7 @@ fn validate_ast_buffer(ast: &flat_ast::AstBuffer) -> Result<(), NibliError> {
     let children = |kind: Kind, idx: u32| -> Vec<(Kind, u32)> {
         match kind {
             Kind::Sel => match &ast.predicates[idx as usize] {
-                Predicate::Root(_) | Predicate::Compound(_) => vec![],
+                Predicate::Root(_) => vec![],
                 Predicate::Pair((m, h)) => vec![(Kind::Sel, *m), (Kind::Sel, *h)],
                 Predicate::Converted((_, i)) | Predicate::Negated(i) | Predicate::Grouped(i) => {
                     vec![(Kind::Sel, *i)]

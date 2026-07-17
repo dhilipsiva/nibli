@@ -198,8 +198,14 @@ rains().                               # observative — all places Unspecified
 - **Tanru:** 2+ juxtaposed predicate words — `health data(Kanrek)` (`kanro datni`).
   Right-grouping; `[ … ]` brackets give explicit grouping (`ke…ke'e`):
   `[big fast] dog`. Compiles to the shared-event tanru shape, never intersection.
-- **zei compounds:** `computer+user` ↦ `skami zei pilno` (compiles under the last
-  component, preserving compound identity at the surface).
+- **Compounds:** `computer+user` — a multi-part `a+b` spelling resolves **only via a
+  committed corpus CompoundEntry** (nibli-lexicon `src/corpus/compounds.rs`), which
+  declares the relation ident it compiles to (`computer_user`) and its full place
+  structure. Place structures of compounds are conventional, never derivable from the
+  parts, so an **uncurated compound is a compile error** (fail closed — no silent
+  last-part semantics). The L4 lint echoes the committed structure on first use
+  (`computer+user ↦ computer_user(user, computer, purpose)`). For an ad-hoc
+  combination, use tanru juxtaposition (`computer user`) — that stays productive.
 - **Equality:** `Kim = Adam.` — the flat 2-arg `du` (union-find). Binary by grammar, so
   n-ary `du` is inexpressible rather than an error. **Not** the numeric test — that is
   `num_equal(2, 2)` (`dunli`, exact `==`), and arithmetic is ordinary predication:
@@ -381,10 +387,13 @@ never invoke the linter.
 - **L3 — scope-by-written-order:** warn when one call contains 2+ quantified arguments
   (`eats($x, every dog)` is ∃∀; reordering args flips it) — args are *not* order-free
   when quantified.
-- **L4 — converted-alias echo:** on first use of each place-converted alias per
-  file/session, echo the canonical predicate + place permutation
+- **L4 — converted-alias / compound echo:** on first use of each place-converted alias
+  per file/session, echo the canonical predicate + place permutation
   (`metabolized_by ↦ cuts⟨x1↔x2⟩`) — the alias map is trusted base and a wrong
-  permutation silently reroutes arguments; make it visible. Plain (unswapped)
+  permutation silently reroutes arguments; make it visible. Likewise, on first use of
+  each `a+b` compound, echo its committed relation + place structure
+  (`computer+user ↦ computer_user(user, computer, purpose)`) — compound place
+  structures are conventional, never derivable from the parts. Plain (unswapped)
   aliases are quiet: since the predicate-name flip they resolve to themselves,
   so there is nothing to disclose.
 - **L5 — constraint echo:** note when a disjunctive universal conclusion registers as an
@@ -666,7 +675,7 @@ Tag         <- "via" PredName "(" Term ")"
 
 PredSeq     <- PredUnit PredUnit*            # 2+ units = tanru (right-grouping, LAST = head)
 PredUnit    <- "[" PredSeq "]" / PredName
-PredName    <- ident ("+" ident)*            # a+b = zei compound
+PredName    <- ident ("+" ident)*            # a+b = corpus-declared compound (fail-closed)
 Args        <- "(" (Arg ("," Arg)*)? ")"
 Arg         <- (Label ":")? Term             # positionals first; refill/overflow = static error
 Label       <- "x1"/"x2"/"x3"/"x4"/"x5" / ident

@@ -331,11 +331,10 @@ impl<'a> Renderer<'a> {
     }
 
     /// The head word of a relation (for place-label lookup), descending
-    /// through wrappers to the head Root/Compound.
+    /// through wrappers to the head Root.
     fn head_word(&self, id: u32) -> R<String> {
         Ok(match self.predicate(id)? {
             Predicate::Root(g) => g.clone(),
-            Predicate::Compound(parts) => parts.last().cloned().unwrap_or_default(),
             Predicate::Pair((_, head)) => self.head_word(*head)?,
             Predicate::Converted((_, inner)) => self.head_word(*inner)?,
             Predicate::Negated(inner) => self.head_word(*inner)?,
@@ -356,6 +355,11 @@ impl<'a> Renderer<'a> {
         // English alias — if it is a known alias, it already IS the KR spelling.
         if nibli_lexicon::alias(word).is_some() {
             return Ok(word.to_owned());
+        }
+        // A compound relation ident renders back as its `a+b` KR spelling —
+        // the relation form (`computer_user`) is never parseable input.
+        if let Some(c) = nibli_lexicon::compound_by_relation(word) {
+            return Ok(c.name.to_owned());
         }
         if let Some(alias) = nibli_lexicon::canonical_alias(word) {
             return Ok(alias.to_owned());
@@ -382,13 +386,13 @@ impl<'a> Renderer<'a> {
     /// the dictionary label when curated, else raw `xN`.
     fn place_label(&self, word: &str, place: usize) -> String {
         // `word` may already be the English alias (post-flip) or a residual gismu.
-        let alias_name = if nibli_lexicon::alias(word).is_some() {
+        let alias_name = if nibli_lexicon::relation_places(word).is_some() {
             word
         } else {
             nibli_lexicon::canonical_alias(word).unwrap_or(word)
         };
-        if let Some(entry) = nibli_lexicon::alias(alias_name)
-            && let Some(label) = entry.places.get(place)
+        if let Some(places) = nibli_lexicon::relation_places(alias_name)
+            && let Some(label) = places.get(place)
         {
             return (*label).to_owned();
         }
@@ -408,13 +412,6 @@ impl<'a> Renderer<'a> {
     fn predicate_text(&self, id: u32, selector_ok: bool) -> R<String> {
         Ok(match self.predicate(id)? {
             Predicate::Root(word) => self.alias_or_identity(word)?,
-            Predicate::Compound(parts) => parts
-                .iter()
-                .map(|p| self.alias_or_identity(p))
-                .collect::<R<Vec<_>>>()?
-                .into_iter()
-                .collect::<Vec<_>>()
-                .join("+"),
             Predicate::Pair((modifier, head)) => {
                 let modifier_text = match self.predicate(*modifier)? {
                     // A left-nested pair needs explicit grouping.
@@ -642,11 +639,11 @@ impl<'a> Renderer<'a> {
         Ok(format!("{keyword} {body}"))
     }
 
-    /// Only plain word/pair/compound predicate qualify for the bare sugar
+    /// Only plain word/pair predicates qualify for the bare sugar
     /// (anything fancier needs the full-claim body).
     fn bare_body_predicate(&self, id: u32) -> bool {
         match self.predicate(id) {
-            Ok(Predicate::Root(_)) | Ok(Predicate::Compound(_)) => true,
+            Ok(Predicate::Root(_)) => true,
             Ok(Predicate::Pair((m, h))) => {
                 self.bare_body_predicate(*m) && self.bare_body_predicate(*h)
             }
@@ -737,7 +734,6 @@ pub fn __ast_parity_guard(
     }
     match predicate {
         Predicate::Root(_) => {}
-        Predicate::Compound(_) => {}
         Predicate::Pair(_) => {}
         Predicate::Converted(_) => {}
         Predicate::Negated(_) => {}

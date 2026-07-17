@@ -6,9 +6,10 @@
 //!
 //! Emission map (NIBLI_KR §13; design-review decisions):
 //! - predicate names resolve to their corpus entry's canonical BASE name
-//!   (`base_name`: a converted entry's `swap.base`, a plain entry itself);
-//!   a place-swapped entry emits `Predicate::Converted`. No identity
-//!   passthrough — an unknown name is a compile error (NIBLI_KR §13)
+//!   (`emit_name`: a converted entry's `swap.base`, a plain entry itself, a
+//!   compound entry its relation ident); a place-swapped entry emits
+//!   `Predicate::Converted`. No identity passthrough — an unknown name (or
+//!   uncurated `a+b` compound) is a compile error (NIBLI_KR §13, §5)
 //! - logic variables pass through verbatim as `Pronoun("$name")` — the `$`
 //!   sigil IS the variable signal, so the user's own names survive into the IR
 //!   (no fixed `da`/`de`/`di` pool, no 3-variable cap); pronoun keyterms emit
@@ -42,14 +43,21 @@ use crate::ast::{
     RelKind, Restr, RestrKind, Statement, Tense, Term,
 };
 use crate::parser::{ParseError, err_at};
-use crate::resolve::{PredInfo, label_index, lookup};
+use crate::resolve::{PredInfo, ResolvedEntry, label_index, lookup, lookup_compound};
 
-/// The canonical BASE relation name for a resolved corpus entry: a swapped
-/// (converted) entry names its base sibling by type; a plain entry is its own
-/// canonical name. `Root` always takes this PLAIN form — the `Converted`
-/// wrapper carries the swap.
-fn base_name(entry: &nibli_lexicon::PredicateEntry) -> String {
-    entry.swap.map(|s| s.base).unwrap_or(entry.name).to_owned()
+/// The canonical BASE relation name + swap place for a resolved corpus entry:
+/// a swapped (converted) entry names its base sibling by type; a plain entry
+/// is its own canonical name; a compound emits its relation ident
+/// (`computer_user`) and never swaps. `Root` always takes the PLAIN form —
+/// the `Converted` wrapper carries the swap.
+fn emit_name(entry: &ResolvedEntry) -> (String, Option<u8>) {
+    match entry {
+        ResolvedEntry::Atomic(e) => (
+            e.swap.map(|s| s.base).unwrap_or(e.name).to_owned(),
+            e.swap.map(|s| s.with),
+        ),
+        ResolvedEntry::Compound(c) => (c.relation.to_owned(), None),
+    }
 }
 
 /// Emit resolved statements into an `AstBuffer` (one root per statement).
@@ -103,6 +111,18 @@ impl<'a> Emitter<'a> {
 
     fn resolved(&self, word: &str, at: usize) -> Result<PredInfo, ParseError> {
         lookup(word).map_err(|m| self.fail(at, format!("internal (post-resolve): {m}")))
+    }
+
+    /// The head unit's PredInfo (label/arity source): last unit, descending
+    /// through groups; a multi-part unit resolves as a compound entry —
+    /// NEVER as its last part (mirrors the resolve pass's `seq`).
+    fn resolved_head(&self, seq: &PredSeq, at: usize) -> Result<PredInfo, ParseError> {
+        match seq.0.last().expect("pred_seq is non-empty") {
+            PredUnit::Word(parts) if parts.len() > 1 => lookup_compound(parts)
+                .map_err(|m| self.fail(at, format!("internal (post-resolve): {m}"))),
+            PredUnit::Word(parts) => self.resolved(&parts[0], at),
+            PredUnit::Group(inner) => self.resolved_head(inner, at),
+        }
     }
 
     // ── claims ──
@@ -212,7 +232,7 @@ impl<'a> Emitter<'a> {
         tense: Option<AstTense>,
         deontic: Option<DeonticMood>,
     ) -> Result<Proposition, ParseError> {
-        let info = self.resolved(p.seq.head_word(), p.span.start)?;
+        let info = self.resolved_head(&p.seq, p.span.start)?;
         let relation = self.pred_seq(&p.seq, p.span.start)?;
 
         let mut head_terms = Vec::new();
@@ -242,10 +262,14 @@ impl<'a> Emitter<'a> {
             }
         }
         for tag in &p.tags {
-            let word = self
-                .resolved(tag.pred.last().expect("tag pred non-empty"), tag.span.start)?
-                .entry;
-            let word = base_name(word);
+            let info = if tag.pred.len() > 1 {
+                lookup_compound(&tag.pred).map_err(|m| {
+                    self.fail(tag.span.start, format!("internal (post-resolve): {m}"))
+                })?
+            } else {
+                self.resolved(&tag.pred[0], tag.span.start)?
+            };
+            let (word, _) = emit_name(&info.entry);
             let modal_predicate = self.push_predicate(Predicate::Root(word));
             let inner = self.term(&tag.term, tag.span.start)?;
             tail_terms.push(self.push_argument(Argument::ModalTagged((
@@ -358,19 +382,16 @@ impl<'a> Emitter<'a> {
             }
             PredUnit::Word(parts) => {
                 if parts.len() > 1 {
-                    // zei compound: each part resolves to its word; compiles
-                    // under the last component (engine behavior).
-                    let mut word_parts = Vec::new();
-                    for part in parts {
-                        let info = self.resolved(part, at)?;
-                        word_parts.push(base_name(info.entry));
-                    }
-                    return Ok(self.push_predicate(Predicate::Compound(word_parts)));
+                    // `a+b` compound: resolves ONLY via its committed corpus
+                    // entry; emits the entry's relation ident as a plain Root.
+                    let info = lookup_compound(parts)
+                        .map_err(|m| self.fail(at, format!("internal (post-resolve): {m}")))?;
+                    let (word, _) = emit_name(&info.entry);
+                    return Ok(self.push_predicate(Predicate::Root(word)));
                 }
                 let word = &parts[0];
                 let info = self.resolved(word, at)?;
-                let entry = info.entry;
-                let (word, swap) = (base_name(entry), entry.swap.map(|s| s.with));
+                let (word, swap) = emit_name(&info.entry);
                 let root = self.push_predicate(Predicate::Root(word));
                 Ok(match swap {
                     None => root,
@@ -444,8 +465,7 @@ impl<'a> Emitter<'a> {
         let core = match &restr.kind {
             RestrKind::Selected { pred, label } => {
                 let info = self.resolved(pred, at)?;
-                let entry = info.entry;
-                let (word, alias_swap) = (base_name(entry), entry.swap.map(|s| s.with));
+                let (word, alias_swap) = emit_name(&info.entry);
                 let mut idx = self.push_predicate(Predicate::Root(word));
                 if let Some(p) = alias_swap {
                     idx = self.push_predicate(Predicate::Converted((conversion_for(p), idx)));
@@ -465,7 +485,7 @@ impl<'a> Emitter<'a> {
             RestrKind::Seq { seq, linked_args } => {
                 let mut idx = self.pred_seq(seq, at)?;
                 if !linked_args.is_empty() {
-                    let info = self.resolved(seq.head_word(), at)?;
+                    let info = self.resolved_head(seq, at)?;
                     // Surface place of the bound variable: 1 unless a NAMED
                     // `it` marks another place (resolve enforced the shape).
                     let mut bound_place = 1usize;
@@ -745,25 +765,41 @@ mod tests {
             "animal(every dog where loves(lover: Alis, loved: it)).",
             "computer+user(me).",
             "goes(me) via uses(this).",
-            "goes(every drug where increases where thin).",
+            "goes(every chemical where increases where thin).",
             "goes(some dog where it = Adam).",
-            "thinks(me, fact { dog(Adam) }).",
+            "knows(me, fact { dog(Adam) }).",
             "must past ~goes(me).",
             "[big fast] dog(Rex).",
         ] {
-            // computer/user/drug are full-mode-only aliases; keep this list
-            // fallback-safe by resolving availability first.
-            if crate::parse_checked(text).is_err() {
-                // Only acceptable failure: unknown vocabulary in fallback mode.
-                let e = crate::parse_checked(text).unwrap_err();
-                assert!(
-                    format!("{e}").contains("unknown predicate"),
-                    "unexpected failure for {text:?}: {e}"
-                );
-                continue;
-            }
-            nibli_kr_lb(text); // panics if smuni rejects
+            nibli_kr_lb(text); // panics if resolve/emit/smuni rejects
         }
+    }
+
+    #[test]
+    fn uncurated_compound_fails_closed() {
+        // Compounds resolve ONLY via a committed corpus entry — no silent
+        // last-part semantics (NIBLI_KR §5).
+        let e = parse_checked("dog+cat(me).").unwrap_err();
+        let msg = format!("{e}");
+        assert!(
+            msg.contains("unknown compound predicate \"dog+cat\""),
+            "{msg}"
+        );
+        assert!(msg.contains("committed corpus entry"), "{msg}");
+    }
+
+    #[test]
+    fn compound_emits_relation_ident() {
+        // `computer+user` emits its entry's relation ident as a plain Root
+        // (arity 3 — the committed place structure, not the head part's).
+        let b = parse_checked("computer+user(me, this).").unwrap();
+        assert!(
+            b.predicates
+                .iter()
+                .any(|p| matches!(p, nibli_types::ast::Predicate::Root(w) if w == "computer_user")),
+            "compound must emit Root(\"computer_user\"): {:?}",
+            b.predicates
+        );
     }
 
     // ── emitter limitations fail closed ──

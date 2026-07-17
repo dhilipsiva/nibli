@@ -1180,7 +1180,7 @@ mod tests {
         );
     }
 
-    // ── pair / brackets / zei ──
+    // ── pair / brackets / compounds ──
 
     #[test]
     fn pair_heads_and_groups() {
@@ -1212,7 +1212,7 @@ mod tests {
     }
 
     #[test]
-    fn zei_compounds_are_word_identity() {
+    fn compound_spellings_are_word_identity() {
         assert_claim(
             "computer+user(me).",
             Claim::Predication(Predication {

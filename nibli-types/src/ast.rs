@@ -109,10 +109,10 @@ pub enum Argument {
 /// A predicate (predicate relation) in the AST.
 #[derive(Clone, Debug)]
 pub enum Predicate {
-    /// Root brivla (gismu, lujvo, or fu'ivla).
+    /// Root relation: an atomic corpus name, or a compound entry's relation
+    /// ident (`computer_user`) — compounds resolve to their entry BEFORE
+    /// emission, so no compound structure survives into the AST.
     Root(String),
-    /// Compound word from zei-gluing. Payload: list of component strings.
-    Compound(Vec<String>),
     /// Modifier+head pair (a compound predicate). Fields: (modifier-id, head-id).
     Pair((PredicateId, PredicateId)),
     /// SE-converted predicate. Fields: (conversion, inner-id).

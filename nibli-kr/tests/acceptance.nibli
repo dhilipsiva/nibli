@@ -35,6 +35,6 @@ goes(no dog).
 must goes(me).
 past ~goes(me).
 goes(me) via uses(this).
-dog+cat(me).
+computer+user(me).
 name("any text here", Adam).
 product(50, 5, 10).

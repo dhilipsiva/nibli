@@ -398,30 +398,48 @@ impl Walk<'_> {
         }
     }
 
-    /// Per predicate word: L4 (first-use converted-alias echo) + the L7
-    /// predicate side.
+    /// Per predicate word: L4 (first-use converted-alias / compound echo) +
+    /// the L7 predicate side.
     fn words(&mut self, parts: &[String], at: usize) {
-        for word in parts {
-            if let Some(word) = resolved_word(word) {
-                if matches!(word, "bilga" | "curmi") {
-                    self.linter.norm_pred_seen = true;
-                }
-            }
-            // L4 — echo a CONVERTED alias's canonical predicate + permutation on
-            // first use: the alias map is trusted base, and a wrong permutation
-            // silently reroutes arguments; make it visible. Plain (unswapped)
-            // aliases are quiet — they resolve to themselves since the
-            // predicate-name flip, so there is nothing to disclose.
-            if let Some(entry) = nibli_lexicon::alias(word)
-                && let Some(swap) = entry.swap
-                && self.linter.seen_aliases.insert(word.clone())
+        if parts.len() > 1 {
+            // L4 — echo a COMPOUND's committed place structure on first use:
+            // `a+b` resolves only via its corpus entry, whose relation ident
+            // and places are conventional (never derivable from the parts) —
+            // make them visible. An uncurated compound is a compile error;
+            // the linter stays quiet.
+            let spelling = parts.join("+");
+            if let Some(entry) = nibli_lexicon::compound(&spelling)
+                && self.linter.seen_aliases.insert(spelling.clone())
             {
                 let msg = format!(
-                    "{word} \u{21a6} {}\u{27e8}x1\u{2194}x{}\u{27e9}",
-                    swap.base, swap.with
+                    "{spelling} \u{21a6} {}({})",
+                    entry.relation,
+                    entry.places.join(", ")
                 );
                 push(self.notes, self.input, at, "L4", msg);
             }
+            return;
+        }
+        let word = &parts[0];
+        if let Some(word) = resolved_word(word) {
+            if matches!(word, "bilga" | "curmi") {
+                self.linter.norm_pred_seen = true;
+            }
+        }
+        // L4 — echo a CONVERTED alias's canonical predicate + permutation on
+        // first use: the alias map is trusted base, and a wrong permutation
+        // silently reroutes arguments; make it visible. Plain (unswapped)
+        // aliases are quiet — they resolve to themselves since the
+        // predicate-name flip, so there is nothing to disclose.
+        if let Some(entry) = nibli_lexicon::alias(word)
+            && let Some(swap) = entry.swap
+            && self.linter.seen_aliases.insert(word.clone())
+        {
+            let msg = format!(
+                "{word} \u{21a6} {}\u{27e8}x1\u{2194}x{}\u{27e9}",
+                swap.base, swap.with
+            );
+            push(self.notes, self.input, at, "L4", msg);
         }
     }
 }
@@ -531,6 +549,28 @@ mod tests {
                 .iter()
                 .any(|n| n.code == "L4"),
             "a converted alias must echo only on first use per session"
+        );
+    }
+
+    #[test]
+    fn l4_echoes_compound_place_structure_once() {
+        let mut linter = Linter::new();
+        let notes = linter.lint("computer+user(me).");
+        let l4: Vec<_> = notes.iter().filter(|n| n.code == "L4").collect();
+        // A compound discloses its relation ident + committed places —
+        // they are conventional, never derivable from the parts.
+        assert_eq!(l4.len(), 1, "{l4:?}");
+        assert_eq!(
+            l4[0].message,
+            "computer+user \u{21a6} computer_user(user, computer, purpose)"
+        );
+        // Second use: no re-echo.
+        assert!(
+            !linter
+                .lint("computer+user(you).")
+                .iter()
+                .any(|n| n.code == "L4"),
+            "a compound must echo only on first use per session"
         );
     }
 

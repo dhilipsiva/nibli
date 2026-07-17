@@ -43,6 +43,22 @@ pub fn compound(spelling: &str) -> Option<&'static CompoundEntry> {
     corpus::corpus_compound(spelling)
 }
 
+/// Look up a compound by its IR RELATION ident (`computer_user`) — the
+/// post-emit direction (render/arity/place-name lookups on compound
+/// relations). Linear over the curated compound table, which stays small.
+pub fn compound_by_relation(rel: &str) -> Option<&'static CompoundEntry> {
+    corpus::corpus_compounds().find(|c| c.relation == rel)
+}
+
+/// English place names of an IR relation: an atomic corpus name or a
+/// compound's relation ident. `None` = unknown relation (callers fall back
+/// to positional `x<N>`).
+pub fn relation_places(rel: &str) -> Option<&'static [&'static str]> {
+    alias(rel)
+        .map(|e| e.places)
+        .or_else(|| compound_by_relation(rel).map(|c| c.places))
+}
+
 /// The provenance bridge: gismu → its CANONICAL (unswapped) corpus entry.
 /// Permanent API — the Predilex gates key their Lojban-lemma bounds through it,
 /// and future ontology-row import uses the same mapping.
@@ -63,21 +79,28 @@ pub fn canonical_alias(gismu: &str) -> Option<&'static str> {
     by_provenance(gismu).map(|e| e.name)
 }
 
-/// Arity of a predicate name (English corpus names only).
+/// Arity of an IR relation (English corpus name or compound relation ident).
 pub fn get_arity(word: &str) -> Option<usize> {
-    alias(word).map(|e| e.arity() as usize)
+    alias(word)
+        .map(|e| e.arity() as usize)
+        .or_else(|| compound_by_relation(word).map(|c| c.arity() as usize))
 }
 
-/// Primary English gloss of a predicate name.
+/// Primary English gloss of an IR relation.
 pub fn get_gloss(word: &str) -> Option<&'static str> {
-    alias(word).map(|e| e.gloss)
+    alias(word)
+        .map(|e| e.gloss)
+        .or_else(|| compound_by_relation(word).map(|c| c.gloss))
 }
 
 /// Curated English place-frame template (`{x1}`..`{x5}` placeholders), e.g.
 /// `get_template("dog")` -> `Some("{x1} is a dog")`. `None` = no curated frame;
 /// callers build a generic frame from [`get_gloss`] + [`get_arity`].
 pub fn get_template(word: &str) -> Option<&'static str> {
-    alias(word).and_then(|e| e.template)
+    alias(word)
+        .map(|e| e.template)
+        .or_else(|| compound_by_relation(word).map(|c| c.template))
+        .flatten()
 }
 
 #[cfg(test)]
@@ -137,6 +160,21 @@ mod tests {
             alias("computer_user").is_none(),
             "the relation ident is not an input spelling"
         );
+    }
+
+    #[test]
+    fn compound_relations_resolve_post_emit() {
+        // The post-emit direction: the IR relation ident reaches the entry's
+        // arity/gloss/places (render + semantics arity for compound relations).
+        assert_eq!(
+            compound_by_relation("computer_user").map(|c| c.name),
+            Some("computer+user")
+        );
+        assert_eq!(get_arity("computer_user"), Some(3));
+        assert!(get_gloss("computer_user").is_some());
+        assert_eq!(relation_places("computer_user").map(|p| p[0]), Some("user"));
+        assert_eq!(relation_places("dog").map(|p| p[0]), Some("dog"));
+        assert!(relation_places("no_such_relation").is_none());
     }
 
     #[test]

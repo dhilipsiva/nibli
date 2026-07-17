@@ -84,7 +84,7 @@ pub const CONSTRUCT_INVENTORY: &[ConstructCase] = &[
     case("§5", "goes(x2: some market)."),
     case("§5", "healthy data(Kanrek)."),
     case("§5", "[big fast] dog(Rex)."),
-    case("§5", "dog+cat(me)."),
+    case("§5", "computer+user(me)."),
     case("§5", "Kim = Adam."),
     case("§5", "goes(me) via uses(this)."),
     case("§5", "desires(me, event { goes(you) })."),
