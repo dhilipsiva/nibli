@@ -527,7 +527,10 @@ camxes gate when the shared fragment stops being useful.
 > field), every place is named, arity = place count by construction, and compounds are
 > corpus-declared. What v2 still adds over the corpus is USER-authored `pred`
 > declarations (vocabulary owned by the KB rather than the shipped table) — the deltas
-> below are written against that remaining step.
+> below are written against that remaining step. The injected-fact arity policy
+> already fail-closes at this seam (2026-07-17): programmatic injection takes an
+> unknown relation's argument count as ground truth and rejects known-relation
+> over-arity (`LexiconSchema::injected_arity` — the hook the registry replaces).
 
 In v2, predicate identity no longer routes through gismu at all. A KB (or an imported
 prelude) **declares its vocabulary**:

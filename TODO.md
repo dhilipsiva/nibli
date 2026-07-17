@@ -245,15 +245,6 @@ Pipeline-audit backlog (2026-07-17; three-agent audit of front-end / middle IRs 
 back-end — effort tags S/M/L; ordered quick-wins → correctness → structure →
 performance → future-facing):
 
-- **Injected-fact arity policy (M)** — `LexiconSchema::get_arity_or_default`
-  guesses 2 and `fit_args` then silently TRUNCATES unknown-relation injected
-  facts (nibli-import RDF predicates and WIT/REPL `:assert` →
-  `compile_injected_fact`, nibli-semantics lib.rs:374 + helpers.rs:735); the
-  over-arity fail-closed reject (compile.rs:184) fires only for KNOWN relations,
-  so unknown relations lose arguments with no error. Make the fallback an
-  explicit policy (Error | Default(n); injection callers pass their arg count as
-  ground truth) — the first concrete step toward NIBLI_KR §14.1's injectable
-  schema registry at the `LexiconSchema` seam.
 - **Lower the remaining block determiners (M–L)** — the grammar accepts
   `exactly N X $v:` / `the X $v:` / `every the X $v:` blocks and rel-clauses on
   block restrictors, but emit fails closed (emit.rs:300-306,333-338 — the

@@ -351,13 +351,16 @@ pub fn compile_from_ast(ast: flat_ast::AstBuffer) -> Result<LogicBuffer, NibliEr
 ///
 /// Used by the trusted programmatic injection APIs (nibli-engine
 /// `assert_fact_direct`, nibli-pipeline's WIT `assert-fact`, the REPL `:assert`). Mirrors
-/// `apply_predicate`'s `Predicate::Root` arm exactly so the stored shape is identical
-/// to text assertion: `fit_args` pads to `get_arity_or_default`, then
-/// `event_decompose`. The identity relation is the one exception — it stays a
-/// FLAT 2-arg predicate (NOT event-decomposed), because nibli-reason's
-/// union-find equality interception only fires on `relations::IDENTITY` at
-/// arity 2; the Neo-Davidsonian form would silently disable equality reasoning.
-pub fn compile_injected_fact(relation: &str, args: &[WitTerm]) -> LogicBuffer {
+/// `apply_predicate`'s `Predicate::Root` arm so the stored shape is identical
+/// to text assertion, under the INJECTED-ARITY POLICY
+/// (`LexiconSchema::injected_arity`): a known relation pads to its corpus
+/// arity and FAILS CLOSED on over-arity; an unknown relation takes the
+/// caller's argument count as ground truth (no arity-2 guess, no silent
+/// truncation). The identity relation is the one exception — it stays a
+/// FLAT 2-arg predicate (NOT event-decomposed, n-ary fails closed), because
+/// nibli-reason's union-find equality interception only fires on
+/// `relations::IDENTITY` at arity 2.
+pub fn compile_injected_fact(relation: &str, args: &[WitTerm]) -> Result<LogicBuffer, NibliError> {
     let mut compiler = SemanticCompiler::new();
     let ir_args: Vec<LogicalTerm> = args
         .iter()
@@ -365,6 +368,13 @@ pub fn compile_injected_fact(relation: &str, args: &[WitTerm]) -> LogicBuffer {
         .collect();
 
     let form = if relation == nibli_types::relations::IDENTITY {
+        if ir_args.len() > 2 {
+            return Err(NibliError::Semantic(format!(
+                "the identity relation is 2-place, but {} arguments were supplied; \
+                 n-ary identity is unsupported (mirrors the text path's reject)",
+                ir_args.len()
+            )));
+        }
         let fitted = SemanticCompiler::fit_args(&ir_args, 2);
         LogicalForm::Predicate {
             relation: compiler
@@ -373,17 +383,18 @@ pub fn compile_injected_fact(relation: &str, args: &[WitTerm]) -> LogicBuffer {
             args: fitted,
         }
     } else {
-        let arity = crate::dictionary::LexiconSchema::get_arity_or_default(relation);
+        let arity = crate::dictionary::LexiconSchema::injected_arity(relation, ir_args.len())
+            .map_err(NibliError::Semantic)?;
         let fitted = SemanticCompiler::fit_args(&ir_args, arity);
         compiler.event_decompose(relation, &fitted)
     };
 
     let mut nodes = Vec::new();
     let root = flatten_form(&form, &mut nodes, &compiler.interner);
-    LogicBuffer {
+    Ok(LogicBuffer {
         nodes,
         roots: vec![root],
-    }
+    })
 }
 
 /// Convert a flat WIT/IR `LogicalTerm` to the interned nibli-semantics IR `LogicalTerm`
@@ -543,5 +554,58 @@ mod ast_buffer_validation_tests {
             roots: vec![0],
         };
         compile_from_ast(ast).expect("a shared (DAG) subterm is legal");
+    }
+}
+
+#[cfg(test)]
+mod injected_fact_tests {
+    use super::*;
+
+    fn role_count(buf: &LogicBuffer, relation: &str) -> usize {
+        buf.nodes
+            .iter()
+            .filter(|n| {
+                matches!(n, LogicNode::Predicate((r, _))
+                    if r.starts_with(relation) && r.contains("_x"))
+            })
+            .count()
+    }
+
+    #[test]
+    fn unknown_relation_takes_the_callers_arity() {
+        // No arity-2 guess: a 3-arg unknown fact keeps 3 roles…
+        let args = vec![
+            WitTerm::Constant("a".into()),
+            WitTerm::Constant("b".into()),
+            WitTerm::Constant("c".into()),
+        ];
+        let buf = compile_injected_fact("zzz_unknown_rel", &args).unwrap();
+        assert_eq!(role_count(&buf, "zzz_unknown_rel"), 3);
+        // …and a 1-arg one mints no phantom x2(Unspecified).
+        let buf = compile_injected_fact("zzz_unknown_rel", &args[..1]).unwrap();
+        assert_eq!(role_count(&buf, "zzz_unknown_rel"), 1);
+    }
+
+    #[test]
+    fn known_relation_over_arity_fails_closed() {
+        // `product` has corpus arity 3 — a 4th argument must ERROR, never
+        // silently truncate (the pre-policy behavior).
+        let args: Vec<WitTerm> = (0..4).map(|n| WitTerm::Number(n as f64)).collect();
+        let e = compile_injected_fact("product", &args).unwrap_err();
+        let msg = format!("{e}");
+        assert!(
+            msg.contains("arity 3") && msg.contains("4 arguments"),
+            "{msg}"
+        );
+        // Under-arity still pads to the corpus arity (omitted places).
+        let buf = compile_injected_fact("product", &args[..2]).unwrap();
+        assert_eq!(role_count(&buf, "product"), 3);
+    }
+
+    #[test]
+    fn identity_over_arity_fails_closed() {
+        let args: Vec<WitTerm> = (0..3).map(|n| WitTerm::Number(n as f64)).collect();
+        let e = compile_injected_fact(nibli_types::relations::IDENTITY, &args).unwrap_err();
+        assert!(format!("{e}").contains("n-ary identity is unsupported"));
     }
 }

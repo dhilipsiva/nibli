@@ -394,8 +394,10 @@ impl Session {
         let label = format!(":assert {}", relation);
         // Event-decompose to the SAME shape a surface assertion produces, so the
         // injected fact is matched by surface text queries (not just raw-FOL /
-        // same-shape direct queries). `du` stays flat — see compile_injected_fact.
-        let buf = nibli_semantics::compile_injected_fact(&relation, &logic_args);
+        // same-shape direct queries). Identity stays flat; arity follows the
+        // injected-arity policy (fail-closed) — see compile_injected_fact.
+        let buf = nibli_semantics::compile_injected_fact(&relation, &logic_args)
+            .map_err(convert_pipeline_error)?;
         match id {
             Some(i) => {
                 self.kb

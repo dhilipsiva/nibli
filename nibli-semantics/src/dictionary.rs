@@ -23,6 +23,24 @@ impl LexiconSchema {
     pub fn get_arity_or_default(word: &str) -> usize {
         Self::get_arity(word).unwrap_or(2)
     }
+
+    /// Arity policy for PROGRAMMATICALLY injected facts (the `:assert` /
+    /// WIT `assert-fact` / RDF-import seam — and the NIBLI_KR §14.1 hook
+    /// where an injectable schema registry will eventually sit): a KNOWN
+    /// relation uses its corpus arity, failing closed on over-arity
+    /// (mirroring the text path's reject — never a silent truncation); an
+    /// UNKNOWN relation trusts the caller's argument count as ground truth
+    /// (no arity-2 guess).
+    pub fn injected_arity(relation: &str, provided: usize) -> Result<usize, String> {
+        match Self::get_arity(relation) {
+            Some(a) if provided > a => Err(format!(
+                "{relation:?} has arity {a}, but {provided} arguments were supplied — \
+                 refusing to silently drop the extras"
+            )),
+            Some(a) => Ok(a),
+            None => Ok(provided),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -148,6 +166,18 @@ mod tests {
     fn test_unknown_word_arity_is_none() {
         // A Lojban word-class term is not a corpus name — no resolution, no panic.
         assert_eq!(LexiconSchema::get_arity("brivla"), None);
+    }
+
+    #[test]
+    fn test_injected_arity_policy() {
+        // Known relation: corpus arity; under-arity pads, over-arity ERRORS.
+        assert_eq!(LexiconSchema::injected_arity("product", 3), Ok(3));
+        assert_eq!(LexiconSchema::injected_arity("product", 1), Ok(3));
+        let e = LexiconSchema::injected_arity("product", 4).unwrap_err();
+        assert!(e.contains("arity 3") && e.contains("4 arguments"), "{e}");
+        // Unknown relation: the caller's count is ground truth — no arity-2 guess.
+        assert_eq!(LexiconSchema::injected_arity("zzz_unknown", 1), Ok(1));
+        assert_eq!(LexiconSchema::injected_arity("zzz_unknown", 5), Ok(5));
     }
 
     #[test]

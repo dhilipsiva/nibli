@@ -3565,6 +3565,47 @@ fn injected_fact_multiplace_arity_padding_matches_text_query() {
 }
 
 #[test]
+fn injected_known_over_arity_fails_closed() {
+    // `product` has corpus arity 3 — injecting a 4th argument must ERROR
+    // (the injected-arity policy), never silently drop it (pre-policy
+    // behavior: fit_args truncated with no signal).
+    let engine = fresh_engine();
+    let e = engine
+        .assert_fact_direct(
+            "product".to_string(),
+            (0..4)
+                .map(|n| nibli_engine::EngineLogicalTerm::Number(n as f64))
+                .collect(),
+        )
+        .unwrap_err();
+    let msg = format!("{e}");
+    assert!(
+        msg.contains("arity 3") && msg.contains("4 arguments"),
+        "{msg}"
+    );
+}
+
+#[test]
+fn injected_unknown_arity_is_callers_count() {
+    // An unknown relation takes the caller's argument count as ground truth
+    // (no arity-2 guess): a 3-arg injection is ACCEPTED — pre-policy it was
+    // silently truncated to 2 args. The decomposed SHAPE (exactly 3 role
+    // predicates, no phantom x2 for a 1-arg fact) is pinned at the seam that
+    // decides it: nibli-semantics's `injected_fact_tests`. (The strict-mode
+    // signature registry cannot observe this — each decomposed role predicate
+    // registers its own arity, so a role-count difference is a different
+    // relation SET, not an arity conflict.)
+    let engine = fresh_engine();
+    let args: Vec<_> = ["a", "b", "c"]
+        .iter()
+        .map(|n| nibli_engine::EngineLogicalTerm::Constant(n.to_string()))
+        .collect();
+    engine
+        .assert_fact_direct("zzz_unknown_rel".to_string(), args)
+        .expect("a 3-arg unknown injected fact must be accepted at arity 3");
+}
+
+#[test]
 fn injected_fact_is_findable_as_witness() {
     // The injected fact must also be discoverable through witness extraction.
     let engine = fresh_engine();
