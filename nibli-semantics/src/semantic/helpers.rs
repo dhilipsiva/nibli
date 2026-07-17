@@ -35,17 +35,17 @@ impl SemanticCompiler {
     pub(crate) fn close_quantifier(
         &mut self,
         entry: QuantifierEntry,
-        form_to_wrap: LogicalForm,
+        form_to_wrap: IrForm,
         predicates: &[Predicate],
         arguments: &[Argument],
         sentences: &[Sentence],
-    ) -> LogicalForm {
+    ) -> IrForm {
         let desc_arity = self.get_predicate_arity(entry.desc_id, predicates);
 
         let mut restrictor_args = Vec::with_capacity(desc_arity);
-        restrictor_args.push(LogicalTerm::Variable(entry.var));
+        restrictor_args.push(IrTerm::Variable(entry.var));
         while restrictor_args.len() < desc_arity {
-            restrictor_args.push(LogicalTerm::Unspecified);
+            restrictor_args.push(IrTerm::Unspecified);
         }
 
         let desc_restrictor = self.apply_predicate(
@@ -60,51 +60,51 @@ impl SemanticCompiler {
             QuantifierKind::Universal => {
                 // noi (non-restrictive): conjoin into the consequent (matrix side).
                 let matrix = match entry.incidental_restrictor {
-                    Some(noi) => LogicalForm::And(Box::new(form_to_wrap), Box::new(noi)),
+                    Some(noi) => IrForm::And(Box::new(form_to_wrap), Box::new(noi)),
                     None => form_to_wrap,
                 };
-                let mut body = LogicalForm::Or(
-                    Box::new(LogicalForm::Not(Box::new(desc_restrictor))),
+                let mut body = IrForm::Or(
+                    Box::new(IrForm::Not(Box::new(desc_restrictor))),
                     Box::new(matrix),
                 );
 
                 if let Some(rel_restrictor) = entry.restrictor {
-                    body = LogicalForm::Or(
-                        Box::new(LogicalForm::Not(Box::new(rel_restrictor))),
+                    body = IrForm::Or(
+                        Box::new(IrForm::Not(Box::new(rel_restrictor))),
                         Box::new(body),
                     );
                 }
 
-                LogicalForm::ForAll(entry.var, Box::new(body))
+                IrForm::ForAll(entry.var, Box::new(body))
             }
             QuantifierKind::Existential => {
-                let mut body = LogicalForm::And(Box::new(desc_restrictor), Box::new(form_to_wrap));
+                let mut body = IrForm::And(Box::new(desc_restrictor), Box::new(form_to_wrap));
 
                 if let Some(rel_restrictor) = entry.restrictor {
-                    body = LogicalForm::And(Box::new(rel_restrictor), Box::new(body));
+                    body = IrForm::And(Box::new(rel_restrictor), Box::new(body));
                 }
 
                 // noi: under ∃ a matrix conjunct is logically identical to a
                 // restrictor conjunct (∧ is flat), so folding into the body is exact.
                 if let Some(noi) = entry.incidental_restrictor {
-                    body = LogicalForm::And(Box::new(noi), Box::new(body));
+                    body = IrForm::And(Box::new(noi), Box::new(body));
                 }
 
-                LogicalForm::Exists(entry.var, Box::new(body))
+                IrForm::Exists(entry.var, Box::new(body))
             }
             QuantifierKind::ExactCount(n) => {
-                let mut body = LogicalForm::And(Box::new(desc_restrictor), Box::new(form_to_wrap));
+                let mut body = IrForm::And(Box::new(desc_restrictor), Box::new(form_to_wrap));
 
                 if let Some(rel_restrictor) = entry.restrictor {
-                    body = LogicalForm::And(Box::new(rel_restrictor), Box::new(body));
+                    body = IrForm::And(Box::new(rel_restrictor), Box::new(body));
                 }
 
                 // noi under exact-count stays restrictive (documented residual).
                 if let Some(noi) = entry.incidental_restrictor {
-                    body = LogicalForm::And(Box::new(noi), Box::new(body));
+                    body = IrForm::And(Box::new(noi), Box::new(body));
                 }
 
-                LogicalForm::Count {
+                IrForm::Count {
                     var: entry.var,
                     count: n,
                     body: Box::new(body),
@@ -114,38 +114,38 @@ impl SemanticCompiler {
                 let le_restrictor =
                     self.build_the_domain_restrictor(entry.desc_id, entry.var, predicates);
                 let matrix = match entry.incidental_restrictor {
-                    Some(noi) => LogicalForm::And(Box::new(form_to_wrap), Box::new(noi)),
+                    Some(noi) => IrForm::And(Box::new(form_to_wrap), Box::new(noi)),
                     None => form_to_wrap,
                 };
-                let mut body = LogicalForm::Or(
-                    Box::new(LogicalForm::Not(Box::new(le_restrictor))),
+                let mut body = IrForm::Or(
+                    Box::new(IrForm::Not(Box::new(le_restrictor))),
                     Box::new(matrix),
                 );
 
                 if let Some(rel_restrictor) = entry.restrictor {
-                    body = LogicalForm::Or(
-                        Box::new(LogicalForm::Not(Box::new(rel_restrictor))),
+                    body = IrForm::Or(
+                        Box::new(IrForm::Not(Box::new(rel_restrictor))),
                         Box::new(body),
                     );
                 }
 
-                LogicalForm::ForAll(entry.var, Box::new(body))
+                IrForm::ForAll(entry.var, Box::new(body))
             }
             QuantifierKind::ExactCountLe(n) => {
                 let le_restrictor =
                     self.build_the_domain_restrictor(entry.desc_id, entry.var, predicates);
-                let mut body = LogicalForm::And(Box::new(le_restrictor), Box::new(form_to_wrap));
+                let mut body = IrForm::And(Box::new(le_restrictor), Box::new(form_to_wrap));
 
                 if let Some(rel_restrictor) = entry.restrictor {
-                    body = LogicalForm::And(Box::new(rel_restrictor), Box::new(body));
+                    body = IrForm::And(Box::new(rel_restrictor), Box::new(body));
                 }
 
                 // noi under exact-count stays restrictive (documented residual).
                 if let Some(noi) = entry.incidental_restrictor {
-                    body = LogicalForm::And(Box::new(noi), Box::new(body));
+                    body = IrForm::And(Box::new(noi), Box::new(body));
                 }
 
-                LogicalForm::Count {
+                IrForm::Count {
                     var: entry.var,
                     count: n,
                     body: Box::new(body),
@@ -237,12 +237,12 @@ impl SemanticCompiler {
         desc_id: u32,
         var: lasso::Spur,
         predicates: &[Predicate],
-    ) -> LogicalForm {
+    ) -> IrForm {
         let head_name = self.get_predicate_head_name(desc_id, predicates);
         let domain_name = format!("the_domain_{}", head_name);
-        LogicalForm::Predicate {
+        IrForm::Predicate {
             relation: self.interner.get_or_intern(&domain_name),
-            args: vec![LogicalTerm::Variable(var)],
+            args: vec![IrTerm::Variable(var)],
         }
     }
 
@@ -253,25 +253,25 @@ impl SemanticCompiler {
         arguments: &[Argument],
         predicates: &[Predicate],
         sentences: &[Sentence],
-    ) -> (LogicalTerm, Vec<QuantifierEntry>) {
+    ) -> (IrTerm, Vec<QuantifierEntry>) {
         match argument {
-            Argument::Pronoun(p) => {
+            Argument::Atom(p) => {
                 let term = if p.as_str() == "?" {
                     let var = self.fresh_var();
                     self.question_vars.push(var);
-                    LogicalTerm::Variable(var)
+                    IrTerm::Variable(var)
                 } else if p.starts_with('$') {
-                    LogicalTerm::Variable(self.interner.get_or_intern(p.as_str()))
+                    IrTerm::Variable(self.interner.get_or_intern(p.as_str()))
                 } else if p.as_str() == "it" {
                     if let Some(var) = self.rel_clause_var {
                         self.ref_used = true;
-                        LogicalTerm::Variable(var)
+                        IrTerm::Variable(var)
                     } else {
-                        LogicalTerm::Unspecified
+                        IrTerm::Unspecified
                     }
                 } else if p.as_str() == "slot" {
                     if let Some(var) = self.property_open_var {
-                        LogicalTerm::Variable(var)
+                        IrTerm::Variable(var)
                     } else {
                         // `slot` is the open place of a `property { … }` abstraction;
                         // outside one it has no binder. The old "degrade to a fresh
@@ -286,22 +286,22 @@ impl SemanticCompiler {
                              property block"
                                 .to_string(),
                         );
-                        LogicalTerm::Unspecified
+                        IrTerm::Unspecified
                     }
                 } else {
-                    LogicalTerm::Constant(self.interner.get_or_intern(p.as_str()))
+                    IrTerm::Constant(self.interner.get_or_intern(p.as_str()))
                 };
                 (term, vec![])
             }
             Argument::Name(n) => (
-                LogicalTerm::Constant(self.interner.get_or_intern(n.as_str())),
+                IrTerm::Constant(self.interner.get_or_intern(n.as_str())),
                 vec![],
             ),
             Argument::Description((determiner, desc_id)) => match determiner {
                 Determiner::Indefinite => {
                     let var = self.fresh_var();
                     (
-                        LogicalTerm::Variable(var),
+                        IrTerm::Variable(var),
                         vec![QuantifierEntry {
                             var,
                             desc_id: *desc_id,
@@ -311,10 +311,10 @@ impl SemanticCompiler {
                         }],
                     )
                 }
-                Determiner::UniversalIndefinite => {
+                Determiner::Every => {
                     let var = self.fresh_var();
                     (
-                        LogicalTerm::Variable(var),
+                        IrTerm::Variable(var),
                         vec![QuantifierEntry {
                             var,
                             desc_id: *desc_id,
@@ -324,10 +324,10 @@ impl SemanticCompiler {
                         }],
                     )
                 }
-                Determiner::UniversalDefinite => {
+                Determiner::EveryThe => {
                     let var = self.fresh_var();
                     (
-                        LogicalTerm::Variable(var),
+                        IrTerm::Variable(var),
                         vec![QuantifierEntry {
                             var,
                             desc_id: *desc_id,
@@ -340,7 +340,7 @@ impl SemanticCompiler {
                 Determiner::Definite => {
                     let desc_str = self.get_predicate_head_name(*desc_id, predicates);
                     (
-                        LogicalTerm::Description(self.interner.get_or_intern(desc_str)),
+                        IrTerm::Description(self.interner.get_or_intern(desc_str)),
                         vec![],
                     )
                 }
@@ -352,7 +352,7 @@ impl SemanticCompiler {
                     _ => QuantifierKind::ExactCount(*count),
                 };
                 (
-                    LogicalTerm::Variable(var),
+                    IrTerm::Variable(var),
                     vec![QuantifierEntry {
                         var,
                         desc_id: *desc_id,
@@ -451,17 +451,16 @@ impl SemanticCompiler {
                         RelClauseKind::Incidental => {
                             last.incidental_restrictor =
                                 Some(match last.incidental_restrictor.take() {
-                                    Some(existing) => LogicalForm::And(
-                                        Box::new(existing),
-                                        Box::new(new_restrictor),
-                                    ),
+                                    Some(existing) => {
+                                        IrForm::And(Box::new(existing), Box::new(new_restrictor))
+                                    }
                                     None => new_restrictor,
                                 });
                         }
                         RelClauseKind::Restrictive => {
                             last.restrictor = Some(match last.restrictor.take() {
                                 Some(existing) => {
-                                    LogicalForm::And(Box::new(existing), Box::new(new_restrictor))
+                                    IrForm::And(Box::new(existing), Box::new(new_restrictor))
                                 }
                                 None => new_restrictor,
                             });
@@ -482,11 +481,11 @@ impl SemanticCompiler {
                 (term, quants)
             }
             Argument::QuotedLiteral(q) => (
-                LogicalTerm::Constant(self.interner.get_or_intern(q.as_str())),
+                IrTerm::Constant(self.interner.get_or_intern(q.as_str())),
                 vec![],
             ),
-            Argument::Number(n) => (LogicalTerm::Number(*n), vec![]),
-            Argument::Unspecified => (LogicalTerm::Unspecified, vec![]),
+            Argument::Number(n) => (IrTerm::Number(*n), vec![]),
+            Argument::Unspecified => (IrTerm::Unspecified, vec![]),
         }
     }
 
@@ -498,7 +497,7 @@ impl SemanticCompiler {
     /// (`inject_variable` fills them all with the same entity). Distinct
     /// event variables (separate predications) and non-role predicates count
     /// individually.
-    pub(crate) fn count_unspecified_predicates(form: &LogicalForm, interner: &Rodeo) -> usize {
+    pub(crate) fn count_unspecified_predicates(form: &IrForm, interner: &Rodeo) -> usize {
         let mut events: std::collections::HashSet<lasso::Spur> = std::collections::HashSet::new();
         let mut others = 0usize;
         Self::collect_unspecified_subject_slots(form, interner, &mut events, &mut others);
@@ -506,124 +505,118 @@ impl SemanticCompiler {
     }
 
     fn collect_unspecified_subject_slots(
-        form: &LogicalForm,
+        form: &IrForm,
         interner: &Rodeo,
         events: &mut std::collections::HashSet<lasso::Spur>,
         others: &mut usize,
     ) {
         match form {
-            LogicalForm::Predicate { relation, args } => {
+            IrForm::Predicate { relation, args } => {
                 let rel_name = interner.resolve(relation);
                 if rel_name.contains("_x") {
                     if rel_name.ends_with("_x1")
                         && args.len() >= 2
-                        && matches!(&args[1], LogicalTerm::Unspecified)
+                        && matches!(&args[1], IrTerm::Unspecified)
                     {
-                        if let LogicalTerm::Variable(ev) = &args[0] {
+                        if let IrTerm::Variable(ev) = &args[0] {
                             events.insert(*ev);
                         } else {
                             *others += 1;
                         }
                     }
-                } else if args.iter().any(|a| matches!(a, LogicalTerm::Unspecified)) {
+                } else if args.iter().any(|a| matches!(a, IrTerm::Unspecified)) {
                     *others += 1;
                 }
             }
-            LogicalForm::And(l, r)
-            | LogicalForm::Or(l, r)
-            | LogicalForm::Biconditional(l, r)
-            | LogicalForm::Xor(l, r) => {
+            IrForm::And(l, r)
+            | IrForm::Or(l, r)
+            | IrForm::Biconditional(l, r)
+            | IrForm::Xor(l, r) => {
                 Self::collect_unspecified_subject_slots(l, interner, events, others);
                 Self::collect_unspecified_subject_slots(r, interner, events, others);
             }
-            LogicalForm::Not(inner)
-            | LogicalForm::Exists(_, inner)
-            | LogicalForm::ForAll(_, inner)
-            | LogicalForm::Past(inner)
-            | LogicalForm::Present(inner)
-            | LogicalForm::Future(inner)
-            | LogicalForm::Obligatory(inner)
-            | LogicalForm::Permitted(inner) => {
+            IrForm::Not(inner)
+            | IrForm::Exists(_, inner)
+            | IrForm::ForAll(_, inner)
+            | IrForm::Past(inner)
+            | IrForm::Present(inner)
+            | IrForm::Future(inner)
+            | IrForm::Obligatory(inner)
+            | IrForm::Permitted(inner) => {
                 Self::collect_unspecified_subject_slots(inner, interner, events, others)
             }
-            LogicalForm::Count { body, .. } => {
+            IrForm::Count { body, .. } => {
                 Self::collect_unspecified_subject_slots(body, interner, events, others)
             }
         }
     }
 
     /// Replaces the first Unspecified slot in each predicate with the given variable.
-    pub(crate) fn inject_variable(
-        form: LogicalForm,
-        var: lasso::Spur,
-        interner: &Rodeo,
-    ) -> LogicalForm {
+    pub(crate) fn inject_variable(form: IrForm, var: lasso::Spur, interner: &Rodeo) -> IrForm {
         match form {
-            LogicalForm::Predicate { relation, mut args } => {
+            IrForm::Predicate { relation, mut args } => {
                 let rel_name = interner.resolve(&relation);
                 if rel_name.contains("_x") {
                     if rel_name.ends_with("_x1") && args.len() >= 2 {
-                        if matches!(&args[1], LogicalTerm::Unspecified) {
-                            args[1] = LogicalTerm::Variable(var);
+                        if matches!(&args[1], IrTerm::Unspecified) {
+                            args[1] = IrTerm::Variable(var);
                         }
                     }
                 } else {
-                    let first_unspec = args
-                        .iter()
-                        .position(|a| matches!(a, LogicalTerm::Unspecified));
+                    let first_unspec = args.iter().position(|a| matches!(a, IrTerm::Unspecified));
                     if let Some(idx) = first_unspec {
-                        args[idx] = LogicalTerm::Variable(var);
+                        args[idx] = IrTerm::Variable(var);
                     } else if args.is_empty() {
-                        args.push(LogicalTerm::Variable(var));
+                        args.push(IrTerm::Variable(var));
                     }
                 }
-                LogicalForm::Predicate { relation, args }
+                IrForm::Predicate { relation, args }
             }
-            LogicalForm::And(l, r) => LogicalForm::And(
+            IrForm::And(l, r) => IrForm::And(
                 Box::new(Self::inject_variable(*l, var, interner)),
                 Box::new(Self::inject_variable(*r, var, interner)),
             ),
-            LogicalForm::Or(l, r) => LogicalForm::Or(
+            IrForm::Or(l, r) => IrForm::Or(
                 Box::new(Self::inject_variable(*l, var, interner)),
                 Box::new(Self::inject_variable(*r, var, interner)),
             ),
-            LogicalForm::Biconditional(l, r) => LogicalForm::Biconditional(
+            IrForm::Biconditional(l, r) => IrForm::Biconditional(
                 Box::new(Self::inject_variable(*l, var, interner)),
                 Box::new(Self::inject_variable(*r, var, interner)),
             ),
-            LogicalForm::Xor(l, r) => LogicalForm::Xor(
+            IrForm::Xor(l, r) => IrForm::Xor(
                 Box::new(Self::inject_variable(*l, var, interner)),
                 Box::new(Self::inject_variable(*r, var, interner)),
             ),
-            LogicalForm::Not(inner) => {
-                LogicalForm::Not(Box::new(Self::inject_variable(*inner, var, interner)))
+            IrForm::Not(inner) => {
+                IrForm::Not(Box::new(Self::inject_variable(*inner, var, interner)))
             }
-            LogicalForm::Exists(v, body) => {
-                LogicalForm::Exists(v, Box::new(Self::inject_variable(*body, var, interner)))
+            IrForm::Exists(v, body) => {
+                IrForm::Exists(v, Box::new(Self::inject_variable(*body, var, interner)))
             }
-            LogicalForm::ForAll(v, body) => {
-                LogicalForm::ForAll(v, Box::new(Self::inject_variable(*body, var, interner)))
+            IrForm::ForAll(v, body) => {
+                IrForm::ForAll(v, Box::new(Self::inject_variable(*body, var, interner)))
             }
-            LogicalForm::Past(inner) => {
-                LogicalForm::Past(Box::new(Self::inject_variable(*inner, var, interner)))
+            IrForm::Past(inner) => {
+                IrForm::Past(Box::new(Self::inject_variable(*inner, var, interner)))
             }
-            LogicalForm::Present(inner) => {
-                LogicalForm::Present(Box::new(Self::inject_variable(*inner, var, interner)))
+            IrForm::Present(inner) => {
+                IrForm::Present(Box::new(Self::inject_variable(*inner, var, interner)))
             }
-            LogicalForm::Future(inner) => {
-                LogicalForm::Future(Box::new(Self::inject_variable(*inner, var, interner)))
+            IrForm::Future(inner) => {
+                IrForm::Future(Box::new(Self::inject_variable(*inner, var, interner)))
             }
-            LogicalForm::Obligatory(inner) => {
-                LogicalForm::Obligatory(Box::new(Self::inject_variable(*inner, var, interner)))
+            IrForm::Obligatory(inner) => {
+                IrForm::Obligatory(Box::new(Self::inject_variable(*inner, var, interner)))
             }
-            LogicalForm::Permitted(inner) => {
-                LogicalForm::Permitted(Box::new(Self::inject_variable(*inner, var, interner)))
+            IrForm::Permitted(inner) => {
+                IrForm::Permitted(Box::new(Self::inject_variable(*inner, var, interner)))
             }
-            LogicalForm::Count {
+            IrForm::Count {
                 var: v,
                 count,
                 body,
-            } => LogicalForm::Count {
+            } => IrForm::Count {
                 var: v,
                 count,
                 body: Box::new(Self::inject_variable(*body, var, interner)),
@@ -636,92 +629,98 @@ impl SemanticCompiler {
     /// variable to a rigid term (proper-name constant, `le` description,
     /// pro-argument). A binder that shadows `var` stops the substitution.
     pub(crate) fn substitute_variable(
-        form: LogicalForm,
+        form: IrForm,
         var: lasso::Spur,
-        replacement: &LogicalTerm,
-    ) -> LogicalForm {
+        replacement: &IrTerm,
+    ) -> IrForm {
         match form {
-            LogicalForm::Predicate { relation, mut args } => {
+            IrForm::Predicate { relation, mut args } => {
                 for a in args.iter_mut() {
-                    if matches!(a, LogicalTerm::Variable(v) if *v == var) {
+                    if matches!(a, IrTerm::Variable(v) if *v == var) {
                         *a = replacement.clone();
                     }
                 }
-                LogicalForm::Predicate { relation, args }
+                IrForm::Predicate { relation, args }
             }
-            LogicalForm::And(l, r) => LogicalForm::And(
+            IrForm::And(l, r) => IrForm::And(
                 Box::new(Self::substitute_variable(*l, var, replacement)),
                 Box::new(Self::substitute_variable(*r, var, replacement)),
             ),
-            LogicalForm::Or(l, r) => LogicalForm::Or(
+            IrForm::Or(l, r) => IrForm::Or(
                 Box::new(Self::substitute_variable(*l, var, replacement)),
                 Box::new(Self::substitute_variable(*r, var, replacement)),
             ),
-            LogicalForm::Biconditional(l, r) => LogicalForm::Biconditional(
+            IrForm::Biconditional(l, r) => IrForm::Biconditional(
                 Box::new(Self::substitute_variable(*l, var, replacement)),
                 Box::new(Self::substitute_variable(*r, var, replacement)),
             ),
-            LogicalForm::Xor(l, r) => LogicalForm::Xor(
+            IrForm::Xor(l, r) => IrForm::Xor(
                 Box::new(Self::substitute_variable(*l, var, replacement)),
                 Box::new(Self::substitute_variable(*r, var, replacement)),
             ),
-            LogicalForm::Not(inner) => LogicalForm::Not(Box::new(Self::substitute_variable(
+            IrForm::Not(inner) => IrForm::Not(Box::new(Self::substitute_variable(
                 *inner,
                 var,
                 replacement,
             ))),
-            LogicalForm::Exists(v, body) => {
+            IrForm::Exists(v, body) => {
                 if v == var {
-                    LogicalForm::Exists(v, body) // shadowed: substitution stops here
+                    IrForm::Exists(v, body) // shadowed: substitution stops here
                 } else {
-                    LogicalForm::Exists(
+                    IrForm::Exists(
                         v,
                         Box::new(Self::substitute_variable(*body, var, replacement)),
                     )
                 }
             }
-            LogicalForm::ForAll(v, body) => {
+            IrForm::ForAll(v, body) => {
                 if v == var {
-                    LogicalForm::ForAll(v, body) // shadowed: substitution stops here
+                    IrForm::ForAll(v, body) // shadowed: substitution stops here
                 } else {
-                    LogicalForm::ForAll(
+                    IrForm::ForAll(
                         v,
                         Box::new(Self::substitute_variable(*body, var, replacement)),
                     )
                 }
             }
-            LogicalForm::Past(inner) => LogicalForm::Past(Box::new(Self::substitute_variable(
+            IrForm::Past(inner) => IrForm::Past(Box::new(Self::substitute_variable(
                 *inner,
                 var,
                 replacement,
             ))),
-            LogicalForm::Present(inner) => LogicalForm::Present(Box::new(
-                Self::substitute_variable(*inner, var, replacement),
-            )),
-            LogicalForm::Future(inner) => LogicalForm::Future(Box::new(Self::substitute_variable(
+            IrForm::Present(inner) => IrForm::Present(Box::new(Self::substitute_variable(
                 *inner,
                 var,
                 replacement,
             ))),
-            LogicalForm::Obligatory(inner) => LogicalForm::Obligatory(Box::new(
-                Self::substitute_variable(*inner, var, replacement),
-            )),
-            LogicalForm::Permitted(inner) => LogicalForm::Permitted(Box::new(
-                Self::substitute_variable(*inner, var, replacement),
-            )),
-            LogicalForm::Count {
+            IrForm::Future(inner) => IrForm::Future(Box::new(Self::substitute_variable(
+                *inner,
+                var,
+                replacement,
+            ))),
+            IrForm::Obligatory(inner) => IrForm::Obligatory(Box::new(Self::substitute_variable(
+                *inner,
+                var,
+                replacement,
+            ))),
+            IrForm::Permitted(inner) => IrForm::Permitted(Box::new(Self::substitute_variable(
+                *inner,
+                var,
+                replacement,
+            ))),
+            IrForm::Count {
                 var: v,
                 count,
                 body,
             } => {
                 if v == var {
-                    LogicalForm::Count {
+                    IrForm::Count {
                         var: v,
                         count,
                         body,
                     } // shadowed
                 } else {
-                    LogicalForm::Count {
+                    IrForm::Count {
                         var: v,
                         count,
                         body: Box::new(Self::substitute_variable(*body, var, replacement)),
@@ -732,13 +731,13 @@ impl SemanticCompiler {
     }
 
     /// Pads or truncates an argument list to exactly the target arity.
-    pub(crate) fn fit_args(args: &[LogicalTerm], arity: usize) -> Vec<LogicalTerm> {
+    pub(crate) fn fit_args(args: &[IrTerm], arity: usize) -> Vec<IrTerm> {
         let mut fitted = Vec::with_capacity(arity);
         for i in 0..arity {
             if i < args.len() {
                 fitted.push(args[i].clone());
             } else {
-                fitted.push(LogicalTerm::Unspecified);
+                fitted.push(IrTerm::Unspecified);
             }
         }
         fitted

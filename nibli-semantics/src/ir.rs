@@ -1,6 +1,6 @@
 //! First-Order Logic intermediate representation.
 //!
-//! Defines [`LogicalTerm`] (atomic terms) and [`LogicalForm`] (well-formed formulas)
+//! Defines [`IrTerm`] (atomic terms) and [`IrForm`] (well-formed formulas)
 //! that the semantic compiler produces from the parser's AST. The reasoning engine
 //! consumes these via the WIT flattener in `lib.rs`.
 //!
@@ -11,7 +11,7 @@ use lasso::Spur;
 
 /// The atomic arguments of a predicate.
 #[derive(Debug, PartialEq, Clone)]
-pub enum LogicalTerm {
+pub enum IrTerm {
     /// A bounded logic variable (e.g., 'da', 'de', 'di')
     Variable(Spur),
     /// A named constant entity (e.g., 'la .alis.')
@@ -26,41 +26,38 @@ pub enum LogicalTerm {
 
 /// The Well-Formed Formulas (WFFs) of our First-Order Logic engine.
 #[derive(Debug, PartialEq, Clone)]
-pub enum LogicalForm {
+pub enum IrForm {
     /// An n-ary predicate: P(t1, t2, ..., tn)
-    Predicate {
-        relation: Spur,
-        args: Vec<LogicalTerm>,
-    },
+    Predicate { relation: Spur, args: Vec<IrTerm> },
     /// Universal quantification: ∀x. P(x)
-    ForAll(Spur, Box<LogicalForm>),
+    ForAll(Spur, Box<IrForm>),
     /// Existential quantification: ∃x. P(x)
-    Exists(Spur, Box<LogicalForm>),
+    Exists(Spur, Box<IrForm>),
     /// Logical Conjunction: A ∧ B
-    And(Box<LogicalForm>, Box<LogicalForm>),
+    And(Box<IrForm>, Box<IrForm>),
     /// Logical Disjunction: A ∨ B
-    Or(Box<LogicalForm>, Box<LogicalForm>),
+    Or(Box<IrForm>, Box<IrForm>),
     /// Logical Negation: ¬A
-    Not(Box<LogicalForm>),
+    Not(Box<IrForm>),
     /// Past tense wrapper (pu): P was true.
-    Past(Box<LogicalForm>),
+    Past(Box<IrForm>),
     /// Present tense wrapper (ca): P is true now.
-    Present(Box<LogicalForm>),
+    Present(Box<IrForm>),
     /// Future tense wrapper (ba): P will be true.
-    Future(Box<LogicalForm>),
+    Future(Box<IrForm>),
     /// Deontic obligation (ei/bilga): P ought to be true.
-    Obligatory(Box<LogicalForm>),
+    Obligatory(Box<IrForm>),
     /// Deontic permission (e'e/curmi): P is permitted.
-    Permitted(Box<LogicalForm>),
+    Permitted(Box<IrForm>),
     /// Exactly `count` distinct x satisfy `body`.
     /// Count(var, count, body)
     Count {
         var: Spur,
         count: u32,
-        body: Box<LogicalForm>,
+        body: Box<IrForm>,
     },
     /// Biconditional: A ↔ B  (expanded at flattening to And(Or(Not(A), B), Or(Not(B), A)))
-    Biconditional(Box<LogicalForm>, Box<LogicalForm>),
+    Biconditional(Box<IrForm>, Box<IrForm>),
     /// Exclusive or: A ⊕ B  (expanded at flattening to And(Or(A, B), Not(And(A, B))))
-    Xor(Box<LogicalForm>, Box<LogicalForm>),
+    Xor(Box<IrForm>, Box<IrForm>),
 }

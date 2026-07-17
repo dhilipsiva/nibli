@@ -73,3 +73,11 @@ pub(crate) fn lookup_compound(parts: &[String]) -> Result<PredInfo, String> {
 pub(crate) fn label_index(info: &PredInfo, label: &str) -> Option<usize> {
     info.entry.place_index(label)
 }
+
+/// The pronoun spellings a single-word Name would collide with: a Name that
+/// lowercases onto one of these would denote the SAME constant as the pronoun
+/// in the fact store, so both the emit walk (which rejects such a Name) and
+/// render (its parity-guard twin) test against this one list. The surrounding
+/// separator guard differs per site (emit sees `_` in the surface Name; render
+/// sees the already-lowered `_`→` ` form), so only the set is shared.
+pub(crate) const PRONOUN_COLLISION_NAMES: [&str; 6] = ["me", "you", "we", "this", "that", "yonder"];

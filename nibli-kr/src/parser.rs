@@ -26,7 +26,7 @@ use pest::Parser as _;
 use pest::iterators::Pair;
 
 use crate::ast::{
-    AbsKind, Arg, Claim, ClauseBody, Deontic, Det, KeyTerm, PredSeq, PredUnit, Predication,
+    AbsKind, Arg, Claim, ClauseBody, DeonticMood, Det, KeyTerm, PredSeq, PredUnit, Predication,
     RelClause, RelKind, Restr, RestrKind, Statement, Tag, Tense, Term,
 };
 
@@ -339,7 +339,7 @@ fn build_unary(pair: Pair<Rule>, input: &str, base: usize) -> Result<Claim, Pars
          compat profile; `past ~P` (= Past(Not(P))) is the supported spelling \
          (NIBLI_KR §6 errata)";
 
-    let mut deontic: Option<Deontic> = None;
+    let mut deontic: Option<DeonticMood> = None;
     let mut tense: Option<Tense> = None;
     let mut negated = false;
     let mut atom_pair: Option<Pair<Rule>> = None;
@@ -367,9 +367,9 @@ fn build_unary(pair: Pair<Rule>, input: &str, base: usize) -> Result<Claim, Pars
                             return Err(err_at(input, at, "duplicate deontic prefix"));
                         }
                         deontic = Some(if m.as_rule() == Rule::kw_must {
-                            Deontic::Must
+                            DeonticMood::Obligation
                         } else {
-                            Deontic::May
+                            DeonticMood::Permission
                         });
                     }
                     Rule::kw_past | Rule::kw_now | Rule::kw_future => {
@@ -1133,7 +1133,7 @@ mod tests {
         assert_claim(
             "must past ~goes(me).",
             Claim::Prefixed {
-                deontic: Some(Deontic::Must),
+                deontic: Some(DeonticMood::Obligation),
                 tense: Some(Tense::Past),
                 atom: Box::new(Claim::Not(Box::new(pred(
                     "goes",

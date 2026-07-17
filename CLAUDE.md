@@ -155,10 +155,10 @@ Use these assumptions when selecting entrypoints:
 
 ## Code Conventions
 
-- Semantic-compiler tests use `compile_one(predicates, arguments, proposition)` helper returning `(LogicalForm, SemanticCompiler)`
+- Semantic-compiler tests use `compile_one(predicates, arguments, proposition)` helper returning `(IrForm, SemanticCompiler)`
 - `resolve(&compiler, &spur)` helper to get string from interner in tests
-- The `Connective` enum (`And`/`Or`/`Iff`/`Whether`) is used only at the sentence level (`SentenceConnective::Afterthought`) — the argument/predicate connective variants were removed (dead capacity no emitter produced)
-- `via` modals carry the target predicate directly (`ModalTag::Custom`) — there is no fixed modal-tag table
+- The `Connective` enum (`And`/`Or`/`Iff`/`Xor`) is used only at the sentence level (`SentenceConnective::Afterthought`) — the argument/predicate connective variants were removed (dead capacity no emitter produced)
+- `via` modals carry the target predicate directly (`ModalTag`, a single-field newtype over the tagged predicate id) — there is no fixed modal-tag table
 - **Test discipline — flat vs surface (nibli-reason):** nibli-reason's flat `make_*` test helpers hand-build bare `LogicBuffer`s and skip nibli-semantics's event decomposition + `transform_compute_nodes`, so they match the shipped pipeline on *verdicts* but NOT on shape-dependent behavior (`cwa_false`/`naf_dependent` flags, the `ComputeCheck` step, witness/Skolem shape). For anything shape-dependent, build the buffer the real way via `compile_surface("<kr text>")` (a nibli-reason test helper = `nibli_kr::parse_checked` → `nibli_semantics::compile_from_ast` → `transform_compute_nodes`), or use the `make_decomposed_*` helpers, or write a `nibli-engine` integration test — never assert those on a bare flat buffer. `nibli-reason/src/tests.rs`'s `mod flat_vs_surface` is a metamorphic guard that keeps every behavior class' flat verdict == the surface verdict; keep it green. (See the header comment above the flat helpers in `nibli-reason/src/tests.rs`.)
 
 ## Codebase Exclusions

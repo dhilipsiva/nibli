@@ -1,7 +1,7 @@
 //! Semantic compiler: flat AST buffer → First-Order Logic IR.
 //!
 //! Walks the WIT AST buffer (flat arrays of `Predicate`, `Argument`, `Sentence`) and
-//! compiles each sentence into a [`LogicalForm`] tree. Key transformations:
+//! compiles each sentence into a [`IrForm`] tree. Key transformations:
 //!
 //! - **Quantifier scoping**: determiner descriptions (`lo`/`le`/`la`/`ro lo`) introduce
 //!   quantified variables; scopes are closed outward after the proposition body is compiled.
@@ -21,7 +21,7 @@
 //!   for zero-copy comparison and deduplication.
 
 use crate::dictionary::LexiconSchema;
-use crate::ir::{LogicalForm, LogicalTerm};
+use crate::ir::{IrForm, IrTerm};
 use lasso::Rodeo;
 use nibli_types::ast::{
     AbstractionKind, Argument, Connective, Conversion, DeonticMood, Determiner, ModalTag,
@@ -56,11 +56,11 @@ pub(crate) struct QuantifierEntry {
     desc_id: u32,
     /// Optional restrictive (poi/voi) relative clause body, already compiled.
     /// Folded on the domain side: antecedent for ∀, conjunct for ∃/Count.
-    restrictor: Option<LogicalForm>,
+    restrictor: Option<IrForm>,
     /// Optional non-restrictive (noi) relative clause body, already compiled.
     /// Folded on the MATRIX side (consequent for ∀, body conjunct for ∃/Count) so
     /// it does not narrow the quantifier domain — see `close_quantifier`.
-    incidental_restrictor: Option<LogicalForm>,
+    incidental_restrictor: Option<IrForm>,
     /// What kind of quantifier this description introduces.
     kind: QuantifierKind,
 }
@@ -110,7 +110,7 @@ pub struct SemanticCompiler {
     /// substituted in; `compile_proposition` drains its frame's entries and conjoins
     /// them into the proposition matrix (previously these were silently dropped —
     /// panel finding 2026-06-10).
-    pending_matrix_conjuncts: Vec<LogicalForm>,
+    pending_matrix_conjuncts: Vec<IrForm>,
     /// One-shot: the implicit `ke'a` subject of a relative clause, to be placed
     /// as the x1 ARGUMENT of the clause's main proposition BEFORE predicate conversion —
     /// the same position an explicit subject occupies. Consumed by the first
@@ -150,19 +150,19 @@ impl SemanticCompiler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::{LogicalForm, LogicalTerm};
+    use crate::ir::{IrForm, IrTerm};
     use nibli_types::ast::{
         Argument, Connective, Determiner, Predicate, Proposition, RelClause, RelClauseKind,
         Sentence, SentenceConnective,
     };
 
     /// Helper: build a minimal buffer and compile the first sentence.
-    /// Returns the compiled LogicalForm.
+    /// Returns the compiled IrForm.
     fn compile_one(
         predicates: Vec<Predicate>,
         arguments: Vec<Argument>,
         proposition: Proposition,
-    ) -> (LogicalForm, SemanticCompiler) {
+    ) -> (IrForm, SemanticCompiler) {
         let sentences = vec![Sentence::Simple(proposition)];
         let mut compiler = SemanticCompiler::new();
         let form = compiler.compile_proposition(
@@ -182,50 +182,50 @@ mod tests {
         compiler.interner.resolve(spur).to_string()
     }
 
-    /// Helper: collect all (relation_name, args) pairs from a LogicalForm tree.
+    /// Helper: collect all (relation_name, args) pairs from a IrForm tree.
     fn collect_predicates(
-        form: &LogicalForm,
+        form: &IrForm,
         compiler: &SemanticCompiler,
-    ) -> Vec<(String, Vec<LogicalTerm>)> {
+    ) -> Vec<(String, Vec<IrTerm>)> {
         let mut result = Vec::new();
         collect_predicates_inner(form, compiler, &mut result);
         result
     }
 
     fn collect_predicates_inner(
-        form: &LogicalForm,
+        form: &IrForm,
         compiler: &SemanticCompiler,
-        result: &mut Vec<(String, Vec<LogicalTerm>)>,
+        result: &mut Vec<(String, Vec<IrTerm>)>,
     ) {
         match form {
-            LogicalForm::Predicate { relation, args } => {
+            IrForm::Predicate { relation, args } => {
                 result.push((resolve(compiler, relation), args.clone()));
             }
-            LogicalForm::And(l, r)
-            | LogicalForm::Or(l, r)
-            | LogicalForm::Biconditional(l, r)
-            | LogicalForm::Xor(l, r) => {
+            IrForm::And(l, r)
+            | IrForm::Or(l, r)
+            | IrForm::Biconditional(l, r)
+            | IrForm::Xor(l, r) => {
                 collect_predicates_inner(l, compiler, result);
                 collect_predicates_inner(r, compiler, result);
             }
-            LogicalForm::Not(inner)
-            | LogicalForm::Exists(_, inner)
-            | LogicalForm::ForAll(_, inner)
-            | LogicalForm::Past(inner)
-            | LogicalForm::Present(inner)
-            | LogicalForm::Future(inner)
-            | LogicalForm::Obligatory(inner)
-            | LogicalForm::Permitted(inner) => {
+            IrForm::Not(inner)
+            | IrForm::Exists(_, inner)
+            | IrForm::ForAll(_, inner)
+            | IrForm::Past(inner)
+            | IrForm::Present(inner)
+            | IrForm::Future(inner)
+            | IrForm::Obligatory(inner)
+            | IrForm::Permitted(inner) => {
                 collect_predicates_inner(inner, compiler, result);
             }
-            LogicalForm::Count { body, .. } => {
+            IrForm::Count { body, .. } => {
                 collect_predicates_inner(body, compiler, result);
             }
         }
     }
 
     /// Helper: check if form contains a predicate with given name.
-    fn has_pred(form: &LogicalForm, name: &str, compiler: &SemanticCompiler) -> bool {
+    fn has_pred(form: &IrForm, name: &str, compiler: &SemanticCompiler) -> bool {
         collect_predicates(form, compiler)
             .iter()
             .any(|(n, _)| n == name)
@@ -233,10 +233,10 @@ mod tests {
 
     /// Helper: get the args of the first predicate with given name.
     fn get_pred_args(
-        form: &LogicalForm,
+        form: &IrForm,
         name: &str,
         compiler: &SemanticCompiler,
-    ) -> Option<Vec<LogicalTerm>> {
+    ) -> Option<Vec<IrTerm>> {
         collect_predicates(form, compiler)
             .into_iter()
             .find(|(n, _)| n == name)
@@ -244,9 +244,9 @@ mod tests {
     }
 
     /// Helper: extract a `Constant` term's interned string (panics otherwise).
-    fn const_str(compiler: &SemanticCompiler, term: &LogicalTerm) -> String {
+    fn const_str(compiler: &SemanticCompiler, term: &IrTerm) -> String {
         match term {
-            LogicalTerm::Constant(c) => resolve(compiler, c),
+            IrTerm::Constant(c) => resolve(compiler, c),
             other => panic!("expected Constant, got {:?}", other),
         }
     }
@@ -254,7 +254,7 @@ mod tests {
     /// Helper: collect the names of all FREE `Variable` occurrences in a form
     /// (binder-tracking). A closed top-level form should have NONE — any free
     /// da/de/di/ma var is an under-quantification soundness bug.
-    fn free_vars(form: &LogicalForm, compiler: &SemanticCompiler) -> Vec<String> {
+    fn free_vars(form: &IrForm, compiler: &SemanticCompiler) -> Vec<String> {
         let mut bound: Vec<lasso::Spur> = Vec::new();
         let mut out: Vec<String> = Vec::new();
         free_vars_inner(form, compiler, &mut bound, &mut out);
@@ -262,42 +262,42 @@ mod tests {
     }
 
     fn free_vars_inner(
-        form: &LogicalForm,
+        form: &IrForm,
         compiler: &SemanticCompiler,
         bound: &mut Vec<lasso::Spur>,
         out: &mut Vec<String>,
     ) {
         match form {
-            LogicalForm::Predicate { args, .. } => {
+            IrForm::Predicate { args, .. } => {
                 for arg in args {
-                    if let LogicalTerm::Variable(spur) = arg {
+                    if let IrTerm::Variable(spur) = arg {
                         if !bound.contains(spur) {
                             out.push(resolve(compiler, spur));
                         }
                     }
                 }
             }
-            LogicalForm::And(l, r)
-            | LogicalForm::Or(l, r)
-            | LogicalForm::Biconditional(l, r)
-            | LogicalForm::Xor(l, r) => {
+            IrForm::And(l, r)
+            | IrForm::Or(l, r)
+            | IrForm::Biconditional(l, r)
+            | IrForm::Xor(l, r) => {
                 free_vars_inner(l, compiler, bound, out);
                 free_vars_inner(r, compiler, bound, out);
             }
-            LogicalForm::Not(inner)
-            | LogicalForm::Past(inner)
-            | LogicalForm::Present(inner)
-            | LogicalForm::Future(inner)
-            | LogicalForm::Obligatory(inner)
-            | LogicalForm::Permitted(inner) => {
+            IrForm::Not(inner)
+            | IrForm::Past(inner)
+            | IrForm::Present(inner)
+            | IrForm::Future(inner)
+            | IrForm::Obligatory(inner)
+            | IrForm::Permitted(inner) => {
                 free_vars_inner(inner, compiler, bound, out);
             }
-            LogicalForm::Exists(v, body) | LogicalForm::ForAll(v, body) => {
+            IrForm::Exists(v, body) | IrForm::ForAll(v, body) => {
                 bound.push(*v);
                 free_vars_inner(body, compiler, bound, out);
                 bound.pop();
             }
-            LogicalForm::Count { var, body, .. } => {
+            IrForm::Count { var, body, .. } => {
                 bound.push(*var);
                 free_vars_inner(body, compiler, bound, out);
                 bound.pop();
@@ -308,27 +308,27 @@ mod tests {
     /// Helper: count `Exists` nodes binding a variable with the given name.
     /// (ForAll binders are NOT counted — a prenex-bound `da` is universal, not
     /// existential.)
-    fn count_exists_binding(form: &LogicalForm, name: &str, compiler: &SemanticCompiler) -> usize {
+    fn count_exists_binding(form: &IrForm, name: &str, compiler: &SemanticCompiler) -> usize {
         match form {
-            LogicalForm::Exists(v, body) => {
+            IrForm::Exists(v, body) => {
                 let here = usize::from(resolve(compiler, v) == name);
                 here + count_exists_binding(body, name, compiler)
             }
-            LogicalForm::ForAll(_, body) => count_exists_binding(body, name, compiler),
-            LogicalForm::And(l, r)
-            | LogicalForm::Or(l, r)
-            | LogicalForm::Biconditional(l, r)
-            | LogicalForm::Xor(l, r) => {
+            IrForm::ForAll(_, body) => count_exists_binding(body, name, compiler),
+            IrForm::And(l, r)
+            | IrForm::Or(l, r)
+            | IrForm::Biconditional(l, r)
+            | IrForm::Xor(l, r) => {
                 count_exists_binding(l, name, compiler) + count_exists_binding(r, name, compiler)
             }
-            LogicalForm::Not(inner)
-            | LogicalForm::Past(inner)
-            | LogicalForm::Present(inner)
-            | LogicalForm::Future(inner)
-            | LogicalForm::Obligatory(inner)
-            | LogicalForm::Permitted(inner) => count_exists_binding(inner, name, compiler),
-            LogicalForm::Count { body, .. } => count_exists_binding(body, name, compiler),
-            LogicalForm::Predicate { .. } => 0,
+            IrForm::Not(inner)
+            | IrForm::Past(inner)
+            | IrForm::Present(inner)
+            | IrForm::Future(inner)
+            | IrForm::Obligatory(inner)
+            | IrForm::Permitted(inner) => count_exists_binding(inner, name, compiler),
+            IrForm::Count { body, .. } => count_exists_binding(body, name, compiler),
+            IrForm::Predicate { .. } => 0,
         }
     }
 
@@ -349,29 +349,29 @@ mod tests {
     /// (`[Exists("$da"), ForAll]`) from `∀x.∃da` (`[ForAll]`, the `da` hidden in
     /// the universal's matrix Or). Use `exists_outscopes_forall` for ∃-over-∀
     /// nesting that the Or/And hides from the spine.
-    fn binder_spine(form: &LogicalForm, compiler: &SemanticCompiler) -> Vec<Binder> {
+    fn binder_spine(form: &IrForm, compiler: &SemanticCompiler) -> Vec<Binder> {
         let mut out = Vec::new();
         let mut cur = form;
         loop {
             match cur {
-                LogicalForm::Exists(v, body) => {
+                IrForm::Exists(v, body) => {
                     out.push(Binder::Exists(resolve(compiler, v)));
                     cur = body;
                 }
-                LogicalForm::ForAll(_, body) => {
+                IrForm::ForAll(_, body) => {
                     out.push(Binder::ForAll);
                     cur = body;
                 }
-                LogicalForm::Count { count, body, .. } => {
+                IrForm::Count { count, body, .. } => {
                     out.push(Binder::Count(*count));
                     cur = body;
                 }
-                LogicalForm::Not(inner)
-                | LogicalForm::Past(inner)
-                | LogicalForm::Present(inner)
-                | LogicalForm::Future(inner)
-                | LogicalForm::Obligatory(inner)
-                | LogicalForm::Permitted(inner) => cur = inner,
+                IrForm::Not(inner)
+                | IrForm::Past(inner)
+                | IrForm::Present(inner)
+                | IrForm::Future(inner)
+                | IrForm::Obligatory(inner)
+                | IrForm::Permitted(inner) => cur = inner,
                 _ => break,
             }
         }
@@ -379,54 +379,50 @@ mod tests {
     }
 
     /// True if a `ForAll` appears anywhere in `form`'s subtree.
-    fn subtree_has_forall(form: &LogicalForm) -> bool {
+    fn subtree_has_forall(form: &IrForm) -> bool {
         match form {
-            LogicalForm::ForAll(_, _) => true,
-            LogicalForm::Exists(_, b)
-            | LogicalForm::Not(b)
-            | LogicalForm::Past(b)
-            | LogicalForm::Present(b)
-            | LogicalForm::Future(b)
-            | LogicalForm::Obligatory(b)
-            | LogicalForm::Permitted(b) => subtree_has_forall(b),
-            LogicalForm::Count { body, .. } => subtree_has_forall(body),
-            LogicalForm::And(l, r)
-            | LogicalForm::Or(l, r)
-            | LogicalForm::Biconditional(l, r)
-            | LogicalForm::Xor(l, r) => subtree_has_forall(l) || subtree_has_forall(r),
-            LogicalForm::Predicate { .. } => false,
+            IrForm::ForAll(_, _) => true,
+            IrForm::Exists(_, b)
+            | IrForm::Not(b)
+            | IrForm::Past(b)
+            | IrForm::Present(b)
+            | IrForm::Future(b)
+            | IrForm::Obligatory(b)
+            | IrForm::Permitted(b) => subtree_has_forall(b),
+            IrForm::Count { body, .. } => subtree_has_forall(body),
+            IrForm::And(l, r)
+            | IrForm::Or(l, r)
+            | IrForm::Biconditional(l, r)
+            | IrForm::Xor(l, r) => subtree_has_forall(l) || subtree_has_forall(r),
+            IrForm::Predicate { .. } => false,
         }
     }
 
     /// True if some `Exists` binding `name` has a `ForAll` in its subtree — i.e.
     /// the existential OUTSCOPES a universal (∃-over-∀). Reaches through the
     /// matrix-side Or/And that `binder_spine` stops at.
-    fn exists_outscopes_forall(
-        form: &LogicalForm,
-        name: &str,
-        compiler: &SemanticCompiler,
-    ) -> bool {
+    fn exists_outscopes_forall(form: &IrForm, name: &str, compiler: &SemanticCompiler) -> bool {
         match form {
-            LogicalForm::Exists(v, body) => {
+            IrForm::Exists(v, body) => {
                 (resolve(compiler, v) == name && subtree_has_forall(body))
                     || exists_outscopes_forall(body, name, compiler)
             }
-            LogicalForm::ForAll(_, body) => exists_outscopes_forall(body, name, compiler),
-            LogicalForm::Count { body, .. } => exists_outscopes_forall(body, name, compiler),
-            LogicalForm::Not(b)
-            | LogicalForm::Past(b)
-            | LogicalForm::Present(b)
-            | LogicalForm::Future(b)
-            | LogicalForm::Obligatory(b)
-            | LogicalForm::Permitted(b) => exists_outscopes_forall(b, name, compiler),
-            LogicalForm::And(l, r)
-            | LogicalForm::Or(l, r)
-            | LogicalForm::Biconditional(l, r)
-            | LogicalForm::Xor(l, r) => {
+            IrForm::ForAll(_, body) => exists_outscopes_forall(body, name, compiler),
+            IrForm::Count { body, .. } => exists_outscopes_forall(body, name, compiler),
+            IrForm::Not(b)
+            | IrForm::Past(b)
+            | IrForm::Present(b)
+            | IrForm::Future(b)
+            | IrForm::Obligatory(b)
+            | IrForm::Permitted(b) => exists_outscopes_forall(b, name, compiler),
+            IrForm::And(l, r)
+            | IrForm::Or(l, r)
+            | IrForm::Biconditional(l, r)
+            | IrForm::Xor(l, r) => {
                 exists_outscopes_forall(l, name, compiler)
                     || exists_outscopes_forall(r, name, compiler)
             }
-            LogicalForm::Predicate { .. } => false,
+            IrForm::Predicate { .. } => false,
         }
     }
 
@@ -440,8 +436,8 @@ mod tests {
         // ingestion (which matches relation=="equals" && args.len()==2) fires.
         let predicates = vec![Predicate::Root("equals".into())];
         let arguments = vec![
-            Argument::Pronoun("me".into()),  // 0
-            Argument::Pronoun("you".into()), // 1
+            Argument::Atom("me".into()),  // 0
+            Argument::Atom("you".into()), // 1
         ];
         let proposition = Proposition {
             relation: 0,
@@ -468,9 +464,9 @@ mod tests {
         // silently dropping the third argument.
         let predicates = vec![Predicate::Root("equals".into())];
         let arguments = vec![
-            Argument::Pronoun("me".into()),   // 0
-            Argument::Pronoun("you".into()),  // 1
-            Argument::Pronoun("this".into()), // 2
+            Argument::Atom("me".into()),   // 0
+            Argument::Atom("you".into()),  // 1
+            Argument::Atom("this".into()), // 2
         ];
         let proposition = Proposition {
             relation: 0,
@@ -507,7 +503,7 @@ mod tests {
         let arguments = vec![
             Argument::Description((Determiner::Definite, 1)), // 0: le zarci
             Argument::Tagged((2, 0)),                         // 1: fi le zarci
-            Argument::Pronoun("you".into()),                  // 2: do (untagged)
+            Argument::Atom("you".into()),                     // 2: do (untagged)
         ];
         let proposition = Proposition {
             relation: 0,
@@ -527,13 +523,13 @@ mod tests {
         );
         let x1 = get_pred_args(&form, "goes_x1", &compiler).expect("goes_x1 present");
         assert!(
-            !matches!(&x1[1], LogicalTerm::Constant(c) if resolve(&compiler, c) == "you"),
+            !matches!(&x1[1], IrTerm::Constant(c) if resolve(&compiler, c) == "you"),
             "do must NOT land in x1 (pre-fix bug), got {:?}",
             x1[1]
         );
         let x3 = get_pred_args(&form, "goes_x3", &compiler).expect("goes_x3 present");
         assert!(
-            matches!(&x3[1], LogicalTerm::Description(_)),
+            matches!(&x3[1], IrTerm::Description(_)),
             "fi `le zarci` must fill x3, got {:?}",
             x3[1]
         );
@@ -544,9 +540,9 @@ mod tests {
         // Regression: `mi klama fe do` — untagged `mi` fills x1, `fe do` fills x2.
         let predicates = vec![Predicate::Root("goes".into())];
         let arguments = vec![
-            Argument::Pronoun("me".into()),  // 0
-            Argument::Pronoun("you".into()), // 1
-            Argument::Tagged((1, 1)),        // 2: fe do
+            Argument::Atom("me".into()),  // 0
+            Argument::Atom("you".into()), // 1
+            Argument::Tagged((1, 1)),     // 2: fe do
         ];
         let proposition = Proposition {
             relation: 0,
@@ -571,7 +567,7 @@ mod tests {
         kind: AbstractionKind,
         inner_predicate: &str,
         inner_arguments: Vec<Argument>,
-    ) -> (LogicalForm, SemanticCompiler) {
+    ) -> (IrForm, SemanticCompiler) {
         // Build: lo <kind> <inner_arguments> <inner_predicate> kei cu barda
         // Buffer layout:
         //   predicates: [0: inner_predicate, 1: Abstraction(kind, sentence_idx=1), 2: barda]
@@ -631,13 +627,13 @@ mod tests {
         let (form, compiler) = compile_abstraction(
             AbstractionKind::Fact,
             "goes",
-            vec![Argument::Pronoun("me".into())],
+            vec![Argument::Atom("me".into())],
         );
 
         // Should be Exists(_v0, And(duhu(_v0), And(klama_event, barda_event)))
         // With event decomposition, klama and barda are wrapped in Exists
         match &form {
-            LogicalForm::Exists(var, _body) => {
+            IrForm::Exists(var, _body) => {
                 assert!(resolve(&compiler, var).starts_with("_v"));
                 // Use the recursive helpers that descend into Exists
                 assert!(
@@ -660,19 +656,19 @@ mod tests {
         let (form, compiler) = compile_abstraction(
             AbstractionKind::Property,
             "beautiful",
-            vec![Argument::Pronoun("slot".into())],
+            vec![Argument::Atom("slot".into())],
         );
 
         // Should be Exists(_v0, And(ka(_v0), And(melbi_event, barda_event)))
         // The key: ce'u resolves to _v0, which is the same as the description variable
         // With events, melbi_x1 role pred has (ev, _v0) — the bound var
         match &form {
-            LogicalForm::Exists(var, _body) => {
+            IrForm::Exists(var, _body) => {
                 let var_name = resolve(&compiler, var);
                 // ka type pred should reference the description variable
                 let ka_args = get_pred_args(&form, "property", &compiler).unwrap();
                 let ka_arg0 = match &ka_args[0] {
-                    LogicalTerm::Variable(v) => resolve(&compiler, v),
+                    IrTerm::Variable(v) => resolve(&compiler, v),
                     other => panic!("expected Variable for ka arg, got {:?}", other),
                 };
                 assert_eq!(
@@ -682,7 +678,7 @@ mod tests {
                 // melbi_x1 role pred should have the same variable as its entity arg
                 let melbi_x1_args = get_pred_args(&form, "beautiful_x1", &compiler).unwrap();
                 let melbi_entity = match &melbi_x1_args[1] {
-                    LogicalTerm::Variable(v) => resolve(&compiler, v),
+                    IrTerm::Variable(v) => resolve(&compiler, v),
                     other => panic!("expected Variable for melbi_x1 entity, got {:?}", other),
                 };
                 assert_eq!(
@@ -699,11 +695,11 @@ mod tests {
         let (form, compiler) = compile_abstraction(
             AbstractionKind::Amount,
             "happy",
-            vec![Argument::Pronoun("me".into())],
+            vec![Argument::Atom("me".into())],
         );
 
         match &form {
-            LogicalForm::Exists(_, _) => {
+            IrForm::Exists(_, _) => {
                 // Use the recursive helpers that descend into Exists
                 assert!(
                     has_pred(&form, "amount", &compiler),
@@ -723,11 +719,11 @@ mod tests {
         let (form, compiler) = compile_abstraction(
             AbstractionKind::Concept,
             "goes",
-            vec![Argument::Pronoun("me".into())],
+            vec![Argument::Atom("me".into())],
         );
 
         match &form {
-            LogicalForm::Exists(_, _) => {
+            IrForm::Exists(_, _) => {
                 // Use the recursive helpers that descend into Exists
                 assert!(
                     has_pred(&form, "concept", &compiler),
@@ -747,11 +743,11 @@ mod tests {
         let (form, compiler) = compile_abstraction(
             AbstractionKind::Event,
             "goes",
-            vec![Argument::Pronoun("me".into())],
+            vec![Argument::Atom("me".into())],
         );
 
         match &form {
-            LogicalForm::Exists(_, _) => {
+            IrForm::Exists(_, _) => {
                 // Use the recursive helpers that descend into Exists
                 assert!(
                     has_pred(&form, "event", &compiler),
@@ -774,7 +770,7 @@ mod tests {
         // Fail closed: a semantic error is accumulated (NibliError::Semantic downstream),
         // and no free variable escapes.
         let predicates = vec![Predicate::Root("beautiful".into())];
-        let arguments = vec![Argument::Pronoun("slot".into())];
+        let arguments = vec![Argument::Atom("slot".into())];
         let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
@@ -798,7 +794,7 @@ mod tests {
         let x1_args = get_pred_args(&form, "beautiful_x1", &compiler)
             .expect("expected melbi_x1 role predicate");
         assert!(
-            matches!(&x1_args[1], LogicalTerm::Unspecified),
+            matches!(&x1_args[1], IrTerm::Unspecified),
             "rejected ce'u compiles to Unspecified (no free variable), got {:?}",
             x1_args[1]
         );
@@ -817,9 +813,9 @@ mod tests {
             Predicate::Root("makes".into()), // 1
         ];
         let arguments = vec![
-            Argument::Pronoun("me".into()),                  // 0
-            Argument::Pronoun("you".into()),                 // 1
-            Argument::ModalTagged((ModalTag::Custom(1), 1)), // 2
+            Argument::Atom("me".into()),             // 0
+            Argument::Atom("you".into()),            // 1
+            Argument::ModalTagged((ModalTag(1), 1)), // 2
         ];
         let proposition = Proposition {
             relation: 0,
@@ -845,11 +841,11 @@ mod tests {
         let zbasu_args = get_pred_args(&form, "makes", &compiler).unwrap();
         assert_eq!(
             zbasu_args[0],
-            LogicalTerm::Constant(compiler.interner.get("you").unwrap())
+            IrTerm::Constant(compiler.interner.get("you").unwrap())
         );
         assert_eq!(
             zbasu_args[1],
-            LogicalTerm::Constant(compiler.interner.get("me").unwrap())
+            IrTerm::Constant(compiler.interner.get("me").unwrap())
         );
     }
 
@@ -864,9 +860,9 @@ mod tests {
             Predicate::Root("person".into()), // 1 (arity 1)
         ];
         let arguments = vec![
-            Argument::Pronoun("me".into()),                  // 0
-            Argument::Pronoun("you".into()),                 // 1
-            Argument::ModalTagged((ModalTag::Custom(1), 1)), // 2: fi'o prenu, inner=do
+            Argument::Atom("me".into()),             // 0
+            Argument::Atom("you".into()),            // 1
+            Argument::ModalTagged((ModalTag(1), 1)), // 2: fi'o prenu, inner=do
         ];
         let proposition = Proposition {
             relation: 0,
@@ -918,7 +914,7 @@ mod tests {
         // Should be Count { var: _v0, count: 2, body: And(gerku_event, barda_event) }
         // With event decomposition, restrictor and predicate are event-wrapped
         match &form {
-            LogicalForm::Count { var, count, body } => {
+            IrForm::Count { var, count, body } => {
                 assert_eq!(*count, 2);
                 assert!(resolve(&compiler, var).starts_with("_v"));
                 // The body should contain both gerku and barda type predicates
@@ -954,7 +950,7 @@ mod tests {
         let (form, _) = compile_one(predicates, arguments, proposition);
 
         match &form {
-            LogicalForm::Count { count, .. } => assert_eq!(*count, 0),
+            IrForm::Count { count, .. } => assert_eq!(*count, 0),
             other => panic!("expected Count with count=0, got {:?}", other),
         }
     }
@@ -980,7 +976,7 @@ mod tests {
         let (form, _) = compile_one(predicates, arguments, proposition);
 
         match &form {
-            LogicalForm::Count { count, .. } => assert_eq!(*count, 1),
+            IrForm::Count { count, .. } => assert_eq!(*count, 1),
             other => panic!("expected Count with count=1, got {:?}", other),
         }
     }
@@ -1002,7 +998,7 @@ mod tests {
         let (form, _) = compile_one(predicates, arguments, proposition);
 
         assert!(
-            matches!(&form, LogicalForm::Exists(_, _)),
+            matches!(&form, IrForm::Exists(_, _)),
             "expected Exists, got {:?}",
             form
         );
@@ -1017,14 +1013,14 @@ mod tests {
         left_argument: &str,
         right_predicate: &str,
         right_argument: &str,
-    ) -> (LogicalForm, SemanticCompiler) {
+    ) -> (IrForm, SemanticCompiler) {
         let predicates = vec![
             Predicate::Root(left_predicate.into()),
             Predicate::Root(right_predicate.into()),
         ];
         let arguments = vec![
-            Argument::Pronoun(left_argument.into()),
-            Argument::Pronoun(right_argument.into()),
+            Argument::Atom(left_argument.into()),
+            Argument::Atom(right_argument.into()),
         ];
         let left_proposition = Proposition {
             relation: 0,
@@ -1057,7 +1053,7 @@ mod tests {
         let conn = SentenceConnective::Afterthought(Connective::And);
         let (form, _) = compile_connected(conn, "goes", "me", "loves", "you");
         assert!(
-            matches!(&form, LogicalForm::And(_, _)),
+            matches!(&form, IrForm::And(_, _)),
             "expected And, got {:?}",
             form
         );
@@ -1068,7 +1064,7 @@ mod tests {
         let conn = SentenceConnective::Afterthought(Connective::Or);
         let (form, _) = compile_connected(conn, "goes", "me", "loves", "you");
         assert!(
-            matches!(&form, LogicalForm::Or(_, _)),
+            matches!(&form, IrForm::Or(_, _)),
             "expected Or, got {:?}",
             form
         );
@@ -1081,8 +1077,8 @@ mod tests {
         // da prami mi → ∃da. event_decomposed_prami(da, mi, ...)
         let predicates = vec![Predicate::Root("loves".into())];
         let arguments = vec![
-            Argument::Pronoun("$da".into()), // 0
-            Argument::Pronoun("me".into()),  // 1
+            Argument::Atom("$da".into()), // 0
+            Argument::Atom("me".into()),  // 1
         ];
         let proposition = Proposition {
             relation: 0,
@@ -1097,7 +1093,7 @@ mod tests {
 
         // Outermost should be Exists(da, ...) wrapping the event form
         match &form {
-            LogicalForm::Exists(var, _body) => {
+            IrForm::Exists(var, _body) => {
                 assert_eq!(resolve(&compiler, var), "$da");
                 // Inside should have prami type pred and role preds
                 assert!(
@@ -1107,13 +1103,13 @@ mod tests {
                 // prami_x1 should have Variable(da)
                 let x1_args = get_pred_args(&form, "loves_x1", &compiler).unwrap();
                 match &x1_args[1] {
-                    LogicalTerm::Variable(v) => assert_eq!(resolve(&compiler, v), "$da"),
+                    IrTerm::Variable(v) => assert_eq!(resolve(&compiler, v), "$da"),
                     other => panic!("expected Variable(da) in prami_x1, got {:?}", other),
                 }
                 // prami_x2 should have Constant(mi)
                 let x2_args = get_pred_args(&form, "loves_x2", &compiler).unwrap();
                 match &x2_args[1] {
-                    LogicalTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "me"),
+                    IrTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "me"),
                     other => panic!("expected Constant(mi) in prami_x2, got {:?}", other),
                 }
             }
@@ -1126,8 +1122,8 @@ mod tests {
         // da prami de → ∃da. ∃de. event_decomposed_prami(da, de, ...)
         let predicates = vec![Predicate::Root("loves".into())];
         let arguments = vec![
-            Argument::Pronoun("$da".into()), // 0
-            Argument::Pronoun("$de".into()), // 1
+            Argument::Atom("$da".into()), // 0
+            Argument::Atom("$de".into()), // 1
         ];
         let proposition = Proposition {
             relation: 0,
@@ -1142,10 +1138,10 @@ mod tests {
 
         // Should be Exists(da/de, Exists(da/de, Exists(ev, ...)))
         match &form {
-            LogicalForm::Exists(v1, inner) => {
+            IrForm::Exists(v1, inner) => {
                 let name1 = resolve(&compiler, v1);
                 match inner.as_ref() {
-                    LogicalForm::Exists(v2, _body) => {
+                    IrForm::Exists(v2, _body) => {
                         let name2 = resolve(&compiler, v2);
                         // Both da and de should appear (order may vary)
                         let mut names = vec![name1, name2];
@@ -1169,8 +1165,8 @@ mod tests {
         // da prami da → ∃da. event_decomposed_prami(da, da, ...) (only one entity Exists)
         let predicates = vec![Predicate::Root("loves".into())];
         let arguments = vec![
-            Argument::Pronoun("$da".into()), // 0
-            Argument::Pronoun("$da".into()), // 1 (same variable)
+            Argument::Atom("$da".into()), // 0
+            Argument::Atom("$da".into()), // 1 (same variable)
         ];
         let proposition = Proposition {
             relation: 0,
@@ -1185,11 +1181,11 @@ mod tests {
 
         // Should be Exists(da, Exists(ev, ...)) — NOT Exists(da, Exists(da, ...))
         match &form {
-            LogicalForm::Exists(var, body) => {
+            IrForm::Exists(var, body) => {
                 assert_eq!(resolve(&compiler, var), "$da");
                 // The body should be the event Exists, not another da Exists
                 match body.as_ref() {
-                    LogicalForm::Exists(ev_var, _) => {
+                    IrForm::Exists(ev_var, _) => {
                         // The inner Exists should be for an event variable, not da again
                         assert!(
                             resolve(&compiler, ev_var).starts_with("_ev"),
@@ -1211,7 +1207,7 @@ mod tests {
     fn test_di_produces_exists() {
         // di barda → ∃di. barda(di, ...)
         let predicates = vec![Predicate::Root("big".into())];
-        let arguments = vec![Argument::Pronoun("$di".into())];
+        let arguments = vec![Argument::Atom("$di".into())];
         let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
@@ -1224,7 +1220,7 @@ mod tests {
         let (form, compiler) = compile_one(predicates, arguments, proposition);
 
         match &form {
-            LogicalForm::Exists(var, _) => {
+            IrForm::Exists(var, _) => {
                 assert_eq!(resolve(&compiler, var), "$di");
             }
             other => panic!("expected Exists for di, got {:?}", other),
@@ -1236,10 +1232,7 @@ mod tests {
         // da na prami mi → ¬(∃da. prami(da, mi, ...))
         // negation wraps OUTSIDE the existential
         let predicates = vec![Predicate::Root("loves".into())];
-        let arguments = vec![
-            Argument::Pronoun("$da".into()),
-            Argument::Pronoun("me".into()),
-        ];
+        let arguments = vec![Argument::Atom("$da".into()), Argument::Atom("me".into())];
         let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
@@ -1253,9 +1246,9 @@ mod tests {
 
         // Should be Not(Exists(da, Predicate))
         match &form {
-            LogicalForm::Not(inner) => {
+            IrForm::Not(inner) => {
                 assert!(
-                    matches!(inner.as_ref(), LogicalForm::Exists(_, _)),
+                    matches!(inner.as_ref(), IrForm::Exists(_, _)),
                     "expected Exists inside Not, got {:?}",
                     inner
                 );
@@ -1270,7 +1263,7 @@ mod tests {
         let conn = SentenceConnective::Afterthought(Connective::Iff);
         let (form, _) = compile_connected(conn, "goes", "me", "loves", "you");
         assert!(
-            matches!(&form, LogicalForm::Biconditional(_, _)),
+            matches!(&form, IrForm::Biconditional(_, _)),
             "expected Biconditional, got {:?}",
             form
         );
@@ -1284,7 +1277,7 @@ mod tests {
         // Each `ma` gets a fresh variable (independent query unknowns).
         let predicates = vec![Predicate::Root("goes".into())];
         let arguments = vec![
-            Argument::Pronoun("?".into()), // 0
+            Argument::Atom("?".into()), // 0
         ];
         let proposition = Proposition {
             relation: 0,
@@ -1299,7 +1292,7 @@ mod tests {
 
         // Outermost should be Exists wrapping the event form
         match &form {
-            LogicalForm::Exists(var, _body) => {
+            IrForm::Exists(var, _body) => {
                 // ma now generates a fresh variable (_v0), not "?"
                 assert!(resolve(&compiler, var).starts_with("_v"));
                 // klama type pred should exist inside
@@ -1310,7 +1303,7 @@ mod tests {
                 // klama_x1 should reference the ma variable
                 let x1_args = get_pred_args(&form, "goes_x1", &compiler).unwrap();
                 match &x1_args[1] {
-                    LogicalTerm::Variable(v) => assert_eq!(v, var),
+                    IrTerm::Variable(v) => assert_eq!(v, var),
                     other => panic!("expected Variable in klama_x1, got {:?}", other),
                 }
             }
@@ -1325,8 +1318,8 @@ mod tests {
         // each wrapped in its own ∃.
         let predicates = vec![Predicate::Root("likes".into())];
         let arguments = vec![
-            Argument::Pronoun("?".into()), // 0
-            Argument::Pronoun("?".into()), // 1
+            Argument::Atom("?".into()), // 0
+            Argument::Atom("?".into()), // 1
         ];
         let proposition = Proposition {
             relation: 0,
@@ -1341,10 +1334,10 @@ mod tests {
 
         // Should be ∃v1.(∃v0.(Exists(ev, nelci_event(v0, v1, ...))))
         match &form {
-            LogicalForm::Exists(var1, inner) => {
+            IrForm::Exists(var1, inner) => {
                 assert!(resolve(&compiler, var1).starts_with("_v"));
                 match inner.as_ref() {
-                    LogicalForm::Exists(var0, _body) => {
+                    IrForm::Exists(var0, _body) => {
                         assert!(resolve(&compiler, var0).starts_with("_v"));
                         // The two variables must be different
                         assert_ne!(var0, var1, "two ma should produce different variables");
@@ -1352,7 +1345,7 @@ mod tests {
                         let x1_args = get_pred_args(&form, "likes_x1", &compiler).unwrap();
                         let x2_args = get_pred_args(&form, "likes_x2", &compiler).unwrap();
                         match (&x1_args[1], &x2_args[1]) {
-                            (LogicalTerm::Variable(a), LogicalTerm::Variable(b)) => {
+                            (IrTerm::Variable(a), IrTerm::Variable(b)) => {
                                 assert_ne!(a, b, "args should reference different vars");
                             }
                             other => {
@@ -1382,7 +1375,7 @@ mod tests {
             Predicate::Root("big".into()),   // 2
         ];
         let arguments = vec![
-            Argument::Pronoun("?".into()),                      // 0: ma
+            Argument::Atom("?".into()),                         // 0: ma
             Argument::Description((Determiner::Indefinite, 1)), // 1: lo gerku
             Argument::Restricted((
                 1,
@@ -1423,14 +1416,14 @@ mod tests {
 
     /// Compile `ro lo gerku [kind] barda cu klama` (universal). The rel-clause
     /// body (sentence 1) is `barda` with implicit ke'a filling its x1.
-    fn compile_ro_lo_gerku_rel_barda_klama(kind: RelClauseKind) -> (LogicalForm, SemanticCompiler) {
+    fn compile_ro_lo_gerku_rel_barda_klama(kind: RelClauseKind) -> (IrForm, SemanticCompiler) {
         let predicates = vec![
             Predicate::Root("dog".into()),  // 0
             Predicate::Root("big".into()),  // 1
             Predicate::Root("goes".into()), // 2
         ];
         let arguments = vec![
-            Argument::Description((Determiner::UniversalIndefinite, 0)), // 0: ro lo gerku
+            Argument::Description((Determiner::Every, 0)), // 0: ro lo gerku
             Argument::Restricted((
                 0,
                 RelClause {
@@ -1461,10 +1454,10 @@ mod tests {
     }
 
     /// Split a `ForAll(_, Or(antecedent, consequent))` into (antecedent, consequent).
-    fn forall_or_split(form: &LogicalForm) -> (&LogicalForm, &LogicalForm) {
+    fn forall_or_split(form: &IrForm) -> (&IrForm, &IrForm) {
         match form {
-            LogicalForm::ForAll(_, body) => match body.as_ref() {
-                LogicalForm::Or(l, r) => (l.as_ref(), r.as_ref()),
+            IrForm::ForAll(_, body) => match body.as_ref() {
+                IrForm::Or(l, r) => (l.as_ref(), r.as_ref()),
                 other => panic!("expected Or under ForAll, got {:?}", other),
             },
             other => panic!("expected ForAll root, got {:?}", other),
@@ -1549,7 +1542,7 @@ mod tests {
         let (form, compiler) = compile_sentence_full(predicates, arguments, sentences);
         assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
         match &form {
-            LogicalForm::Count { count, body, .. } => {
+            IrForm::Count { count, body, .. } => {
                 assert_eq!(*count, 3);
                 assert!(
                     has_pred(body, "big", &compiler),
@@ -1568,8 +1561,8 @@ mod tests {
             Predicate::WithArgs((0, vec![1])), // 1: klama be da
         ];
         let arguments = vec![
-            Argument::Pronoun("me".into()),  // 0
-            Argument::Pronoun("$da".into()), // 1 (be-arg)
+            Argument::Atom("me".into()),  // 0
+            Argument::Atom("$da".into()), // 1 (be-arg)
         ];
         let proposition = Proposition {
             relation: 1,
@@ -1598,9 +1591,9 @@ mod tests {
             Predicate::Root("broda".into()),                     // 2
         ];
         let arguments = vec![
-            Argument::Pronoun("me".into()),                     // 0
+            Argument::Atom("me".into()),                        // 0
             Argument::Description((Determiner::Indefinite, 1)), // 1: lo nu ...
-            Argument::Pronoun("$da".into()),                    // 2 (broda body x1)
+            Argument::Atom("$da".into()),                       // 2 (broda body x1)
         ];
         let sentences = vec![
             Sentence::Simple(Proposition {
@@ -1646,8 +1639,8 @@ mod tests {
             Predicate::Root("dog".into()),  // 1
         ];
         let arguments = vec![
-            Argument::Pronoun("$da".into()), // 0: da (x1)
-            Argument::Description((Determiner::UniversalIndefinite, 1)), // 1: ro lo gerku (x2)
+            Argument::Atom("$da".into()),                  // 0: da (x1)
+            Argument::Description((Determiner::Every, 1)), // 1: ro lo gerku (x2)
         ];
         let proposition = Proposition {
             relation: 0,
@@ -1683,8 +1676,8 @@ mod tests {
             Predicate::Root("dog".into()),  // 1
         ];
         let arguments = vec![
-            Argument::Description((Determiner::UniversalIndefinite, 1)), // 0: ro lo gerku (x1)
-            Argument::Pronoun("$da".into()),                             // 1: da (x2)
+            Argument::Description((Determiner::Every, 1)), // 0: ro lo gerku (x1)
+            Argument::Atom("$da".into()),                  // 1: da (x2)
         ];
         let proposition = Proposition {
             relation: 0,
@@ -1721,8 +1714,8 @@ mod tests {
         ];
         let arguments = vec![
             Argument::QuantifiedDescription((2, Determiner::Indefinite, 1)), // 0: re lo gerku (x1)
-            Argument::Pronoun("$da".into()),                                 // 1: da (x2)
-            Argument::Description((Determiner::UniversalIndefinite, 2)),     // 2: ro lo mlatu (x3)
+            Argument::Atom("$da".into()),                                    // 1: da (x2)
+            Argument::Description((Determiner::Every, 2)),                   // 2: ro lo mlatu (x3)
         ];
         let proposition = Proposition {
             relation: 0,
@@ -1760,8 +1753,8 @@ mod tests {
             Predicate::Root("dog".into()),     // 2
         ];
         let arguments = vec![
-            Argument::Description((Determiner::UniversalIndefinite, 2)), // 0: ro lo gerku (x1)
-            Argument::Pronoun("$da".into()),                             // 1: da (be-arg)
+            Argument::Description((Determiner::Every, 2)), // 0: ro lo gerku (x1)
+            Argument::Atom("$da".into()),                  // 1: da (be-arg)
         ];
         let proposition = Proposition {
             relation: 1,
@@ -1801,7 +1794,7 @@ mod tests {
             Predicate::Root("goes".into()),  // 2
         ];
         let arguments = vec![
-            Argument::Description((Determiner::UniversalIndefinite, 0)), // 0: ro lo gerku
+            Argument::Description((Determiner::Every, 0)), // 0: ro lo gerku
             Argument::Restricted((
                 0,
                 RelClause {
@@ -1809,8 +1802,8 @@ mod tests {
                     body_sentence: 1,
                 },
             )), // 1: ro lo gerku poi <body>
-            Argument::Pronoun("$da".into()),                             // 2: da
-            Argument::Tagged((1, 2)), // 3: fe da (x2 of the poi body)
+            Argument::Atom("$da".into()),                  // 2: da
+            Argument::Tagged((1, 2)),                      // 3: fe da (x2 of the poi body)
         ];
         let sentences = vec![
             Sentence::Simple(Proposition {
@@ -1855,7 +1848,7 @@ mod tests {
             Predicate::Root("dog".into()),  // 1
         ];
         let arguments = vec![
-            Argument::Pronoun("$da".into()),                    // 0: da (x1)
+            Argument::Atom("$da".into()),                       // 0: da (x1)
             Argument::Description((Determiner::Indefinite, 1)), // 1: lo gerku (x2)
         ];
         let sentences = vec![
@@ -1891,8 +1884,8 @@ mod tests {
         // the safety-net subtraction).
         let predicates = vec![Predicate::Root("eats".into())];
         let arguments = vec![
-            Argument::Pronoun("$da".into()), // 0: da (x1)
-            Argument::Pronoun("$da".into()), // 1: da (x2)
+            Argument::Atom("$da".into()), // 0: da (x1)
+            Argument::Atom("$da".into()), // 1: da (x2)
         ];
         let proposition = Proposition {
             relation: 0,
@@ -1918,8 +1911,8 @@ mod tests {
         // (the flat-du shape must not hide the logic var from the walk).
         let predicates = vec![Predicate::Root("equals".into())];
         let arguments = vec![
-            Argument::Pronoun("$da".into()), // 0
-            Argument::Pronoun("me".into()),  // 1
+            Argument::Atom("$da".into()), // 0
+            Argument::Atom("me".into()),  // 1
         ];
         let proposition = Proposition {
             relation: 0,
@@ -1946,7 +1939,7 @@ mod tests {
         predicates: Vec<Predicate>,
         arguments: Vec<Argument>,
         sentences: Vec<Sentence>,
-    ) -> (LogicalForm, SemanticCompiler) {
+    ) -> (IrForm, SemanticCompiler) {
         let mut compiler = SemanticCompiler::new();
         let form = compiler.compile_sentence(0, &predicates, &arguments, &sentences);
         (form, compiler)
@@ -2070,7 +2063,7 @@ mod tests {
         //
         // Buffer layout:
         //   predicates: [0: gerku, 1: barda, 2: klama]
-        //   arguments:  [0: Description(Lo, 0), 1: Pronoun("it"), 2: Restricted(0, poi body=1)]
+        //   arguments:  [0: Description(Lo, 0), 1: Atom("it"), 2: Restricted(0, poi body=1)]
         //   sentences: [0: Simple(klama, head=[2]), 1: Simple(barda, head=[1])]
         let predicates = vec![
             Predicate::Root("dog".into()),  // 0
@@ -2079,7 +2072,7 @@ mod tests {
         ];
         let arguments = vec![
             Argument::Description((Determiner::Indefinite, 0)), // 0: lo gerku
-            Argument::Pronoun("it".into()),                     // 1: ke'a
+            Argument::Atom("it".into()),                        // 1: ke'a
             Argument::Restricted((
                 0,
                 RelClause {
@@ -2174,7 +2167,7 @@ mod tests {
         // The implicit ke'a (dog) variable is injected into barda's subject slot, and it
         // must be the SAME variable bound by the gerku description.
         assert!(
-            matches!(barda_args[1], LogicalTerm::Variable(_)),
+            matches!(barda_args[1], IrTerm::Variable(_)),
             "dog variable should be injected into barda_x1, got {:?}",
             barda_args[1]
         );
@@ -2199,7 +2192,7 @@ mod tests {
             Predicate::Root("animal".into()), // 2
         ];
         let arguments = vec![
-            Argument::Description((Determiner::UniversalIndefinite, 0)), // 0: ro lo gerku
+            Argument::Description((Determiner::Every, 0)), // 0: ro lo gerku
             Argument::Restricted((
                 0,
                 RelClause {
@@ -2207,10 +2200,10 @@ mod tests {
                     body_sentence: 1,
                 },
             )), // 1: ro lo gerku poi <body>
-            Argument::Pronoun("it".into()),                              // 2: ke'a
-            Argument::Name("alis".into()),                               // 3: alis
-            Argument::Tagged((0, 3)),                                    // 4: fa alis  (x1, lover)
-            Argument::Tagged((1, 2)),                                    // 5: fe ke'a  (x2, loved)
+            Argument::Atom("it".into()),                   // 2: ke'a
+            Argument::Name("alis".into()),                 // 3: alis
+            Argument::Tagged((0, 3)),                      // 4: fa alis  (x1, lover)
+            Argument::Tagged((1, 2)),                      // 5: fe ke'a  (x2, loved)
         ];
         let sentences = vec![
             Sentence::Simple(Proposition {
@@ -2264,7 +2257,7 @@ mod tests {
             Predicate::Root("animal".into()), // 2
         ];
         let arguments = vec![
-            Argument::Description((Determiner::UniversalIndefinite, 0)), // 0: ro lo gerku
+            Argument::Description((Determiner::Every, 0)), // 0: ro lo gerku
             Argument::Restricted((
                 0,
                 RelClause {
@@ -2272,10 +2265,10 @@ mod tests {
                     body_sentence: 1,
                 },
             )), // 1
-            Argument::Pronoun("it".into()),                              // 2: ke'a
-            Argument::Name("alis".into()),                               // 3: alis
-            Argument::Tagged((0, 2)),                                    // 4: fa ke'a (x1, lover)
-            Argument::Tagged((1, 3)),                                    // 5: fe alis (x2, loved)
+            Argument::Atom("it".into()),                   // 2: ke'a
+            Argument::Name("alis".into()),                 // 3: alis
+            Argument::Tagged((0, 2)),                      // 4: fa ke'a (x1, lover)
+            Argument::Tagged((1, 3)),                      // 5: fe alis (x2, loved)
         ];
         let sentences = vec![
             Sentence::Simple(Proposition {
@@ -2329,7 +2322,7 @@ mod tests {
             Predicate::Root("animal".into()), // 2
         ];
         let arguments = vec![
-            Argument::Description((Determiner::UniversalIndefinite, 0)), // 0: ro lo gerku
+            Argument::Description((Determiner::Every, 0)), // 0: ro lo gerku
             Argument::Restricted((
                 0,
                 RelClause {
@@ -2337,8 +2330,8 @@ mod tests {
                     body_sentence: 1,
                 },
             )), // 1
-            Argument::Pronoun("it".into()),                              // 2: ke'a
-            Argument::Tagged((1, 2)),                                    // 3: fe ke'a (x2, loved)
+            Argument::Atom("it".into()),                   // 2: ke'a
+            Argument::Tagged((1, 2)),                      // 3: fe ke'a (x2, loved)
         ];
         let sentences = vec![
             Sentence::Simple(Proposition {
@@ -2364,7 +2357,7 @@ mod tests {
         let prami_x2 = get_pred_args(&form, "loves_x2", &compiler).expect("loves_x2 present");
         let gerku_x1 = get_pred_args(&form, "dog_x1", &compiler).expect("dog_x1 present");
         assert!(
-            matches!(prami_x1[1], LogicalTerm::Unspecified),
+            matches!(prami_x1[1], IrTerm::Unspecified),
             "x1 must stay Unspecified (not double-filled with the clause var), got {:?}",
             prami_x1[1]
         );
@@ -2431,9 +2424,9 @@ mod tests {
     fn test_count_unspecified_predicates_single() {
         let mut compiler = SemanticCompiler::new();
         let rel = compiler.interner.get_or_intern("dog");
-        let form = LogicalForm::Predicate {
+        let form = IrForm::Predicate {
             relation: rel,
-            args: vec![LogicalTerm::Unspecified],
+            args: vec![IrTerm::Unspecified],
         };
         assert_eq!(
             SemanticCompiler::count_unspecified_predicates(&form, &compiler.interner),
@@ -2446,9 +2439,9 @@ mod tests {
         let mut compiler = SemanticCompiler::new();
         let rel = compiler.interner.get_or_intern("dog");
         let var = compiler.interner.get_or_intern("x");
-        let form = LogicalForm::Predicate {
+        let form = IrForm::Predicate {
             relation: rel,
-            args: vec![LogicalTerm::Variable(var)],
+            args: vec![IrTerm::Variable(var)],
         };
         assert_eq!(
             SemanticCompiler::count_unspecified_predicates(&form, &compiler.interner),
@@ -2461,14 +2454,14 @@ mod tests {
         let mut compiler = SemanticCompiler::new();
         let rel1 = compiler.interner.get_or_intern("dog");
         let rel2 = compiler.interner.get_or_intern("cat");
-        let form = LogicalForm::And(
-            Box::new(LogicalForm::Predicate {
+        let form = IrForm::And(
+            Box::new(IrForm::Predicate {
                 relation: rel1,
-                args: vec![LogicalTerm::Unspecified],
+                args: vec![IrTerm::Unspecified],
             }),
-            Box::new(LogicalForm::Predicate {
+            Box::new(IrForm::Predicate {
                 relation: rel2,
-                args: vec![LogicalTerm::Unspecified],
+                args: vec![IrTerm::Unspecified],
             }),
         );
         assert_eq!(
@@ -2482,15 +2475,15 @@ mod tests {
         let mut compiler = SemanticCompiler::new();
         let rel = compiler.interner.get_or_intern("dog");
         let var = compiler.interner.get_or_intern("_v0");
-        let form = LogicalForm::Predicate {
+        let form = IrForm::Predicate {
             relation: rel,
-            args: vec![LogicalTerm::Unspecified, LogicalTerm::Unspecified],
+            args: vec![IrTerm::Unspecified, IrTerm::Unspecified],
         };
         let injected = SemanticCompiler::inject_variable(form, var, &compiler.interner);
         match injected {
-            LogicalForm::Predicate { args, .. } => {
-                assert!(matches!(args[0], LogicalTerm::Variable(_)));
-                assert!(matches!(args[1], LogicalTerm::Unspecified));
+            IrForm::Predicate { args, .. } => {
+                assert!(matches!(args[0], IrTerm::Variable(_)));
+                assert!(matches!(args[1], IrTerm::Unspecified));
             }
             other => panic!("expected Predicate, got {:?}", other),
         }
@@ -2504,8 +2497,8 @@ mod tests {
         // never a silent drop of `do`.
         let predicates = vec![Predicate::Root("dog".into())];
         let arguments = vec![
-            Argument::Pronoun("you".into()), // 0
-            Argument::Tagged((4, 0)),        // 1: fu do
+            Argument::Atom("you".into()), // 0
+            Argument::Tagged((4, 0)),     // 1: fu do
         ];
         let proposition = Proposition {
             relation: 0,
@@ -2532,8 +2525,8 @@ mod tests {
         // fe do gerku → `fe` targets x2; gerku is 2-place: fine.
         let predicates = vec![Predicate::Root("dog".into())];
         let arguments = vec![
-            Argument::Pronoun("you".into()), // 0
-            Argument::Tagged((1, 0)),        // 1: fe do
+            Argument::Atom("you".into()), // 0
+            Argument::Tagged((1, 0)),     // 1: fe do
         ];
         let proposition = Proposition {
             relation: 0,
@@ -2550,7 +2543,7 @@ mod tests {
             compiler.errors
         );
         let x2 = get_pred_args(&form, "dog_x2", &compiler).unwrap();
-        let do_term = LogicalTerm::Constant(compiler.interner.get("you").unwrap());
+        let do_term = IrTerm::Constant(compiler.interner.get("you").unwrap());
         assert_eq!(x2[1], do_term, "fe must place `do` into gerku_x2");
     }
 
@@ -2561,9 +2554,9 @@ mod tests {
         // silently dropping it.
         let predicates = vec![Predicate::Root("dog".into())];
         let arguments = vec![
-            Argument::Pronoun("me".into()),   // 0
-            Argument::Pronoun("you".into()),  // 1
-            Argument::Pronoun("this".into()), // 2
+            Argument::Atom("me".into()),   // 0
+            Argument::Atom("you".into()),  // 1
+            Argument::Atom("this".into()), // 2
         ];
         let proposition = Proposition {
             relation: 0,
@@ -2592,9 +2585,9 @@ mod tests {
         // the no-XML build defaults many proxy words to 2).
         let predicates = vec![Predicate::Root("zzzzz".into())];
         let arguments = vec![
-            Argument::Pronoun("me".into()),   // 0
-            Argument::Pronoun("you".into()),  // 1
-            Argument::Pronoun("this".into()), // 2
+            Argument::Atom("me".into()),   // 0
+            Argument::Atom("you".into()),  // 1
+            Argument::Atom("this".into()), // 2
         ];
         let proposition = Proposition {
             relation: 0,
@@ -2618,10 +2611,10 @@ mod tests {
         // error, not silently last-wins (dropping `do`).
         let predicates = vec![Predicate::Root("dog".into())];
         let arguments = vec![
-            Argument::Pronoun("you".into()),  // 0
-            Argument::Pronoun("this".into()), // 1
-            Argument::Tagged((1, 0)),         // 2: fe do
-            Argument::Tagged((1, 1)),         // 3: fe ti
+            Argument::Atom("you".into()),  // 0
+            Argument::Atom("this".into()), // 1
+            Argument::Tagged((1, 0)),      // 2: fe do
+            Argument::Tagged((1, 1)),      // 3: fe ti
         ];
         let proposition = Proposition {
             relation: 0,
@@ -2751,7 +2744,7 @@ mod tests {
             "single-subject-slot clause on a name must compile cleanly, got: {:?}",
             compiler.errors
         );
-        let adam = LogicalTerm::Constant(compiler.interner.get("adam").unwrap());
+        let adam = IrTerm::Constant(compiler.interner.get("adam").unwrap());
         let klama_x1 =
             get_pred_args(&form, "goes_x1", &compiler).expect("matrix klama must be present");
         assert_eq!(klama_x1[1], adam);
@@ -2819,24 +2812,24 @@ mod tests {
         // left-to-right Lojban scope puts the bare-var existential INSIDE the
         // universal. The old Exists-over-ForAll root dead-ended nibli-reason's rule
         // dispatch and silently lost the whole assertion.
-        fn exists_da_somewhere(f: &LogicalForm, c: &SemanticCompiler) -> bool {
+        fn exists_da_somewhere(f: &IrForm, c: &SemanticCompiler) -> bool {
             match f {
-                LogicalForm::Exists(v, inner) => {
+                IrForm::Exists(v, inner) => {
                     c.interner.resolve(v) == "$da" || exists_da_somewhere(inner, c)
                 }
-                LogicalForm::And(l, r)
-                | LogicalForm::Or(l, r)
-                | LogicalForm::Biconditional(l, r)
-                | LogicalForm::Xor(l, r) => exists_da_somewhere(l, c) || exists_da_somewhere(r, c),
-                LogicalForm::Not(i)
-                | LogicalForm::ForAll(_, i)
-                | LogicalForm::Past(i)
-                | LogicalForm::Present(i)
-                | LogicalForm::Future(i)
-                | LogicalForm::Obligatory(i)
-                | LogicalForm::Permitted(i) => exists_da_somewhere(i, c),
-                LogicalForm::Count { body, .. } => exists_da_somewhere(body, c),
-                LogicalForm::Predicate { .. } => false,
+                IrForm::And(l, r)
+                | IrForm::Or(l, r)
+                | IrForm::Biconditional(l, r)
+                | IrForm::Xor(l, r) => exists_da_somewhere(l, c) || exists_da_somewhere(r, c),
+                IrForm::Not(i)
+                | IrForm::ForAll(_, i)
+                | IrForm::Past(i)
+                | IrForm::Present(i)
+                | IrForm::Future(i)
+                | IrForm::Obligatory(i)
+                | IrForm::Permitted(i) => exists_da_somewhere(i, c),
+                IrForm::Count { body, .. } => exists_da_somewhere(body, c),
+                IrForm::Predicate { .. } => false,
             }
         }
 
@@ -2845,8 +2838,8 @@ mod tests {
             Predicate::Root("eats".into()), // 1
         ];
         let arguments = vec![
-            Argument::Description((Determiner::UniversalIndefinite, 0)), // 0: ro lo gerku
-            Argument::Pronoun("$da".into()),                             // 1: da
+            Argument::Description((Determiner::Every, 0)), // 0: ro lo gerku
+            Argument::Atom("$da".into()),                  // 1: da
         ];
         let proposition = Proposition {
             relation: 1,
@@ -2858,7 +2851,7 @@ mod tests {
         };
         let (form, compiler) = compile_one(predicates, arguments, proposition);
         match &form {
-            LogicalForm::ForAll(_, body) => {
+            IrForm::ForAll(_, body) => {
                 assert!(
                     exists_da_somewhere(body, &compiler),
                     "∃da must be nested inside the ∀ body, got: {:?}",
@@ -2878,7 +2871,7 @@ mod tests {
     fn test_tense_past_produces_past() {
         // pu mi klama → Past(klama(mi, ...))
         let predicates = vec![Predicate::Root("goes".into())];
-        let arguments = vec![Argument::Pronoun("me".into())];
+        let arguments = vec![Argument::Atom("me".into())];
         let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
@@ -2888,13 +2881,13 @@ mod tests {
             deontic: None,
         };
         let (form, _) = compile_one(predicates, arguments, proposition);
-        assert!(matches!(form, LogicalForm::Past(_)));
+        assert!(matches!(form, IrForm::Past(_)));
     }
 
     #[test]
     fn test_tense_now_produces_present() {
         let predicates = vec![Predicate::Root("goes".into())];
-        let arguments = vec![Argument::Pronoun("me".into())];
+        let arguments = vec![Argument::Atom("me".into())];
         let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
@@ -2904,13 +2897,13 @@ mod tests {
             deontic: None,
         };
         let (form, _) = compile_one(predicates, arguments, proposition);
-        assert!(matches!(form, LogicalForm::Present(_)));
+        assert!(matches!(form, IrForm::Present(_)));
     }
 
     #[test]
     fn test_tense_future_produces_future() {
         let predicates = vec![Predicate::Root("goes".into())];
-        let arguments = vec![Argument::Pronoun("me".into())];
+        let arguments = vec![Argument::Atom("me".into())];
         let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
@@ -2920,7 +2913,7 @@ mod tests {
             deontic: None,
         };
         let (form, _) = compile_one(predicates, arguments, proposition);
-        assert!(matches!(form, LogicalForm::Future(_)));
+        assert!(matches!(form, IrForm::Future(_)));
     }
 
     // ─── DeonticMood tests ────────────────────────────────────
@@ -2928,7 +2921,7 @@ mod tests {
     #[test]
     fn test_deontic_must_produces_obligatory() {
         let predicates = vec![Predicate::Root("goes".into())];
-        let arguments = vec![Argument::Pronoun("me".into())];
+        let arguments = vec![Argument::Atom("me".into())];
         let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
@@ -2938,13 +2931,13 @@ mod tests {
             deontic: Some(DeonticMood::Obligation),
         };
         let (form, _) = compile_one(predicates, arguments, proposition);
-        assert!(matches!(form, LogicalForm::Obligatory(_)));
+        assert!(matches!(form, IrForm::Obligatory(_)));
     }
 
     #[test]
     fn test_deontic_may_produces_permitted() {
         let predicates = vec![Predicate::Root("goes".into())];
-        let arguments = vec![Argument::Pronoun("me".into())];
+        let arguments = vec![Argument::Atom("me".into())];
         let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
@@ -2954,7 +2947,7 @@ mod tests {
             deontic: Some(DeonticMood::Permission),
         };
         let (form, _) = compile_one(predicates, arguments, proposition);
-        assert!(matches!(form, LogicalForm::Permitted(_)));
+        assert!(matches!(form, IrForm::Permitted(_)));
     }
 
     // ─── Negation test ────────────────────────────────────────
@@ -2963,7 +2956,7 @@ mod tests {
     fn test_predication_negation_produces_not() {
         // na mi klama → Not(klama(mi, ...))
         let predicates = vec![Predicate::Root("goes".into())];
-        let arguments = vec![Argument::Pronoun("me".into())];
+        let arguments = vec![Argument::Atom("me".into())];
         let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
@@ -2973,7 +2966,7 @@ mod tests {
             deontic: None,
         };
         let (form, _) = compile_one(predicates, arguments, proposition);
-        assert!(matches!(form, LogicalForm::Not(_)));
+        assert!(matches!(form, IrForm::Not(_)));
     }
 
     // ─── Conversion SE tests ──────────────────────────────────
@@ -2985,10 +2978,7 @@ mod tests {
             Predicate::Root("loves".into()),
             Predicate::Converted((Conversion::Swap12, 0)),
         ];
-        let arguments = vec![
-            Argument::Pronoun("me".into()),
-            Argument::Pronoun("you".into()),
-        ];
+        let arguments = vec![Argument::Atom("me".into()), Argument::Atom("you".into())];
         let proposition = Proposition {
             relation: 1,
             head_terms: vec![0],
@@ -3003,7 +2993,7 @@ mod tests {
         // head=mi goes to x1 position, tail=do goes to x2 position
         // se swaps these: mi→x2, do→x1
         assert!(
-            matches!(&form, LogicalForm::Exists(_, _)),
+            matches!(&form, IrForm::Exists(_, _)),
             "expected Exists, got {:?}",
             form
         );
@@ -3014,7 +3004,7 @@ mod tests {
         // Check prami_x1 has do (originally x2, swapped to x1)
         let x1_args = get_pred_args(&form, "loves_x1", &compiler).unwrap();
         match &x1_args[1] {
-            LogicalTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "you"),
+            IrTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "you"),
             other => panic!(
                 "expected Constant(do) in prami_x1 after se-swap, got {:?}",
                 other
@@ -3023,7 +3013,7 @@ mod tests {
         // Check prami_x2 has mi (originally x1, swapped to x2)
         let x2_args = get_pred_args(&form, "loves_x2", &compiler).unwrap();
         match &x2_args[1] {
-            LogicalTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "me"),
+            IrTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "me"),
             other => panic!(
                 "expected Constant(mi) in prami_x2 after se-swap, got {:?}",
                 other
@@ -3048,7 +3038,7 @@ mod tests {
         let (form, compiler) = compile_one(predicates, arguments, proposition);
         // With event decomposition, form is Exists(ev, And(klama(ev), klama_x1(ev, zo'e), ...))
         assert!(
-            matches!(&form, LogicalForm::Exists(_, _)),
+            matches!(&form, IrForm::Exists(_, _)),
             "expected Exists, got {:?}",
             form
         );
@@ -3056,7 +3046,7 @@ mod tests {
         let x1_args =
             get_pred_args(&form, "goes_x1", &compiler).expect("expected klama_x1 role predicate");
         assert!(
-            matches!(x1_args[1], LogicalTerm::Unspecified),
+            matches!(x1_args[1], IrTerm::Unspecified),
             "expected Unspecified in klama_x1, got {:?}",
             x1_args[1]
         );
@@ -3068,7 +3058,7 @@ mod tests {
     fn test_event_decompose_basic() {
         // mi klama → ∃e. klama(e) ∧ klama_x1(e, mi) ∧ klama_x2(e, zo'e) ∧ ...
         let predicates = vec![Predicate::Root("goes".into())];
-        let arguments = vec![Argument::Pronoun("me".into())];
+        let arguments = vec![Argument::Atom("me".into())];
         let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
@@ -3080,18 +3070,18 @@ mod tests {
         let (form, compiler) = compile_one(predicates, arguments, proposition);
 
         // Top level should be Exists (event variable)
-        assert!(matches!(&form, LogicalForm::Exists(_, _)));
+        assert!(matches!(&form, IrForm::Exists(_, _)));
         // Type predicate exists
         assert!(has_pred(&form, "goes", &compiler));
         // x1 role has Constant("me")
         let x1 = get_pred_args(&form, "goes_x1", &compiler).unwrap();
         assert_eq!(
             x1[1],
-            LogicalTerm::Constant(compiler.interner.get("me").unwrap())
+            IrTerm::Constant(compiler.interner.get("me").unwrap())
         );
         // Event variable is shared between type and role predicates
         let type_args = get_pred_args(&form, "goes", &compiler).unwrap();
-        assert!(matches!(&type_args[0], LogicalTerm::Variable(_)));
+        assert!(matches!(&type_args[0], IrTerm::Variable(_)));
         assert_eq!(type_args[0], x1[0], "event var should be shared");
     }
 
@@ -3099,7 +3089,7 @@ mod tests {
     fn test_event_decompose_all_roles_emitted() {
         // klama has arity 5, all roles should be emitted
         let predicates = vec![Predicate::Root("goes".into())];
-        let arguments = vec![Argument::Pronoun("me".into())];
+        let arguments = vec![Argument::Atom("me".into())];
         let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
@@ -3127,7 +3117,7 @@ mod tests {
             Predicate::Root("dog".into()),  // 1
             Predicate::Pair((0, 1)),        // 2
         ];
-        let arguments = vec![Argument::Pronoun("me".into())];
+        let arguments = vec![Argument::Atom("me".into())];
         let proposition = Proposition {
             relation: 2,
             head_terms: vec![0],
@@ -3154,7 +3144,7 @@ mod tests {
         );
 
         // Both x1 entity args should be mi
-        let mi = LogicalTerm::Constant(compiler.interner.get("me").unwrap());
+        let mi = IrTerm::Constant(compiler.interner.get("me").unwrap());
         assert_eq!(gerku_x1[1], mi);
         assert_eq!(sutra_x1[1], mi);
     }
@@ -3169,7 +3159,7 @@ mod tests {
             Predicate::Root("dog".into()), // 1
             Predicate::Pair((0, 1)),       // 2
         ];
-        let arguments = vec![Argument::Pronoun("me".into())];
+        let arguments = vec![Argument::Atom("me".into())];
         let proposition = Proposition {
             relation: 2,
             head_terms: vec![0],
@@ -3216,7 +3206,7 @@ mod tests {
         let (form, compiler) = compile_one(predicates, arguments, proposition);
 
         // Outer Exists for the description variable
-        assert!(matches!(&form, LogicalForm::Exists(_, _)));
+        assert!(matches!(&form, IrForm::Exists(_, _)));
         // Both gerku and klama predicates exist
         assert!(has_pred(&form, "dog", &compiler));
         assert!(has_pred(&form, "goes", &compiler));
@@ -3234,8 +3224,8 @@ mod tests {
             Predicate::Converted((Conversion::Swap12, 0)), // 1
         ];
         let arguments = vec![
-            Argument::Pronoun("me".into()),  // 0
-            Argument::Pronoun("you".into()), // 1
+            Argument::Atom("me".into()),  // 0
+            Argument::Atom("you".into()), // 1
         ];
         let proposition = Proposition {
             relation: 1,
@@ -3252,11 +3242,11 @@ mod tests {
         let x2 = get_pred_args(&form, "loves_x2", &compiler).unwrap();
         assert_eq!(
             x1[1],
-            LogicalTerm::Constant(compiler.interner.get("you").unwrap())
+            IrTerm::Constant(compiler.interner.get("you").unwrap())
         );
         assert_eq!(
             x2[1],
-            LogicalTerm::Constant(compiler.interner.get("me").unwrap())
+            IrTerm::Constant(compiler.interner.get("me").unwrap())
         );
     }
 
@@ -3277,14 +3267,14 @@ mod tests {
         let (form, compiler) = compile_one(predicates, arguments, proposition);
         // With event decomposition, form is Exists(ev, And(klama(ev), klama_x1(ev, alis), ...))
         assert!(
-            matches!(&form, LogicalForm::Exists(_, _)),
+            matches!(&form, IrForm::Exists(_, _)),
             "expected Exists, got {:?}",
             form
         );
         let x1_args =
             get_pred_args(&form, "goes_x1", &compiler).expect("expected klama_x1 role predicate");
         match &x1_args[1] {
-            LogicalTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "alis"),
+            IrTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "alis"),
             other => panic!("expected Constant(alis), got {:?}", other),
         }
     }
@@ -3306,14 +3296,14 @@ mod tests {
         let (form, compiler) = compile_one(predicates, arguments, proposition);
         // With event decomposition, form is Exists(ev, And(namcu(ev), namcu_x1(ev, 42.0), ...))
         assert!(
-            matches!(&form, LogicalForm::Exists(_, _)),
+            matches!(&form, IrForm::Exists(_, _)),
             "expected Exists, got {:?}",
             form
         );
         let x1_args =
             get_pred_args(&form, "number_x1", &compiler).expect("expected namcu_x1 role predicate");
         assert!(
-            matches!(x1_args[1], LogicalTerm::Number(n) if n == 42.0),
+            matches!(x1_args[1], IrTerm::Number(n) if n == 42.0),
             "expected Number(42.0) in namcu_x1, got {:?}",
             x1_args[1]
         );
@@ -3336,14 +3326,14 @@ mod tests {
         let (form, compiler) = compile_one(predicates, arguments, proposition);
         // With event decomposition, form is Exists(ev, And(valsi(ev), valsi_x1(ev, coi), ...))
         assert!(
-            matches!(&form, LogicalForm::Exists(_, _)),
+            matches!(&form, IrForm::Exists(_, _)),
             "expected Exists, got {:?}",
             form
         );
         let x1_args =
             get_pred_args(&form, "word_x1", &compiler).expect("expected valsi_x1 role predicate");
         match &x1_args[1] {
-            LogicalTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "coi"),
+            IrTerm::Constant(c) => assert_eq!(resolve(&compiler, c), "coi"),
             other => panic!("expected Constant(coi), got {:?}", other),
         }
     }
@@ -3356,7 +3346,7 @@ mod tests {
     fn test_known_gismu_gets_correct_arity() {
         // klama has arity 5, so there should be 5 role predicates (klama_x1..klama_x5)
         let predicates = vec![Predicate::Root("goes".into())];
-        let arguments = vec![Argument::Pronoun("me".into())];
+        let arguments = vec![Argument::Atom("me".into())];
         let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
@@ -3368,7 +3358,7 @@ mod tests {
         let (form, compiler) = compile_one(predicates, arguments, proposition);
         // With event decomposition, check that all 5 role predicates exist
         assert!(
-            matches!(&form, LogicalForm::Exists(_, _)),
+            matches!(&form, IrForm::Exists(_, _)),
             "expected Exists, got {:?}",
             form
         );
@@ -3390,7 +3380,7 @@ mod tests {
     fn test_unknown_gismu_defaults_to_arity_2() {
         // An unrecognized word should default to arity 2 → 2 role predicates
         let predicates = vec![Predicate::Root("xyzzy".into())];
-        let arguments = vec![Argument::Pronoun("me".into())];
+        let arguments = vec![Argument::Atom("me".into())];
         let proposition = Proposition {
             relation: 0,
             head_terms: vec![0],
@@ -3402,7 +3392,7 @@ mod tests {
         let (form, compiler) = compile_one(predicates, arguments, proposition);
         // With event decomposition, check that there are 2 role predicates
         assert!(
-            matches!(&form, LogicalForm::Exists(_, _)),
+            matches!(&form, IrForm::Exists(_, _)),
             "expected Exists, got {:?}",
             form
         );
@@ -3434,10 +3424,7 @@ mod tests {
             Predicate::Root("goes".into()),
             Predicate::Root("fast".into()),
         ];
-        let arguments = vec![
-            Argument::Pronoun("me".into()),
-            Argument::Pronoun("you".into()),
-        ];
+        let arguments = vec![Argument::Atom("me".into()), Argument::Atom("you".into())];
         let sentences = vec![
             Sentence::Connected((
                 SentenceConnective::And,
@@ -3462,7 +3449,7 @@ mod tests {
             }),
         ];
         let (form, _) = compile_sentence_full(predicates, arguments, sentences);
-        assert!(matches!(form, LogicalForm::And(_, _)));
+        assert!(matches!(form, IrForm::And(_, _)));
     }
 
     // ─── Fresh variable generation ────────────────────────────
@@ -3491,29 +3478,29 @@ mod tests {
         let rel1 = compiler.interner.get_or_intern("dog");
         let rel2 = compiler.interner.get_or_intern("big");
         let var = compiler.interner.get_or_intern("_v0");
-        let form = LogicalForm::And(
-            Box::new(LogicalForm::Predicate {
+        let form = IrForm::And(
+            Box::new(IrForm::Predicate {
                 relation: rel1,
-                args: vec![LogicalTerm::Unspecified],
+                args: vec![IrTerm::Unspecified],
             }),
-            Box::new(LogicalForm::Predicate {
+            Box::new(IrForm::Predicate {
                 relation: rel2,
-                args: vec![LogicalTerm::Unspecified],
+                args: vec![IrTerm::Unspecified],
             }),
         );
         let injected = SemanticCompiler::inject_variable(form, var, &compiler.interner);
         match injected {
-            LogicalForm::And(left, right) => {
+            IrForm::And(left, right) => {
                 // inject_variable fills the FIRST unspecified in the first predicate found
                 match left.as_ref() {
-                    LogicalForm::Predicate { args, .. } => {
-                        assert!(matches!(args[0], LogicalTerm::Variable(_)));
+                    IrForm::Predicate { args, .. } => {
+                        assert!(matches!(args[0], IrTerm::Variable(_)));
                     }
                     other => panic!("expected Predicate, got {:?}", other),
                 }
                 match right.as_ref() {
-                    LogicalForm::Predicate { args, .. } => {
-                        assert!(matches!(args[0], LogicalTerm::Variable(_)));
+                    IrForm::Predicate { args, .. } => {
+                        assert!(matches!(args[0], IrTerm::Variable(_)));
                     }
                     other => panic!("expected Predicate, got {:?}", other),
                 }
@@ -3540,7 +3527,7 @@ mod tests {
         let (form, compiler) = compile_one(predicates, arguments, proposition);
         // With event decomposition, should be Exists(ev, And(klama(ev), klama_x1(ev, zo'e), ...))
         assert!(
-            matches!(&form, LogicalForm::Exists(_, _)),
+            matches!(&form, IrForm::Exists(_, _)),
             "expected Exists, got {:?}",
             form
         );
@@ -3554,7 +3541,7 @@ mod tests {
             let role_args = get_pred_args(&form, &role, &compiler)
                 .unwrap_or_else(|| panic!("expected {} role predicate", role));
             assert!(
-                matches!(role_args[1], LogicalTerm::Unspecified),
+                matches!(role_args[1], IrTerm::Unspecified),
                 "expected Unspecified in {}, got {:?}",
                 role,
                 role_args[1]
@@ -3581,7 +3568,7 @@ mod tests {
         let args =
             get_pred_args(&form, "big_x1", &compiler).expect("expected barda_x1 role predicate");
         match &args[1] {
-            LogicalTerm::Description(d) => assert_eq!(resolve(&compiler, d), "dog"),
+            IrTerm::Description(d) => assert_eq!(resolve(&compiler, d), "dog"),
             other => panic!("expected Description(gerku), got {:?}", other),
         }
     }
@@ -3593,7 +3580,7 @@ mod tests {
             Predicate::Root("dog".into()),
             Predicate::Root("fast".into()),
         ];
-        let arguments = vec![Argument::Description((Determiner::UniversalDefinite, 0))];
+        let arguments = vec![Argument::Description((Determiner::EveryThe, 0))];
         let proposition = Proposition {
             relation: 1,
             head_terms: vec![0],
@@ -3605,7 +3592,7 @@ mod tests {
         let (form, compiler) = compile_one(predicates, arguments, proposition);
         // Must be ForAll at the top
         assert!(
-            matches!(&form, LogicalForm::ForAll(_, _)),
+            matches!(&form, IrForm::ForAll(_, _)),
             "expected ForAll, got {:?}",
             form
         );
@@ -3627,7 +3614,7 @@ mod tests {
             Predicate::Root("dog".into()),
             Predicate::Root("fast".into()),
         ];
-        let arguments = vec![Argument::Description((Determiner::UniversalIndefinite, 0))];
+        let arguments = vec![Argument::Description((Determiner::Every, 0))];
         let proposition = Proposition {
             relation: 1,
             head_terms: vec![0],
@@ -3638,7 +3625,7 @@ mod tests {
         };
         let (form, compiler) = compile_one(predicates, arguments, proposition);
         assert!(
-            matches!(&form, LogicalForm::ForAll(_, _)),
+            matches!(&form, IrForm::ForAll(_, _)),
             "expected ForAll, got {:?}",
             form
         );
@@ -3675,7 +3662,7 @@ mod tests {
         };
         let (form, compiler) = compile_one(predicates, arguments, proposition);
         assert!(
-            matches!(&form, LogicalForm::Count { count: 2, .. }),
+            matches!(&form, IrForm::Count { count: 2, .. }),
             "expected Count(2), got {:?}",
             form
         );
@@ -3711,7 +3698,7 @@ mod tests {
         };
         let (form, compiler) = compile_one(predicates, arguments, proposition);
         assert!(
-            matches!(&form, LogicalForm::Count { count: 2, .. }),
+            matches!(&form, IrForm::Count { count: 2, .. }),
             "expected Count(2), got {:?}",
             form
         );

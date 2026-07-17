@@ -2,7 +2,7 @@
 //! Rust pipeline stage of the single `nibli-pipeline` WASM component (NOT a standalone
 //! WIT component). Compiles nibli-kr's
 //! flat AST buffer into a flat First-Order Logic buffer via the [`SemanticCompiler`],
-//! then flattens the tree-structured [`LogicalForm`] IR into the WIT-compatible
+//! then flattens the tree-structured [`IrForm`] IR into the WIT-compatible
 //! index-based [`LogicBuffer`].
 //!
 //! The flattener expands `Biconditional` and `Xor` IR nodes into primitive
@@ -10,15 +10,15 @@
 
 /// Predicate-arity facade over the committed English corpus.
 pub mod dictionary;
-/// First-Order Logic IR types (`LogicalTerm`, `LogicalForm`).
+/// First-Order Logic IR types (`IrTerm`, `IrForm`).
 pub mod ir;
 /// Semantic compiler: AST → FOL logic form tree.
 pub mod semantic;
 
-use ir::{LogicalForm, LogicalTerm};
+use ir::{IrForm, IrTerm};
 use nibli_types::ast as flat_ast;
 use nibli_types::error::NibliError;
-use nibli_types::logic::{LogicBuffer, LogicNode, LogicalTerm as WitTerm};
+use nibli_types::logic::{LogicBuffer, LogicNode, LogicalTerm};
 use semantic::SemanticCompiler;
 
 /// Structural validation of an [`flat_ast::AstBuffer`] at the PUBLIC compile
@@ -76,7 +76,7 @@ fn validate_ast_buffer(ast: &flat_ast::AstBuffer) -> Result<(), NibliError> {
                 Predicate::Abstraction((_, s)) => vec![(Kind::Sen, *s)],
             },
             Kind::Sum => match &ast.arguments[idx as usize] {
-                Argument::Pronoun(_)
+                Argument::Atom(_)
                 | Argument::Name(_)
                 | Argument::QuotedLiteral(_)
                 | Argument::Unspecified
@@ -87,7 +87,7 @@ fn validate_ast_buffer(ast: &flat_ast::AstBuffer) -> Result<(), NibliError> {
                 Argument::Tagged((_, i)) => vec![(Kind::Sum, *i)],
                 Argument::ModalTagged((modal, i)) => {
                     let mut v = vec![(Kind::Sum, *i)];
-                    let ModalTag::Custom(s) = modal;
+                    let ModalTag(s) = modal;
                     v.push((Kind::Sel, *s));
                     v
                 }
@@ -206,24 +206,24 @@ fn compile_ast(ast: &flat_ast::AstBuffer) -> Result<LogicBuffer, NibliError> {
     Ok(LogicBuffer { nodes, roots })
 }
 
-/// Recursively flatten a [`LogicalForm`] tree into the flat `nodes` array.
+/// Recursively flatten a [`IrForm`] tree into the flat `nodes` array.
 ///
 /// Returns the index of the root node in the array. String interning keys
 /// are resolved to `String` at this boundary for WIT serialization.
 /// `Biconditional` and `Xor` are expanded into primitive `And`/`Or`/`Not`.
-fn flatten_form(form: &LogicalForm, nodes: &mut Vec<LogicNode>, interner: &lasso::Rodeo) -> u32 {
+fn flatten_form(form: &IrForm, nodes: &mut Vec<LogicNode>, interner: &lasso::Rodeo) -> u32 {
     match form {
-        LogicalForm::Predicate { relation, args } => {
+        IrForm::Predicate { relation, args } => {
             let wit_args = args
                 .iter()
                 .map(|a| match a {
-                    LogicalTerm::Variable(v) => WitTerm::Variable(interner.resolve(v).to_string()),
-                    LogicalTerm::Constant(c) => WitTerm::Constant(interner.resolve(c).to_string()),
-                    LogicalTerm::Description(d) => {
-                        WitTerm::Description(interner.resolve(d).to_string())
+                    IrTerm::Variable(v) => LogicalTerm::Variable(interner.resolve(v).to_string()),
+                    IrTerm::Constant(c) => LogicalTerm::Constant(interner.resolve(c).to_string()),
+                    IrTerm::Description(d) => {
+                        LogicalTerm::Description(interner.resolve(d).to_string())
                     }
-                    LogicalTerm::Unspecified => WitTerm::Unspecified,
-                    LogicalTerm::Number(n) => WitTerm::Number(*n),
+                    IrTerm::Unspecified => LogicalTerm::Unspecified,
+                    IrTerm::Number(n) => LogicalTerm::Number(*n),
                 })
                 .collect();
 
@@ -234,27 +234,27 @@ fn flatten_form(form: &LogicalForm, nodes: &mut Vec<LogicNode>, interner: &lasso
             )));
             id
         }
-        LogicalForm::And(left, right) => {
+        IrForm::And(left, right) => {
             let l_id = flatten_form(left, nodes, interner);
             let r_id = flatten_form(right, nodes, interner);
             let id = nodes.len() as u32;
             nodes.push(LogicNode::AndNode((l_id, r_id)));
             id
         }
-        LogicalForm::Or(left, right) => {
+        IrForm::Or(left, right) => {
             let l_id = flatten_form(left, nodes, interner);
             let r_id = flatten_form(right, nodes, interner);
             let id = nodes.len() as u32;
             nodes.push(LogicNode::OrNode((l_id, r_id)));
             id
         }
-        LogicalForm::Not(inner) => {
+        IrForm::Not(inner) => {
             let inner_id = flatten_form(inner, nodes, interner);
             let id = nodes.len() as u32;
             nodes.push(LogicNode::NotNode(inner_id));
             id
         }
-        LogicalForm::Exists(v, body) => {
+        IrForm::Exists(v, body) => {
             let b_id = flatten_form(body, nodes, interner);
             let id = nodes.len() as u32;
             nodes.push(LogicNode::ExistsNode((
@@ -263,7 +263,7 @@ fn flatten_form(form: &LogicalForm, nodes: &mut Vec<LogicNode>, interner: &lasso
             )));
             id
         }
-        LogicalForm::ForAll(v, body) => {
+        IrForm::ForAll(v, body) => {
             let b_id = flatten_form(body, nodes, interner);
             let id = nodes.len() as u32;
             nodes.push(LogicNode::ForAllNode((
@@ -272,37 +272,37 @@ fn flatten_form(form: &LogicalForm, nodes: &mut Vec<LogicNode>, interner: &lasso
             )));
             id
         }
-        LogicalForm::Past(inner) => {
+        IrForm::Past(inner) => {
             let inner_id = flatten_form(inner, nodes, interner);
             let id = nodes.len() as u32;
             nodes.push(LogicNode::PastNode(inner_id));
             id
         }
-        LogicalForm::Present(inner) => {
+        IrForm::Present(inner) => {
             let inner_id = flatten_form(inner, nodes, interner);
             let id = nodes.len() as u32;
             nodes.push(LogicNode::PresentNode(inner_id));
             id
         }
-        LogicalForm::Future(inner) => {
+        IrForm::Future(inner) => {
             let inner_id = flatten_form(inner, nodes, interner);
             let id = nodes.len() as u32;
             nodes.push(LogicNode::FutureNode(inner_id));
             id
         }
-        LogicalForm::Obligatory(inner) => {
+        IrForm::Obligatory(inner) => {
             let inner_id = flatten_form(inner, nodes, interner);
             let id = nodes.len() as u32;
             nodes.push(LogicNode::ObligatoryNode(inner_id));
             id
         }
-        LogicalForm::Permitted(inner) => {
+        IrForm::Permitted(inner) => {
             let inner_id = flatten_form(inner, nodes, interner);
             let id = nodes.len() as u32;
             nodes.push(LogicNode::PermittedNode(inner_id));
             id
         }
-        LogicalForm::Count { var, count, body } => {
+        IrForm::Count { var, count, body } => {
             let b_id = flatten_form(body, nodes, interner);
             let id = nodes.len() as u32;
             nodes.push(LogicNode::CountNode((
@@ -312,7 +312,7 @@ fn flatten_form(form: &LogicalForm, nodes: &mut Vec<LogicNode>, interner: &lasso
             )));
             id
         }
-        LogicalForm::Biconditional(left, right) => {
+        IrForm::Biconditional(left, right) => {
             // Expand A ↔ B to (¬A ∨ B) ∧ (¬B ∨ A) using shared sub-tree indices
             let l_id = flatten_form(left, nodes, interner);
             let r_id = flatten_form(right, nodes, interner);
@@ -328,7 +328,7 @@ fn flatten_form(form: &LogicalForm, nodes: &mut Vec<LogicNode>, interner: &lasso
             nodes.push(LogicNode::AndNode((impl1, impl2)));
             id
         }
-        LogicalForm::Xor(left, right) => {
+        IrForm::Xor(left, right) => {
             // Expand A ⊕ B to (A ∨ B) ∧ ¬(A ∧ B) using shared sub-tree indices
             let l_id = flatten_form(left, nodes, interner);
             let r_id = flatten_form(right, nodes, interner);
@@ -368,9 +368,12 @@ pub fn compile_from_ast(ast: flat_ast::AstBuffer) -> Result<LogicBuffer, NibliEr
 /// FLAT 2-arg predicate (NOT event-decomposed, n-ary fails closed), because
 /// nibli-reason's union-find equality interception only fires on
 /// `relations::IDENTITY` at arity 2.
-pub fn compile_injected_fact(relation: &str, args: &[WitTerm]) -> Result<LogicBuffer, NibliError> {
+pub fn compile_injected_fact(
+    relation: &str,
+    args: &[LogicalTerm],
+) -> Result<LogicBuffer, NibliError> {
     let mut compiler = SemanticCompiler::new();
-    let ir_args: Vec<LogicalTerm> = args
+    let ir_args: Vec<IrTerm> = args
         .iter()
         .map(|t| wit_term_to_ir(t, &mut compiler.interner))
         .collect();
@@ -384,7 +387,7 @@ pub fn compile_injected_fact(relation: &str, args: &[WitTerm]) -> Result<LogicBu
             )));
         }
         let fitted = SemanticCompiler::fit_args(&ir_args, 2);
-        LogicalForm::Predicate {
+        IrForm::Predicate {
             relation: compiler
                 .interner
                 .get_or_intern(nibli_types::relations::IDENTITY),
@@ -405,15 +408,15 @@ pub fn compile_injected_fact(relation: &str, args: &[WitTerm]) -> Result<LogicBu
     })
 }
 
-/// Convert a flat WIT/IR `LogicalTerm` to the interned nibli-semantics IR `LogicalTerm`
+/// Convert a flat WIT `LogicalTerm` to the interned nibli-semantics IR `IrTerm`
 /// (the inverse of `flatten_form`'s Predicate arm).
-fn wit_term_to_ir(term: &WitTerm, interner: &mut lasso::Rodeo) -> LogicalTerm {
+fn wit_term_to_ir(term: &LogicalTerm, interner: &mut lasso::Rodeo) -> IrTerm {
     match term {
-        WitTerm::Variable(v) => LogicalTerm::Variable(interner.get_or_intern(v)),
-        WitTerm::Constant(c) => LogicalTerm::Constant(interner.get_or_intern(c)),
-        WitTerm::Description(d) => LogicalTerm::Description(interner.get_or_intern(d)),
-        WitTerm::Unspecified => LogicalTerm::Unspecified,
-        WitTerm::Number(n) => LogicalTerm::Number(*n),
+        LogicalTerm::Variable(v) => IrTerm::Variable(interner.get_or_intern(v)),
+        LogicalTerm::Constant(c) => IrTerm::Constant(interner.get_or_intern(c)),
+        LogicalTerm::Description(d) => IrTerm::Description(interner.get_or_intern(d)),
+        LogicalTerm::Unspecified => IrTerm::Unspecified,
+        LogicalTerm::Number(n) => IrTerm::Number(*n),
     }
 }
 
@@ -583,9 +586,9 @@ mod injected_fact_tests {
     fn unknown_relation_takes_the_callers_arity() {
         // No arity-2 guess: a 3-arg unknown fact keeps 3 roles…
         let args = vec![
-            WitTerm::Constant("a".into()),
-            WitTerm::Constant("b".into()),
-            WitTerm::Constant("c".into()),
+            LogicalTerm::Constant("a".into()),
+            LogicalTerm::Constant("b".into()),
+            LogicalTerm::Constant("c".into()),
         ];
         let buf = compile_injected_fact("zzz_unknown_rel", &args).unwrap();
         assert_eq!(role_count(&buf, "zzz_unknown_rel"), 3);
@@ -598,7 +601,7 @@ mod injected_fact_tests {
     fn known_relation_over_arity_fails_closed() {
         // `product` has corpus arity 3 — a 4th argument must ERROR, never
         // silently truncate (the pre-policy behavior).
-        let args: Vec<WitTerm> = (0..4).map(|n| WitTerm::Number(n as f64)).collect();
+        let args: Vec<LogicalTerm> = (0..4).map(|n| LogicalTerm::Number(n as f64)).collect();
         let e = compile_injected_fact("product", &args).unwrap_err();
         let msg = format!("{e}");
         assert!(
@@ -612,7 +615,7 @@ mod injected_fact_tests {
 
     #[test]
     fn identity_over_arity_fails_closed() {
-        let args: Vec<WitTerm> = (0..3).map(|n| WitTerm::Number(n as f64)).collect();
+        let args: Vec<LogicalTerm> = (0..3).map(|n| LogicalTerm::Number(n as f64)).collect();
         let e = compile_injected_fact(nibli_types::relations::IDENTITY, &args).unwrap_err();
         assert!(format!("{e}").contains("n-ary identity is unsupported"));
     }

@@ -140,7 +140,7 @@ impl<'a> Renderer<'a> {
                         Connective::And => ("&", 5),
                         Connective::Or => ("|", 4),
                         Connective::Iff => ("<->", 2),
-                        Connective::Whether => ("^", 3),
+                        Connective::Xor => ("^", 3),
                     };
                     (self.binary(op, prec, *left, *right)?, prec)
                 }
@@ -250,10 +250,10 @@ impl<'a> Renderer<'a> {
                     counter = place + 1;
                 }
                 Argument::ModalTagged((modal, inner)) => {
-                    let ModalTag::Custom(predicate) = modal;
+                    let ModalTag(predicate) = modal;
                     vias.push((*predicate, *inner));
                 }
-                Argument::Pronoun(_)
+                Argument::Atom(_)
                 | Argument::Description(_)
                 | Argument::Name(_)
                 | Argument::QuotedLiteral(_)
@@ -517,8 +517,8 @@ impl<'a> Renderer<'a> {
 
     fn term(&self, id: u32) -> R<String> {
         Ok(match self.argument(id)? {
-            Argument::Pronoun(word) => match word.as_str() {
-                // Pronoun strings ARE their KR spellings since the pronoun
+            Argument::Atom(word) => match word.as_str() {
+                // Atom strings ARE their KR spellings since the pronoun
                 // flip — identity over the emitter's exact vocabulary, so an
                 // unknown string still fails closed below.
                 "me" | "you" | "we" | "we_all" | "we_others" | "you_all" | "this" | "that"
@@ -570,22 +570,22 @@ impl<'a> Renderer<'a> {
                 if let Predicate::Abstraction(_) = self.predicate(*predicate)? {
                     return match determiner {
                         Determiner::Indefinite => self.restr_predicate(*predicate),
-                        Determiner::Definite
-                        | Determiner::UniversalIndefinite
-                        | Determiner::UniversalDefinite => Err(nope(
-                            "abstractions are hard-wired to the implicit-some description; \
+                        Determiner::Definite | Determiner::Every | Determiner::EveryThe => {
+                            Err(nope(
+                                "abstractions are hard-wired to the implicit-some description; \
                              other determiner × NU combinations are out of scope \
                              (NIBLI_KR §10)",
-                        )),
+                            ))
+                        }
                     };
                 }
                 match determiner {
                     Determiner::Indefinite => format!("some {}", self.restr_predicate(*predicate)?),
                     Determiner::Definite => format!("the {}", self.restr_predicate(*predicate)?),
-                    Determiner::UniversalIndefinite => {
+                    Determiner::Every => {
                         format!("every {}", self.restr_predicate(*predicate)?)
                     }
-                    Determiner::UniversalDefinite => {
+                    Determiner::EveryThe => {
                         format!("every the {}", self.restr_predicate(*predicate)?)
                     }
                 }
@@ -601,7 +601,7 @@ impl<'a> Renderer<'a> {
                 Determiner::Definite => {
                     format!("exactly {count} the {}", self.restr_predicate(*predicate)?)
                 }
-                Determiner::UniversalIndefinite | Determiner::UniversalDefinite => {
+                Determiner::Every | Determiner::EveryThe => {
                     return Err(nope(format!(
                         "a quantified {determiner:?} description has no nibli KR spelling"
                     )));
@@ -637,7 +637,7 @@ impl<'a> Renderer<'a> {
         let head_is_kehah = |proposition: &Proposition| -> R<bool> {
             Ok(match proposition.head_terms.as_slice() {
                 [] => true,
-                [only] => matches!(self.argument(*only)?, Argument::Pronoun(w) if w == "it"),
+                [only] => matches!(self.argument(*only)?, Argument::Atom(w) if w == "it"),
                 _ => false,
             })
         };
@@ -666,7 +666,7 @@ impl<'a> Renderer<'a> {
                     Argument::Tagged((_, inner)) => *inner,
                     _ => tail,
                 };
-                if matches!(self.argument(inner)?, Argument::Pronoun(w) if w == "it") {
+                if matches!(self.argument(inner)?, Argument::Atom(w) if w == "it") {
                     return Ok(true);
                 }
             }
@@ -721,14 +721,12 @@ fn render_name(name: &str) -> R<String> {
             "Name {name:?} contains characters outside [A-Za-z0-9_] — no nibli KR spelling"
         )));
     }
-    // Parity with the resolve-side collision guard: a single-word Name equal to
+    // Parity with the emit-side collision guard: a single-word Name equal to
     // a pronoun constant (`me`) would render `Me`, which `parse_checked` now
-    // REJECTS — fail closed here so rendered text always reparses.
+    // REJECTS — fail closed here so rendered text always reparses. (Render sees
+    // the already-lowered `_`→` ` form, so the separator guard is on ` `.)
     if !name.contains(' ')
-        && matches!(
-            name.to_lowercase().as_str(),
-            "me" | "you" | "we" | "this" | "that" | "yonder"
-        )
+        && crate::resolve::PRONOUN_COLLISION_NAMES.contains(&name.to_lowercase().as_str())
     {
         return Err(nope(format!(
             "Name {name:?} collides with the pronoun constant of the same spelling — \
@@ -766,7 +764,7 @@ pub fn __ast_parity_guard(
     deontic: &DeonticMood,
 ) {
     match argument {
-        Argument::Pronoun(_) => {}
+        Argument::Atom(_) => {}
         Argument::Description(_) => {}
         Argument::Name(_) => {}
         Argument::QuotedLiteral(_) => {}
@@ -805,8 +803,8 @@ pub fn __ast_parity_guard(
     match determiner {
         Determiner::Indefinite => {}
         Determiner::Definite => {}
-        Determiner::UniversalIndefinite => {}
-        Determiner::UniversalDefinite => {}
+        Determiner::Every => {}
+        Determiner::EveryThe => {}
     }
     match abstraction {
         AbstractionKind::Event => {}
@@ -820,7 +818,7 @@ pub fn __ast_parity_guard(
         RelClauseKind::Incidental => {}
     }
     match modal {
-        ModalTag::Custom(_) => {}
+        ModalTag(_) => {}
     }
     match conversion {
         Conversion::Swap12 => {}
@@ -832,7 +830,7 @@ pub fn __ast_parity_guard(
         Connective::And => {}
         Connective::Or => {}
         Connective::Iff => {}
-        Connective::Whether => {}
+        Connective::Xor => {}
     }
     match tense {
         Tense::Past => {}
@@ -912,29 +910,14 @@ mod tests {
             roots: vec![0],
         };
         for (buffer, needle) in [
-            (
-                mk(Argument::Pronoun("ko".into())),
-                "out of nibli KR's scope",
-            ),
-            (
-                mk(Argument::Pronoun("ri".into())),
-                "out of nibli KR's scope",
-            ),
-            (
-                mk(Argument::Pronoun("go'i".into())),
-                "out of nibli KR's scope",
-            ),
+            (mk(Argument::Atom("ko".into())), "out of nibli KR's scope"),
+            (mk(Argument::Atom("ri".into())), "out of nibli KR's scope"),
+            (mk(Argument::Atom("go'i".into())), "out of nibli KR's scope"),
             // A legacy cmavo pronoun string (the emitter's pre-flip vocabulary)
             // has no spelling — the old `zo'e`→`_` arm silently changed meaning
             // (Constant → Unspecified on reparse) and is gone.
-            (
-                mk(Argument::Pronoun("zo'e".into())),
-                "out of nibli KR's scope",
-            ),
-            (
-                mk(Argument::Pronoun("mi".into())),
-                "out of nibli KR's scope",
-            ),
+            (mk(Argument::Atom("zo'e".into())), "out of nibli KR's scope"),
+            (mk(Argument::Atom("mi".into())), "out of nibli KR's scope"),
             // A Name that collides with a pronoun constant would render `Me`,
             // which the parse-side guard now rejects — fail closed for parity.
             (mk(Argument::Name("me".into())), "collides with the pronoun"),

@@ -26,6 +26,10 @@
 
 use std::ops::Range;
 
+// The tree AST reuses the buffer AST's tense/deontic enums directly (they carry
+// identical semantic content) — no separate tree-side copies + emit bridge.
+pub use nibli_types::ast::{DeonticMood, Tense};
+
 /// One `.`-terminated statement — one independent fact (the bare-`.i` split).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Statement {
@@ -65,7 +69,7 @@ pub enum Claim {
     /// prefix is set; `atom` is `Predication`/`Equality`, optionally under
     /// `Not` (`past ~P`).
     Prefixed {
-        deontic: Option<Deontic>,
+        deontic: Option<DeonticMood>,
         tense: Option<Tense>,
         atom: Box<Claim>,
     },
@@ -73,21 +77,6 @@ pub enum Claim {
     Equality(Term, Term),
     /// `pred(args…) via tag(t)…`.
     Predication(Predication),
-}
-
-/// `must` (`.ei` → Obligatory) / `may` (`.e'e` → Permitted).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Deontic {
-    Must,
-    May,
-}
-
-/// `past`/`now`/`future` (`pu`/`ca`/`ba`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Tense {
-    Past,
-    Now,
-    Future,
 }
 
 /// A predicate application. The head is a [`PredSeq`] (a single word, or a

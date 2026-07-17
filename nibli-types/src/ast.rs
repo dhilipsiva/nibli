@@ -8,12 +8,10 @@ pub type PredicateId = u32;
 /// Index into the `arguments` array of an `AstBuffer`.
 pub type ArgumentId = u32;
 
-/// Modal tag: a custom modal built from a predicate reference (the `via:` tag).
+/// Modal tag: a modal built from a predicate reference (the `via` tag) —
+/// a newtype over the tagged predicate's id.
 #[derive(Clone, Copy, Debug)]
-pub enum ModalTag {
-    /// `via` + predicate: user-defined modal via a predicate reference.
-    Custom(PredicateId),
-}
+pub struct ModalTag(pub PredicateId);
 
 /// Place conversion: permutes the x1 place with another.
 /// Swap12=x1↔x2, Swap13=x1↔x3, Swap14=x1↔x4, Swap15=x1↔x5.
@@ -31,7 +29,7 @@ pub enum Connective {
     And,
     Or,
     Iff,
-    Whether,
+    Xor,
 }
 
 /// Determiner (article/descriptor): determines how a description term binds.
@@ -41,10 +39,10 @@ pub enum Determiner {
     Indefinite,
     /// Definite description (an opaque rigid designator).
     Definite,
-    /// Universal over an indefinite description.
-    UniversalIndefinite,
-    /// Universal over a definite description.
-    UniversalDefinite,
+    /// Universal over an indefinite description (`every X`).
+    Every,
+    /// Universal over a definite description (`every the X`).
+    EveryThe,
 }
 
 /// Abstraction kind: wraps a sub-sentence into a argument.
@@ -82,9 +80,11 @@ pub struct RelClause {
 /// A argument (argument term) in the AST.
 #[derive(Clone, Debug)]
 pub enum Argument {
-    /// Pro-argument: me, you, this, that, yonder, it_a…it_u, `$vars`, plus the
-    /// markers `it` (bound entity), `slot` (open place), and `?` (witness).
-    Pronoun(String),
+    /// Atomic string-keyed argument: a pronoun (me, you, this, that, yonder,
+    /// it_a…it_u), a `$var` logic variable, or a marker — `it` (bound entity),
+    /// `slot` (open place), `?` (witness). The category is recovered from the
+    /// string (a `$` prefix marks a variable; the markers are fixed spellings).
+    Atom(String),
     /// Determiner description: `some`/`the` + predicate. Fields: (determiner, predicate-id).
     Description((Determiner, PredicateId)),
     /// Named entity: a capitalized rigid Name.

@@ -9,11 +9,11 @@ use lasso::Spur;
 
 impl SemanticCompiler {
     /// Decomposes a predicate into Neo-Davidsonian event form with role predicates.
-    pub(crate) fn event_decompose(&mut self, relation: &str, args: &[LogicalTerm]) -> LogicalForm {
+    pub(crate) fn event_decompose(&mut self, relation: &str, args: &[IrTerm]) -> IrForm {
         let ev = self.fresh_event_var();
-        let ev_term = LogicalTerm::Variable(ev);
+        let ev_term = IrTerm::Variable(ev);
 
-        let type_pred = LogicalForm::Predicate {
+        let type_pred = IrForm::Predicate {
             relation: self.interner.get_or_intern(relation),
             args: vec![ev_term.clone()],
         };
@@ -21,14 +21,14 @@ impl SemanticCompiler {
         let mut form = type_pred;
         for (i, arg) in args.iter().enumerate() {
             let role_name = format!("{}_x{}", relation, i + 1);
-            let role_pred = LogicalForm::Predicate {
+            let role_pred = IrForm::Predicate {
                 relation: self.interner.get_or_intern(&role_name),
                 args: vec![ev_term.clone(), arg.clone()],
             };
-            form = LogicalForm::And(Box::new(form), Box::new(role_pred));
+            form = IrForm::And(Box::new(form), Box::new(role_pred));
         }
 
-        LogicalForm::Exists(ev, Box::new(form))
+        IrForm::Exists(ev, Box::new(form))
     }
 
     /// Stable content key for an abstraction body, used to give two abstractions
@@ -39,7 +39,7 @@ impl SemanticCompiler {
     /// first-seen positional indices, so it is invariant to the fresh event-var names
     /// each compile mints. Reasoning never reads the inner body (nibli-reason skips it behind
     /// the marker), so this key IS the only content identity that survives.
-    fn abstraction_content_key(&self, body: &LogicalForm) -> String {
+    fn abstraction_content_key(&self, body: &IrForm) -> String {
         let mut vars: std::collections::HashMap<Spur, usize> = std::collections::HashMap::new();
         let mut out = String::new();
         self.canon_form(body, &mut vars, &mut out);
@@ -53,25 +53,25 @@ impl SemanticCompiler {
 
     fn canon_term(
         &self,
-        term: &LogicalTerm,
+        term: &IrTerm,
         vars: &mut std::collections::HashMap<Spur, usize>,
         out: &mut String,
     ) {
         match term {
-            LogicalTerm::Variable(s) => {
+            IrTerm::Variable(s) => {
                 out.push('v');
                 out.push_str(&Self::canon_var(*s, vars).to_string());
             }
-            LogicalTerm::Constant(s) => {
+            IrTerm::Constant(s) => {
                 out.push_str("c:");
                 out.push_str(self.interner.resolve(s));
             }
-            LogicalTerm::Description(s) => {
+            IrTerm::Description(s) => {
                 out.push_str("d:");
                 out.push_str(self.interner.resolve(s));
             }
-            LogicalTerm::Unspecified => out.push('_'),
-            LogicalTerm::Number(n) => {
+            IrTerm::Unspecified => out.push('_'),
+            IrTerm::Number(n) => {
                 out.push_str("n:");
                 out.push_str(&n.to_bits().to_string());
             }
@@ -81,12 +81,12 @@ impl SemanticCompiler {
 
     fn canon_form(
         &self,
-        form: &LogicalForm,
+        form: &IrForm,
         vars: &mut std::collections::HashMap<Spur, usize>,
         out: &mut String,
     ) {
         match form {
-            LogicalForm::Predicate { relation, args } => {
+            IrForm::Predicate { relation, args } => {
                 out.push('P');
                 out.push_str(self.interner.resolve(relation));
                 out.push('(');
@@ -95,43 +95,43 @@ impl SemanticCompiler {
                 }
                 out.push(')');
             }
-            LogicalForm::And(l, r) => {
+            IrForm::And(l, r) => {
                 out.push_str("&(");
                 self.canon_form(l, vars, out);
                 self.canon_form(r, vars, out);
                 out.push(')');
             }
-            LogicalForm::Or(l, r) => {
+            IrForm::Or(l, r) => {
                 out.push_str("|(");
                 self.canon_form(l, vars, out);
                 self.canon_form(r, vars, out);
                 out.push(')');
             }
-            LogicalForm::Not(i) => {
+            IrForm::Not(i) => {
                 out.push_str("!(");
                 self.canon_form(i, vars, out);
                 out.push(')');
             }
-            LogicalForm::Exists(v, b) => {
+            IrForm::Exists(v, b) => {
                 out.push('E');
                 out.push_str(&Self::canon_var(*v, vars).to_string());
                 out.push('(');
                 self.canon_form(b, vars, out);
                 out.push(')');
             }
-            LogicalForm::ForAll(v, b) => {
+            IrForm::ForAll(v, b) => {
                 out.push('A');
                 out.push_str(&Self::canon_var(*v, vars).to_string());
                 out.push('(');
                 self.canon_form(b, vars, out);
                 out.push(')');
             }
-            LogicalForm::Past(i) => self.canon_wrap("past", i, vars, out),
-            LogicalForm::Present(i) => self.canon_wrap("now", i, vars, out),
-            LogicalForm::Future(i) => self.canon_wrap("future", i, vars, out),
-            LogicalForm::Obligatory(i) => self.canon_wrap("oblig", i, vars, out),
-            LogicalForm::Permitted(i) => self.canon_wrap("perm", i, vars, out),
-            LogicalForm::Count { var, count, body } => {
+            IrForm::Past(i) => self.canon_wrap("past", i, vars, out),
+            IrForm::Present(i) => self.canon_wrap("now", i, vars, out),
+            IrForm::Future(i) => self.canon_wrap("future", i, vars, out),
+            IrForm::Obligatory(i) => self.canon_wrap("oblig", i, vars, out),
+            IrForm::Permitted(i) => self.canon_wrap("perm", i, vars, out),
+            IrForm::Count { var, count, body } => {
                 out.push('#');
                 out.push_str(&count.to_string());
                 out.push(':');
@@ -140,13 +140,13 @@ impl SemanticCompiler {
                 self.canon_form(body, vars, out);
                 out.push(')');
             }
-            LogicalForm::Biconditional(l, r) => {
+            IrForm::Biconditional(l, r) => {
                 out.push_str("<->(");
                 self.canon_form(l, vars, out);
                 self.canon_form(r, vars, out);
                 out.push(')');
             }
-            LogicalForm::Xor(l, r) => {
+            IrForm::Xor(l, r) => {
                 out.push_str("^(");
                 self.canon_form(l, vars, out);
                 self.canon_form(r, vars, out);
@@ -158,7 +158,7 @@ impl SemanticCompiler {
     fn canon_wrap(
         &self,
         tag: &str,
-        inner: &LogicalForm,
+        inner: &IrForm,
         vars: &mut std::collections::HashMap<Spur, usize>,
         out: &mut String,
     ) {
@@ -172,11 +172,11 @@ impl SemanticCompiler {
     pub(crate) fn apply_predicate(
         &mut self,
         predicate_id: u32,
-        args: &[LogicalTerm],
+        args: &[IrTerm],
         predicates: &[Predicate],
         arguments: &[Argument],
         sentences: &[Sentence],
-    ) -> LogicalForm {
+    ) -> IrForm {
         match &predicates[predicate_id as usize] {
             Predicate::Root(g) => {
                 // The identity relation is a pure binary equivalence with no
@@ -188,7 +188,7 @@ impl SemanticCompiler {
                 // `compile_proposition`, where the dropped-overflow argument are visible.)
                 if g == nibli_types::relations::IDENTITY {
                     let fitted = Self::fit_args(args, 2);
-                    return LogicalForm::Predicate {
+                    return IrForm::Predicate {
                         relation: self
                             .interner
                             .get_or_intern(nibli_types::relations::IDENTITY),
@@ -211,7 +211,7 @@ impl SemanticCompiler {
                 let (head_name, head_arity, head_swaps) =
                     self.get_predicate_unit_base(*head_id, predicates);
 
-                let mut mod_args = vec![LogicalTerm::Unspecified; mod_arity];
+                let mut mod_args = vec![IrTerm::Unspecified; mod_arity];
                 if !args.is_empty() && mod_arity > 0 {
                     mod_args[0] = args[0].clone();
                 }
@@ -228,9 +228,9 @@ impl SemanticCompiler {
                 }
 
                 let ev = self.fresh_event_var();
-                let ev_term = LogicalTerm::Variable(ev);
+                let ev_term = IrTerm::Variable(ev);
 
-                let type_pred = LogicalForm::Predicate {
+                let type_pred = IrForm::Predicate {
                     relation: self.interner.get_or_intern(&head_name),
                     args: vec![ev_term.clone()],
                 };
@@ -242,25 +242,25 @@ impl SemanticCompiler {
                 // FALSELY rejected valid clauses (panel finding 2026-06-10).
                 for (i, arg) in head_args.iter().enumerate() {
                     let role = format!("{}_x{}", head_name, i + 1);
-                    let role_pred = LogicalForm::Predicate {
+                    let role_pred = IrForm::Predicate {
                         relation: self.interner.get_or_intern(&role),
                         args: vec![ev_term.clone(), arg.clone()],
                     };
-                    form = LogicalForm::And(Box::new(form), Box::new(role_pred));
+                    form = IrForm::And(Box::new(form), Box::new(role_pred));
                 }
 
                 // Modifier roles likewise emit Unspecified slots (shared event var
                 // keeps modifier and head describing one predication).
                 for (i, arg) in mod_args.iter().enumerate() {
                     let role = format!("{}_x{}", mod_name, i + 1);
-                    let role_pred = LogicalForm::Predicate {
+                    let role_pred = IrForm::Predicate {
                         relation: self.interner.get_or_intern(&role),
                         args: vec![ev_term.clone(), arg.clone()],
                     };
-                    form = LogicalForm::And(Box::new(form), Box::new(role_pred));
+                    form = IrForm::And(Box::new(form), Box::new(role_pred));
                 }
 
-                LogicalForm::Exists(ev, Box::new(form))
+                IrForm::Exists(ev, Box::new(form))
             }
             Predicate::Converted((conv, inner_id)) => {
                 let mut permuted = args.to_vec();
@@ -275,7 +275,7 @@ impl SemanticCompiler {
             }
             Predicate::Negated(inner_id) => {
                 let inner = self.apply_predicate(*inner_id, args, predicates, arguments, sentences);
-                LogicalForm::Not(Box::new(inner))
+                IrForm::Not(Box::new(inner))
             }
             Predicate::Grouped(inner_id) => {
                 self.apply_predicate(*inner_id, args, predicates, arguments, sentences)
@@ -288,7 +288,7 @@ impl SemanticCompiler {
                 merged.push(if !args.is_empty() {
                     args[0].clone()
                 } else {
-                    LogicalTerm::Unspecified
+                    IrTerm::Unspecified
                 });
 
                 for bound_id in bound_ids.iter() {
@@ -304,7 +304,7 @@ impl SemanticCompiler {
                     if i < args.len() && i >= bound_count {
                         merged.push(args[i].clone());
                     } else {
-                        merged.push(LogicalTerm::Unspecified);
+                        merged.push(IrTerm::Unspecified);
                     }
                 }
 
@@ -328,7 +328,7 @@ impl SemanticCompiler {
 
                 let outer_ka_var = self.property_open_var;
                 if *kind == AbstractionKind::Property {
-                    if let Some(LogicalTerm::Variable(v)) = args.first() {
+                    if let Some(IrTerm::Variable(v)) = args.first() {
                         self.property_open_var = Some(*v);
                     }
                 }
@@ -337,7 +337,7 @@ impl SemanticCompiler {
                     self.compile_sentence(*body_sentence_idx, predicates, arguments, sentences);
                 self.property_open_var = outer_ka_var;
 
-                let type_pred = LogicalForm::Predicate {
+                let type_pred = IrForm::Predicate {
                     relation: self.interner.get_or_intern(type_name),
                     args: Self::fit_args(args, 1),
                 };
@@ -350,14 +350,14 @@ impl SemanticCompiler {
                 // predicate are dropped by the renderer.
                 let key = self.abstraction_content_key(&inner_form);
                 let marker_rel = format!("__abs_{:016x}", fnv1a_hash(&key));
-                let referent = args.first().cloned().unwrap_or(LogicalTerm::Unspecified);
-                let marker = LogicalForm::Predicate {
+                let referent = args.first().cloned().unwrap_or(IrTerm::Unspecified);
+                let marker = IrForm::Predicate {
                     relation: self.interner.get_or_intern(&marker_rel),
                     args: vec![referent],
                 };
-                LogicalForm::And(
+                IrForm::And(
                     Box::new(type_pred),
-                    Box::new(LogicalForm::And(Box::new(marker), Box::new(inner_form))),
+                    Box::new(IrForm::And(Box::new(marker), Box::new(inner_form))),
                 )
             }
         }

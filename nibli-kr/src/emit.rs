@@ -37,7 +37,7 @@
 //!   compound entry its relation ident); a place-swapped entry emits
 //!   `Predicate::Converted`. No identity passthrough — an unknown name (or
 //!   uncurated `a+b` compound) is a compile error (NIBLI_KR §13, §5)
-//! - logic variables pass through verbatim as `Pronoun("$name")` — the `$`
+//! - logic variables pass through verbatim as `Atom("$name")` — the `$`
 //!   sigil IS the variable signal, so the user's own names survive into the IR
 //!   (no fixed `da`/`de`/`di` pool, no 3-variable cap); pronoun keyterms emit
 //!   their KR spellings verbatim (`me`, `you`, `this`, `it_a`…; `?`, `it`, and
@@ -58,18 +58,18 @@
 //!   `the X $v:` desugars by SUBSTITUTION (definite let-binding — the block
 //!   form never reaches the AST). Block-restrictor rel-clauses fold `where`
 //!   on the domain side and `also` on the matrix side
-//! - `via` tags emit uniformly as `ModalTag::Custom(word)` — the modal is a
+//! - `via` tags emit uniformly as `ModalTag(word)` — the modal is a
 //!   fi'o-style tag over the mapped predicate (spec §5 collapse)
 
 use nibli_types::ast::{
     AbstractionKind, Argument, AstBuffer, Conversion, Determiner, ModalTag, Predicate, Proposition,
     RelClause, RelClauseKind, Sentence, SentenceConnective,
 };
-use nibli_types::ast::{Connective, DeonticMood, Tense as AstTense};
+use nibli_types::ast::{Connective, DeonticMood, Tense};
 
 use crate::ast::{
-    AbsKind, Arg, Claim, ClauseBody, Deontic, Det, KeyTerm, PredSeq, PredUnit, Predication,
-    RelKind, Restr, RestrKind, Statement, Tag, Tense, Term,
+    AbsKind, Arg, Claim, ClauseBody, Det, KeyTerm, PredSeq, PredUnit, Predication, RelKind, Restr,
+    RestrKind, Statement, Tag, Term,
 };
 use crate::parser::{ParseError, err_at};
 use crate::resolve::{PredInfo, ResolvedEntry, label_index, lookup, lookup_compound};
@@ -276,7 +276,7 @@ impl<'a> Emitter<'a> {
                 Ok(self.push_sentence(Sentence::Connected((SentenceConnective::Implies, l, r))))
             }
             Claim::Iff(a, b) => self.afterthought(Connective::Iff, a, b, at),
-            Claim::Xor(a, b) => self.afterthought(Connective::Whether, a, b, at),
+            Claim::Xor(a, b) => self.afterthought(Connective::Xor, a, b, at),
             Claim::Or(a, b) => self.afterthought(Connective::Or, a, b, at),
             Claim::And(a, b) => self.afterthought(Connective::And, a, b, at),
             Claim::Not(inner) => self.simple(inner, true, None, None, at),
@@ -320,18 +320,9 @@ impl<'a> Emitter<'a> {
         claim: &Claim,
         negated: bool,
         tense: Option<Tense>,
-        deontic: Option<Deontic>,
+        deontic: Option<DeonticMood>,
         at: usize,
     ) -> Result<u32, ParseError> {
-        let tense = tense.map(|t| match t {
-            Tense::Past => AstTense::Past,
-            Tense::Now => AstTense::Now,
-            Tense::Future => AstTense::Future,
-        });
-        let deontic = deontic.map(|d| match d {
-            Deontic::Must => DeonticMood::Obligation,
-            Deontic::May => DeonticMood::Permission,
-        });
         let proposition = match claim {
             Claim::Predication(p) => self.predication_proposition(p, negated, tense, deontic)?,
             Claim::Equality(lhs, rhs) => {
@@ -356,7 +347,7 @@ impl<'a> Emitter<'a> {
         &mut self,
         p: &Predication,
         negated: bool,
-        tense: Option<AstTense>,
+        tense: Option<Tense>,
         deontic: Option<DeonticMood>,
     ) -> Result<Proposition, ParseError> {
         // pred_seq resolves the units LEFT to RIGHT (the first unknown word
@@ -434,10 +425,9 @@ impl<'a> Emitter<'a> {
             let (word, _) = emit_name(&info.entry);
             let modal_predicate = self.push_predicate(Predicate::Root(word));
             let inner = self.term(&tag.term, tag.span.start)?;
-            tail_terms.push(self.push_argument(Argument::ModalTagged((
-                ModalTag::Custom(modal_predicate),
-                inner,
-            ))));
+            tail_terms.push(
+                self.push_argument(Argument::ModalTagged((ModalTag(modal_predicate), inner))),
+            );
         }
         Ok(Proposition {
             relation,
@@ -579,7 +569,7 @@ impl<'a> Emitter<'a> {
                 if *negated {
                     relation = self.push_predicate(Predicate::Negated(relation));
                 }
-                let head = self.push_argument(Argument::Pronoun(particle.to_owned()));
+                let head = self.push_argument(Argument::Atom(particle.to_owned()));
                 Ok(self.push_sentence(Sentence::Simple(Proposition {
                     relation,
                     head_terms: vec![head],
@@ -606,7 +596,7 @@ impl<'a> Emitter<'a> {
         particle: &str,
     ) -> Result<u32, ParseError> {
         let relation = self.restr_predicate(restr)?;
-        let head = self.push_argument(Argument::Pronoun(particle.to_owned()));
+        let head = self.push_argument(Argument::Atom(particle.to_owned()));
         Ok(self.push_sentence(Sentence::Simple(Proposition {
             relation,
             head_terms: vec![head],
@@ -665,14 +655,14 @@ impl<'a> Emitter<'a> {
     fn term(&mut self, term: &Term, at: usize) -> Result<u32, ParseError> {
         let argument = match term {
             Term::Unspecified => Argument::Unspecified,
-            Term::Witness => Argument::Pronoun("?".into()),
+            Term::Witness => Argument::Atom("?".into()),
             Term::Number(n) => Argument::Number(*n),
             Term::Str(s) => Argument::QuotedLiteral(s.clone()),
-            Term::Var(v) => Argument::Pronoun(self.var_particle(v, at)?),
+            Term::Var(v) => Argument::Atom(self.var_particle(v, at)?),
             Term::Key(KeyTerm::It) => match &self.block_it_var {
                 // Inside a block rel-clause body, `it` IS the block's `$var`.
-                Some(v) => Argument::Pronoun(v.clone()),
-                None if self.in_clause_body => Argument::Pronoun("it".into()),
+                Some(v) => Argument::Atom(v.clone()),
+                None if self.in_clause_body => Argument::Atom("it".into()),
                 None => {
                     return Err(self.fail(
                         self.statement_start,
@@ -690,9 +680,9 @@ impl<'a> Emitter<'a> {
                          `property { … }` body (NIBLI_KR §3)",
                     ));
                 }
-                Argument::Pronoun(keyterm_particle(KeyTerm::Slot).into())
+                Argument::Atom(keyterm_particle(KeyTerm::Slot).into())
             }
-            Term::Key(k) => Argument::Pronoun(keyterm_particle(*k).into()),
+            Term::Key(k) => Argument::Atom(keyterm_particle(*k).into()),
             Term::Name { name, rel_clauses } => {
                 // A single-word Name that lowercases onto a pronoun constant
                 // (`Me` → "me") would silently co-refer with the pronoun in
@@ -700,10 +690,8 @@ impl<'a> Emitter<'a> {
                 // safe (`We_All` → "we all" ≠ `we_all`), and `It`/`Slot`/`?`
                 // never compile to constants.
                 if !name.contains('_')
-                    && matches!(
-                        name.to_lowercase().as_str(),
-                        "me" | "you" | "we" | "this" | "that" | "yonder"
-                    )
+                    && crate::resolve::PRONOUN_COLLISION_NAMES
+                        .contains(&name.to_lowercase().as_str())
                 {
                     return Err(self.fail(
                         self.statement_start,
@@ -739,12 +727,8 @@ impl<'a> Emitter<'a> {
                 let base = match det {
                     Det::Some => Argument::Description((Determiner::Indefinite, predicate)),
                     Det::The => Argument::Description((Determiner::Definite, predicate)),
-                    Det::Every => {
-                        Argument::Description((Determiner::UniversalIndefinite, predicate))
-                    }
-                    Det::EveryThe => {
-                        Argument::Description((Determiner::UniversalDefinite, predicate))
-                    }
+                    Det::Every => Argument::Description((Determiner::Every, predicate)),
+                    Det::EveryThe => Argument::Description((Determiner::EveryThe, predicate)),
                     Det::Exactly(n) => {
                         Argument::QuantifiedDescription((*n, Determiner::Indefinite, predicate))
                     }
@@ -928,7 +912,7 @@ impl<'a> Emitter<'a> {
         let body_sentence = match &rc.body {
             ClauseBody::Bare { negated, seq } => {
                 self.pred_seq(seq, rc.span.start).map(|relation| {
-                    let head = self.push_argument(Argument::Pronoun("it".into()));
+                    let head = self.push_argument(Argument::Atom("it".into()));
                     self.push_sentence(Sentence::Simple(Proposition {
                         relation,
                         head_terms: vec![head],

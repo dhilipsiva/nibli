@@ -257,7 +257,7 @@ differentially tested), so a producer gets soundness checking for free.
 - Variable naming (`_v0…`, `_ev0…`), Skolem names (`sk_N` — minted by the reasoner, never in a
   compiled buffer), the `__abs_` hash digits, `__neg_ev*` pattern variables (reasoner-internal),
   node ordering beyond the post-order guarantee, and concrete index values.
-- The compiler's internal tree IR (`nibli_semantics::ir::LogicalForm`, `Spur`-interned, with
+- The compiler's internal tree IR (`nibli_semantics::ir::IrForm`, `Spur`-interned, with
   `Biconditional`/`Xor`), `nibli-reason`'s stored-fact forms, and the `nibli-store` on-disk mirrors.
 - `AggregateOp` and the compute wire structs are Rust-side auxiliaries, not buffer types.
 

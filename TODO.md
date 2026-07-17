@@ -245,18 +245,17 @@ Pipeline-audit backlog (2026-07-17; three-agent audit of front-end / middle IRs 
 back-end — effort tags S/M/L; ordered quick-wins → correctness → structure →
 performance → future-facing):
 
-- **AST naming/shape bundle (S each, one commit)** — `Connective::Whether`→`Xor`;
-  `Determiner::UniversalIndefinite/UniversalDefinite`→`Every`/`EveryThe`;
-  `Argument::Pronoun(String)` is a misnamed catch-all (pronouns + `$vars` +
-  markers — rename to `Atom`, or split out `Variable`/`Marker` so render stops
-  string-sniffing at render.rs:484-503); collapse single-variant
-  `ModalTag::Custom` to a newtype; unify the duplicated Tense/Deontic enums
-  (nibli-kr ast.rs:80,87 vs nibli-types ast.rs:132,140 + the emit.rs:199-207
-  bridge); rename nibli-semantics ir.rs `LogicalTerm`/`LogicalForm` →
-  `IrTerm`/`IrForm` (kills the `WitTerm` alias collision); hoist the pronoun
-  collision sextet {me,you,we,this,that,yonder} (emit.rs's Name arm — moved
-  there by the single-resolution merge — + render.rs:686) into one shared
-  const. Each rename rides the `__ast_parity_guard` checklist.
+- **Split `Argument::Atom` into `Variable`/`Marker`/`Pronoun` (M)** — the
+  `Atom(String)` catch-all (renamed from `Pronoun` in the naming bundle) still
+  string-sniffs its payload into three categories: `$var` logic variables, the
+  markers `it`/`slot`/`?`, and the fixed pronoun list (render.rs `term()`,
+  nibli-semantics helpers.rs `resolve_argument`). A type-level split
+  (`Variable(String)` + `Marker(enum)` + `Pronoun(enum)`) would let
+  emit/render/nibli-semantics match exhaustively instead of on strings — but
+  the interner boundary keeps the `$`-tagged variable identity (compile.rs
+  free-var + scope-marker passes still `starts_with('$')`), so it is a
+  HALF-win, and it costs ~70 semantic.rs test-literal rewrites. Deferred from
+  the naming bundle (user chose the `Atom` rename) for that reason.
 - **Collapse head_terms/tail_terms (M)** — the Proposition split is a Lojban SVO
   artifact: emit puts the first positional in head, everything else in tail;
   nibli-semantics immediately re-chains them (compile.rs:29-34,94-97) and the

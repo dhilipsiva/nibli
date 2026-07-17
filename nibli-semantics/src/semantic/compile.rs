@@ -13,7 +13,7 @@ impl SemanticCompiler {
         predicates: &[Predicate],
         arguments: &[Argument],
         sentences: &[Sentence],
-    ) -> LogicalForm {
+    ) -> IrForm {
         // Frame-local checkpoint for rel clauses attached to non-quantifier
         // argument (see `pending_matrix_conjuncts`): only conjuncts pushed by
         // THIS proposition's argument are drained into THIS proposition's matrix; nested
@@ -35,7 +35,7 @@ impl SemanticCompiler {
 
         let target_arity = self.get_predicate_arity(proposition.relation, predicates);
 
-        let mut positioned: Vec<Option<LogicalTerm>> = vec![None; target_arity];
+        let mut positioned: Vec<Option<IrTerm>> = vec![None; target_arity];
 
         // A relative clause's implicit `it` subject occupies x1 (the CLL
         // default), pushing the clause's explicit argument to x2+. Place it as the
@@ -68,7 +68,7 @@ impl SemanticCompiler {
             && !Self::terms_contain_explicit_kea(&all_terms, arguments)
         {
             if let Some(subject) = self.pending_clause_subject.take() {
-                positioned[0] = Some(LogicalTerm::Variable(subject));
+                positioned[0] = Some(IrTerm::Variable(subject));
                 self.ref_used = true;
             }
         }
@@ -80,7 +80,7 @@ impl SemanticCompiler {
         // `da` and lets the safety-net residual pass skip surface-captured vars.
         let mut introduced: std::collections::HashSet<lasso::Spur> =
             std::collections::HashSet::new();
-        let mut modal_entries: Vec<(ModalTag, LogicalTerm, Vec<QuantifierEntry>)> = Vec::new();
+        let mut modal_entries: Vec<(ModalTag, IrTerm, Vec<QuantifierEntry>)> = Vec::new();
         // Untagged argument that overflowed the predicate's arity (placed nowhere).
         // Preserves the prior silent-drop behaviour for over-arity untagged
         // argument, and drives the fail-closed `du` n-ary check below.
@@ -160,9 +160,9 @@ impl SemanticCompiler {
             }
         }
 
-        let args: Vec<LogicalTerm> = positioned
+        let args: Vec<IrTerm> = positioned
             .into_iter()
-            .map(|slot| slot.unwrap_or(LogicalTerm::Unspecified))
+            .map(|slot| slot.unwrap_or(IrTerm::Unspecified))
             .collect();
 
         // Fail-closed: untagged argument that overflow the predicate's places were
@@ -201,12 +201,11 @@ impl SemanticCompiler {
         for (modal_tag, tagged_term, modal_quants) in modal_entries {
             markers.extend(modal_quants.into_iter().map(ScopeMarker::Desc));
 
-            let (modal_gismu, modal_arity) = match &modal_tag {
-                ModalTag::Custom(predicate_id) => {
-                    let name = self.get_predicate_head_name(*predicate_id, predicates);
-                    let arity = self.get_predicate_arity(*predicate_id, predicates);
-                    (self.interner.get_or_intern(name), arity)
-                }
+            let ModalTag(predicate_id) = &modal_tag;
+            let (modal_gismu, modal_arity) = {
+                let name = self.get_predicate_head_name(*predicate_id, predicates);
+                let arity = self.get_predicate_arity(*predicate_id, predicates);
+                (self.interner.get_or_intern(name), arity)
             };
 
             // FAIL CLOSED: a modal relates its tagged argument (the modal predicate's x1)
@@ -225,17 +224,17 @@ impl SemanticCompiler {
                 continue;
             }
 
-            let main_x1 = args.first().cloned().unwrap_or(LogicalTerm::Unspecified);
-            let mut modal_args = vec![LogicalTerm::Unspecified; modal_arity];
+            let main_x1 = args.first().cloned().unwrap_or(IrTerm::Unspecified);
+            let mut modal_args = vec![IrTerm::Unspecified; modal_arity];
             modal_args[0] = tagged_term;
             modal_args[1] = main_x1;
 
-            let modal_form = LogicalForm::Predicate {
+            let modal_form = IrForm::Predicate {
                 relation: modal_gismu,
                 args: modal_args,
             };
 
-            final_form = LogicalForm::And(Box::new(final_form), Box::new(modal_form));
+            final_form = IrForm::And(Box::new(final_form), Box::new(modal_form));
         }
 
         // Conjoin rel clauses attached to non-quantifier argument (la names, le
@@ -243,11 +242,11 @@ impl SemanticCompiler {
         // previously compiled then silently DISCARDED (panel finding
         // 2026-06-10), so `la .adam. poi gerku cu klama` answered TRUE with
         // only klama(adam) known.
-        let pending: Vec<LogicalForm> = self
+        let pending: Vec<IrForm> = self
             .pending_matrix_conjuncts
             .split_off(matrix_conjunct_checkpoint);
         for conj in pending {
-            final_form = LogicalForm::And(Box::new(final_form), Box::new(conj));
+            final_form = IrForm::And(Box::new(final_form), Box::new(conj));
         }
 
         // Quantifier scope follows Lojban surface order (leftmost = outermost).
@@ -295,7 +294,7 @@ impl SemanticCompiler {
         );
         for var in &all_free {
             if !introduced.contains(var) {
-                final_form = LogicalForm::Exists(*var, Box::new(final_form));
+                final_form = IrForm::Exists(*var, Box::new(final_form));
             }
         }
 
@@ -312,7 +311,7 @@ impl SemanticCompiler {
                 ScopeMarker::Desc(entry) => {
                     self.close_quantifier(entry, final_form, predicates, arguments, sentences)
                 }
-                ScopeMarker::Bare(var) => LogicalForm::Exists(var, Box::new(final_form)),
+                ScopeMarker::Bare(var) => IrForm::Exists(var, Box::new(final_form)),
             };
         }
 
@@ -323,7 +322,7 @@ impl SemanticCompiler {
         // at the top level when sound (no universal: the root stays a ground
         // conjunction); under a universal the root must remain ForAll for
         // rule compilation, so FAIL CLOSED rather than silently drop.
-        let late: Vec<LogicalForm> = self
+        let late: Vec<IrForm> = self
             .pending_matrix_conjuncts
             .split_off(matrix_conjunct_checkpoint);
         if !late.is_empty() {
@@ -336,38 +335,38 @@ impl SemanticCompiler {
                 );
             } else {
                 for conj in late {
-                    final_form = LogicalForm::And(Box::new(final_form), Box::new(conj));
+                    final_form = IrForm::And(Box::new(final_form), Box::new(conj));
                 }
             }
         }
 
         for var in self.question_vars.drain(ma_checkpoint..) {
-            final_form = LogicalForm::Exists(var, Box::new(final_form));
+            final_form = IrForm::Exists(var, Box::new(final_form));
         }
 
         if proposition.negated {
-            final_form = LogicalForm::Not(Box::new(final_form));
+            final_form = IrForm::Not(Box::new(final_form));
         }
 
         match &proposition.tense {
             Some(Tense::Past) => {
-                final_form = LogicalForm::Past(Box::new(final_form));
+                final_form = IrForm::Past(Box::new(final_form));
             }
             Some(Tense::Now) => {
-                final_form = LogicalForm::Present(Box::new(final_form));
+                final_form = IrForm::Present(Box::new(final_form));
             }
             Some(Tense::Future) => {
-                final_form = LogicalForm::Future(Box::new(final_form));
+                final_form = IrForm::Future(Box::new(final_form));
             }
             None => {}
         }
 
         match &proposition.deontic {
             Some(DeonticMood::Obligation) => {
-                final_form = LogicalForm::Obligatory(Box::new(final_form));
+                final_form = IrForm::Obligatory(Box::new(final_form));
             }
             Some(DeonticMood::Permission) => {
-                final_form = LogicalForm::Permitted(Box::new(final_form));
+                final_form = IrForm::Permitted(Box::new(final_form));
             }
             None => {}
         }
@@ -375,13 +374,13 @@ impl SemanticCompiler {
         final_form
     }
 
-    /// Walk a compiled `LogicalForm` collecting free `da`/`de`/`di` logic
+    /// Walk a compiled `IrForm` collecting free `da`/`de`/`di` logic
     /// variables for existential closure. Tracks binders (`Exists`/`ForAll`/
     /// `Count`) so a var already bound (e.g. by an abstraction body's own
     /// closure) is skipped — no double-wrap — and excludes prenex-bound vars.
     /// Dedups via `seen`; `out` preserves first-appearance order.
     fn collect_free_logic_vars(
-        form: &LogicalForm,
+        form: &IrForm,
         interner: &Rodeo,
         prenex: &std::collections::HashSet<lasso::Spur>,
         bound: &mut Vec<lasso::Spur>,
@@ -389,9 +388,9 @@ impl SemanticCompiler {
         out: &mut Vec<lasso::Spur>,
     ) {
         match form {
-            LogicalForm::Predicate { args, .. } => {
+            IrForm::Predicate { args, .. } => {
                 for arg in args {
-                    if let LogicalTerm::Variable(spur) = arg {
+                    if let IrTerm::Variable(spur) = arg {
                         let name = interner.resolve(spur);
                         if name.starts_with('$')
                             && !bound.contains(spur)
@@ -403,27 +402,27 @@ impl SemanticCompiler {
                     }
                 }
             }
-            LogicalForm::And(l, r)
-            | LogicalForm::Or(l, r)
-            | LogicalForm::Biconditional(l, r)
-            | LogicalForm::Xor(l, r) => {
+            IrForm::And(l, r)
+            | IrForm::Or(l, r)
+            | IrForm::Biconditional(l, r)
+            | IrForm::Xor(l, r) => {
                 Self::collect_free_logic_vars(l, interner, prenex, bound, seen, out);
                 Self::collect_free_logic_vars(r, interner, prenex, bound, seen, out);
             }
-            LogicalForm::Not(inner)
-            | LogicalForm::Past(inner)
-            | LogicalForm::Present(inner)
-            | LogicalForm::Future(inner)
-            | LogicalForm::Obligatory(inner)
-            | LogicalForm::Permitted(inner) => {
+            IrForm::Not(inner)
+            | IrForm::Past(inner)
+            | IrForm::Present(inner)
+            | IrForm::Future(inner)
+            | IrForm::Obligatory(inner)
+            | IrForm::Permitted(inner) => {
                 Self::collect_free_logic_vars(inner, interner, prenex, bound, seen, out);
             }
-            LogicalForm::Exists(v, body) | LogicalForm::ForAll(v, body) => {
+            IrForm::Exists(v, body) | IrForm::ForAll(v, body) => {
                 bound.push(*v);
                 Self::collect_free_logic_vars(body, interner, prenex, bound, seen, out);
                 bound.pop();
             }
-            LogicalForm::Count { var, body, .. } => {
+            IrForm::Count { var, body, .. } => {
                 bound.push(*var);
                 Self::collect_free_logic_vars(body, interner, prenex, bound, seen, out);
                 bound.pop();
@@ -438,11 +437,11 @@ impl SemanticCompiler {
     /// `introduced`/`markers`.
     fn record_bare_marker(
         &self,
-        term: &LogicalTerm,
+        term: &IrTerm,
         introduced: &mut std::collections::HashSet<lasso::Spur>,
         markers: &mut Vec<ScopeMarker>,
     ) {
-        if let LogicalTerm::Variable(spur) = term {
+        if let IrTerm::Variable(spur) = term {
             let spur = *spur;
             let is_logic_var = self.interner.resolve(&spur).starts_with('$');
             if is_logic_var && !self.prenex_vars.contains(&spur) && introduced.insert(spur) {
@@ -464,7 +463,7 @@ impl SemanticCompiler {
             loop {
                 match s {
                     Argument::Tagged((_, inner_id)) => s = &arguments[*inner_id as usize],
-                    Argument::Pronoun(p) => return p.as_str() == "it",
+                    Argument::Atom(p) => return p.as_str() == "it",
                     _ => return false,
                 }
             }
@@ -478,7 +477,7 @@ impl SemanticCompiler {
         predicates: &[Predicate],
         arguments: &[Argument],
         sentences: &[Sentence],
-    ) -> LogicalForm {
+    ) -> IrForm {
         match &sentences[sentence_id as usize] {
             Sentence::Simple(proposition) => {
                 self.compile_proposition(proposition, predicates, arguments, sentences)
@@ -502,7 +501,7 @@ impl SemanticCompiler {
 
                 // Wrap inner-to-outer so the first variable is the outermost ∀.
                 for spur in spurs.iter().rev() {
-                    form = LogicalForm::ForAll(*spur, Box::new(form));
+                    form = IrForm::ForAll(*spur, Box::new(form));
                 }
 
                 // Restore: only remove the vars THIS prenex introduced (a nested
@@ -520,7 +519,7 @@ impl SemanticCompiler {
                 // shapes), and any where-clause folds on the DOMAIN side.
                 let spur = self.interner.get_or_intern(var);
                 let newly_bound = self.prenex_vars.insert(spur);
-                let var_term = LogicalTerm::Variable(spur);
+                let var_term = IrTerm::Variable(spur);
 
                 let mut domain = match kind {
                     nibli_types::ast::BlockQuant::ExactCount(_) => {
@@ -530,7 +529,7 @@ impl SemanticCompiler {
                         let mut restrictor_args = Vec::with_capacity(desc_arity);
                         restrictor_args.push(var_term.clone());
                         while restrictor_args.len() < desc_arity {
-                            restrictor_args.push(LogicalTerm::Unspecified);
+                            restrictor_args.push(IrTerm::Unspecified);
                         }
                         self.apply_predicate(
                             *restr_id,
@@ -549,22 +548,22 @@ impl SemanticCompiler {
                 };
                 if let Some(cl) = clause_id {
                     let clause_form = self.compile_sentence(*cl, predicates, arguments, sentences);
-                    domain = LogicalForm::And(Box::new(domain), Box::new(clause_form));
+                    domain = IrForm::And(Box::new(domain), Box::new(clause_form));
                 }
 
                 let body_form = self.compile_sentence(*body_id, predicates, arguments, sentences);
 
                 let form = match kind {
                     nibli_types::ast::BlockQuant::ExactCount(n)
-                    | nibli_types::ast::BlockQuant::ExactCountDefinite(n) => LogicalForm::Count {
+                    | nibli_types::ast::BlockQuant::ExactCountDefinite(n) => IrForm::Count {
                         var: spur,
                         count: *n,
-                        body: Box::new(LogicalForm::And(Box::new(domain), Box::new(body_form))),
+                        body: Box::new(IrForm::And(Box::new(domain), Box::new(body_form))),
                     },
-                    nibli_types::ast::BlockQuant::UniversalDefinite => LogicalForm::ForAll(
+                    nibli_types::ast::BlockQuant::UniversalDefinite => IrForm::ForAll(
                         spur,
-                        Box::new(LogicalForm::Or(
-                            Box::new(LogicalForm::Not(Box::new(domain))),
+                        Box::new(IrForm::Or(
+                            Box::new(IrForm::Not(Box::new(domain))),
                             Box::new(body_form),
                         )),
                     ),
@@ -580,26 +579,20 @@ impl SemanticCompiler {
                 let right_form = self.compile_sentence(*right_id, predicates, arguments, sentences);
 
                 match connective {
-                    SentenceConnective::Implies => LogicalForm::Or(
-                        Box::new(LogicalForm::Not(Box::new(left_form))),
+                    SentenceConnective::Implies => IrForm::Or(
+                        Box::new(IrForm::Not(Box::new(left_form))),
                         Box::new(right_form),
                     ),
                     SentenceConnective::And => {
-                        LogicalForm::And(Box::new(left_form), Box::new(right_form))
+                        IrForm::And(Box::new(left_form), Box::new(right_form))
                     }
                     SentenceConnective::Afterthought(conn) => match conn {
-                        Connective::And => {
-                            LogicalForm::And(Box::new(left_form), Box::new(right_form))
-                        }
-                        Connective::Or => {
-                            LogicalForm::Or(Box::new(left_form), Box::new(right_form))
-                        }
+                        Connective::And => IrForm::And(Box::new(left_form), Box::new(right_form)),
+                        Connective::Or => IrForm::Or(Box::new(left_form), Box::new(right_form)),
                         Connective::Iff => {
-                            LogicalForm::Biconditional(Box::new(left_form), Box::new(right_form))
+                            IrForm::Biconditional(Box::new(left_form), Box::new(right_form))
                         }
-                        Connective::Whether => {
-                            LogicalForm::Xor(Box::new(left_form), Box::new(right_form))
-                        }
+                        Connective::Xor => IrForm::Xor(Box::new(left_form), Box::new(right_form)),
                     },
                 }
             }
