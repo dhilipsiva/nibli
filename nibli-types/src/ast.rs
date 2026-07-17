@@ -86,9 +86,9 @@ pub enum Argument {
     /// Pro-argument: me, you, this, that, yonder, it_a…it_u, `$vars`, plus the
     /// markers `it` (bound entity), `slot` (open place), and `?` (witness).
     Pronoun(String),
-    /// Determiner description: `lo/le` + predicate. Fields: (gadri, predicate-id).
+    /// Determiner description: `lo/le` + predicate. Fields: (determiner, predicate-id).
     Description((Determiner, PredicateId)),
-    /// Named entity: `la` + cmevla.
+    /// Named entity: a capitalized rigid Name.
     Name(String),
     /// Quoted literal: `lu ... li'u`.
     QuotedLiteral(String),
@@ -102,7 +102,7 @@ pub enum Argument {
     Restricted((ArgumentId, RelClause)),
     /// Number argument: `li` + PA.
     Number(f64),
-    /// Quantified description: PA lo/le predicate. Fields: (count, gadri, predicate-id).
+    /// Quantified description: PA lo/le predicate. Fields: (count, determiner, predicate-id).
     QuantifiedDescription((u32, Determiner, PredicateId)),
 }
 
@@ -174,7 +174,7 @@ pub enum Sentence {
     /// Prenex `ro da [ro de ...] zo'u <body>`: a sequence of universally
     /// quantified logic variables (`da`/`de`/`di`) scoping a body sentence.
     /// Fields: (variable names in prenex order, body-sentence-id). Lowers to
-    /// nested `∀` over the body in smuni.
+    /// nested `∀` over the body in nibli-semantics.
     Prenex((Vec<String>, u32)),
 }
 

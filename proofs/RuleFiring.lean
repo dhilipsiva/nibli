@@ -1,7 +1,7 @@
 /-
   Mechanized proof of nibli's RULE FIRING (Track B, phase 5).
 
-  Backward chaining derives a goal by FIRING a universal rule (`logji/src/reasoning.rs`
+  Backward chaining derives a goal by FIRING a universal rule (`nibli-reason/src/reasoning.rs`
   `process_phase` / `emit_derived`, `UniversalRuleRecord` at `kb.rs:474`): it unifies a rule's
   conclusion template against the goal (producing σ), discharges each condition under σ (positive
   conditions must hold; `negated_condition_indices` must FAIL, by negation-as-failure), and
@@ -18,7 +18,7 @@
   conditions, then the goal is in M. The contrapositive (`firing_no_fabrication`) is the
   no-fabrication guarantee.
 
-  Bridged to the real engine by the `rule_firing_conformance` test in `logji/src/tests.rs`. Checked
+  Bridged to the real engine by the `rule_firing_conformance` test in `nibli-reason/src/tests.rs`. Checked
   by `lean proofs/RuleFiring.lean` (`just verify-proofs`). No mathlib — prelude only. Self-contained:
   the term-level unifier (`GTerm`/`subst`/`unify`/`unify_sound` + its two lemmas) is duplicated from
   `Unify.lean` (each proof file stands alone).
@@ -30,7 +30,7 @@ namespace Nibli.RuleFiring
 
 /- ── Term-level unifier, duplicated verbatim from `Unify.lean` (self-contained) ───────────── -/
 
-/-- A ground term, mirroring `logji`'s `GroundTerm` (`logji/src/kb.rs:130`). -/
+/-- A ground term, mirroring nibli-reason's `GroundTerm` (`nibli-reason/src/kb.rs:130`). -/
 inductive GTerm where
   | const : String → GTerm
   | num : Nat → GTerm

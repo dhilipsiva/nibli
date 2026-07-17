@@ -243,7 +243,7 @@ fn negate_result(result: QueryResult) -> QueryResult {
     }
 }
 
-/// Evaluate a negated event-decomposed restrictor (`poi na <selbri>`) by
+/// Evaluate a negated event-decomposed restrictor (`poi na <predicate>`) by
 /// negation-as-failure over an existential. The condition HOLDS (the rule fires)
 /// iff NO binding of the group's `event_var` satisfies ALL inner conditions for the
 /// already-bound universal — i.e. "no witness exists" (`la .adam.` has not
@@ -951,7 +951,7 @@ fn check_formula_holds_core<S: TraceSink>(
             // ENTITY-LEVEL counting (GUARANTEES §Aggregation): enumerate one
             // representative per du-equivalence class (two names for one
             // entity count once — equivalence transfers the body facts, so
-            // any member of a class answers for it), and skip xorlo
+            // any member of a class answers for it), and skip existential-import
             // PRESUPPOSITION witnesses (a phantom entity a rule presupposed
             // must not change "how many"; it still satisfies ∃/∀).
             let members: Vec<GroundTerm> = {
@@ -1191,7 +1191,7 @@ fn check_formula_holds_core<S: TraceSink>(
         }
         LogicNode::ComputeNode((rel, args)) => {
             // Built-in arithmetic FIRST, then external dispatch — the
-            // documented Layer-2 ordering (matches gasnu's evaluate() and the
+            // documented Layer-2 ordering (matches nibli-host's evaluate() and the
             // batch path; the backend is only consulted for what the engine
             // cannot compute itself).
             if let Some(result) = try_arithmetic_evaluation(rel, args, subs) {
@@ -1960,7 +1960,7 @@ fn emit_derived<S: TraceSink>(
             child_indices.push(child);
         }
     }
-    // A satisfied negated-exists group (`poi na <selbri>`) held by negation-as-
+    // A satisfied negated-exists group (`poi na <predicate>`) held by negation-as-
     // failure (no witness), so the conclusion rests on a NAF dependency — emit one
     // `Negation` leaf per group, mirroring the flat-negated-condition leaf above.
     for _group in &rule.negated_exists_groups {

@@ -1,7 +1,7 @@
 //! Integration tests for the nibli-engine: full pipeline (parse → compile → reason).
 //!
 //! Each test creates a fresh NibliEngine, asserts Lojban text, and queries with proof.
-//! No WASM, no HTTP — exercises gerna+smuni+logji directly via Rust crate calls.
+//! No WASM, no HTTP — exercises nibli-kr+nibli-semantics+nibli-reason directly via Rust crate calls.
 
 use nibli_engine::{
     EngineAggregateOp, EngineComputeRequest, EngineError, EngineLogicBuffer, EngineLogicNode,
@@ -16,7 +16,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 /// A fresh KR-mode engine (the suite was machine-ported from Lojban at THE
-/// DROP — per-literal gerna→`nibli_kr::render` conversion, the corpora-twins
+/// DROP — per-literal Lojban→`nibli_kr::render` conversion, the corpora-twins
 /// equality guarantee held at the port).
 fn fresh_engine() -> NibliEngine {
     NibliEngine::new()
@@ -242,7 +242,7 @@ fn universal_rule_chain_syllogism() {
 // unspecified `_x1` role, but `se` conversion had already vacated that slot and
 // moved the explicit sumti — so the clause compiled `prami(dog, alis)` ("dog
 // loves alis") instead of `prami(alis, dog)` ("loved by alis"), mismatching the
-// asserted fact. Fixed in smuni by placing `ke'a` as the clause's x1 argument
+// asserted fact. Fixed in nibli-semantics by placing `ke'a` as the clause's x1 argument
 // BEFORE conversion (semantic/compile.rs), mirroring the explicit-subject path.
 
 #[test]
@@ -462,11 +462,11 @@ fn disjunctive_query_still_works() {
 
 #[test]
 fn disjunctive_conclusion_jo_ju_stay_fail_closed() {
-    // `jo` (biconditional) and `ju` (xor) are the only surface selbri connectives that
+    // `jo` (biconditional) and `ju` (xor) are the only surface predicate connectives that
     // produce a MIXED conclusion head, but their expansions carry Not(..) / Not(And(..)),
     // which are not Horn-able — so they correctly stay fail-closed. (The clean mixed head
     // `And(P, Or)` is still reachable only via raw FOL; its positive case lives in the
-    // logji `test_mixed_conclusion_*` unit tests. `gi'e` does NOT produce it: the GIhA
+    // nibli-reason `test_mixed_conclusion_*` unit tests. `gi'e` does NOT produce it: the GIhA
     // desugar repeats the head at the SENTENCE level, so `ro lo … gi'e …` compiles to a
     // conjunction of two universals, not one rule with a compound conclusion.)
     let engine = fresh_engine();
@@ -489,10 +489,10 @@ fn disjunctive_conclusion_jo_ju_stay_fail_closed() {
     );
 }
 
-// ── GIhA bridi-tail connectives (gi'e/gi'a/gi'o/gi'u) ──
+// ── GIhA proposition-tail connectives (gi'e/gi'a/gi'o/gi'u) ──
 // `mi klama gi'e citka`: each tail is a full predication sharing the head
-// terms. gerna desugars the chain to the `.i je` Connected shape with the head
-// repeated (ONE sentence → one logic root), and logji's ground-path
+// terms. the front-end desugars the chain to the `.i je` Connected shape with the head
+// repeated (ONE sentence → one logic root), and nibli-reason's ground-path
 // conjunction flattening stores a `gi'e`'s conjuncts as independently
 // queryable facts. Surfaced by int19h's nibli-formalize feedback (2026-07-10):
 // idiomatic reference translations use `gi'e` in nearly every sentence.
@@ -510,7 +510,7 @@ fn conjoined_tails_assert_both_conjuncts() {
 
 #[test]
 fn conjoined_tails_per_tail_trailing_argument() {
-    // Each tail keeps its own trailing sumti; the head is shared.
+    // Each tail keeps its own trailing argument; the head is shared.
     let engine = engine_with_facts(&["goes(me, the market) & eats(me, some apple)."]);
     let (klama, _, _) = engine
         .query_text_with_proof("goes(me, the market).")
@@ -545,7 +545,7 @@ fn conjoined_tails_genesis_negated_tail_verse() {
 #[test]
 fn conjoined_tails_fused_negation_negates_right_tail() {
     // Solid `gi'enai` must behave exactly like `gi'e nai` (before the lexer
-    // fix it parsed as a phantom lujvo tanru that INVERTED the negation:
+    // fix it parsed as a phantom lujvo pair that INVERTED the negation:
     // `mi citka` came back TRUE and `mi klama` FALSE).
     let engine = engine_with_facts(&["goes(me) & ~eats(me)."]);
     let (klama, _, _) = engine.query_text_with_proof("goes(me).").unwrap();
@@ -561,7 +561,7 @@ fn conjoined_tails_fused_negation_negates_right_tail() {
 
 #[test]
 fn conjoined_tails_xor_negated_tail_fabricates_no_contradiction() {
-    // `mi klama gi'u na citka` is Xor(K, ¬C): smuni lowers it to
+    // `mi klama gi'u na citka` is Xor(K, ¬C): nibli-semantics lowers it to
     // And(Or(K,¬C), Not(And(K,¬C))). The Not(And(K,¬C)) conjunct's body is
     // NOT a pure positive conjunction — recording it would degrade ¬(K ∧ ¬C)
     // to ¬K (collect_ground_facts drops the inner Not) and fabricate a
@@ -744,7 +744,7 @@ fn query_leading_existential_over_universal() {
 
 #[test]
 fn assert_leading_existential_over_universal_compiles_and_round_trips() {
-    // Asserting `da citka ro lo gerku` (∃da.∀x) must SUCCEED — logji skolemizes
+    // Asserting `da citka ro lo gerku` (∃da.∀x) must SUCCEED — nibli-reason skolemizes
     // the leading ∃ to a fresh constant and compiles the inner ∀ as a rule (sk₀
     // eats every dog). Before the dispatch change this errored as a "bare
     // disjunction". The asserted single witness then satisfies the ∃∀ query.
@@ -878,11 +878,11 @@ fn prenex_tensed_body_universal_rejected() {
 
 #[test]
 fn via_modal_arity_one_rejected() {
-    // `mi barda fi'o prenu fe'u do` — `prenu` (person) is a 1-place selbri, so the
-    // fi'o modal has no x2 slot to carry the main bridi's x1 (`mi`). The engine
+    // `mi barda fi'o prenu fe'u do` — `prenu` (person) is a 1-place predicate, so the
+    // fi'o modal has no x2 slot to carry the main proposition's x1 (`mi`). The engine
     // fails closed rather than silently dropping that link. (Latent end-to-end:
-    // gerna parses `fi'o <selbri> fe'u`, and every BAI modal gismu is arity >= 2,
-    // so only fi'o over an arity-1 selbri reaches this.)
+    // The `via` grammar accepts any predicate, and every curated modal is arity >= 2,
+    // so only fi'o over an arity-1 predicate reaches this.)
     let engine = fresh_engine();
     let err = engine
         .assert_text("big(me) via person(you).")
@@ -1010,7 +1010,7 @@ fn object_position_universal_negative_control() {
 
 #[test]
 fn object_position_existential_import_no_phantom_entity() {
-    // The xorlo existential-import presupposition for `ro lo gerku cu pendo ro lo
+    // The existential-import existential-import presupposition for `ro lo gerku cu pendo ro lo
     // mlatu` must assert a dog witness and a cat witness as DISTINCT entities — NOT
     // one phantom entity that is both. So "is some dog a cat?" is FALSE. RED before
     // the per-universal-witness fix (a single shared witness satisfied both).
@@ -1429,7 +1429,7 @@ fn count_assertion_materializes_witnesses() {
 
 #[test]
 fn exact_count_excludes_existential_import_witness() {
-    // DECIDED 2026-07-02 (GUARANTEES §Aggregation): the xorlo presupposition
+    // DECIDED 2026-07-02 (GUARANTEES §Aggregation): the existential-import presupposition
     // witness a description universal asserts satisfies ∃/∀ but is EXCLUDED
     // from counting — a phantom entity a rule presupposed must not change
     // "how many". (Engine-probed pre-change: 2 dogs + the taxonomy rule made
@@ -1477,7 +1477,7 @@ fn zero_count_assertion_mints_no_witness() {
 
 #[test]
 fn over_arity_untagged_argument_is_rejected() {
-    // gerku has 2 places; three untagged sumti overflow — the compile must
+    // gerku has 2 places; three untagged argument overflow — the compile must
     // REJECT (fail-closed), never silently drop the extra argument.
     let engine = fresh_engine();
     assert!(
@@ -1729,8 +1729,8 @@ fn assert_stage_failure_is_reasoning_class() {
     let engine = fresh_engine();
     // A well-formed sentence the reasoner rejects at ASSERTION time (a tense over a
     // whole universal) is a REASONING-class error — the assert is the reasoning
-    // stage (the buffer already passed smuni), so logji's `assert_fact` classes it
-    // `Reasoning`, distinct from a smuni `Semantic` or a gerna `Syntax` error.
+    // stage (the buffer already passed nibli-semantics), so nibli-reason's `assert_fact` classes it
+    // `Reasoning`, distinct from a nibli-semantics `Semantic` or a nibli-kr `Syntax` error.
     let err = engine
         .assert_text("past animal(every dog).")
         .expect_err("a whole-rule tense must be rejected");
@@ -1749,11 +1749,11 @@ fn query_parse_error() {
 
 #[test]
 fn partial_parse_fails_closed_for_query() {
-    // The unified fail-closed policy: gerna recovers per sentence, so this input
+    // The unified fail-closed policy: the parser recovers per statement, so this input
     // has a valid first sentence and an unlexable second. A QUERY must abort on
     // the parse error (don't answer when the input didn't fully parse), not
-    // silently proceed with the partial parse. `gerna::parse_checked` is shared by
-    // every embedder (nibli-engine, lasna, nibli-wasm), so all three agree.
+    // silently proceed with the partial parse. `nibli_kr::parse_checked` is shared by
+    // every embedder (nibli-engine, nibli-pipeline, nibli-wasm), so all three agree.
     let engine = engine_with_facts(&["dog(Adam)."]);
     let err = engine
         .query_holds("la .adam. cu gerku .i \u{ff}\u{ff}\u{ff}")
@@ -1953,7 +1953,7 @@ fn cll_place_counter_x3_tag_then_untagged() {
 #[test]
 fn x5_conversion_swaps_x1_and_x5() {
     // `xe klama` swaps x1↔x5 (mutation-baseline kill: the 5-place conversion arm
-    // in smuni's apply_predicate was exercised by no per-mutant-suite test). All
+    // in nibli-semantics's apply_predicate was exercised by no per-mutant-suite test). All
     // five places are filled (`zo'e` middles) so the swap is observable: the
     // head term must land in x5 (vehicle) and the tail term in x1 (goer).
     let engine = fresh_engine();
@@ -2454,7 +2454,7 @@ fn gdpr_erasure_rule_is_per_subject() {
 
 /// PERF REGRESSION PIN (Ch 20 reproducibility): the chapter tells readers to
 /// load the FULL shipped gdpr.lojban and run `la .adam. cu se curmi`. Before
-/// the 2026-06 backward-chaining fixes in logji (lazy candidate build,
+/// the 2026-06 backward-chaining fixes in nibli-reason (lazy candidate build,
 /// index-decidable filter pruning, depth-horizon provability lookahead), this
 /// query did not return within 240 seconds in a debug build: at the depth
 /// horizon every unbound-event-variable filter check returned ResourceExceeded
@@ -2525,7 +2525,7 @@ fn gdpr_full_corpus_lawful_basis_query_completes() {
 // Corpus transcript pins (book Ch 20 / Ch 21 reproducibility)
 // ════════════════════════════════════════════════════════════════════
 
-/// Load a corpus string exactly the way gasnu's `:load` does: trim each line,
+/// Load a corpus string exactly the way nibli-host's `:load` does: trim each line,
 /// count blanks and `#` comments as skipped, assert everything else (any
 /// assert error fails the test — the book transcripts print `0 errors`).
 /// Returns the (asserted, skipped) counters plus every asserted line's
@@ -3116,11 +3116,11 @@ fn find_witness_output_order_is_deterministic() {
     // engines (each with its own RandomState instances) loading the same
     // corpus must produce identical ordered find results, and a repeated
     // query on one engine must be order-stable — binding sets are sorted
-    // canonically at the logji query_find boundary.
+    // canonically at the nibli-reason query_find boundary.
     //
     // NOTE: the corpus is asserted in the SAME order in both engines because
     // event-existential Skolem names (sk_N) are assertion-order dependent by
-    // design; cross-order canonicalization is pinned at the logji level on
+    // design; cross-order canonicalization is pinned at the nibli-reason level on
     // Skolem-free ground facts. An in-process pin is weaker than two true
     // processes (different global seeds), but the sort makes the order
     // seed-independent by construction.
@@ -3158,7 +3158,7 @@ fn find_witness_output_order_is_deterministic() {
 #[test]
 fn find_dependent_skolem_witness_event_decomposed_is_bound() {
     // Ch9 verify-book-capture regression, through the REAL event-decomposed
-    // pipeline (the flat logji unit test does not exercise Neo-Davidsonian
+    // pipeline (the flat nibli-reason unit test does not exercise Neo-Davidsonian
     // event decomposition). `?? la .adam. nelci ma` over `gerku(adam)` +
     // `ro lo gerku cu nelci lo mlatu` must return witnesses whose dependent
     // Skolem terms are BOUND (`sk_N(adam)`), never the unbound conclusion
@@ -3214,7 +3214,7 @@ fn surface_numeric_pilji_true_and_false() {
 }
 
 // Module-level stubs for the per-instance compute-dispatch test below.
-// A trivial backend that "knows" only `tenfa` (exponentiation), which logji has
+// A trivial backend that "knows" only `tenfa` (exponentiation), which nibli-reason has
 // no built-in for — so the query can only succeed via the registered dispatch.
 fn stub_tenfa_eval(rel: &str, _args: &[EngineLogicalTerm]) -> Result<bool, String> {
     Ok(rel == "exponential")
@@ -3268,7 +3268,7 @@ fn overflowing_numeric_literal_fails_closed_at_parse() {
     // now cannot enter at all, which is strictly stronger for this input class.
     // The downstream UNKNOWN(non-finite) catches remain for non-finite values
     // arising IN-pipeline (flat buffers can still carry non-finite Numbers) but
-    // are now pinned by NO test — regaining that pin at the logji flat level is
+    // are now pinned by NO test — regaining that pin at the nibli-reason flat level is
     // owned by the try_numeric_comparison tracker bullet.
     let nines = "so ".repeat(320); // 999…9 > f64::MAX → +inf pre-guard
     let engine = fresh_engine();
@@ -3307,7 +3307,7 @@ fn surface_numeric_float_tolerance() {
     // `li no pi ci` = 0.3, `li no pi pa` = 0.1, `li no pi re` = 0.2 (the `pi`
     // decimal point). 0.1 + 0.2 = 0.30000000000000004 in IEEE-754, but the
     // engine uses tolerant equality, so `0.3 = 0.1 + 0.2` is TRUE end-to-end
-    // through gerna → smuni → logji (not the surprising exact-`==` FALSE).
+    // through nibli-kr → nibli-semantics → nibli-reason (not the surprising exact-`==` FALSE).
     let engine = fresh_engine();
     assert_true(
         &engine.query_holds("sum(0.3, 0.1, 0.2).").unwrap(),
@@ -3350,7 +3350,7 @@ fn mock_compute_server(response: &str) -> String {
 fn native_compute_backend_dispatches_external_predicate() {
     // `tenfa` (exponent) is NOT built-in arithmetic, so it dispatches to the
     // external backend. With the native client wired to a mock that returns
-    // `{"result": true}`, the query routes engine → logji → native client → mock.
+    // `{"result": true}`, the query routes engine → nibli-reason → native client → mock.
     // (`li bi` = 8, `li re` = 2, `li ci` = 3 → "is 8 = 2^3?")
     let addr = mock_compute_server(r#"{"result": true}"#);
     let mut engine = fresh_engine();
@@ -3649,8 +3649,8 @@ fn unresolvable_query_after_reset_errors() {
 
 #[test]
 fn predicate_less_clause_rejected() {
-    // A bare sumti / predicate-less clause (`ro lo gerku`) is NOT a complete bridi.
-    // gerna now rejects it at PARSE with a clear, distinct Syntax error, instead of
+    // A bare argument / predicate-less clause (`ro lo gerku`) is NOT a complete proposition.
+    // nibli-kr rejects it at PARSE with a clear, distinct Syntax error, instead of
     // fabricating a `go'i` that fail-closes downstream with the cryptic "go'i has no
     // antecedent". This is what `nibli-validate` / the book's verify tool now see.
     let engine = fresh_engine();
@@ -3663,6 +3663,6 @@ fn predicate_less_clause_rejected() {
         err.to_string().contains("expected a predicate word"),
         "expected the bare-term parse rejection, got: {err}"
     );
-    // A complete bridi still asserts fine (the change is scoped to selbri-less clauses).
+    // A complete proposition still asserts fine (the change is scoped to predicate-less clauses).
     assert!(engine.assert_text("dog(Adam).").is_ok());
 }

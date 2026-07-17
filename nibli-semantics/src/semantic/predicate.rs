@@ -37,7 +37,7 @@ impl SemanticCompiler {
     /// `believe P` does not satisfy a `believe Q` query). The key resolves interned
     /// relation/constant names to strings and renames bound/event variables to
     /// first-seen positional indices, so it is invariant to the fresh event-var names
-    /// each compile mints. Reasoning never reads the inner body (logji skips it behind
+    /// each compile mints. Reasoning never reads the inner body (nibli-reason skips it behind
     /// the marker), so this key IS the only content identity that survives.
     fn abstraction_content_key(&self, body: &LogicalForm) -> String {
         let mut vars: std::collections::HashMap<Spur, usize> = std::collections::HashMap::new();
@@ -181,7 +181,7 @@ impl SemanticCompiler {
             Predicate::Root(g) => {
                 // `du` (identity) is a pure binary equivalence relation with no
                 // event structure. It MUST stay a flat 2-arg `du(x1, x2)`
-                // predicate — logji's union-find ingestion and du-query arm only
+                // predicate — nibli-reason's union-find ingestion and du-query arm only
                 // match `relation == "equals" && args.len() == 2`, so the
                 // Neo-Davidsonian event form would silently disable equality
                 // reasoning. (The >2-place fail-closed reject lives in
@@ -340,7 +340,7 @@ impl SemanticCompiler {
                     args: Self::fit_args(args, 1),
                 };
                 // Opacity marker: a content-hashed unary predicate over the abstraction
-                // referent. logji MATCHES it (same-content abstractions unify; different
+                // referent. nibli-reason MATCHES it (same-content abstractions unify; different
                 // contents do not) but SKIPS the body behind it, so the body's predicates
                 // never become free-standing ground facts — asserting `mi krici lo du'u P`
                 // ("I believe that P") no longer makes a bare query `P` return TRUE. The

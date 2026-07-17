@@ -1,4 +1,4 @@
-//! KR→smuni seam helpers — the metamorphic-pair generator behind the
+//! KR→nibli-semantics seam helpers — the metamorphic-pair generator behind the
 //! front-end gate in `tests/nibli_kr_seam_gate.rs`.
 //!
 //! That gate is the KR front-end's independent correctness oracle, built to

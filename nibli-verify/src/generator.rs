@@ -89,7 +89,7 @@ pub fn random_case(seed: u64) -> GeneratedCase {
         };
         // 1-in-3 BARE facts become an And-fact operator claim (one constant
         // subject, two positive conjuncts — the KR twin of the retired GIhA
-        // bridi-tail shape): Horn/NAF-free and mappable, so the Vampire sweep
+        // proposition-tail shape): Horn/NAF-free and mappable, so the Vampire sweep
         // differentially checks the conjunct derivations. Tensed facts stay
         // atomic (a tense prefix applies per claim, which the flavorizer
         // models only for atomic facts — conservative).
@@ -224,7 +224,7 @@ const COUNT_DIGITS: &[&str] = &["1", "2", "3"];
 /// formerly-guarded shapes: a `du` link between two pool entities (~1 in 3 — the
 /// engine counts one representative per equivalence class, matching the translator's
 /// canonicalization) and a universal taxonomy rule (~1 in 3 — the engine excludes the
-/// xorlo presupposition witness from counting, and the ASP program never had one).
+/// existential-import presupposition witness from counting, and the ASP program never had one).
 pub fn random_count_case(seed: u64) -> GeneratedCase {
     let mut rng = Lcg::new(seed);
     let mut kb: Vec<String> = Vec::new();

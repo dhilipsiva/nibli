@@ -192,7 +192,7 @@ pub fn collapse_proof_with(
 /// REPL / server / book view): the closed-world NAF caveat (when the verdict
 /// rests on it), then the collapsed tree. With `include_detail = false` the
 /// role-level clusters are omitted (the clean macro view). One call every text
-/// surface shares — gasnu, nibli-server, nibli-wasm.
+/// surface shares — nibli-host, nibli-server, nibli-wasm.
 pub fn render_collapsed_text(
     trace: &ProofTrace,
     register: Register,
@@ -713,7 +713,7 @@ mod tests {
         }
     }
 
-    /// The exact ~15-step shape gasnu captures for `? la .adam. cu animal` over
+    /// The exact ~15-step shape nibli-host captures for `? la .adam. cu animal` over
     /// `dog(adam)` + `ro lo dog cu animal`: an ExistsWitness over a left-leaning
     /// Conjunction spine of three per-role `Derived(animal*)` steps, each re-tracing
     /// the same `dog*` conditions (deduped to ProofRefs after the first). The

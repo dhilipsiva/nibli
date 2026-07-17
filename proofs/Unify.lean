@@ -6,7 +6,7 @@
   must be SOUND: a successful unification instantiates the template to exactly the goal. Nothing
   above the unifier (rule firing, the proof-trace ⇒ model theorem) is sound if this isn't.
 
-  The real code (`logji/src/kb.rs`): `unify_terms(template, concrete, &mut bindings) -> bool`
+  The real code (`nibli-reason/src/kb.rs`): `unify_terms(template, concrete, &mut bindings) -> bool`
   (:326) delegated per-argument by `unify_facts` (:290); `substitute_term` (:389) applies a
   substitution. Only the template carries `PatternVar`s — the concrete side is always GROUND (facts
   in the store are ground). This file models the term-level recursion (where all the subtlety
@@ -16,7 +16,7 @@
       unify t c σ₀ = some σ  →  subst σ t = c        (for ground `c`)
 
   Bridged to the real `unify_facts` / `substitute_fact` by the `unify_conformance` corpus test in
-  `logji/src/tests.rs` (the fact-level property is the arg-wise fold of this term-level one).
+  `nibli-reason/src/tests.rs` (the fact-level property is the arg-wise fold of this term-level one).
 
   Checked by `lean proofs/Unify.lean` (`just verify-proofs`). No mathlib — prelude only.
   Self-contained (each proof file stands alone). The `Number` payload is abstracted to `Nat`: only
@@ -27,7 +27,7 @@ set_option linter.unusedSimpArgs false
 
 namespace Nibli.Unify
 
-/-- A ground term, mirroring `logji`'s `GroundTerm` (`logji/src/kb.rs:130`). Only `pvar` (a
+/-- A ground term, mirroring nibli-reason's `GroundTerm` (`nibli-reason/src/kb.rs:130`). Only `pvar` (a
     template pattern variable) is ever bound; the concrete side is always `NoVar` (ground). -/
 inductive GTerm where
   | const : String → GTerm
@@ -57,7 +57,7 @@ def NoVar : GTerm → Prop
   | .skolem _ d => NoVar d
   | .depPair a b => NoVar a ∧ NoVar b
 
-/-- Apply a substitution (mirrors `substitute_term`, `logji/src/kb.rs:389`). -/
+/-- Apply a substitution (mirrors `substitute_term`, `nibli-reason/src/kb.rs:389`). -/
 def subst (σ : Subst) : GTerm → GTerm
   | .const a => .const a
   | .num a => .num a
@@ -69,7 +69,7 @@ def subst (σ : Subst) : GTerm → GTerm
   | .skolem n d => .skolem n (subst σ d)
   | .depPair a b => .depPair (subst σ a) (subst σ b)
 
-/-- The one-directional unifier (mirrors `unify_terms`, `logji/src/kb.rs:326`): match `t`
+/-- The one-directional unifier (mirrors `unify_terms`, `nibli-reason/src/kb.rs:326`): match `t`
     (template, may contain `pvar`s) against `c` (concrete), threading the accumulator `σ`. A bound
     variable must re-match consistently; an unbound one binds; non-variables match structurally. -/
 def unify : GTerm → GTerm → Subst → Option Subst

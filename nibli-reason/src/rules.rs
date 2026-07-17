@@ -229,7 +229,7 @@ pub(super) fn flatten_conjuncts_through_exists(
         // Deontic wrappers set the condition flavor EXACTLY like the tense arms: a
         // `ganai e'e A gi B` condition matches only a stored Permitted(A), never a
         // bare A. (Pre-2026-07 these were stripped as "surface-unreachable", but an
-        // deontic on a connective operand wraps that operand's bridi, so the
+        // deontic on a connective operand wraps that operand's proposition, so the
         // shape IS reachable — the transparent strip made a deontic condition fire
         // on a bare fact. Found by the mutation-baseline triage.)
         LogicNode::ObligatoryNode(inner) => {
@@ -323,7 +323,7 @@ pub(super) fn dnf_condition_clauses(
 }
 
 /// Detect a NEGATED event-decomposed restrictor condition `Not(Exists(ev, And-tree
-/// of flat leaves))` (the antecedent shape of `ro lo X poi na <selbri> cu …`) and
+/// of flat leaves))` (the antecedent shape of `ro lo X poi na <predicate> cu …`) and
 /// return `(ev_var_name, leaf_node_ids)`. Returns `None` for any other shape — a
 /// flat negated atom `Not(P)` (handled by `negated_condition_indices`), a
 /// `Not(Or(..))`, a nested foreign quantifier, or a tensed inner — so the caller
@@ -402,7 +402,7 @@ fn flatten_consequent(
         // stripped the wrapper without setting the flavor — a ground conditional
         // with a deontic consequent derived an UNQUALIFIED fact: permission leaked
         // into truth. Reachable from the surface: an deontic on a connective
-        // operand wraps that operand's bridi. Found by the mutation-baseline
+        // operand wraps that operand's proposition. Found by the mutation-baseline
         // triage; pinned by `deontic_rule_consequent_derives_flavored_fact`.)
         LogicNode::ObligatoryNode(inner) => {
             flatten_consequent(buffer, *inner, skolem_subs, Some("Obligatory"))
@@ -549,7 +549,7 @@ pub(super) fn register_rule(
                 .or_default()
                 .push((cond.relation().to_string(), is_neg));
         }
-        // A negated event-decomposed restrictor (`poi na <selbri>`) reads its inner
+        // A negated event-decomposed restrictor (`poi na <predicate>`) reads its inner
         // conjuncts under negation-as-failure, so each is a NEGATIVE dependency: a
         // rule whose conclusion recurses through the negated existential (e.g.
         // `ro lo X poi na danlu cu danlu`) becomes a negative self-loop and is
@@ -976,7 +976,7 @@ fn trigger_forward_rules(new_rel: &str, inner: &mut KnowledgeBaseInner) {
 
     // Collect forward rules whose conditions mention the newly-asserted predicate.
     // FAIL CLOSED: a NAF-bearing rule (a flat negated condition or a `poi na
-    // <selbri>` group) must never forward-fire — a forward-derived conclusion would
+    // <predicate>` group) must never forward-fire — a forward-derived conclusion would
     // go stale when a later assertion makes the negated dependency true, and there
     // is no truth maintenance to retract it. `set_rule_forward` refuses to enable
     // these, but exclude them here too so the invariant holds regardless of how
@@ -1094,7 +1094,7 @@ fn atom_var_args(buffer: &LogicBuffer, node_id: u32) -> Vec<String> {
 /// disjunctive) rule antecedent. The clause-independent work (consequent templates
 /// `typed_concls`, universals, pattern vars, and the precise `dependent_skolems`)
 /// is computed once by the caller and passed in; this builds the clause's condition
-/// templates, dedups, registers, and (for `branch_idx == 0`) asserts the xorlo
+/// templates, dedups, registers, and (for `branch_idx == 0`) asserts the existential-import
 /// presupposition. Returns `Err` (fail-closed, aborting the whole assertion) on any
 /// untemplatable condition atom or stratification violation.
 #[allow(clippy::too_many_arguments)]
@@ -1151,10 +1151,10 @@ fn register_clause_rule(
     let mut negated_exists_groups: Vec<NegatedExistsGroup> = Vec::new();
     for &(cid, tense) in &all_conditions {
         // A NEGATED event-decomposed restrictor `Not(Exists(ev, And(..)))`
-        // (`poi na <selbri>`) is compiled as a NAF-over-existential group, NOT a flat
+        // (`poi na <predicate>`) is compiled as a NAF-over-existential group, NOT a flat
         // condition: collect the inner conjuncts as templates with the universal's
         // `x__vN` (shared) and a group-local event pvar. It is excluded from
-        // `typed_conditions` AND from the xorlo presupposition (a `poi na zanru`
+        // `typed_conditions` AND from the existential-import presupposition (a `poi na zanru`
         // person must NOT get an asserted consent witness).
         if let Some((ev_var, leaf_ids)) = detect_negated_exists_group(buffer, cid) {
             let ev_pvar = format!("ev__{}", ev_var);
@@ -1256,14 +1256,14 @@ fn register_clause_rule(
         return Err(e);
     }
 
-    // xorlo presupposition applies ONLY to DESCRIPTION universals (`ro lo` / `ro le`),
+    // existential-import presupposition applies ONLY to DESCRIPTION universals (`ro lo` / `ro le`),
     // which carry existential import — "there is such a thing" — so a fresh witness
     // satisfying the restrictor is asserted. Asserted ONCE, for branch 0 only: for a
     // disjunctive antecedent the import only needs the restricted domain non-empty, so
     // a witness for the FIRST disjunct is a sound minimal choice (asserting every
     // branch would over-commit, injecting a witness for each disjunct the author never
     // stated). It must NOT fire for a ground material conditional (zero universals) or
-    // a PRENEX universal (`ro da zo'u …`, no existential import). smuni names
+    // a PRENEX universal (`ro da zo'u …`, no existential import). nibli-semantics names
     // description universals `_v{n}` and prenex universals `da`/`de`/`di`.
     let is_description_universal =
         !universals.is_empty() && universals.iter().all(|v| v.starts_with("_v"));
@@ -1664,12 +1664,12 @@ pub(super) fn compile_forall_to_rule(
         }
         None => {
             // BARE-UNIVERSAL branch: a restrictor-less ∀ (a bare prenex
-            // `ro da zo'u da broda`, no `lo`/`le` gadri). Unlike the implication
-            // branch above, it asserts NO xorlo presupposition witness — and that
+            // `ro da zo'u da broda`, no `lo`/`le` determiner). Unlike the implication
+            // branch above, it asserts NO existential-import presupposition witness — and that
             // is correct: a prenex `ro da`/`de`/`di` is a plain logical universal
             // with no existential import (vacuously true on an empty domain),
             // whereas the DESCRIPTION universals that carry import (`ro lo`/`ro le`,
-            // smuni-named `_v{n}`) ALWAYS compile to `∀x. R(x) → C(x)` and route
+            // nibli-semantics-named `_v{n}`) ALWAYS compile to `∀x. R(x) → C(x)` and route
             // through `register_clause_rule`, whose `is_description_universal` guard
             // asserts the witness. So a description universal never reaches here.
             if !dependent_skolems.is_empty() {

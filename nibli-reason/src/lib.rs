@@ -1,4 +1,4 @@
-//! Logji (logic/reasoning) engine: FOL assertion and query via demand-driven backward-chaining.
+//! nibli-reason (logic/reasoning) engine: FOL assertion and query via demand-driven backward-chaining.
 //!
 //! This is the core inference component of Nibli. It maintains a stateful knowledge
 //! base with a fact index and backward-chaining rule engine:
@@ -56,7 +56,7 @@ pub fn default_compute_predicates() -> HashSet<String> {
 }
 
 /// Transform registered compute predicates from Predicate → ComputeNode in a logic buffer.
-/// Call this after smuni compilation and before asserting/querying.
+/// Call this after nibli-semantics compilation and before asserting/querying.
 pub fn transform_compute_nodes(buf: &mut LogicBuffer, compute_preds: &HashSet<String>) {
     let nodes = std::mem::take(&mut buf.nodes);
     buf.nodes = nodes
@@ -536,7 +536,7 @@ impl KnowledgeBase {
         // GroundTerm level — distinct terms never collapse; intra-set binding
         // order (structural, inner-to-outer) is preserved for display.
         // ENTITY-LEVEL identity (GUARANTEES §Aggregation): tuples binding an
-        // ENTITY variable to a xorlo presupposition witness are dropped
+        // ENTITY variable to a existential-import presupposition witness are dropped
         // entirely — a phantom entity a rule presupposed satisfies ∃/∀ but is
         // not an enumerable "thing". Entity variables = everything except the
         // `_ev*` EVENT vars (description vars `_v{n}` carry answer entities).
@@ -721,8 +721,8 @@ fn merge_witness_bindings(
     Some(combined)
 }
 
-/// Public API for native callers (lasna, nibli-engine).
-/// Uses smuni's logic types directly — no bridge conversion needed.
+/// Public API for native callers (nibli-pipeline, nibli-engine).
+/// Uses nibli-semantics's logic types directly — no bridge conversion needed.
 impl KnowledgeBase {
     /// Create a new knowledge base with the default in-memory fact store.
     pub fn new() -> Self {
@@ -746,7 +746,7 @@ impl KnowledgeBase {
     /// watchdog sets the flag when a request's wall-clock budget elapses, freeing
     /// the blocking thread instead of letting a pathological query run to
     /// completion. No clock is read inside the engine, so the WASI sandbox
-    /// guarantee is preserved; nibli-host/lasna never install a flag.
+    /// guarantee is preserved; nibli-host/nibli-pipeline never install a flag.
     pub fn set_cancel_flag(&self, flag: std::sync::Arc<std::sync::atomic::AtomicBool>) {
         self.inner.borrow_mut().cancel = Some(flag);
     }
@@ -758,7 +758,7 @@ impl KnowledgeBase {
 
     /// Enable/disable informational stdout diagnostics (`[Rule]`/`[Skolem]`/
     /// `[Constraint] Registered`). Default OFF — a silent library; the
-    /// server/validate/tavla stay quiet. lasna (the gasnu REPL) and the native
+    /// server/validate/tavla stay quiet. nibli-pipeline (the nibli-host REPL) and the native
     /// `nibli` REPL opt in. Configuration, not derived state — survives `reset()`.
     pub fn set_verbose(&self, verbose: bool) {
         self.inner.borrow_mut().verbose = verbose;
@@ -813,9 +813,9 @@ impl KnowledgeBase {
     /// Assert a compiled FOL formula into the knowledge base. Returns the fact ID.
     pub fn assert_fact(&self, logic: LogicBuffer, label: String) -> Result<u64, NibliError> {
         // The assert IS the reasoning stage: by the time this runs the buffer has
-        // already passed smuni, so every failure here (stratification, fail-closed
+        // already passed nibli-semantics, so every failure here (stratification, fail-closed
         // rule compilation, the zero-ingest guard, rebuild replay) is reasoning-layer.
-        // The layer contract is Syntax=gerna / Semantic=smuni / Reasoning=logji.
+        // The layer contract is Syntax=nibli-kr / Semantic=nibli-semantics / Reasoning=nibli-reason.
         self.assert_fact_inner(logic, label)
             .map_err(NibliError::Reasoning)
     }
@@ -935,7 +935,7 @@ impl KnowledgeBase {
     /// are directly asserted in the fact store.
     ///
     /// FAIL CLOSED: a rule with a negation-as-failure condition (a flat negated
-    /// condition or a `poi na <selbri>` group) is NOT forward-enabled — it stays
+    /// condition or a `poi na <predicate>` group) is NOT forward-enabled — it stays
     /// backward-only, where it is sound (backward chaining re-evaluates `¬Q` at
     /// query time). Forward chaining + NAF has no truth maintenance: a
     /// forward-derived conclusion would never be retracted when a later assertion
@@ -1069,7 +1069,7 @@ impl KnowledgeBase {
     /// 2. Predicate arity inconsistencies (same predicate with different arities)
     /// 3. Equality contradictions (du(a,b) where a and b have conflicting properties
     ///    under registered integrity constraints)
-    /// 4. Negation contradictions (an explicitly asserted `na <selbri>` whose
+    /// 4. Negation contradictions (an explicitly asserted `na <predicate>` whose
     ///    positive counterpart is also asserted, matched modulo event Skolems)
     pub fn check_contradictions(&self) -> Vec<String> {
         let mut violations = Vec::new();
@@ -1202,7 +1202,7 @@ impl KnowledgeBase {
             }
         }
 
-        // 4. Explicitly asserted negative facts (`na <selbri>`) whose positive
+        // 4. Explicitly asserted negative facts (`na <predicate>`) whose positive
         //    counterpart is asserted. Each negation is stored as a template group
         //    with event arguments generalized to pattern variables (see
         //    `record_negative_ground_fact`); it is violated when one consistent
@@ -1268,7 +1268,7 @@ impl KnowledgeBase {
         // 6. Disjunctive-conclusion constraints `¬(P ∧ ¬Q ∧ ¬R)` (from a rule with a
         //    disjunctive head, `ro lo X cu Q ja R`). Flag a contradiction when, for some
         //    binding, ALL P-conditions hold in the positive store AND EVERY disjunct is
-        //    explicitly denied (a stored `na <selbri>` covers it). A disjunct is never
+        //    explicitly denied (a stored `na <predicate>` covers it). A disjunct is never
         //    DERIVED (unsound in a Horn engine — `R` might hold instead); the positive
         //    use is served by a disjunctive QUERY. P uses store-membership only (via
         //    `solve_group_bindings` over `fact_store`): a rule-DERIVED P does NOT trigger

@@ -1,4 +1,4 @@
-//! Nibli gasnu (agent/runner): Wasmtime WASI P2 host + interactive REPL.
+//! Nibli nibli-host (agent/runner): Wasmtime WASI P2 host + interactive REPL.
 //!
 //! Loads the fused WASM engine component, provides the `compute-backend` host
 //! implementation (built-in arithmetic + external TCP backend), and runs an
@@ -307,7 +307,7 @@ fn try_builtin_arithmetic(relation: &str, args: &[compute_backend::LogicalTerm])
             extract_num(&args[2]),
         ) {
             // The relation match + tolerant-equality comparison is shared with the
-            // logji engine fast path (and the Python reference backend).
+            // nibli-reason engine fast path (and the Python reference backend).
             return nibli_types::eval_arithmetic(relation, &[x1, x2, x3]);
         }
     }
@@ -578,7 +578,7 @@ enum JournalEntry {
     /// id assigned at the original assertion (or the durable store id at
     /// replay) so a trap-rebuild AFTER a restart keeps the live fact-id
     /// namespace equal to the store's. Note: buffer replay does not restore
-    /// the go'i snapshot (a buffer carries no surface bridi) — after a trap
+    /// the go'i snapshot (a buffer carries no surface proposition) — after a trap
     /// rebuild, `go'i` has no antecedent until the next assert/query.
     AssertBuffer {
         buffer: NibliBuffer,
@@ -642,7 +642,7 @@ impl Repl {
         strict: bool,
     ) -> Result<(Store<HostState>, pipeline_bind::NibliPipeline, ResourceAny)> {
         // Forward the quiet flag into the guest's WASI environment: the ctx
-        // otherwise inherits only stdio, so `lasna::Session::new` cannot see
+        // otherwise inherits only stdio, so `nibli-pipeline::Session::new` cannot see
         // `NIBLI_QUIET` unless we push it here. This is what suppresses the
         // guest-side `[Skolem]`/`[Rule]`/`[Constraint]` bookkeeping.
         let ctx = {
@@ -1796,7 +1796,7 @@ mod tests {
     fn test_builtin_arithmetic_float_tolerance() {
         // The host fast path shares the tolerant comparison: 0.1 + 0.2 rounds to
         // 0.30000000000000004, but `0.3 = 0.1 + 0.2` answers TRUE (matching the
-        // logji engine and the Python backend).
+        // nibli-reason engine and the Python backend).
         let args = vec![
             compute_backend::LogicalTerm::Number(0.3),
             compute_backend::LogicalTerm::Number(0.1),
@@ -2328,5 +2328,5 @@ mod tests {
 
     // Dispatch over the various LogicalTerm arg kinds (constant/variable/
     // description/unspecified) is covered by the shared client's wire-shape +
-    // dispatch tests and gasnu's `term_to_arg` (exercised via `evaluate`).
+    // dispatch tests and nibli-host's `term_to_arg` (exercised via `evaluate`).
 }

@@ -5,7 +5,7 @@ use nibli_types::logic::{LogicBuffer, LogicNode, LogicalTerm, ProofRule, ProofTr
 // FLAT vs SURFACE TEST SHAPES — read before adding a reasoning test.
 //
 // The `make_*` helpers below hand-build FLAT `LogicBuffer`s (a bare `gerku(adam)`), which is
-// NOT the shape the shipped pipeline produces: smuni event-decomposes to
+// NOT the shape the shipped pipeline produces: nibli-semantics event-decomposes to
 // `∃ev. gerku(ev) ∧ gerku_x1(ev, adam) ∧ …` (`nibli_semantics::event_decompose`) and
 // `transform_compute_nodes` turns compute predicates into `ComputeNode`s. A flat and a surface
 // buffer give the SAME verdict for shape-INDEPENDENT behaviors (plain lookup, modus ponens,
@@ -20,7 +20,7 @@ use nibli_types::logic::{LogicBuffer, LogicNode, LogicalTerm, ProofRule, ProofTr
 //     or write a `nibli-engine` integration test. NEVER assert `cwa_false` / `ComputeCheck` /
 //     witness shape on a bare flat buffer — that tests a shape the engine never builds.
 //   * `make_numeric_query` / `make_compute_query` build the flat numeric shape ON PURPOSE — they
-//     exercise logji's flat detection arm (a real production path); the surface shape is covered
+//     exercise nibli-reason's flat detection arm (a real production path); the surface shape is covered
 //     by `make_decomposed_*` and `compile_surface`. `du` stays flat by design (union-find).
 // See CLAUDE.md "Test discipline".
 // ─────────────────────────────────────────────────────────────────────────────
@@ -275,7 +275,7 @@ fn cancelled_query_returns_err() {
     assert!(query(&kb, make_query("alis", "danlu")));
 }
 
-// ─── Existential introduction (xorlo presupposition) ─────────
+// ─── Existential introduction (existential-import presupposition) ─────────
 
 #[test]
 fn test_existential_import_presupposition_basic() {
@@ -369,7 +369,7 @@ fn test_existential_import_presupposition_conjunction() {
 fn test_existential_import_presupposition_with_real_entity() {
     // Real entity + presupposition Skolem both satisfy BOOLEAN queries, but
     // the phantom is NOT an enumerable "thing": witness enumeration excludes
-    // xorlo presupposition witnesses (GUARANTEES §Aggregation — pre-change
+    // existential-import presupposition witnesses (GUARANTEES §Aggregation — pre-change
     // this test pinned the opposite: the phantom appeared in [Find] results).
     let kb = new_kb();
     assert_buf(&kb, make_universal("gerku", "danlu"));
@@ -411,7 +411,7 @@ fn test_existential_import_presupposition_with_real_entity() {
 
 #[test]
 fn test_prenex_universal_asserts_no_presupposition_witness() {
-    // A PRENEX universal (var `da`, no `lo`/`le` gadri) is a pure logical ∀ with
+    // A PRENEX universal (var `da`, no `lo`/`le` determiner) is a pure logical ∀ with
     // NO existential import, so it must NOT assert a presupposition witness —
     // unlike a DESCRIPTION universal (`_v`-named, from `ro lo`/`ro le`). This
     // guards both the suppression (the DDI alert prenex would otherwise assert a
@@ -498,7 +498,7 @@ fn test_bare_universal_asserts_no_presupposition_witness() {
     // A BARE universal `ForAll("da", brodb(da))` ("everything is brodb") — a
     // restrictor-less prenex body, no `Or(Not(R), ..)`. `decompose_implication`
     // returns None, so it takes the BARE branch of `compile_forall_to_rule`,
-    // which (correctly) asserts no xorlo witness: a prenex `ro da` is a plain ∀
+    // which (correctly) asserts no existential-import witness: a prenex `ro da` is a plain ∀
     // with no existential import. The existing prenex test exercises the
     // IMPLICATION-branch prenex (it has a restrictor condition); this pins the
     // bare branch itself.
@@ -1443,7 +1443,7 @@ fn trace_soundness_conformance() {
                             // (b) Blocker-definitiveness: re-derive the block AUTHORITATIVELY
                             // (depth 0, the verdict's own regime): some positive premise must be
                             // definitively False, or some negated premise definitively True.
-                            // Rules carrying negated-exists groups (`poi na <selbri>`) block
+                            // Rules carrying negated-exists groups (`poi na <predicate>`) block
                             // through the group check instead — out of this re-derivation's
                             // scope; their completeness is still enforced above.
                             if rule.negated_exists_groups.is_empty() {
@@ -2011,7 +2011,7 @@ fn negate_unknown_inner_yields_naf_dependent() {
 #[test]
 fn trace_exists_failed_only_when_all_definitively_false() {
     // Ground material conditionals gerku(x)⟸danlu(x) and danlu(x)⟸gerku(x) form a
-    // positive cycle WITHOUT xorlo witnesses (unlike `ro lo` universals), so
+    // positive cycle WITHOUT existential-import witnesses (unlike `ro lo` universals), so
     // gerku(x) is Unknown(CycleCut) and ∃y.gerku(y) — whose only candidate is the
     // rule-derivable `x` — has no satisfying witness. Verdict Unknown → the trace
     // must NOT show a decided ExistsFailed.
@@ -2568,10 +2568,10 @@ fn test_compute_sumji_float_tolerance() {
 
 // ─── Decomposed numeric groups (surface-Lojban shape) ─────────────
 //
-// Surface numeric bridi event-decompose to ∃ev. head(ev) ∧ rel_x1(ev, a) ∧
+// Surface numeric proposition event-decompose to ∃ev. head(ev) ∧ rel_x1(ev, a) ∧
 // rel_x2(ev, b) ∧ ... — a LEFT-nested And where the head carries only the
 // event variable and the operands live in sibling role predicates. These
-// tests build that exact shape (mirroring smuni's event_decompose output)
+// tests build that exact shape (mirroring nibli-semantics's event_decompose output)
 // and pin that the numeric evaluators reach the operands.
 
 /// Decomposed compute group: ∃_ev0. (((Compute(rel,[ev]) ∧ rel_x1(ev,x1))
@@ -4688,11 +4688,11 @@ fn test_proof_trace_derived_depth_limit() {
 
 #[test]
 fn test_proof_trace_existential_import_presup_is_asserted() {
-    // Universal "animal(every dog)." creates xorlo presupposition Skolem.
+    // Universal "animal(every dog)." creates existential-import presupposition Skolem.
     // That fact should show as Asserted, not trigger backward-chaining.
     let kb = new_kb();
     assert_buf(&kb, make_universal("gerku", "danlu"));
-    // xorlo presupposition creates sk_0 as a gerku
+    // existential-import presupposition creates sk_0 as a gerku
     let (result, trace) = query_with_proof(&kb, make_query("sk_0", "gerku"));
     assert!(result);
     let root_step = &trace.steps[trace.root as usize];
@@ -6548,7 +6548,7 @@ fn make_negated_assertion(entity: &str, predicate: &str) -> LogicBuffer {
     }
 }
 
-/// Build the event-decomposed form smuni emits for "<entity> cu <pred>":
+/// Build the event-decomposed form nibli-semantics emits for "<entity> cu <pred>":
 /// ∃e. ((pred(e) ∧ pred_x1(e, entity)) ∧ pred_x2(e, zo'e)), optionally negated
 /// (the negation wraps the OUTSIDE of the existential, as the pipeline emits).
 fn make_event_decomposed(entity: &str, predicate: &str, negated: bool) -> LogicBuffer {
@@ -7332,13 +7332,13 @@ fn test_event_decomposed_proof_trace() {
 #[test]
 fn test_event_decomposed_existential_import() {
     let kb = new_kb();
-    // Only add the rule (no ground facts) — xorlo presupposition should
+    // Only add the rule (no ground facts) — existential-import presupposition should
     // create Skolem constants that make the restrictor domain non-empty
     assert_buf(&kb, make_event_universal("gerku", "danlu"));
 
-    // The xorlo presupposition should have created event + entity Skolems
+    // The existential-import presupposition should have created event + entity Skolems
     // such that gerku(sk_ev) and gerku_x1(sk_ev, sk_entity) hold.
-    // Query: exists something that is a gerku (via xorlo presupposition)
+    // Query: exists something that is a gerku (via existential-import presupposition)
     let mut q_nodes = Vec::new();
     let q_type = pred(
         &mut q_nodes,
@@ -7967,7 +7967,7 @@ fn test_book_example_no_oom() {
         make_event_assertion_2arg("prenu_sk", "datni_sk", "ponse"),
     );
 
-    // Also assert the gadri decompositions (what `lo prenu` and `lo datni` produce):
+    // Also assert the determiner decompositions (what `lo prenu` and `lo datni` produce):
     // ∃ev1. prenu(ev1) ∧ prenu_x1(ev1, prenu_sk)
     assert_buf(&kb, make_event_assertion("prenu_sk", "prenu"));
     // ∃ev2. datni(ev2) ∧ datni_x1(ev2, datni_sk)
@@ -8022,7 +8022,7 @@ fn test_and_flattening_prevents_rewrite_explosion() {
     let kb = new_kb();
 
     // Build: ∃ev. P1(ev) ∧ P2(ev,a) ∧ P3(ev,b) ∧ P4(a) ∧ P5(b) ∧ P6(a) ∧ P7(b)
-    // This simulates a 2-arg predicate with xorlo restrictors.
+    // This simulates a 2-arg predicate with existential-import restrictors.
     let mut nodes = Vec::new();
     let p1 = pred(
         &mut nodes,
@@ -9583,7 +9583,7 @@ fn test_aggregate_sum() {
 #[test]
 fn test_count_with_backward_chain() {
     // Rule: gerku → danlu. Assert gerku for 2 entities.
-    // Count ∃x. danlu(x) should find at least 2 (+ xorlo Skolems).
+    // Count ∃x. danlu(x) should find at least 2 (+ existential-import Skolems).
     let kb = new_kb();
     assert_buf(&kb, make_universal("gerku", "danlu"));
     assert_buf(&kb, make_assertion("alis", "gerku"));
@@ -10526,7 +10526,7 @@ fn find_witness_ordering_is_deterministic_across_kb_instances() {
     // sets canonically at its return boundary, so the order is hasher-seed
     // independent by construction. NOTE: an in-process pin is weaker than a
     // two-process check (which exercises different global seeds); the sort
-    // makes order seed-independent by construction, and the gasnu script-mode
+    // makes order seed-independent by construction, and the nibli-host script-mode
     // byte-identity check covers the two-process case empirically.
     let names = ["zeta", "alis", "mike", "bob", "carol", "dave", "erin"];
     let kb1 = new_kb();
@@ -11233,7 +11233,7 @@ fn test_mixed_conclusion_conservative_p_check_misses_derived_antecedent() {
 
 #[test]
 fn test_mixed_conclusion_dirty_horn_atom_rejected() {
-    // A Not-bearing retained (Horn) atom — the shape `jo`/`ju` selbri-connective
+    // A Not-bearing retained (Horn) atom — the shape `jo`/`ju` predicate-connective
     // expansions produce — is not a flat predicate, so the mixed head stays
     // fail-closed (its remainder is not a Horn clause).
     let kb = new_kb();
@@ -11332,7 +11332,7 @@ fn test_mixed_conclusion_event_decomposed_no_registry_pollution() {
 fn verbose_flag_defaults_off_and_survives_reset_and_clone() {
     // The diagnostic-verbosity flag gates the informational stdout prints
     // (`[Rule]`/`[Skolem]`/`[Constraint] Registered`). It is CONFIGURATION, not
-    // derived state: a silent default, flipped by lasna (gasnu) + the native
+    // derived state: a silent default, flipped by nibli-pipeline (nibli-host) + the native
     // REPL, and it must survive `reset()` (so a UI-style reset-and-reassert cycle
     // does not silently re-enable diagnostics) and a clone (hypothetical queries).
     let kb = KnowledgeBase::new();
@@ -11363,7 +11363,7 @@ fn verbose_flag_defaults_off_and_survives_reset_and_clone() {
 
 /// Metamorphic differential guard: the flat `make_*` helpers must agree with the SHIPPED
 /// pipeline (`compile_surface`) on every reasoning behavior class. A flat unit test builds a
-/// hand-rolled `LogicBuffer`; if its shape ever diverges from smuni's event-decomposed output
+/// hand-rolled `LogicBuffer`; if its shape ever diverges from nibli-semantics's event-decomposed output
 /// in an OBSERVABLE way (verdict, or the `cwa_false`/`naf_dependent` trace flags), a test here
 /// fails — so the unit layer cannot silently "lie" about a behavior the real engine gets right.
 /// Corpus vocabulary is restricted to the in-tree fallback dictionary so this runs in CI (no

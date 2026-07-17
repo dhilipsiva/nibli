@@ -1,20 +1,20 @@
 /-
   Mechanized soundness proof of nibli's four-valued verdict combiner (Track B, phase 1).
 
-  This formalizes the pure combiner functions from `logji/src/reasoning.rs` and proves the
+  This formalizes the pure combiner functions from `nibli-reason/src/reasoning.rs` and proves the
   soundness-critical algebra: the combiner can never FABRICATE a definitive verdict (report
   TRUE/FALSE when the inputs do not justify it) nor SWALLOW a non-definitive sibling — the
   exact failure the historical bug had (commit 93bb900: `True ∧ Unknown` collapsed to `False`).
 
   Correspondence (each `def` mirrors a Rust fn, verbatim behavior):
-    combineIndeterminate  ← logji/src/reasoning.rs  combine_indeterminate (:184)
-    combineConjunction    ← logji/src/reasoning.rs  combine_conjunction   (:195)
-    combineDisjunction    ← logji/src/reasoning.rs  combine_disjunction   (:205)
-    negateResult          ← logji/src/reasoning.rs  negate_result         (:228)
+    combineIndeterminate  ← nibli-reason/src/reasoning.rs  combine_indeterminate (:184)
+    combineConjunction    ← nibli-reason/src/reasoning.rs  combine_conjunction   (:195)
+    combineDisjunction    ← nibli-reason/src/reasoning.rs  combine_disjunction   (:205)
+    negateResult          ← nibli-reason/src/reasoning.rs  negate_result         (:228)
   QueryResult/UnknownReason/ResourceKind mirror `nibli-types/src/logic.rs`.
 
-  The model↔code gap is closed by the EXHAUSTIVE conformance test in logji's `combiner_tests`
-  (`logji/src/reasoning.rs`), which asserts the real Rust functions satisfy these same
+  The model↔code gap is closed by the EXHAUSTIVE conformance test in nibli-reason's `combiner_tests`
+  (`nibli-reason/src/reasoning.rs`), which asserts the real Rust functions satisfy these same
   properties over all 10×10 inputs. The combiner's domain is finite, so a proof of the model
   plus exhaustive conformance is a COMPLETE guarantee, not a sampled one.
 

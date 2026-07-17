@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 // below as free functions (`proof_trace_to_json` / `proof_trace_from_json`).
 pub use nibli_types::logic::{LogicalTerm, ProofRule, ProofStep, ProofTrace};
 
-/// The native TCP compute-backend JSON-Lines client, shared by gasnu (the WASM
+/// The native TCP compute-backend JSON-Lines client, shared by nibli-host (the WASM
 /// host) and nibli-engine (the native embedder). Gated behind the
 /// `compute-client` feature so `std::net` never enters the browser build.
 #[cfg(feature = "compute-client")]

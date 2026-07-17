@@ -26,7 +26,7 @@ pub fn source_has_negation(line: &str) -> bool {
 
 /// Ground `du` in the ONE verified shape both oracles can judge: the buffer's sole root,
 /// with exactly two `Constant` args — i.e. a bare `la .X. cu du la .Y.` fact or query
-/// (`du` is never event-decomposed, so this is precisely how smuni compiles it). The
+/// (`du` is never event-decomposed, so this is precisely how nibli-semantics compiles it). The
 /// Vampire path maps it to TPTP native `=` (congruence closure over a definite theory
 /// derives exactly the union-find's reflexive/symmetric/transitive/substitutive
 /// consequences, in both directions); the ASP path canonicalizes the equivalence classes
@@ -120,7 +120,7 @@ pub fn buffer_asp_mappable_query(buf: &LogicBuffer) -> Option<&'static str> {
 /// Case-level guard for an exact-count QUERY. Both former skip conditions were
 /// CANONIZED by the 2026-07-02 count-semantics decision (GUARANTEES
 /// §Aggregation), so nothing is skipped today:
-/// - **KBs with rules**: the engine now EXCLUDES the xorlo presupposition
+/// - **KBs with rules**: the engine now EXCLUDES the existential-import presupposition
 ///   witness from counting (it still satisfies ∃/∀), and the ASP program never
 ///   had one — both sides count the real, derivable entities.
 /// - **KBs with `du`**: the engine now counts one representative per

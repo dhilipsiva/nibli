@@ -16,7 +16,7 @@
 //! - Dictionary-driven checks (name resolution, place checks, variable cap,
 //!   `it`/`slot` position) live in [`crate::resolve`].
 //!
-//! Error recovery is per-statement, like gerna: `parse_text_with_errors`
+//! Error recovery is per-statement, like the retired Lojban parser: `parse_text_with_errors`
 //! parses statement-by-statement, and on an error skips (string/comment-aware)
 //! past the next `.` so later statements still parse.
 

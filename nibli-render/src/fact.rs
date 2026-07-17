@@ -1,6 +1,6 @@
 //! The single fact humanizer.
 //!
-//! Parses the flat display string produced by logji's `StoredFact::to_display_string()`
+//! Parses the flat display string produced by nibli-reason's `StoredFact::to_display_string()`
 //! — `relation(arg, arg)`, optionally wrapped in `Past(…)`/`Present(…)`/`Future(…)`/
 //! `Obligatory(…)`/`Permitted(…)`, with args that may be `sk_N(dep)` Skolem
 //! functions, `(a, b)` DepPairs, `le foo` descriptions, `_` (zo'e), numbers, or

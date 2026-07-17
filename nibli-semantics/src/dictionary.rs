@@ -1,26 +1,25 @@
-//! Jbovlaste predicate arities — a thin facade over the SINGLE arity source.
+//! Predicate arities — a thin facade over the SINGLE arity source.
 //!
-//! Arity comes from `nibli_lexicon`'s jbovlaste dictionary (the one PHF map
-//! built from the XML export, also used for back-translation + logji's
-//! `SignatureSource`). smuni delegates here rather than generating its own
-//! parallel arity map, so the compiler arity (`get_arity_or_default`, driving
-//! `fit_args`/`event_decompose`) and the dictionary arity are the SAME value by
-//! construction and cannot diverge. O(1) lookup.
+//! Arity comes from `nibli_lexicon`'s committed English corpus (also the
+//! source of nibli-reason's `SignatureSource`). nibli-semantics delegates here
+//! rather than generating its own parallel arity map, so the compiler arity
+//! (`get_arity_or_default`, driving `fit_args`/`event_decompose`) and the
+//! corpus arity are the SAME value by construction and cannot diverge.
 
 /// Interface to the jbovlaste arity dictionary (delegates to `nibli_lexicon`).
 pub struct LexiconSchema;
 
 impl LexiconSchema {
     /// Retrieves the arity of a predicate. The canonical relation names in the
-    /// IR are ENGLISH corpus names; `nibli_lexicon::get_arity` resolves them
-    /// directly (and, TEMPORARILY, a raw gismu via the provenance compat —
-    /// dies at the gismu-input-death commit). Returns None for unknown words.
+    /// IR are ENGLISH corpus names (or compound relation idents);
+    /// `nibli_lexicon::get_arity` resolves them directly. Returns None for
+    /// unknown words — gismu spellings never resolve (provenance only).
     pub fn get_arity(word: &str) -> Option<usize> {
         nibli_lexicon::get_arity(word)
     }
 
     /// Retrieves the arity, defaulting to 2 for unknown words.
-    /// Use this only when a fallback is acceptable (e.g., lujvo not in dictionary).
+    /// Use this only when a fallback is acceptable (an unknown relation).
     pub fn get_arity_or_default(word: &str) -> usize {
         Self::get_arity(word).unwrap_or(2)
     }
@@ -146,11 +145,9 @@ mod tests {
     }
 
     #[test]
-    fn test_lujvo_in_dictionary() {
-        // Some lujvo should be in jbovlaste
-        let arity = LexiconSchema::get_arity("brivla");
-        // brivla may or may not be in the PHF dict — just verify it doesn't panic
-        let _ = arity;
+    fn test_unknown_word_arity_is_none() {
+        // A Lojban word-class term is not a corpus name — no resolution, no panic.
+        assert_eq!(LexiconSchema::get_arity("brivla"), None);
     }
 
     #[test]

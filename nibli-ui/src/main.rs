@@ -4,7 +4,7 @@
 //! optionally FORMALIZED into the KB language by a bring-your-own-key LLM),
 //! the KB tab (the formal nibli KR encoding, with per-line validation), and
 //! Back-translation (structure-exposing English gloss). A bottom query bar runs proof-queries.
-//! The reasoning engine (nibli-kr → smuni → logji) is compiled into the
+//! The reasoning engine (nibli-kr → nibli-semantics → nibli-reason) is compiled into the
 //! WASM bundle and runs entirely client-side (mirrors `nibli-wasm`). The ONLY
 //! network call is the optional Formalize step, sent directly from the browser
 //! to the user's chosen LLM provider — the client lives in `nibli_formalize::llm`
@@ -71,7 +71,7 @@ const KB_TAB_LABEL: &str = "nibli KR";
 
 // ── Agentic formalize (nibli-formalize) ──
 // The Source→KB button runs the self-correcting loop: formalize → validate
-// (nibli-kr+smuni+round-trip) → feed the compiler error back → retry, bounded
+// (nibli-kr+nibli-semantics+round-trip) → feed the compiler error back → retry, bounded
 // below. All gates are local/in-browser; the only network call is the LLM.
 
 /// One row of the self-correction trace rendered under the Source tab.
@@ -128,7 +128,7 @@ async fn formalize_translate(cfg: &LlmConfig, english: &str) -> Result<String, S
 }
 
 /// The local gates, in the fail-fast order `validate` runs them.
-const GATE_ORDER: [&'static str; 3] = ["nibli-kr", "smuni", "round-trip"];
+const GATE_ORDER: [&'static str; 3] = ["nibli-kr", "semantics", "round-trip"];
 
 /// Derive the per-gate chips from an attempt's error. `validate` is fail-fast in
 /// [`GATE_ORDER`], so `error.gate()` is the failing gate; earlier gates
@@ -215,7 +215,7 @@ struct OutputEntry {
 }
 
 // ── Local reasoning (in-browser) ──
-// The full nibli-kr → smuni → logji pipeline runs in the WASM bundle
+// The full nibli-kr → nibli-semantics → nibli-reason pipeline runs in the WASM bundle
 // (mirrors `nibli-wasm`). Every query builds a fresh KnowledgeBase, re-asserts
 // the KB tab, then queries — matching the "queries reset the engine each
 // time" semantics. Built-in arithmetic (pilji/sumji/dilcu/zmadu/mleca/dunli)
@@ -1046,7 +1046,7 @@ fn SourceTabs(
         spawn(async move {
             use nibli_formalize::agent::Outcome;
             // The self-correcting loop: formalize → validate
-            // (nibli-kr+smuni+round-trip) → semantic verification (a
+            // (nibli-kr+nibli-semantics+round-trip) → semantic verification (a
             // fresh-context judge reads the engine's back-translation) → feed
             // any error back → retry, up to the configured max attempts.
             let http = nibli_formalize::llm::HttpChat;

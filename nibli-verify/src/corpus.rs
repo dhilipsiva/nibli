@@ -137,7 +137,7 @@ pub const CASES: &[Case] = &[
     // definite theory = nibli's union-find, in both directions). Broken-chain cases double
     // as the post-retraction state: retracting a `du` link rebuilds the equivalence index
     // from survivors, which is by construction the program that never asserted it (the
-    // session-level retraction path itself is engine-tested; see logji's du suites). ──
+    // session-level retraction path itself is engine-tested; see nibli-reason's du suites). ──
     Case {
         name: "du_reflexive_true",
         kb: &["dog(Adam)."],

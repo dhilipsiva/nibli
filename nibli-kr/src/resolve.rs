@@ -8,7 +8,7 @@
 //!    bodies, `via` tag preds) must be a nibli-lexicon alias or an
 //!    corpus name (English; gismu never resolve — provenance only).
 //!    Anything else is a compile error — the deliberate tightening over
-//!    gerna's arity-2 default: an unknown word NEVER silently mints a
+//!    the retired Lojban parser's arity-2 default: an unknown word NEVER silently mints a
 //!    relation.
 //! 2. PLACE CHECKS against the head's arity (pair arity = the LAST unit's
 //!    last word): positional overflow, unknown labels, refills. Labels
@@ -23,7 +23,7 @@
 //!    pronoun constant (`Me` → `me`) is rejected — the two would silently
 //!    co-refer in the fact store.
 //!
-//! Tag (`via`) predicates additionally need arity ≥ 2, mirroring smuni's
+//! Tag (`via`) predicates additionally need arity ≥ 2, mirroring nibli-semantics's
 //! fail-closed modal check (spec §5).
 
 use std::collections::BTreeSet;

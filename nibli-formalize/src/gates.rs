@@ -1,7 +1,7 @@
 //! The validation gates — the "verify" firewall around the LLM's output.
 //!
 //! KR-only since THE DROP: every candidate runs `nibli_kr::parse_checked` →
-//! smuni → the RENDER ROUND-TRIP gate (the drift-catcher: the candidate's
+//! nibli-semantics → the RENDER ROUND-TRIP gate (the drift-catcher: the candidate's
 //! canonical re-spelling must compile to the SAME `LogicBuffer` — nibli-kr's
 //! pinned fixpoint contract, `nibli-kr/src/render.rs`; AstBuffer equality is
 //! deliberately NOT the contract there). The round-trip gate is pure Rust,
@@ -18,7 +18,7 @@ pub enum GateError {
     /// The front-end rejected the grammar (nibli-kr's parse/resolve errors —
     /// including fail-closed dictionary-unknown aliases).
     Syntax(String),
-    /// smuni rejected the semantics/arity (`NibliError::Semantic`).
+    /// nibli-semantics rejected the semantics/arity (`NibliError::Semantic`).
     Semantic(String),
     /// The render round-trip gate: the candidate compiles, but its canonical
     /// re-spelling (`nibli_kr::render`) fails to re-parse or compiles to a
@@ -38,7 +38,7 @@ impl GateError {
     pub fn gate(&self) -> &'static str {
         match self {
             GateError::Syntax(_) => "nibli-kr",
-            GateError::Semantic(_) => "smuni",
+            GateError::Semantic(_) => "semantics",
             GateError::RoundTrip(_) => "round-trip",
             GateError::Verification(_) => "semantic verifier",
         }
@@ -58,7 +58,7 @@ impl GateError {
 /// Run the local gates in fail-fast order and return the compiled FOL on
 /// success. Mirrors `nibli-ui`'s `compile_text` front-end (minus
 /// `nibli_reason::transform_compute_nodes`, which the translator does not need):
-/// nibli-kr grammar (parse + fail-closed resolve) → smuni semantics → the render
+/// nibli-kr grammar (parse + fail-closed resolve) → nibli-semantics semantics → the render
 /// round-trip gate. Which call fails determines the [`GateError`] variant: a
 /// `parse_checked` failure is always a grammar error; a
 /// `compile_from_ast` failure is a semantic one.
@@ -161,7 +161,7 @@ pub fn feedback_for(err: &GateError) -> String {
         GateError::Syntax(_) => ("is not valid nibli KR", "nibli-kr compiler"),
         GateError::Semantic(_) => (
             "parses but failed semantic compilation (e.g. a predicate got the wrong number of arguments)",
-            "smuni compiler",
+            "nibli-semantics compiler",
         ),
         GateError::RoundTrip(_) => (
             "compiles but is not canonical nibli KR (its canonical re-spelling does not compile to the same logic)",
@@ -182,7 +182,7 @@ mod tests {
     #[test]
     fn valid_nibli_kr_passes_local_gates() {
         // Same shape nibli-ui asserts as its default KB; runs all three
-        // gates (nibli-kr, smuni, round-trip).
+        // gates (nibli-kr, nibli-semantics, round-trip).
         local_gates("dog(Adam).").expect("valid nibli KR should pass the three local gates");
     }
 

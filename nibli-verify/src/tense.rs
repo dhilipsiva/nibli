@@ -34,7 +34,7 @@
 //! - **tense × abstraction** (`__abs_` under any flavor): suffixing would break the
 //!   opaque content-hash identity between rule head and query.
 //! - **nested / exotic tense placements** (tense inside an event group, tensed
-//!   whole-rule spines, multi-wrapping): not shapes smuni emits today; fail closed.
+//!   whole-rule spines, multi-wrapping): not shapes nibli-semantics emits today; fail closed.
 
 use std::collections::BTreeSet;
 
@@ -274,7 +274,7 @@ fn copy_rule_node(
 }
 
 /// Copy the subtree at `id` into `out`, suffixing every predicate with flavor `f`.
-/// A tense node INSIDE a group (nested tense) is not a shape smuni emits — `Err`.
+/// A tense node INSIDE a group (nested tense) is not a shape nibli-semantics emits — `Err`.
 fn copy_suffixed(
     buf: &LogicBuffer,
     id: u32,

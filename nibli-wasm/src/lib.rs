@@ -1,4 +1,4 @@
-//! Browser wasm wrapper for the nibli pipeline: gerna → smuni → logji, plus the
+//! Browser wasm wrapper for the nibli pipeline: nibli-kr → nibli-semantics → nibli-reason, plus the
 //! nibli-lexicon back-translation. Mirrors nibli-engine's no-store path —
 //! no persistence, no compute backend, pure in-memory KnowledgeBase.
 //!
@@ -111,7 +111,7 @@ impl Session {
 
 impl Session {
     fn compile_text(&self, input: &str) -> Result<logic::LogicBuffer, String> {
-        // Fail-closed KR parse + smuni compile + compute-node marking.
+        // Fail-closed KR parse + nibli-semantics compile + compute-node marking.
         // String-error surface preserved via `to_string`.
         let ast = nibli_kr::parse_checked(input).map_err(|e: PipelineError| e.to_string())?;
         let mut buf =

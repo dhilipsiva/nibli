@@ -3,7 +3,7 @@
 //! exhaustiveness guard).
 //!
 //! - [`kompile`] compiles KR text to its FOL `LogicBuffer` through the shipped
-//!   post-parse stages (smuni + `transform_compute_nodes` with the default
+//!   post-parse stages (nibli-semantics + `transform_compute_nodes` with the default
 //!   compute set).
 //! - [`CONSTRUCT_INVENTORY`] is the acceptance inventory: one row per
 //!   NIBLI_KR §3–§9 construct; every row must `kompile` (per-section
@@ -24,12 +24,12 @@ use nibli_types::logic::LogicBuffer;
 use crate::seam;
 
 /// Compile nibli KR text end-to-end: `nibli_kr::parse_checked` (parse + resolve +
-/// emit) → smuni → compute-node marking with logji's default compute set —
+/// emit) → nibli-semantics → compute-node marking with nibli-reason's default compute set —
 /// the shipped engine runs after its parse step.
 pub fn kompile(text: &str) -> Result<LogicBuffer, String> {
     let ast = nibli_kr::parse_checked(text).map_err(|e| format!("nibli-kr parse '{text}': {e}"))?;
     let mut buf = nibli_semantics::compile_from_ast(ast)
-        .map_err(|e| format!("smuni(nibli-kr) '{text}': {e}"))?;
+        .map_err(|e| format!("nibli-semantics(nibli-kr) '{text}': {e}"))?;
     nibli_reason::transform_compute_nodes(&mut buf, &nibli_reason::default_compute_predicates());
     Ok(buf)
 }

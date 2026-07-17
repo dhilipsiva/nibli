@@ -247,7 +247,7 @@ pub const NAF_CASES: &[Case] = &[
         expect: Expect::True,
     },
     // ── Exact-count queries (`PA lo X cu Y`) → clingo `#count` aggregates. Guarded to
-    // ground-fact KBs: with a rule in the KB the xorlo import witness gets counted, and
+    // ground-fact KBs: with a rule in the KB the existential-import import witness gets counted, and
     // `du` classes are not collapsed by the engine count (both engine-probed) — those
     // combinations are SKIPPED pending the count-semantics decision, not canonized. ──
     Case {

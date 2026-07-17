@@ -1,11 +1,11 @@
-//! The KR→smuni seam-conformance gate (`just verify-nibli-kr-seam`, part of `ci`) —
+//! The KR→nibli-semantics seam-conformance gate (`just verify-nibli-kr-seam`, part of `ci`) —
 //! the KR front-end's independent correctness oracle, built to OUTLIVE the
 //! Lojban front-end — and it did (THE DROP, 2026-07-13, deleted the twin
 //! battery whose equality oracle previously carried this role). NO LOJBAN
 //! ANYWHERE in this file: coverage is re-anchored on
 //!
 //! 1. **Structural FOL goldens** — hand-verified `LogicBuffer` shapes for the
-//!    core construct classes (the `gerna_smuni_seam_conformance` pattern from
+//!    core construct classes (the retired Lojban seam gate pattern from
 //!    differential_gate.rs, re-anchored on KR spellings), probing nodes
 //!    directly via `seam::{root, node, pred_args, role_is_const}`.
 //! 2. **The construct-inventory acceptance sweep** — every
@@ -18,8 +18,8 @@
 //!    re-homed from the twins gate retired at THE DROP): the `.nibli`
 //!    determinism corpus replayed natively against the pinned `# =>` verdicts.
 //!
-//! Vocabulary is curated-core only, so the gate is FULL-STRENGTH in both
-//! dictionary modes and NEVER skips.
+//! Single-mode (the committed corpus) — the gate is FULL-STRENGTH in every
+//! build and NEVER skips.
 
 use nibli_types::logic::{LogicNode, LogicalTerm};
 use nibli_verify::nibli_kr_battery::{CONSTRUCT_INVENTORY, canonical, kompile};
@@ -327,7 +327,7 @@ fn kr_semantics_seam_conformance() {
 
     // ── non-vacuity floors ──
     eprintln!(
-        "kr→smuni seam: {structural} structural golden + {inventory} inventory + \
+        "kr→nibli-semantics seam: {structural} structural golden + {inventory} inventory + \
          {metamorphic} metamorphic checks passed"
     );
     assert!(

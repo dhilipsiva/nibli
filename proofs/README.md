@@ -185,7 +185,7 @@ A Lean proof guarantees the *model* is sound; a Rust conformance test ties it to
   a multi-candidate completeness case and definitive-block re-derivations — and a break-one-leaf
   sanity confirms it catches violations. So the model axioms are no longer merely assumed — composed
   with `Trace.lean`, the capstone is **load-bearing, not proof-conditional**. Corpus, not exhaustive;
-  rules carrying negated-exists groups (`poi na <selbri>`) block through the group check, whose
+  rules carrying negated-exists groups (a negated where-clause restrictor) block through the group check, whose
   definitiveness is not re-derived by the bridge (their candidate-completeness still is).
 
 Keep the two sides in lock-step: when a Rust component changes, update both its `.lean` model and

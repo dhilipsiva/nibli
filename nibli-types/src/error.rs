@@ -8,14 +8,14 @@ pub struct SyntaxDetail {
     pub column: u32,
 }
 
-/// Unified error type for the gerna → smuni → logji pipeline.
+/// Unified error type for the nibli-kr → nibli-semantics → nibli-reason pipeline.
 #[derive(Clone, Debug)]
 pub enum NibliError {
-    /// Syntax error from the parser (gerna).
+    /// Syntax error from the parser (nibli-kr).
     Syntax(SyntaxDetail),
-    /// Semantic error from the compiler (smuni).
+    /// Semantic error from the compiler (nibli-semantics).
     Semantic(String),
-    /// Reasoning error from the inference engine (logji).
+    /// Reasoning error from the inference engine (nibli-reason).
     Reasoning(String),
     /// Backend error from external compute dispatch. Fields: (predicate, message).
     Backend((String, String)),
@@ -25,7 +25,7 @@ pub enum NibliError {
 // / `[Backend Error]` prefixes below are a stable cross-consumer interface — they
 // are the de-facto error CLASS encoding wherever the typed `NibliError` has been
 // flattened to a `String` (tavla's public API → nibli-server's `error_class`
-// classifier; gasnu's `[Xxx Error]` REPL output; the nibli-ui `strip_prefix`
+// classifier; nibli-host's `[Xxx Error]` REPL output; the nibli-ui `strip_prefix`
 // renderer). Do NOT change a prefix without updating those classifiers.
 impl std::fmt::Display for NibliError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

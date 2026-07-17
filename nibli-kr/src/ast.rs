@@ -1,8 +1,8 @@
 //! nibli KR tree AST — the parser's output, lowered to
 //! `nibli_types::ast::AstBuffer` by the emitter (`emit.rs`).
 //!
-//! Owned `Box`/`Vec` nodes, deliberately NOT gerna's bumpalo arena: nibli KR
-//! statements are small, and gerna's arena exists for its leak-free-by-invariant
+//! Owned `Box`/`Vec` nodes, deliberately NOT the retired Lojban parser's bumpalo arena: nibli KR
+//! statements are small, and that arena existed for its leak-free-by-invariant
 //! fuzz discipline and whole-corpus REPL throughput — constraints that don't
 //! bind here. If fuzzing ever shows allocation pressure, swapping the backing
 //! store is internal to this crate.
@@ -12,7 +12,7 @@
 //! - [`Claim::Prefixed`] exists only when at least one prefix is present, and
 //!   its `atom` is a `Predication`, an `Equality`, or `Not` of one of those
 //!   (`must past ~P` ≡ `Obligatory(Past(Not(P)))` — negation innermost,
-//!   matching smuni's verified wrapper-emission order).
+//!   matching nibli-semantics's verified wrapper-emission order).
 //! - [`Claim::Not`] wraps only a `Predication` or `Equality` (never another
 //!   `Not`, never a prefixed or compound claim — those spellings are
 //!   grammar-level rejects).
@@ -216,7 +216,7 @@ pub enum KeyTerm {
     Slot,
 }
 
-/// The determiner taxonomy (NIBLI_KR §4) — five gadri shapes plus the
+/// The determiner taxonomy (NIBLI_KR §4) — five determiner shapes plus the
 /// `no` = exactly-0 sugar, resolved at parse time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Det {

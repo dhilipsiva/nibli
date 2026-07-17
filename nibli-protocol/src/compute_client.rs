@@ -1,17 +1,17 @@
 //! Shared native TCP compute-backend client (JSON Lines over a stream socket).
 //!
 //! One implementation, two consumers:
-//! - `gasnu` — the WASM host bridge holds a `BackendClient` on its `HostState`.
+//! - `nibli-host` — the WASM host bridge holds a `BackendClient` on its `HostState`.
 //! - `nibli-engine` — the native embedder holds one in a `thread_local!` (per
 //!   `spawn_blocking` worker on `nibli-server`).
 //!
 //! It dispatches external compute predicates (`tenfa`, `dugri`, custom) to the
 //! Python reference backend (`python/nibli_backend.py`). Built-in arithmetic
-//! (`pilji`/`sumji`/`dilcu`) is resolved upstream (in logji for the engine, in
-//! gasnu's host impl) and never reaches this client.
+//! (`pilji`/`sumji`/`dilcu`) is resolved upstream (in nibli-reason for the engine, in
+//! nibli-host's host impl) and never reaches this client.
 //!
 //! The client is term-type-AGNOSTIC: callers pre-convert their own logical-term
-//! representation (WIT `compute-backend.logical-term` for gasnu,
+//! representation (WIT `compute-backend.logical-term` for nibli-host,
 //! `nibli_types::logic::LogicalTerm` for the engine) into [`BackendArg`], so this
 //! module depends on neither.
 //!
@@ -342,7 +342,7 @@ mod tests {
 
     #[test]
     fn no_addr_single_names_the_predicate() {
-        // The single-dispatch no-addr error names the predicate (gasnu surfaces it
+        // The single-dispatch no-addr error names the predicate (nibli-host surfaces it
         // as "Unknown compute predicate: ..."), distinct from the batch message.
         let mut c = BackendClient::new();
         let err = c

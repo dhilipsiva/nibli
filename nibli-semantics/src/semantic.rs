@@ -3,10 +3,10 @@
 //! Walks the WIT AST buffer (flat arrays of `Predicate`, `Argument`, `Sentence`) and
 //! compiles each sentence into a [`LogicalForm`] tree. Key transformations:
 //!
-//! - **Quantifier scoping**: gadri descriptions (`lo`/`le`/`la`/`ro lo`) introduce
+//! - **Quantifier scoping**: determiner descriptions (`lo`/`le`/`la`/`ro lo`) introduce
 //!   quantified variables; scopes are closed outward after the proposition body is compiled.
 //! - **Quantifier closure**: bare logic variables (`da`/`de`/`di`) are wrapped in
-//!   `Exists`; Skolemization itself happens downstream in logji at assertion time.
+//!   `Exists`; Skolemization itself happens downstream in nibli-reason at assertion time.
 //! - **Connective expansion**: argument/predicate/sentence connectives expand into FOL
 //!   `And`/`Or`/`Not`/`Biconditional`/`Xor` combinations.
 //! - **Conversion**: `se`/`te`/`ve`/`xe` permute argument places.
@@ -16,7 +16,7 @@
 //!   universals, body conjunct for existentials/counts) so it does not narrow the
 //!   quantifier domain. Residual: under exact-count quantifiers `noi` is still
 //!   treated restrictively (documented limitation).
-//! - **Modal tags**: BAI cmavo and `fi'o` produce conjoined modal predications.
+//! - **Modal tags**: `via` tags produce conjoined modal predications.
 //! - **String interning**: all relation names and variable names use [`lasso::Rodeo`]
 //!   for zero-copy comparison and deduplication.
 
@@ -32,7 +32,7 @@ mod compile;
 mod helpers;
 mod predicate;
 
-/// The kind of quantifier introduced by a gadri description.
+/// The kind of quantifier introduced by a determiner description.
 #[derive(Debug, Clone)]
 pub(crate) enum QuantifierKind {
     /// lo → ∃x (veridical existential, restrictor = predicate predicate)
@@ -71,7 +71,7 @@ pub(crate) struct QuantifierEntry {
 /// quantifiers, so `da citka ro lo gerku` compiles `∃da.∀x` and `ro lo gerku cu
 /// citka da` compiles `∀x.∃da`.
 pub(crate) enum ScopeMarker {
-    /// A gadri description (lo/le/ro lo/ro le/PA lo) → closed via `close_quantifier`.
+    /// A determiner description (lo/le/ro lo/ro le/PA lo) → closed via `close_quantifier`.
     Desc(QuantifierEntry),
     /// A bare logic variable (da/de/di), first occurrence → closed via `Exists`.
     Bare(lasso::Spur),
@@ -436,7 +436,7 @@ mod tests {
     fn test_equals_lowers_flat_not_event_decomposed() {
         // `la .X. cu du la .Y.` (Root("equals") + 2 argument) must lower to a FLAT
         // 2-arg du(X,Y) predicate — NOT the Neo-Davidsonian event form
-        // (∃e. du(e) ∧ du_x1(e,X) ∧ du_x2(e,Y)) — so logji's union-find
+        // (∃e. du(e) ∧ du_x1(e,X) ∧ du_x2(e,Y)) — so nibli-reason's union-find
         // ingestion (which matches relation=="equals" && args.len()==2) fires.
         let predicates = vec![Predicate::Root("equals".into())];
         let arguments = vec![
@@ -463,7 +463,7 @@ mod tests {
 
     #[test]
     fn test_equals_with_more_than_two_arguments_is_rejected() {
-        // Fail-closed: n-ary du is unsupported (logji handles only binary
+        // Fail-closed: n-ary du is unsupported (nibli-reason handles only binary
         // identity). A 3-argument du must push a semantic error rather than
         // silently dropping the third argument.
         let predicates = vec![Predicate::Root("equals".into())];
@@ -855,12 +855,10 @@ mod tests {
 
     #[test]
     fn test_via_modal_arity_one_predicate_errors() {
-        // `mi barda fi'o prenu fe'u do` — `prenu` (person) is a 1-place predicate, so
-        // the modal has no x2 slot to carry the main proposition's x1 (`mi`). A 1-place
-        // modal that silently drops that link loses meaning, so it must fail closed.
-        // (Only `fi'o` reaches this — every BAI modal gismu is arity >= 2.) `prenu`
-        // is a curated-fallback arity-1 gismu, so this fires in both the XML and
-        // no-XML builds.
+        // `big(me) via person(you)` — `person` is a 1-place predicate, so the
+        // modal has no x2 slot to carry the main proposition's x1 (`me`). A
+        // 1-place modal that silently drops that link loses meaning, so it
+        // must fail closed (every curated `via` modal is arity >= 2).
         let predicates = vec![
             Predicate::Root("big".into()),    // 0
             Predicate::Root("person".into()), // 1 (arity 1)
@@ -1778,7 +1776,7 @@ mod tests {
         assert_eq!(
             binder_spine(&form, &compiler).first(),
             Some(&Binder::ForAll),
-            "root must stay ForAll (logji rule shape)"
+            "root must stay ForAll (nibli-reason rule shape)"
         );
         assert!(
             !exists_outscopes_forall(&form, "$da", &compiler),
@@ -2558,9 +2556,9 @@ mod tests {
 
     #[test]
     fn test_untagged_overflow_known_arity_errors() {
-        // `gerku mi do ti` — gerku is a KNOWN 2-place gismu, so the 3rd untagged
-        // argument (`ti`) overflows with no slot: fail closed instead of silently
-        // dropping it.
+        // `dog(me, you, this)` — dog is a KNOWN 2-place relation, so the 3rd
+        // untagged argument overflows with no slot: fail closed instead of
+        // silently dropping it.
         let predicates = vec![Predicate::Root("dog".into())];
         let arguments = vec![
             Argument::Pronoun("me".into()),   // 0
@@ -2819,7 +2817,7 @@ mod tests {
     fn test_da_after_universal_closes_inside_forall() {
         // ro lo gerku cu citka da → ∀x.(gerku(x) → ∃da. citka(x, da)):
         // left-to-right Lojban scope puts the bare-var existential INSIDE the
-        // universal. The old Exists-over-ForAll root dead-ended logji's rule
+        // universal. The old Exists-over-ForAll root dead-ended nibli-reason's rule
         // dispatch and silently lost the whole assertion.
         fn exists_da_somewhere(f: &LogicalForm, c: &SemanticCompiler) -> bool {
             match f {
@@ -2868,7 +2866,7 @@ mod tests {
                 );
             }
             other => panic!(
-                "root must stay ForAll (logji's rule shape), got {:?}",
+                "root must stay ForAll (nibli-reason rule shape), got {:?}",
                 other
             ),
         }
@@ -3262,7 +3260,7 @@ mod tests {
         );
     }
 
-    // ─── Name (la cmevla) test ────────────────────────────────
+    // ─── Name (rigid Name) test ──────────────────────────────
 
     #[test]
     fn test_la_name_compiles_to_constant() {
@@ -3483,7 +3481,7 @@ mod tests {
         assert_eq!(compiler.interner.resolve(&v3), "_v2");
     }
 
-    // ─── BAI tag gismu mapping ────────────────────────────────
+    // ─── via modal tag mapping ───────────────────────────────
 
     // ─── inject_variable into conjunction ─────────────────────
 

@@ -1,6 +1,6 @@
-//! Smuni (meaning/semantics): flat AST buffer → FOL logic buffer. An internal
-//! Rust pipeline stage of the single `lasna` WASM component (NOT a standalone
-//! WIT component). Compiles the gerna's
+//! nibli-semantics: flat AST buffer → FOL logic buffer. An internal
+//! Rust pipeline stage of the single `nibli-pipeline` WASM component (NOT a standalone
+//! WIT component). Compiles nibli-kr's
 //! flat AST buffer into a flat First-Order Logic buffer via the [`SemanticCompiler`],
 //! then flattens the tree-structured [`LogicalForm`] IR into the WIT-compatible
 //! index-based [`LogicBuffer`].
@@ -8,7 +8,7 @@
 //! The flattener expands `Biconditional` and `Xor` IR nodes into primitive
 //! `And`/`Or`/`Not` nodes (sharing sub-tree indices for zero-cost duplication).
 
-/// Compile-time PHF dictionary for gismu/lujvo arity lookup.
+/// Predicate-arity facade over the committed English corpus.
 pub mod dictionary;
 /// First-Order Logic IR types (`LogicalTerm`, `LogicalForm`).
 pub mod ir;
@@ -27,7 +27,7 @@ use semantic::SemanticCompiler;
 /// in bounds, and reference chains must be acyclic. The recursive compiler
 /// would otherwise PANIC on an out-of-bounds index or overflow the stack on a
 /// reference cycle — both crash classes for a hand-built/corrupt buffer (the
-/// gerna flattener produces valid buffers by construction; this guards the
+/// nibli-kr emitter produces valid buffers by construction; this guards the
 /// programmatic path). Sharing (a DAG) is legal — only true cycles reject.
 /// Iterative DFS, so an adversarially deep buffer cannot overflow the
 /// validator itself.
@@ -163,7 +163,7 @@ fn validate_ast_buffer(ast: &flat_ast::AstBuffer) -> Result<(), NibliError> {
     Ok(())
 }
 
-/// Core compilation: gerna AST buffer → FOL logic buffer.
+/// Core compilation: nibli-kr AST buffer → FOL logic buffer.
 /// Used by both the native API and the WIT export path.
 fn compile_ast(ast: &flat_ast::AstBuffer) -> Result<LogicBuffer, NibliError> {
     validate_ast_buffer(ast)?;
@@ -337,8 +337,8 @@ fn flatten_form(form: &LogicalForm, nodes: &mut Vec<LogicNode>, interner: &lasso
     }
 }
 
-/// Compile a gerna-produced AST buffer into a logic buffer.
-/// Primary API for all callers (lasna, nibli-engine).
+/// Compile a nibli-kr-produced AST buffer into a logic buffer.
+/// Primary API for all callers (nibli-pipeline, nibli-engine).
 pub fn compile_from_ast(ast: flat_ast::AstBuffer) -> Result<LogicBuffer, NibliError> {
     compile_ast(&ast)
 }
@@ -350,11 +350,11 @@ pub fn compile_from_ast(ast: flat_ast::AstBuffer) -> Result<LogicBuffer, NibliEr
 /// same-shape direct facts.
 ///
 /// Used by the trusted programmatic injection APIs (nibli-engine
-/// `assert_fact_direct`, lasna's WIT `assert-fact`, the REPL `:assert`). Mirrors
+/// `assert_fact_direct`, nibli-pipeline's WIT `assert-fact`, the REPL `:assert`). Mirrors
 /// `apply_predicate`'s `Predicate::Root` arm exactly so the stored shape is identical
 /// to text assertion: `fit_args` pads to `get_arity_or_default`, then
 /// `event_decompose`. `du` is the one exception — it stays a FLAT 2-arg
-/// `du(x1, x2)` predicate (NOT event-decomposed), because logji's union-find
+/// `du(x1, x2)` predicate (NOT event-decomposed), because nibli-reason's union-find
 /// equality interception only fires on `relation == "equals" && args.len() == 2`;
 /// the Neo-Davidsonian form would silently disable equality reasoning.
 pub fn compile_injected_fact(relation: &str, args: &[WitTerm]) -> LogicBuffer {
@@ -384,7 +384,7 @@ pub fn compile_injected_fact(relation: &str, args: &[WitTerm]) -> LogicBuffer {
     }
 }
 
-/// Convert a flat WIT/IR `LogicalTerm` to the interned smuni IR `LogicalTerm`
+/// Convert a flat WIT/IR `LogicalTerm` to the interned nibli-semantics IR `LogicalTerm`
 /// (the inverse of `flatten_form`'s Predicate arm).
 fn wit_term_to_ir(term: &WitTerm, interner: &mut lasso::Rodeo) -> LogicalTerm {
     match term {

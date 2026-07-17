@@ -509,7 +509,7 @@ fn wrapper_label(name: &str) -> Option<&'static str> {
     }
 }
 
-/// Parse a raw logji fact string into `(wrapper, relation, args)`. `None` for
+/// Parse a raw nibli-reason fact string into `(wrapper, relation, args)`. `None` for
 /// anything that is not the `relation(args)` / `Wrapper(relation(args))` form.
 pub(crate) fn parse_raw_fact(raw: &str) -> Option<(Option<String>, String, Vec<String>)> {
     let s = raw.trim();

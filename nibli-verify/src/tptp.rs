@@ -1,4 +1,4 @@
-//! Structural translation of a nibli `LogicBuffer` (the smuni FOL IR) into a TPTP
+//! Structural translation of a nibli `LogicBuffer` (the nibli-semantics FOL IR) into a TPTP
 //! FOF problem for the Vampire oracle.
 //!
 //! This map is only sound for the Horn / NAF-free fragment — callers MUST gate each

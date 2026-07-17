@@ -2,7 +2,7 @@
 //!
 //! `pilji` (multiply), `sumji` (add), and `dilcu` (divide) each assert the
 //! relation `x1 = x2 op x3`. This is the SINGLE shared evaluation used by both
-//! the logji engine fast path (compiled into the WASM guest) and the gasnu host
+//! the nibli-reason engine fast path (compiled into the WASM guest) and the nibli-host host
 //! fast path — `nibli-types` is the one crate both depend on. The Python
 //! reference backend (`python/nibli_backend.py`) mirrors the same semantics.
 
@@ -20,7 +20,7 @@ pub fn eval_arithmetic(relation: &str, args: &[f64]) -> Option<bool> {
     let (&x1, &x2, &x3) = (args.first()?, args.get(1)?, args.get(2)?);
     // A non-finite operand (a literal too large for an f64 overflows to ±inf) makes the
     // relation meaningless — DECLINE (None) rather than return a confident TRUE/FALSE.
-    // logji turns this into `Unknown(NonFinite)`; the gasnu host fast path declines too.
+    // nibli-reason turns this into `Unknown(NonFinite)`; the nibli-host host fast path declines too.
     let nonfinite_operand = !x1.is_finite() || !x2.is_finite() || !x3.is_finite();
     let result = match relation {
         "product" => x2 * x3,
@@ -82,7 +82,7 @@ mod tests {
     #[test]
     fn non_finite_operand_or_result_declines() {
         let inf = f64::INFINITY;
-        // A non-finite operand makes the relation undetermined → None (logji surfaces
+        // A non-finite operand makes the relation undetermined → None (nibli-reason surfaces
         // Unknown(NonFinite)); never a confident TRUE/FALSE.
         assert_eq!(eval_arithmetic("sum", &[inf, inf, 1.0]), None);
         assert_eq!(eval_arithmetic("product", &[1.0, inf, 2.0]), None);

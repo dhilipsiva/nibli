@@ -112,15 +112,32 @@ compiler-guided rename; zero wire/serialization/public-API/behavior change (veri
 methods private, protocol/store/engine carry none of this vocab, no dictionary VALUES
 in the two crates).
 
-STILL DE-LOJBANIZING (a holistic identifier/comment pass — cosmetic, post-flip):
-`xorlo`/`goi` named-feature test names and the broader-cmavo (poi/fa/fio/giha/du)
-comments + test-fn names in the OTHER crates
-(nibli-reason/render/host/formalize/engine/verify). The predicate-name VALUES (IR
-strings, proof-trace output, the wire protocol, da/de/di, du, zo'e) are DONE (milestone
-below), and the build-time word-class identifiers (`gismu`/`cmavo` build locals, the
-`GISMU_*`/`CMAVO_*` consts, `GISMU_TO_ALIAS`, `AliasEntry.gismu`) DIED with build.rs at
-the committed-corpus milestone; the remaining identifier tail is ITEMIZED as the
-mechanical-refactor bullet below.
+**MECHANICAL IDENTIFIER REFACTOR: LANDED (2026-07-17, 3 commits — the last
+de-Lojbanization pass; book/TODO.md timing gate 4(b) CLEARED, so the book migration is
+unblocked).** Every remaining Lojban identifier in CODE went English: the `logji_logic`
+alias (~78 sites) → `logic`, `fanva_translate` → `formalize_translate`, the du-named
+source fns → equals (`flat_equals_pair`, `equals_substitution_note`, the
+`ProofRule::EqualitySubstitution.equality_facts` field — same-build-safe serde key),
+the write-only abstraction-key canon tags (pu/ca/ba/ei/ee → past/now/future/oblig/perm),
+and **`le_domain_` → `the_domain_`** (user-approved emitted-IR string change; contained
+to nibli-semantics — no corpus/golden/cross-crate pin). ~91 test-fn names + ~60
+test-locals renamed per construct (du→equals, xorlo→existential-import as a set,
+giha→conjoined_tails, ganai→implication, poi/noi→where/incidental, fio→via_modal,
+se/te/xe→x2/x3/x5_conversion, content words→corpus names;
+`kr_semantics_seam_conformance`, `load_corpus_like_host`). Comment sweep: the
+logji/smuni/lasna/gasnu/gerna codenames → crate names across all crates (quote-aware —
+string VALUES protected; `smuni`/`gerna` are ALSO corpus provenance values), stale
+PHF/dual-mode/go'i-era comments rewritten, the `.nibli` corpus headers de-Lojbanized
+(comment-only; `# =>` verdict annotations untouched), proofs/*.lean `logji/src` paths →
+`nibli-reason/src`, the Formalize gate chip label "smuni" → "semantics"
+(`GateError::gate()` + `GATE_ORDER` moved together), LOGIC_IR/NIBLI_KR/GUARANTEES
+follow. DELIBERATE RESIDUALS: `source_gismu`/`by_provenance(gismu)` + lexigen
+(sanctioned provenance API), `"gasnu-local"` store namespace (persisted-store
+compatibility), the gismu STRING fixtures in nibli-reason's flat tests (arbitrary
+relation names that must NOT resolve — an English spelling would flip
+`SignatureSource`) and the formula-gloss comments that document those fixtures
+(kept consistent with the strings), and explicit-history notes (THE DROP, xorlo-rule
+provenance at canonical definition sites).
 **DICTIONARY FOLD: LANDED (2026-07-13, 2 commits).** `nibli-kr-dictionary` folded
 into `nibli-lexicon` and deleted. The merged `nibli-lexicon/build.rs` parses
 `dictionary-en.json` ONCE, building `DICTIONARY` + an in-loop `arity_map`
@@ -209,20 +226,6 @@ was a meaning trap); the L4 lint echoes the committed structure on first use.
 (deletion rides the site-migration bullet). Zero verdict drift across the series: full
 ci + ci-wasm green per commit (determinism corpus pinned identically on
 native/Wasmtime/V8).
-- **Mechanical identifier refactor (Lojban names in CODE — cosmetic, zero behavior)** —
-  function/variable/struct/trait names (and substrings) still carry the Lojban grammar
-  vocabulary outside nibli-kr/nibli-semantics: `bridi`/`sumti`/`selbri`/`tanru`-class
-  identifier remnants, `xorlo`/`goi` named-feature test names, and the broader-cmavo
-  (poi/fa/fio/giha/du) comments + test-fn names across
-  nibli-reason/render/host/formalize/engine/verify/lexicon. (The `gismu`/`cmavo`/`lujvo`
-  build locals, the `GISMU_*`/`CMAVO_*` consts, and the cross-crate-public
-  `GISMU_TO_ALIAS` + `AliasEntry.gismu` DIED with build.rs at the committed-corpus
-  milestone — `AliasEntry.gismu` became `PredicateEntry.source_gismu`; nothing of that
-  class remains here.) Same compiler-guided method
-  as the earlier sweeps — delimiter-safe patterns only (bridi/sumti/selbri/gismu are ALSO
-  dictionary VALUES; never bare-token sweep). SEQUENCING: the LAST gate before the book
-  migration (book/TODO.md timing gate 4(b); 4(a), the residual user-facing Lojban, LANDED
-  2026-07-17) — the book quotes engine source, so quoted identifiers re-extract after this.
 - **demo site migration (cross-repo, dhilipsiva.dev — SEPARATE Claude session)** —
   the copy-pastable prompt was handed to the user 2026-07-12. URGENCY UP since THE
   DROP landed (2026-07-13, user-accepted): the deployed /nibli demo is BROKEN —

@@ -37,7 +37,7 @@
     candidate list, so it is constructible from a real (finite) trace.
 
   Bridged to the real recorded traces by the `trace_soundness_conformance` validator in
-  `logji/src/tests.rs` (every recorded trace is a valid certificate ⇒, with this theorem, its
+  `nibli-reason/src/tests.rs` (every recorded trace is a valid certificate ⇒, with this theorem, its
   conclusion holds in the model). Checked by `lean proofs/Trace.lean` (`just verify-proofs`). No
   mathlib — prelude only.
 -/

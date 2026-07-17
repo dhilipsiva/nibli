@@ -1,4 +1,4 @@
-//! First-Order Logic types produced by the smuni compiler and consumed by logji.
+//! First-Order Logic types produced by the nibli-semantics compiler and consumed by nibli-reason.
 //!
 //! Flat index-based representation: `LogicBuffer` contains a `nodes` array
 //! of `LogicNode` variants, referenced by `u32` indices.
@@ -12,7 +12,7 @@ pub enum LogicalTerm {
     Variable(String),
     /// A ground constant (e.g., entity names from `la`).
     Constant(String),
-    /// An opaque description reference (from `le` gadri).
+    /// An opaque description reference (from `le` determiner).
     Description(String),
     /// Unspecified placeholder (from `zo'e`).
     Unspecified,
@@ -98,7 +98,7 @@ impl LogicBuffer {
     /// so an `.i`-separated multi-sentence compile becomes N independently
     /// assertable / retractable facts.
     ///
-    /// The split is exactly the `roots` boundary: smuni emits **one root per bare
+    /// The split is exactly the `roots` boundary: nibli-semantics emits **one root per bare
     /// `.i` sentence**, but a **single root** (an `AndNode`/`OrNode`) for logical
     /// connectives (`.ije`/`.ija`/`ge…gi`). So bare `.i` splits into N buffers while
     /// a connective stays as one compound fact — automatically, no text parsing.
@@ -206,9 +206,9 @@ impl QueryResult {
 /// Proof rule applied at a single proof step.
 ///
 /// This IS the serde wire type (named fields, `#[serde(tag = "type")]`): the same
-/// type crosses every native boundary (logji → nibli-engine/nibli-wasm → JSON →
+/// type crosses every native boundary (nibli-reason → nibli-engine/nibli-wasm → JSON →
 /// nibli-ui). `nibli-protocol` re-exports it and owns only the JSON helpers; the WIT
-/// boundary (nibli-pipeline/gasnu) keeps its generated tuple-shaped mirror by necessity.
+/// boundary (nibli-pipeline/nibli-host) keeps its generated tuple-shaped mirror by necessity.
 /// The serde attributes are the JSON contract — do not rename a field or tag.
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -282,14 +282,14 @@ pub struct ProofTrace {
     pub root: u32,
     /// True if any step in this trace used negation-as-failure (CWA assumption).
     /// Under open-world semantics, NAF-dependent conclusions would be Unknown.
-    /// Populated by logji at trace construction; serialized over the wire.
+    /// Populated by nibli-reason at trace construction; serialized over the wire.
     #[cfg_attr(feature = "serde", serde(default))]
     pub naf_dependent: bool,
     /// True if the verdict is a CLOSED-WORLD `FALSE`: not derivable from the KB
     /// (the closed-world assumption), as opposed to a numeric/arithmetic FALSE that
     /// was genuinely DECIDED (e.g. `5 dunli 3`). A closed-world FALSE is the dual of
     /// `naf_dependent` — under open-world semantics it would be Unknown, not a proof
-    /// of the negation. Computed by logji from the verdict (it needs to distinguish
+    /// of the negation. Computed by nibli-reason from the verdict (it needs to distinguish
     /// FALSE from Unknown, both of which have a non-holding root), so unlike
     /// `naf_dependent` it cannot be recomputed from the steps alone.
     #[cfg_attr(feature = "serde", serde(default))]
@@ -367,7 +367,7 @@ pub struct FactSummary {
 ///   for a new `ProofRule` variant (the readable rendering of the wire rule)
 /// - `wit/world.wit` — the `logical-term` / `proof-rule` variant lists, then
 ///   regenerate bindings with `cargo component build`
-/// - for a new `LogicNode`/`LogicalTerm` variant: logji lowering + evaluation,
+/// - for a new `LogicNode`/`LogicalTerm` variant: nibli-reason lowering + evaluation,
 ///   `nibli-render/src/logic.rs` (`render_logic_buffer` English + `render_logic_tree`
 ///   structural tree) + `term.rs` (IR back-translation rendering), and
 ///   the serde persistence round-trip test
@@ -445,7 +445,7 @@ mod tests {
 
     #[test]
     fn split_roots_multi_returns_one_buffer_per_root() {
-        // Two independent roots (the bare-`.i` shape smuni emits).
+        // Two independent roots (the bare-`.i` shape nibli-semantics emits).
         let buf = LogicBuffer {
             nodes: vec![pred("gerku"), pred("mlatu")],
             roots: vec![0, 1],

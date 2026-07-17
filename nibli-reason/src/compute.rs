@@ -59,7 +59,7 @@ pub(super) fn try_arithmetic_evaluation(
     let x1 = extract_num_value(args.get(0)?, subs)?;
     let x2 = extract_num_value(args.get(1)?, subs)?;
     let x3 = extract_num_value(args.get(2)?, subs)?;
-    // The relation match + tolerant-equality comparison is shared with the gasnu
+    // The relation match + tolerant-equality comparison is shared with the nibli-host
     // host fast path (and the Python reference backend) so the three agree.
     nibli_types::eval_arithmetic(rel, &[x1, x2, x3])
 }
@@ -93,7 +93,7 @@ pub(super) fn witness_term_to_logical_term(gt: &GroundTerm) -> LogicalTerm {
 
 // ─── Decomposed numeric-group evaluation ────────────────────────────────────
 //
-// Neo-Davidsonian event decomposition compiles a surface numeric bridi to
+// Neo-Davidsonian event decomposition compiles a surface numeric proposition to
 // `∃ev. head(ev) ∧ rel_x1(ev, a) ∧ rel_x2(ev, b) ∧ ...` — the head
 // (ComputeNode for registered compute predicates, a plain Predicate for the
 // query-time comparisons zmadu/mleca/dunli) carries ONLY the event variable;
@@ -117,12 +117,12 @@ pub(super) struct NumericGroupVerdict {
 /// guard): the body's And-tree must consist of one head — `ComputeNode(rel,
 /// [Var ev])`, or `Predicate(rel, [Var ev])` with rel ∈ {zmadu, mleca, dunli}
 /// — plus role predicates `rel_xN(Var ev, arg)` for the same rel with
-/// contiguous N starting at 1. Any other conjunct (tanru modifier roles,
+/// contiguous N starting at 1. Any other conjunct (pair modifier roles,
 /// tense nodes in hand-built buffers, a different event variable) returns
 /// None and normal evaluation proceeds, so asserted facts stay reachable.
 ///
 /// Routing is by RELATION NAME, arithmetic-first (matching the documented
-/// design, gasnu's host evaluate(), and the batch path): comparison →
+/// design, nibli-host's host evaluate(), and the batch path): comparison →
 /// built-in arithmetic → (ComputeNode heads only) external backend dispatch.
 /// A backend error degrades to None (store/NAF fallback), so no-backend
 /// configs neither error nor hang.
@@ -209,7 +209,7 @@ pub(super) fn try_evaluate_numeric_group(
             _ => return None, // unrelated conjunct — not a pure group
         }
     }
-    // Roles must be contiguous x1..=xN (smuni always emits the full arity).
+    // Roles must be contiguous x1..=xN (nibli-semantics always emits the full arity).
     if roles.is_empty() || roles.iter().any(|r| r.is_none()) {
         return None;
     }

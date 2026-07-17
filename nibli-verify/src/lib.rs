@@ -3,8 +3,8 @@
 //! For each `(KB, query)` case in the cleanly-mappable Horn / NAF-free fragment, it
 //! drives nibli to a definitive verdict, exports the same compiled FOL IR to TPTP, and
 //! checks the verdict against classical entailment as decided by Vampire. A mismatch is
-//! a soundness signal: a bug in the reasoner (logji) produced a verdict the declared
-//! semantics of smuni's IR does not support. Cases outside the fragment are skipped
+//! a soundness signal: a bug in the reasoner (nibli-reason) produced a verdict the declared
+//! semantics of nibli-semantics's IR does not support. Cases outside the fragment are skipped
 //! conservatively — never mis-judged.
 //!
 //! Two oracles, two fragments:
@@ -389,7 +389,7 @@ pub fn run_corpus_slice(label: &str, corpus: &str, cfg: &OracleConfig) -> Report
     }
 
     // 2. Keep only predicates that form a parseable, mappable atomic query (drops any
-    //    tanru-derived compound name cleanly — it won't resolve as a bare predicate;
+    //    pair-derived compound name cleanly — it won't resolve as a bare predicate;
     //    in the fallback dictionary build this also drops long-tail vocabulary, since
     //    KR fails closed on unknown names).
     let queryable: Vec<String> = preds

@@ -2,7 +2,7 @@
   Mechanized proof of nibli's SCC DECOMPOSITION (Track B, phase 3).
 
   The engine permits negation-as-failure only in stratified programs, enforced by
-  `check_stratification` (`logji/src/rules.rs` :741), which groups the predicate dependency graph
+  `check_stratification` (`nibli-reason/src/rules.rs` :741), which groups the predicate dependency graph
   into strongly-connected components via Tarjan's algorithm (`compute_sccs` :647) and rejects a
   negative edge whose endpoints lie in one SCC.
 
@@ -16,7 +16,7 @@
        exists (`canonicalComp_correct`). This is the specification Tarjan must compute; verifying
        the imperative traversal (lowlink/stack) directly is out of scope — the real `compute_sccs`
        output is tied to this mutual-reachability spec by the corpus conformance test
-       `compute_sccs_matches_scc_spec` in `logji/src/rules.rs`.
+       `compute_sccs_matches_scc_spec` in `nibli-reason/src/rules.rs`.
 
     2. The SCC-membership check equals the proven criterion: `SccRejects` (a negative edge with both
        endpoints in one SCC — exactly `check_stratification`) is EQUIVALENT to `RejectsByCriterion`

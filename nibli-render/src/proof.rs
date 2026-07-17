@@ -82,7 +82,7 @@ pub fn render_proof_text(trace: &ProofTrace, register: Register) -> String {
     render_proof_text_indented(trace, register, 0)
 }
 
-/// As [`render_proof_text`], with a base indentation (gasnu indents by one).
+/// As [`render_proof_text`], with a base indentation (nibli-host indents by one).
 pub fn render_proof_text_indented(
     trace: &ProofTrace,
     _register: Register,

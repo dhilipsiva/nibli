@@ -132,7 +132,7 @@ fn negated_ground_fact_then_contrary_positive_is_a_contradiction() {
     }
 }
 
-// ─── smuni silently discards meaning (todo.md: HIGH) ────────────────────────
+// ─── nibli-semantics silently discards meaning (todo.md: HIGH) ────────────────────────
 
 #[test] // FIXED (rel clause on name conjoined into matrix): promoted to a live guard.
 fn rel_clause_on_name_must_not_be_dropped() {
@@ -180,10 +180,10 @@ fn fa_tag_beyond_arity_must_error_not_silently_drop() {
     );
 }
 
-#[test] // FIXED (tanru decomposition emits Unspecified roles; firewall counts per shared event): promoted.
+#[test] // FIXED (pair decomposition emits Unspecified roles; firewall counts per shared event): promoted.
 fn pair_in_where_clause_must_not_be_falsely_rejected() {
     let engine = fresh_engine();
-    // "a dog that runs fast goes" — valid Lojban; `sutra bajra` is a tanru inside the poi clause.
+    // "a dog that runs fast goes" — valid Lojban; `sutra bajra` is a pair inside the poi clause.
     assert!(
         engine
             .assert_text("goes(some dog where fast runs).")
@@ -225,12 +225,12 @@ fn da_after_universal_description_must_not_lose_the_rule() {
     );
 }
 
-// ─── gerna flattener wrong body indices (todo.md: HIGH) ─────────────────────
+// ─── front-end flattener wrong body indices (todo.md: HIGH) ─────────────────────
 // The Abstraction (lib.rs:244) and Restricted (lib.rs:320) arms snapshot
 // `sentences.len()` BEFORE recursing and discard push_sentence's return value
 // (the Connected arm at lib.rs:146-147 does it right). When the body itself
 // pushes a nested sentence, body_idx points at the WRONG (nested) sentence — and
-// it is always in-range, so smuni miscompiles silently. We pin via compile_debug:
+// it is always in-range, so nibli-semantics miscompiles silently. We pin via compile_debug:
 // the abstraction's body predicate must actually appear in the compiled FOL.
 
 #[test] // FIXED (flattener uses push_sentence's return value for body indices): promoted.
@@ -239,7 +239,7 @@ fn abstraction_body_over_connected_must_reference_real_body() {
     // The `lo nu ...` abstraction body is `ganai la .adam. gerku gi la .adam. klama`.
     // Its compiled form must contain BOTH the antecedent (gerku) and the
     // consequent (klama). Today the flattener binds the abstraction to the
-    // antecedent bridi alone, so `klama` is dropped entirely.
+    // antecedent proposition alone, so `klama` is dropped entirely.
     let buf = engine
         .compile_debug("desires(me, event { dog(Adam) -> goes(Adam) }).")
         .expect("should compile");
@@ -255,7 +255,7 @@ fn abstraction_body_over_rel_clause_must_reference_real_body() {
     let engine = fresh_engine();
     // Abstraction body is `lo gerku poi ke'a barda cu klama`; the head predicate
     // is `klama`. The flattener instead binds the abstraction to the `barda`
-    // rel-clause bridi, so `klama` is dropped from the compiled FOL.
+    // rel-clause proposition, so `klama` is dropped from the compiled FOL.
     let buf = engine
         .compile_debug("desires(me, event { goes(some dog where big) }).")
         .expect("should compile");
@@ -319,11 +319,11 @@ fn duplicate_ground_fact_survives_retracting_one_copy() {
 }
 
 // ─── ∃-heavy nested-abstraction query blowup (Ch 12 consent case study) ─────
-// A universal rule whose restrictor and conclusion both nest a full bridi
+// A universal rule whose restrictor and conclusion both nest a full proposition
 // inside `lo nu` (11 ∀-dependent Skolems), queried with an indefinite `lo`
 // subject: the entailment search generate-and-tested every query existential
 // over the full domain × SkolemFn-registry cartesian (members^k). The 3-fact
-// KB below took ~40s in a native debug build and exhausted gasnu's default
+// KB below took ~40s in a native debug build and exhausted nibli-host's default
 // 10B WASM fuel — which is how the trap bricked the REPL session and
 // corrupted the Ch 12 captured transcripts. The query runs on a watchdog
 // thread so a complexity regression fails cleanly on timeout instead of

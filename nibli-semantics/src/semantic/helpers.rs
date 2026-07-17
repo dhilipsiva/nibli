@@ -167,7 +167,7 @@ impl SemanticCompiler {
         }
     }
 
-    /// Extracts the head gismu or lujvo name from a possibly nested predicate.
+    /// Extracts the head relation name from a possibly nested predicate.
     pub(crate) fn get_predicate_head_name<'a>(
         &self,
         predicate_id: u32,
@@ -297,7 +297,7 @@ impl SemanticCompiler {
                 LogicalTerm::Constant(self.interner.get_or_intern(n.as_str())),
                 vec![],
             ),
-            Argument::Description((gadri, desc_id)) => match gadri {
+            Argument::Description((determiner, desc_id)) => match determiner {
                 Determiner::Indefinite => {
                     let var = self.fresh_var();
                     (
@@ -345,9 +345,9 @@ impl SemanticCompiler {
                     )
                 }
             },
-            Argument::QuantifiedDescription((count, gadri, desc_id)) => {
+            Argument::QuantifiedDescription((count, determiner, desc_id)) => {
                 let var = self.fresh_var();
-                let kind = match gadri {
+                let kind = match determiner {
                     Determiner::Definite => QuantifierKind::ExactCountLe(*count),
                     _ => QuantifierKind::ExactCount(*count),
                 };

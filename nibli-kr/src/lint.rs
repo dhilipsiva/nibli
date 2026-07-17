@@ -6,7 +6,7 @@
 //!
 //! Design: a DATA-RETURNING pass, separate from `parse_checked` (which stays
 //! fail-closed and note-free — no caller changes). Surfaces opt in: the nibli
-//! REPL and the lasna session print each note as `[Note: …]` (the
+//! REPL and the nibli-pipeline session print each note as `[Note: …]` (the
 //! `[Skolem]`/`[Rule]` guest-echo precedent, verbose-gated); nibli-ui carries
 //! them per KB line on `nibli_protocol::LineResult::notes`. Surfaces whose
 //! stdout is data (nibli-validate, the verify harness) simply

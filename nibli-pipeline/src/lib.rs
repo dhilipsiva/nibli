@@ -1,7 +1,7 @@
-//! Lasna (fasten/orchestrator) WASM component: chains nibli-kr → smuni → logji.
+//! nibli-pipeline (fasten/orchestrator) WASM component: chains nibli-kr → nibli-semantics → nibli-reason.
 //!
-//! Single WASM component that calls nibli-kr/nibli-semantics/logji as internal Rust crate
-//! dependencies. Provides a high-level [`Session`] resource via the `lasna` WIT
+//! Single WASM component that calls nibli-kr/nibli-semantics/nibli-reason as internal Rust crate
+//! dependencies. Provides a high-level [`Session`] resource via the `nibli-pipeline` WIT
 //! export interface.
 
 #[allow(warnings)]
@@ -13,17 +13,17 @@ use bindings::nibli::engine::compute_backend as cb;
 use bindings::nibli::engine::error_types as export_err;
 use bindings::nibli::engine::logic_types as export_logic;
 
-// Canonical pipeline types (shared across nibli-kr/nibli-semantics/logji)
+// Canonical pipeline types (shared across nibli-kr/nibli-semantics/nibli-reason)
 use nibli_types::error as pipeline_err;
 use nibli_types::logic;
 
 use std::cell::RefCell;
 use std::collections::HashSet;
 
-/// WIT component implementation for the `lasna` interface.
+/// WIT component implementation for the `nibli-pipeline` interface.
 struct NibliPipeline;
 
-/// A user-facing session wrapping the full nibli-kr → smuni → logji pipeline.
+/// A user-facing session wrapping the full nibli-kr → nibli-semantics → nibli-reason pipeline.
 pub struct Session {
     kb: nibli_reason::KnowledgeBase,
     compute_predicates: RefCell<HashSet<String>>,
@@ -37,7 +37,7 @@ pub struct Session {
     verbose: bool,
 }
 
-// ─── Type conversion: logji → lasna export boundary ───
+// ─── Type conversion: nibli-reason → nibli-pipeline export boundary ───
 
 fn convert_logical_term_to_export(t: &logic::LogicalTerm) -> export_logic::LogicalTerm {
     match t {
@@ -49,7 +49,7 @@ fn convert_logical_term_to_export(t: &logic::LogicalTerm) -> export_logic::Logic
     }
 }
 
-/// Convert one logji `LogicNode` to the WIT export node (pure 1:1 — the WIT
+/// Convert one nibli-reason `LogicNode` to the WIT export node (pure 1:1 — the WIT
 /// `logic-node` variant mirrors `nibli_types::logic::LogicNode` exactly).
 fn convert_logic_node_to_export(n: &logic::LogicNode) -> export_logic::LogicNode {
     use export_logic::LogicNode as E;
@@ -77,7 +77,7 @@ fn convert_logic_node_to_export(n: &logic::LogicNode) -> export_logic::LogicNode
     }
 }
 
-/// Convert the full logji `LogicBuffer` to the WIT export buffer (typed IR
+/// Convert the full nibli-reason `LogicBuffer` to the WIT export buffer (typed IR
 /// crosses the boundary; the host renders it — no S-expression string).
 fn convert_logic_buffer_to_export(buf: &logic::LogicBuffer) -> export_logic::LogicBuffer {
     export_logic::LogicBuffer {
@@ -96,7 +96,7 @@ fn convert_logical_term_from_export(t: &export_logic::LogicalTerm) -> logic::Log
     }
 }
 
-/// Convert one WIT import node back to the logji `LogicNode` (pure 1:1 inverse
+/// Convert one WIT import node back to the nibli-reason `LogicNode` (pure 1:1 inverse
 /// of `convert_logic_node_to_export`; `CountNode`'s middle field is a COUNT,
 /// not a node index — copied verbatim, never remapped).
 fn convert_logic_node_from_export(n: &export_logic::LogicNode) -> logic::LogicNode {
@@ -125,7 +125,7 @@ fn convert_logic_node_from_export(n: &export_logic::LogicNode) -> logic::LogicNo
     }
 }
 
-/// Convert a WIT import buffer back to the logji `LogicBuffer` (inverse of
+/// Convert a WIT import buffer back to the nibli-reason `LogicBuffer` (inverse of
 /// `convert_logic_buffer_to_export`) — the `assert-buffer-with-id` replay path.
 fn convert_logic_buffer_from_export(buf: &export_logic::LogicBuffer) -> logic::LogicBuffer {
     logic::LogicBuffer {
@@ -169,7 +169,7 @@ fn convert_query_result_to_export(result: &logic::QueryResult) -> export_logic::
     }
 }
 
-// logji's `ProofRule` is now the named-field canonical type; the WIT export type
+// nibli-reason's `ProofRule` is now the named-field canonical type; the WIT export type
 // stays tuple-shaped (generated from world.wit), so this maps named fields → tuples.
 fn convert_proof_rule(r: &logic::ProofRule) -> export_logic::ProofRule {
     match r {
@@ -249,10 +249,10 @@ fn convert_proof_trace(t: logic::ProofTrace) -> export_logic::ProofTrace {
         root: t.root,
         // Compute the closed-world / NAF note once, here in the guest, so the
         // host need not recompute it from the steps (single source of truth:
-        // logji's ProofTrace::has_naf_dependency).
+        // nibli-reason's ProofTrace::has_naf_dependency).
         naf_dependent: t.has_naf_dependency(),
         // The dual CWA-FALSE flag needs the verdict (not recomputable from steps),
-        // so it is read from the field logji already populated.
+        // so it is read from the field nibli-reason already populated.
         cwa_false: t.cwa_false,
     }
 }
@@ -299,7 +299,7 @@ fn convert_pipeline_error(e: pipeline_err::NibliError) -> export_err::NibliError
     }
 }
 
-// ─── Compute dispatch bridge (logji → lasna WIT import) ───
+// ─── Compute dispatch bridge (nibli-reason → nibli-pipeline WIT import) ───
 
 fn eval_via_host(rel: &str, args: &[logic::LogicalTerm]) -> Result<bool, String> {
     let converted: Vec<export_logic::LogicalTerm> =
@@ -360,8 +360,8 @@ impl Session {
         let buf = compile_pipeline(&input, &self.compute_predicates.borrow())?;
         self.kb
             .assert_fact_with_id(buf, input, id)
-            // The assert is the reasoning stage (buffer already past smuni);
-            // logji's `assert_fact_with_id` returns a String, so wrap as Reasoning.
+            // The assert is the reasoning stage (buffer already past nibli-semantics);
+            // nibli-reason's `assert_fact_with_id` returns a String, so wrap as Reasoning.
             .map_err(export_err::NibliError::Reasoning)?;
         Ok(())
     }
@@ -400,8 +400,8 @@ impl Session {
             Some(i) => {
                 self.kb
                     .assert_fact_with_id(buf, label, i)
-                    // The assert is the reasoning stage (buffer already past smuni);
-                    // logji's `assert_fact_with_id` returns a String, so wrap as Reasoning.
+                    // The assert is the reasoning stage (buffer already past nibli-semantics);
+                    // nibli-reason's `assert_fact_with_id` returns a String, so wrap as Reasoning.
                     .map_err(export_err::NibliError::Reasoning)?;
                 Ok(i)
             }
@@ -415,11 +415,11 @@ impl Session {
 
 impl GuestSession for Session {
     fn new() -> Self {
-        // Register compute dispatch PER-KB so logji can call the host's
+        // Register compute dispatch PER-KB so nibli-reason can call the host's
         // compute-backend (was a thread-local global — now per-instance).
         let kb = nibli_reason::KnowledgeBase::new();
         kb.set_compute_dispatch(eval_via_host, batch_eval_via_host);
-        // The gasnu REPL opts the guest INTO verbose stdout — the per-assertion
+        // The nibli-host REPL opts the guest INTO verbose stdout — the per-assertion
         // `[Skolem]`/`[Rule]`/`[Constraint]` diagnostics — unlike the native
         // nibli-engine library, which stays quiet by default. The host forwards
         // `NIBLI_QUIET=1` into the WASI environment to suppress that bookkeeping

@@ -4,12 +4,12 @@
 #   (a) native  — nibli-engine (`determinism_corpus_nibli_kr_native`,
 #                 nibli-verify/tests/nibli_kr_seam_gate.rs, part of
 #                 `just verify-nibli-kr-seam`)
-#   (b) wasmtime — the lasna WASI component under gasnu
+#   (b) wasmtime — the nibli-pipeline WASI component under nibli-host
 #                 (`smoke-host-determinism`, part of `ci-wasm`)
 #   (c) v8      — the wasm32-unknown-unknown build under node
 #                 (`nibli-wasm/tests/determinism.rs`, `just verify-wasm-node`)
 #
-# Format: gasnu script-mode lines (asserts, `? <query>`, `:retract <k>` where k is
+# Format: nibli-host script-mode lines (asserts, `? <query>`, `:retract <k>` where k is
 # the 0-based assert index == the engine fact id). Every query is immediately
 # followed by a `# => <verdict>` annotation — the pinned ground truth, in
 # `display_query_result` form ("TRUE", "FALSE", "UNKNOWN (cycle-cut)", …). All three

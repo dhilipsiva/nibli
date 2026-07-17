@@ -25,7 +25,7 @@ const SCHEMA_VERSION: u32 = 2;
 
 /// A logical term, mirroring WIT `logical-term` for serialization.
 ///
-/// Still used by `StoredAssertion::Direct` (gasnu's direct-fact injection path).
+/// Still used by `StoredAssertion::Direct` (nibli-host's direct-fact injection path).
 /// nibli-engine no longer mirrors the full logic graph here — it persists
 /// `nibli_types::logic::LogicBuffer` directly (serde-derived) as the opaque payload.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -43,7 +43,7 @@ pub struct StoredFactRecord {
     pub id: u64,
     /// Opaque payload — caller decides format.
     /// nibli-engine: postcard-serialized `nibli_types::logic::LogicBuffer`.
-    /// gasnu: postcard-serialized `StoredAssertion`.
+    /// nibli-host: postcard-serialized `StoredAssertion`.
     pub payload: Vec<u8>,
     /// Human-readable label (Lojban source or `:assert rel args`).
     pub label: String,
@@ -62,7 +62,7 @@ fn decode_stored_fact_record(bytes: &[u8]) -> Result<StoredFactRecord, StoreErro
     Ok(postcard::from_bytes(bytes)?)
 }
 
-/// Assertion type for gasnu (WASM host) persistence.
+/// Assertion type for nibli-host (WASM host) persistence.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum StoredAssertion {
     /// LEGACY: Lojban source text — replayed by recompiling via the WIT

@@ -2,7 +2,7 @@
 //!
 //! nibli KR is a predicate-call language (`goes(me, some market).`) that compiles
 //! to the same `nibli_types::ast::AstBuffer` the Lojban parser produces,
-//! reusing nibli-semantics/logji and every soundness gate unchanged. The language is
+//! reusing nibli-semantics/nibli-reason and every soundness gate unchanged. The language is
 //! specified in repo-root `NIBLI_KR.md`; the implementation program is
 //! tracked in repo-root `TODO.md`.
 //!

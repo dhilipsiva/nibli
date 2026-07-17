@@ -43,7 +43,7 @@ fn equals_equivalence_unprovable_query_must_not_abort() {
     let engine = fresh_engine();
 
     // Inject `du(alis, bob)` directly (du is not surface-parseable). This unions
-    // {alis, bob} into one equivalence class in logji's union-find.
+    // {alis, bob} into one equivalence class in nibli-reason's union-find.
     engine
         .assert_fact_direct(
             "equals".to_string(),

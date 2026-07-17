@@ -1,15 +1,15 @@
-//! Known-failure backlog — raw-FOL (logji public contract) defects from the
+//! Known-failure backlog — raw-FOL (nibli-reason public contract) defects from the
 //! 2026-06-10 deep code-review panel (see `todo.md` → "Deep code-review panel
 //! findings" and `code-review-panel-2026-06-10.json`).
 //!
 //! These bugs are NOT reachable through surface Lojban today — they are guarded
-//! by incidental, unenforced invariants of the smuni→logji pipeline (e.g. every
-//! smuni-compiled conclusion atom carries a rule-unique SkolemFn base name, so
+//! by incidental, unenforced invariants of the nibli-semantics→nibli-reason pipeline (e.g. every
+//! nibli-semantics-compiled conclusion atom carries a rule-unique SkolemFn base name, so
 //! two surface rules never unify against the same conclusion). They ARE reachable
-//! through logji's documented public FOL interface (`KnowledgeBase::assert_fact` /
-//! `query_entailment` over a hand-built `LogicBuffer`), exactly as logji's own
+//! through nibli-reason's documented public FOL interface (`KnowledgeBase::assert_fact` /
+//! `query_entailment` over a hand-built `LogicBuffer`), exactly as nibli-reason's own
 //! inline tests build rules and facts — and as any embedder feeding plain FOL
-//! would hit them. So they live in this logji-level integration file rather than
+//! would hit them. So they live in this nibli-reason-level integration file rather than
 //! the engine-level `known_failures.rs`.
 //!
 //! Each test encodes the DESIRED (post-fix) behaviour, so it FAILS today (the bug
@@ -36,7 +36,7 @@ fn fact(predicate: &str, entity: &str) -> LogicBuffer {
 }
 
 /// Single-variable material-conditional rule `∀x. P(x) → Q(x)`, i.e.
-/// `ForAll(x, Or(Not(P(x)), Q(x)))` — the shape logji registers as a
+/// `ForAll(x, Or(Not(P(x)), Q(x)))` — the shape nibli-reason registers as a
 /// backward-chaining rule (one antecedent predicate, one conclusion predicate).
 fn rule(antecedent: &str, consequent: &str) -> LogicBuffer {
     let var = LogicalTerm::Variable("_x".to_string());
@@ -69,7 +69,7 @@ fn query(predicate: &str, entity: &str) -> LogicBuffer {
 // returns a wrong definitive False (and `¬ppp` returns a wrong True under NAF).
 //
 // Reachability note: surface Lojban cannot trigger this today only because every
-// smuni-compiled conclusion atom carries a rule-unique SkolemFn base name, so two
+// nibli-semantics-compiled conclusion atom carries a rule-unique SkolemFn base name, so two
 // rules never unify against the same conclusion. Raw FOL (this file) has no such
 // guard: here two rules both conclude `ppp(_x)`.
 

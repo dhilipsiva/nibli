@@ -194,7 +194,12 @@ guard rejecting a capitalized Name like `Me` that would co-refer with a pronoun)
 (converted-alias + compound English notes, `metabolized_by ↦ cuts⟨x1↔x2⟩` /
 `computer+user ↦ computer_user(user, computer, purpose)`) are all English. **The committed
 English corpus landed 2026-07-17**: the dictionary is Rust source (one build mode, no JSON at
-build time, gismu never resolve, compounds fail closed via committed entries). The
+build time, gismu never resolve, compounds fail closed via committed entries). **The
+mechanical identifier refactor also landed 2026-07-17** — the last Lojban identifiers,
+test names, codename comments, and corpus headers went English (deliberate residuals:
+the `source_gismu`/`by_provenance` provenance API, the gismu string fixtures in
+nibli-reason's flat tests, and explicit-history notes), clearing the book's timing gate
+4(b) — the book migration is unblocked. The
 remaining ceiling is **adoption** — chiefly a reproducible non-expert authoring study (round-trip
 fidelity + silent-mistranslation rate), which belongs to the book/UX track.
 

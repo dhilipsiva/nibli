@@ -1,13 +1,13 @@
 //! Per-thread native compute-backend dispatch for the engine.
 //!
-//! logji's per-KB dispatch hook is a bare `fn` pointer (Copy, no capture), so the
+//! nibli-reason's per-KB dispatch hook is a bare `fn` pointer (Copy, no capture), so the
 //! connection cannot live on the closure. It lives in a `thread_local!` here in
-//! the EMBEDDER (keeping logji global-state-free); the bare `native_eval_fn` /
+//! the EMBEDDER (keeping nibli-reason global-state-free); the bare `native_eval_fn` /
 //! `native_batch_eval_fn` read it. nibli-server runs reasoning in per-thread
 //! `spawn_blocking` workers, so the connection is per-worker (pooling, no races).
 //!
 //! The TCP client itself (connect / dispatch / batch + the JSON-Lines wire types)
-//! is shared with gasnu in `nibli_protocol::compute_client`. This module only
+//! is shared with nibli-host in `nibli_protocol::compute_client`. This module only
 //! holds the thread-local and converts the engine's `LogicalTerm` to `BackendArg`.
 
 use std::cell::RefCell;

@@ -45,7 +45,7 @@ pub struct IntegrityConstraint {
 /// head is NOT a Horn clause, so deriving either disjunct alone would be unsound.
 /// `check_contradictions` flags it when, for one consistent binding, every `conditions`
 /// template (P) holds in the positive store AND every disjunct group is EXPLICITLY
-/// denied (a stored `na <selbri>` covers it). The positive use ("is X a Q or an R?")
+/// denied (a stored `na <predicate>` covers it). The positive use ("is X a Q or an R?")
 /// is served by a disjunctive QUERY, not by this constraint.
 #[derive(Clone, Debug)]
 pub(super) struct DisjunctiveConstraint {
@@ -99,7 +99,7 @@ pub(super) fn get_node(buffer: &LogicBuffer, node_id: u32) -> Result<&LogicNode,
     })
 }
 
-/// Relation-name prefix of the opaque abstraction marker emitted by smuni for
+/// Relation-name prefix of the opaque abstraction marker emitted by nibli-semantics for
 /// `nu`/`du'u`/`ka`/`ni`/`si'o`. The marker is a content-hashed unary predicate
 /// over the abstraction referent; in `And(marker, body)` the right sibling is the
 /// abstraction BODY, which reasoning treats as OPAQUE — never collected as ground
@@ -107,7 +107,7 @@ pub(super) fn get_node(buffer: &LogicBuffer, node_id: u32) -> Result<&LogicNode,
 /// content) does not leak its inner predicates as free-standing truths. The marker
 /// itself IS reasoned over: same content → same marker (abstractions unify),
 /// different content → different marker (no spurious match). The body survives only
-/// for rendering. See smuni `apply_predicate` (Abstraction arm).
+/// for rendering. See nibli-semantics `apply_predicate` (Abstraction arm).
 pub(super) const ABSTRACTION_MARKER_PREFIX: &str = "__abs_";
 
 /// True if `node_id` is the opaque abstraction marker predicate.
@@ -133,7 +133,7 @@ pub enum GroundTerm {
     Constant(String),
     /// Floating-point number stored as bit pattern for Hash/Eq.
     Number(u64),
-    /// Opaque description term (le-gadri).
+    /// Opaque description term (le-determiner).
     Description(String),
     /// Unspecified argument (zo'e).
     Unspecified,
@@ -452,7 +452,7 @@ pub(super) fn build_typed_rule_label(
     }
 }
 
-/// A negated, event-decomposed restrictor (`poi na <selbri>`) compiled as a
+/// A negated, event-decomposed restrictor (`poi na <predicate>`) compiled as a
 /// negation-as-failure check over an existential group. The condition holds for a
 /// bound universal `x` iff NO binding of `event_var` satisfies ALL `conditions` —
 /// e.g. `Not(Exists(ev, zanru(ev) ∧ zanru_x1(ev, x__v0) ∧ zanru_x2(ev, zo'e)))`
@@ -484,7 +484,7 @@ pub(super) struct UniversalRuleRecord {
     /// Used for stratification checking — a negated condition creates a
     /// "negative" dependency edge in the predicate dependency graph.
     pub(super) negated_condition_indices: Vec<usize>,
-    /// Negated event-decomposed restrictor groups (`poi na <selbri>`), each
+    /// Negated event-decomposed restrictor groups (`poi na <predicate>`), each
     /// evaluated by NAF over an existential during firing. Empty for ordinary rules.
     pub(super) negated_exists_groups: Vec<NegatedExistsGroup>,
     /// When true, this rule fires eagerly on fact assertion (forward chaining).
@@ -512,7 +512,7 @@ pub(super) struct KnowledgeBaseInner {
     /// and proof tracing, but NOT registered in `known_entities`
     /// to prevent quadratic blowup in guarded conjunction introduction.
     pub(super) known_event_entities: HashSet<String>,
-    /// Known description terms (from `le` gadri), tracked separately for InDomain.
+    /// Known description terms (from `le` determiner), tracked separately for InDomain.
     pub(super) known_descriptions: HashSet<String>,
     pub(super) known_rules: HashSet<u64>,
     pub(super) skolem_fn_registry: Vec<SkolemFnEntry>,
@@ -579,7 +579,7 @@ pub(super) struct KnowledgeBaseInner {
     /// When a traced predicate is encountered during reasoning, diagnostic
     /// output is printed showing depth, rule matches, and condition results.
     pub(super) traced_predicates: HashSet<String>,
-    /// Explicitly asserted NEGATIVE ground facts (`na <selbri>`), stored as
+    /// Explicitly asserted NEGATIVE ground facts (`na <predicate>`), stored as
     /// template groups for contradiction detection (`check_contradictions`).
     /// Each group is the conjunction of leaves under one negation, with event
     /// Skolem arguments generalized to pattern variables (see
@@ -618,8 +618,8 @@ pub(super) struct KnowledgeBaseInner {
     pub(super) pred_cache_enabled: Cell<bool>,
     /// Diagnostic verbosity. When `false` (the default) the informational stdout
     /// `println!` diagnostics (`[Rule]`/`[Skolem]`/`[Constraint] Registered`) are
-    /// suppressed — a silent library for the server/validate/tavla. lasna (the
-    /// gasnu REPL) and the native `nibli` REPL opt in via `set_verbose(true)`.
+    /// suppressed — a silent library for the server/validate/tavla. nibli-pipeline (the
+    /// nibli-host REPL) and the native `nibli` REPL opt in via `set_verbose(true)`.
     /// Like `cancel`/`compute_eval`, this is CONFIGURATION, not derived state —
     /// NOT cleared by `reset()`. The `eprintln!` warning/error sites ignore it.
     pub(super) verbose: bool,
@@ -629,8 +629,9 @@ pub(super) struct KnowledgeBaseInner {
     /// `rebuilding` (a retraction replay must faithfully restore facts that
     /// were accepted when asserted).
     pub(super) strict: bool,
-    /// Constants minted as xorlo PRESUPPOSITION witnesses at description-
-    /// universal registration (`ro lo gerku cu danlu` presupposes ≥1 dog).
+    /// Constants minted as existential-import PRESUPPOSITION witnesses at
+    /// description-universal registration (`animal(every dog).` presupposes
+    /// ≥1 dog — Lojban's xorlo rule, kept by design).
     /// They satisfy ∃/∀ like any entity, but are EXCLUDED from counting
     /// surfaces (`PA lo` tallies, `??` witness enumeration): a phantom entity
     /// a rule presupposed must not change "how many" (GUARANTEES §Aggregation).
@@ -1099,8 +1100,8 @@ pub(super) fn register_ground_material_conditional(
             register_ground_material_conditional(buffer, *body, subs, inner)?
         }
         // Transparent tense/deontic strip. SURFACE-UNREACHABLE: tense (pu/ca/ba) and
-        // deontics (ei/e'e) are bridi-level, never wrapping a sentence connective —
-        // `pu ganai P gi Q` does not parse — so smuni never produces a tensed/deontic
+        // deontics (ei/e'e) are proposition-level, never wrapping a sentence connective —
+        // `pu ganai P gi Q` does not parse — so nibli-semantics never produces a tensed/deontic
         // ground material conditional `Past(Or(Not(P), Q))`. Kept as dead-defensive
         // raw-FOL completeness (mirrors the assert-path strip in `collect_ground_facts`).
         LogicNode::PastNode(n)
@@ -1128,7 +1129,7 @@ pub(super) fn register_ground_material_conditional(
                 compile_forall_to_rule(buffer, node_id, subs, inner)?;
                 true
             }
-            // Also check Or(Q, Not(P)) — reversed order (commutativity). smuni's
+            // Also check Or(Q, Not(P)) — reversed order (commutativity). nibli-semantics's
             // ganai/go/jo always emit Not-on-left, but a `na` on the RIGHT operand of a
             // disjunction (`mi klama .i ja mi na citka`, `… gi'a na citka`) lands here.
             // KNOWN LIMITATION (completeness only, see TODO.md): this simpler path bakes
@@ -1194,7 +1195,7 @@ fn contains_count_node(buffer: &LogicBuffer, node_id: u32) -> bool {
 }
 
 /// True if the root, after stripping transparent wrappers, is a negated ground fact
-/// (`na <selbri>`). Under the closed-world assumption `¬P` is already entailed
+/// (`na <predicate>`). Under the closed-world assumption `¬P` is already entailed
 /// whenever `P` is not derivable, so a negative premise stores nothing in the
 /// positive store; it IS recorded in the negative-fact registry (via
 /// `record_negative_ground_fact`) so a later contrary positive is flagged by
@@ -1248,7 +1249,7 @@ fn all_conjuncts_reduce_to_negation(
         }
         // Tense/deontic wrappers around a NotNode are handled by
         // `find_negation_body`'s own descent (a wrapper around a whole
-        // And-spine does not occur: smuni wraps tense per predication).
+        // And-spine does not occur: nibli-semantics wraps tense per predication).
         // The exemption holds only for negations the registry can FULLY
         // represent — an impure body (e.g. Not(Or(..))) must fall through to
         // the loud fail-closed rejection, not become a silent no-op.
@@ -1263,7 +1264,7 @@ fn all_conjuncts_reduce_to_negation(
 /// negative-fact registry can represent faithfully. `collect_ground_facts`
 /// silently drops NotNode/OrNode/ForAll leaves, so recording a body that
 /// contains one would register a STRENGTHENED claim: `¬(P ∧ ¬Q)` — e.g. the
-/// `Not(And(..))` half of smuni's Xor lowering, or a `jenai` under a bridi
+/// `Not(And(..))` half of nibli-semantics's Xor lowering, or a `jenai` under a proposition
 /// `na` — would degrade to the group [P], i.e. `¬P`, fabricating contradiction
 /// reports on consistent KBs. Mirrors `collect_ground_facts`' transparent
 /// arms; an abstraction group counts as representable (the marker predicate
@@ -1366,10 +1367,10 @@ fn find_negation_body(
     }
 }
 
-/// Record a negated ground root (`na <selbri>`) as an explicit negative-fact
+/// Record a negated ground root (`na <predicate>`) as an explicit negative-fact
 /// template group for contradiction detection.
 ///
-/// THE EVENT TRAP: smuni event-decomposes every predication, so
+/// THE EVENT TRAP: nibli-semantics event-decomposes every predication, so
 /// `la .adam. na gerku` compiles to ¬∃e.(gerku(e) ∧ gerku_x1(e, adam) ∧
 /// gerku_x2(e, zo'e)), and Skolemization gives the negative leaves an event
 /// Skolem (e.g. sk_0) that can NEVER equal the fresh event Skolem a later
@@ -1525,7 +1526,7 @@ pub(super) fn solve_group_bindings(
     out
 }
 
-/// True if a stored `na <selbri>` group (its `__neg_ev` pattern vars bindable) unifies
+/// True if a stored `na <predicate>` group (its `__neg_ev` pattern vars bindable) unifies
 /// ENTIRELY against `facts` under one consistent binding — i.e. the (already
 /// P-substituted, ground) disjunct group is explicitly denied. Mirrors
 /// `negative_group_holds` but matches against a fact list rather than the store.
@@ -1558,7 +1559,7 @@ fn neg_group_covers(templates: &[StoredFact], facts: &[StoredFact]) -> bool {
 }
 
 /// True if `disjunct` (a P-substituted, ground disjunct template group) is explicitly
-/// denied by some stored `na <selbri>` group. The disjunct's event is an existential
+/// denied by some stored `na <predicate>` group. The disjunct's event is an existential
 /// witness (SkolemFn) and the `na` group's event is a `__neg_ev` pattern var, so they
 /// unify freely; only the entity arguments (and tense, via `unify_facts`) must agree.
 pub(super) fn disjunct_explicitly_denied(
@@ -1797,10 +1798,10 @@ pub(super) fn process_assertion(
 
             // FAIL CLOSED: a ground root that stored no fact AND registered no rule has no
             // representable content — a bare disjunction (`.i ja`) or an exclusive-or
-            // (`.i ju`, which smuni flattens to And(Or, Not(And)) that this path cannot
+            // (`.i ju`, which nibli-semantics flattens to And(Or, Not(And)) that this path cannot
             // hold). Returning Ok with a fact id would misrepresent it as asserted when
             // querying it back yields False. Exemptions: numeric quantifiers (Count) store
-            // their witnesses separately, and negated ground facts (`na <selbri>`,
+            // their witnesses separately, and negated ground facts (`na <predicate>`,
             // including a conjunction whose EVERY conjunct is negated) are accepted —
             // they store nothing in the POSITIVE store (NAF/CWA query semantics
             // unchanged) but are recorded in the negative-fact registry so a later
@@ -2060,7 +2061,7 @@ fn collect_mandatory_anchors(
             collect_mandatory_anchors(buffer, *inner_id, var_name, subs, tense, anchors);
         }
         // A nested quantifier's body conjuncts are still mandatory for OUR
-        // variable (smuni generates unique variable names, so no shadowing).
+        // variable (nibli-semantics generates unique variable names, so no shadowing).
         LogicNode::ExistsNode((_, body)) | LogicNode::ForAllNode((_, body)) => {
             collect_mandatory_anchors(buffer, *body, var_name, subs, tense, anchors);
         }

@@ -167,7 +167,7 @@ impl SemanticCompiler {
 
         // Fail-closed: untagged argument that overflow the predicate's places were
         // dropped above (counted in `overflow_untagged`); reject rather than lose
-        // meaning. `du` (a 2-place identity, consumed binary by logji's union-find)
+        // meaning. `du` (a 2-place identity, consumed binary by nibli-reason's union-find)
         // gets a specific message; any other predicate errors too — but ONLY when its
         // arity is KNOWN in jbovlaste (an unknown word defaults to arity 2 and its
         // real arity may be higher, so an "overflow" there is unprovable; this also
@@ -212,7 +212,7 @@ impl SemanticCompiler {
             // FAIL CLOSED: a modal relates its tagged argument (the modal predicate's x1)
             // to the main proposition's x1 (its x2), so the modal predicate needs at least 2
             // places. A 1-place predicate has no x2 to carry the main-proposition link — only
-            // reachable via `fi'o` over an arity-1 predicate (every BAI gismu is
+            // reachable via a `via` tag over an arity-1 predicate (every curated modal is
             // arity >= 2). Silently dropping `main_x1` loses meaning, so reject.
             if modal_arity < 2 {
                 let modal_name = self.interner.resolve(&modal_gismu).to_string();
@@ -256,7 +256,7 @@ impl SemanticCompiler {
         // loop above. Folding the list in REVERSE makes the first-introduced
         // quantifier the outermost binder, so `da citka ro lo gerku` yields
         // `∃da.∀x` (the leading bare var outscopes the universal — an
-        // Exists-over-ForAll root that logji's assertion dispatch now accepts by
+        // Exists-over-ForAll root that nibli-reason's assertion dispatch now accepts by
         // skolemizing the leading ∃) while `ro lo gerku cu citka da` yields
         // `∀x.∃da` (unchanged).
         //

@@ -1,4 +1,4 @@
-//! Structural translation of a nibli `LogicBuffer` (the smuni FOL IR) into a **clingo**
+//! Structural translation of a nibli `LogicBuffer` (the nibli-semantics FOL IR) into a **clingo**
 //! Answer Set Programming (`.lp`) program, for the stratified-NAF differential oracle.
 //!
 //! Unlike the TPTP translator ([`crate::tptp`]), which renders the event-decomposed IR
@@ -280,7 +280,7 @@ fn fact_line(atom: SurfaceAtom) -> Result<String, String> {
 
 /// Translate a universal rule `ForAll(v, body)`, where `body` is a right-nested `Or` of
 /// `Not(...)` antecedent disjuncts terminating in the consequent matrix (verified against
-/// smuni `close_quantifier`). Peel the antecedent, regroup the head, emit `head :- body.`.
+/// nibli-semantics `close_quantifier`). Peel the antecedent, regroup the head, emit `head :- body.`.
 fn translate_rule(buf: &LogicBuffer, v: &str, body: u32) -> Result<Vec<String>, String> {
     let mut vars = VarMap::new();
     vars.bind(v); // the universal var → V0
@@ -637,7 +637,7 @@ impl VarMap {
 mod tests {
     use super::*;
 
-    // ── Flat buffer builders (mirror logji's test helpers) ──
+    // ── Flat buffer builders (mirror nibli-reason's test helpers) ──
     fn pred(nodes: &mut Vec<LogicNode>, rel: &str, args: Vec<LogicalTerm>) -> u32 {
         nodes.push(LogicNode::Predicate((rel.to_string(), args)));
         (nodes.len() - 1) as u32

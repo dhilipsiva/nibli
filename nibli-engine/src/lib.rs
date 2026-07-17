@@ -1,4 +1,4 @@
-//! Native nibli engine library: calls gerna/nibli-semantics/logji directly as Rust crates.
+//! Native nibli engine library: calls nibli-kr/nibli-semantics/nibli-reason directly as Rust crates.
 //! No WASM, no Wasmtime — full stack traces for debugging.
 #![allow(dead_code)]
 
@@ -99,8 +99,8 @@ impl NibliEngine {
     /// when on, an arity mismatch or integrity-constraint violation REJECTS the
     /// offending fact and fails the assertion. Like `set_verbose`, the library
     /// stays permissive by default; embedders opt in programmatically (the
-    /// runtime surfaces read `NIBLI_STRICT=1` — gasnu forwards it into the
-    /// guest, where `lasna::Session::new` applies it).
+    /// runtime surfaces read `NIBLI_STRICT=1` — nibli-host forwards it into the
+    /// guest, where `nibli-pipeline::Session::new` applies it).
     pub fn set_strict(&self, strict: bool) {
         self.kb.set_strict(strict);
     }
@@ -253,7 +253,7 @@ impl NibliEngine {
                     .map_err(|e| EngineError::Reasoning(format!("Store error: {e}")))?;
                 s.insert_fact(fact_id, label.clone(), payload)
                     .map_err(|e| EngineError::Reasoning(format!("Store error: {e}")))?;
-                // logji's `assert_fact_with_id` returns String (it predates the typed
+                // nibli-reason's `assert_fact_with_id` returns String (it predates the typed
                 // KB API); the assert IS the reasoning stage, so classify as Reasoning
                 // (the old `Semantic` here was a mislabel).
                 self.kb

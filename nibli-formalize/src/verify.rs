@@ -1,6 +1,6 @@
 //! The semantic verification turn — the fourth, non-deterministic check.
 //!
-//! The deterministic gates (nibli-kr → smuni → round-trip) prove a candidate is
+//! The deterministic gates (nibli-kr → nibli-semantics → round-trip) prove a candidate is
 //! *well-formed*; they cannot prove it *means* what the source says. Models
 //! routinely emit syntactically valid KB text with wrong semantics — misresolved anaphora,
 //! overflowed bridi places, deontics used as commands (`ei` for "you

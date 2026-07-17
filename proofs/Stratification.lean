@@ -3,7 +3,7 @@
 
   The engine permits negation-as-failure only in *stratified* programs and enforces this at
   rule-registration time: it builds a predicate dependency graph and rejects any rule that would
-  put a negation edge on a cycle (`logji/src/rules.rs` `check_stratification` :741 / `compute_sccs`
+  put a negation edge on a cycle (`nibli-reason/src/rules.rs` `check_stratification` :741 / `compute_sccs`
   :647). This is soundness-critical — NAF over a recursive cycle is unsound.
 
   This file proves the CRITERION is correct: over the dependency graph, "no negative edge has its
@@ -12,11 +12,11 @@
   exists." That gives both the soundness direction (the check accepts ⇒ the program is genuinely
   stratifiable) and completeness (it never rejects a stratifiable program).
 
-  Correspondence (`logji/src/rules.rs`): an edge is conclusion `H` → condition `B` with `neg=true`
+  Correspondence (`nibli-reason/src/rules.rs`): an edge is conclusion `H` → condition `B` with `neg=true`
   iff the dependency is negated (graph built at :542); `check_stratification` (:741) rejects iff
   some SCC contains a negative edge whose both endpoints lie in it. The real Tarjan-based check is
   tied to this criterion by the corpus conformance test `mod stratification_conformance` in
-  `logji/src/rules.rs`.
+  `nibli-reason/src/rules.rs`.
 
   Checked by `lean proofs/Stratification.lean` (`just verify-proofs`). No mathlib — `Classical`,
   `List.finRange`, and `List.countP` are Lean core. The combiner gave a complete (finite-domain)

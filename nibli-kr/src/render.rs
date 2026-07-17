@@ -12,14 +12,14 @@
 //! produce renders (the `if…then`/`&` sentence connectives + afterthought
 //! operators; `via` modals; tense/deontic prefixes; conversions, predicate
 //! pairs, and abstractions); §10 out-of-scope constructs (`ri/ra/ru`, `ko`,
-//! `go'i`, exotic gadri×NU combinations, exponent-form floats) FAIL CLOSED with
+//! `go'i`, exotic determiner×NU combinations, exponent-form floats) FAIL CLOSED with
 //! a named error. The dead Lojban-only capacity the retired dual-front-end
 //! parser once produced (argument/predicate connectives, fixed BAI tags,
 //! `la`-descriptions, `voi` clauses, forethought or/iff) has been removed from
 //! the AST.
 //!
 //! Fixpoint contract (pinned by tests): for nibli KR-originated buffers,
-//! `parse ∘ render ∘ parse` compiles — through smuni — to the SAME
+//! `parse ∘ render ∘ parse` compiles — through nibli-semantics — to the SAME
 //! LogicBuffer as `parse`, and `render` is text-idempotent
 //! (`render(parse(render(x))) == render(parse(x))`). AstBuffer equality is
 //! deliberately NOT the contract: the §11 collapses make it unachievable
@@ -189,7 +189,7 @@ impl<'a> Renderer<'a> {
         let head_word = self.head_word(relation_id)?;
         let relation = self.predication_predicate(relation_id)?;
 
-        // Argument places: heads fill x1.., then the tail runs gerna's CLL
+        // Argument places: heads fill x1.., then the tail runs the CLL
         // counter (an untagged term takes the next place; a FA tag jumps the
         // counter). SURFACE places map through the peeled permutation onto the
         // plain relation's places. Render positionally while plain places stay
@@ -347,7 +347,7 @@ impl<'a> Renderer<'a> {
     /// The nibli KR spelling of a dictionary word: the canonical alias, else the
     /// identity passthrough — which is only honest when the word (a) is
     /// actually in the dictionary (nibli-kr's resolver fails closed on unknowns;
-    /// gerna tolerates them at arity 2) and (b) is a legal nibli KR identifier
+    /// the retired Lojban front-end tolerated them at arity 2) and (b) is a legal nibli KR identifier
     /// (apostrophe lujvo are not). Render must NEVER emit unparseable text, so
     /// both cases fail closed by name here.
     fn alias_or_identity(&self, word: &str) -> R<String> {
@@ -522,20 +522,20 @@ impl<'a> Renderer<'a> {
                 }
                 rendered
             }
-            Argument::Description((gadri, predicate)) => {
+            Argument::Description((determiner, predicate)) => {
                 if let Predicate::Abstraction(_) = self.predicate(*predicate)? {
-                    return match gadri {
+                    return match determiner {
                         Determiner::Indefinite => self.restr_predicate(*predicate),
                         Determiner::Definite
                         | Determiner::UniversalIndefinite
                         | Determiner::UniversalDefinite => Err(nope(
                             "abstractions are hard-wired to the implicit-some description; \
-                             other gadri × NU combinations are out of scope \
+                             other determiner × NU combinations are out of scope \
                              (NIBLI_KR §10)",
                         )),
                     };
                 }
-                match gadri {
+                match determiner {
                     Determiner::Indefinite => format!("some {}", self.restr_predicate(*predicate)?),
                     Determiner::Definite => format!("the {}", self.restr_predicate(*predicate)?),
                     Determiner::UniversalIndefinite => {
@@ -546,7 +546,7 @@ impl<'a> Renderer<'a> {
                     }
                 }
             }
-            Argument::QuantifiedDescription((count, gadri, predicate)) => match gadri {
+            Argument::QuantifiedDescription((count, determiner, predicate)) => match determiner {
                 Determiner::Indefinite => {
                     if *count == 0 {
                         format!("no {}", self.restr_predicate(*predicate)?)
@@ -559,7 +559,7 @@ impl<'a> Renderer<'a> {
                 }
                 Determiner::UniversalIndefinite | Determiner::UniversalDefinite => {
                     return Err(nope(format!(
-                        "a quantified {gadri:?} description has no nibli KR spelling"
+                        "a quantified {determiner:?} description has no nibli KR spelling"
                     )));
                 }
             },
@@ -711,7 +711,7 @@ pub fn __ast_parity_guard(
     predicate: &Predicate,
     sentence: &Sentence,
     connective: &SentenceConnective,
-    gadri: &Determiner,
+    determiner: &Determiner,
     abstraction: &AbstractionKind,
     rel_kind: &RelClauseKind,
     modal: &ModalTag,
@@ -751,7 +751,7 @@ pub fn __ast_parity_guard(
         SentenceConnective::And => {}
         SentenceConnective::Afterthought(_) => {}
     }
-    match gadri {
+    match determiner {
         Determiner::Indefinite => {}
         Determiner::Definite => {}
         Determiner::UniversalIndefinite => {}
@@ -799,13 +799,13 @@ mod tests {
     use super::*;
     use crate::parse_checked;
 
-    /// smuni-compiled LogicBuffer (Debug form) for nibli KR text.
+    /// nibli-semantics-compiled LogicBuffer (Debug form) for nibli KR text.
     fn lb(text: &str) -> String {
         let buffer = parse_checked(text).unwrap_or_else(|e| panic!("parse {text:?}: {e}"));
         format!(
             "{:?}",
             nibli_semantics::compile_from_ast(buffer)
-                .unwrap_or_else(|e| panic!("smuni {text:?}: {e}"))
+                .unwrap_or_else(|e| panic!("nibli-semantics {text:?}: {e}"))
         )
     }
 

@@ -1,17 +1,17 @@
-# ni'o lo datni kurji javni (GDPR Compliance Knowledge Base)
+# GDPR Compliance Knowledge Base
 #
 # A formalizable slice of the EU General Data Protection Regulation, encoded in
-# Lojban so that Nibli can answer compliance questions by deterministic, auditable
+# nibli KR so that Nibli can answer compliance questions by deterministic, auditable
 # deduction instead of statistical guesswork. Every non-comment line below parses,
-# compiles, and reasons through the full gerna -> smuni -> logji pipeline; the
-# accompanying regression tests (gdpr_* in nibli-engine/tests/integration.rs and
-# pipeline_gdpr_lojban_all_lines_parse in gerna) assert the same outcomes this file
-# is designed to produce, so the prose in Chapter 20 cannot silently drift from the
-# engine's actual behaviour.
+# compiles, and reasons through the full nibli-kr -> nibli-semantics ->
+# nibli-reason pipeline; the accompanying regression tests (gdpr_* in
+# nibli-engine/tests/integration.rs, plus the shipped-examples guard in nibli-ui)
+# assert the same outcomes this file is designed to produce, so the prose in
+# Chapter 20 cannot silently drift from the engine's actual behaviour.
 #
 # Scope: Articles 5, 6, 7, 9, 15, 17, 33.
-#   Subject     = la .adam.
-#   Controllers = la .akmes. (breached) and la .gugli. (clean control)
+#   Subject     = Adam
+#   Controllers = Akmes (breached) and Gugli (clean control)
 #
 # Predicate conventions (proxy predicates for second-order legal concepts; see
 # Chapter 20, "Honest Boundaries"):

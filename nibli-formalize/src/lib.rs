@@ -12,7 +12,7 @@
 //!
 //! A candidate must pass three deterministic gates before the loop accepts
 //! it: 1. **nibli-kr** — `nibli_kr::parse_checked` (grammar + fail-closed alias
-//! resolution) — local. 2. **smuni** — `nibli_semantics::compile_from_ast`
+//! resolution) — local. 2. **nibli-semantics** — `nibli_semantics::compile_from_ast`
 //! (semantics/arity) — local. 3. **round-trip** — the candidate's canonical
 //! re-spelling (`nibli_kr::render`) must re-compile to the SAME `LogicBuffer`
 //! (nibli-kr's fixpoint contract as a per-candidate drift-catcher) — local,

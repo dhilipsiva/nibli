@@ -109,7 +109,7 @@ contract, not accident:
 - **Quantifiers.** `some dog` (xorlo existential) → `Exists(v, And(restrictor, body))` —
   existential import. `every dog` (description universal) →
   `ForAll(v, Or(Not(restrictor), body))` — the material-implication arrow (`every the dog` is
-  the same shape over an opaque `le_domain_<name>` restrictor). `exactly N dog` (exact count) →
+  the same shape over an opaque `the_domain_<name>` restrictor). `exactly N dog` (exact count) →
   `CountNode(v, N, And(restrictor, body))`. Prenex `all $x: BODY` → nested `ForAll`
   wrapping the compiled body **directly** — no restrictor, no arrow — so a `ForAllNode` body is
   the implication shape for description universals but not for prenex ones. Free `$x`
@@ -134,7 +134,7 @@ contract, not accident:
   shape; `via` **modal tags** emit the tag's English-canonical predicate as a flat n-ary
   atom conjoined into the matrix (so the same relation name can appear both flat and
   event-decomposed across buffers); definite-description universals/counts emit a flat
-  unary `le_domain_<name>` restrictor atom; and abstraction *type* predicates
+  unary `the_domain_<name>` restrictor atom; and abstraction *type* predicates
   (`event`/`fact`/`property`/`amount`/`concept`) and `__abs_` markers are flat
   unary. Main-predication claims are always event-decomposed.
 - **Queries compile identically to assertions.** The divergence between asserting and querying

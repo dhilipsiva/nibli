@@ -51,11 +51,11 @@ all $x: at_risk($x) & takes(Adam, $x) -> alert($x).
 > **Design thesis (2026-07-12):** nibli KR is a human-intuitive knowledge-representation
 > language — MAXIMALLY INTUITIVE *subject to* semantic distinctions staying visible in
 > the spelling (the silent-mistranslation ceiling; principles 2–4 below are that
-> constraint made concrete). The logji reasoning core stays untouched throughout the
-> v0.1 program — no hard freeze: the two §14 items that touch logji (the xorlo
-> presupposition-witness flag and the compute-set rename) remain live v2 options for
-> after gerna retires; until then `every` mints xorlo witnesses identically to Lojban
-> (disclosed in §4). LLM-generability is a tracked side goal, measured via the fanva
+> constraint made concrete). The nibli-reason core stays untouched throughout the
+> v0.1 program — no hard freeze: the two §14 items that touch nibli-reason (the
+> existential-import presupposition-witness flag and the compute-set rename) remain
+> live v2 options; `every` mints existential-import witnesses identically to Lojban's
+> xorlo rule (disclosed in §4). LLM-generability is a tracked side goal, measured via the fanva
 > retarget's silent-mistranslation metric.
 
 1. **Total coverage.** Every construct in the implemented Lojban fragment has a surface
@@ -134,19 +134,19 @@ their spellings are deliberately non-interchangeable:**
 
 | nibli KR | Lojban | Compiled shape |
 |---|---|---|
-| `some dog` | `lo gerku` (= `su'o lo`) | `Exists(v, And(restrictor, matrix))` — veridical ∃, xorlo witness handling applies |
+| `some dog` | `lo gerku` (= `su'o lo`) | `Exists(v, And(restrictor, matrix))` — veridical ∃, existential-import witness handling applies |
 | `the dog` | `le gerku` | `Description("gerku")` — a *constant-like term*, no quantifier. **Trap for English speakers** — see lint L1, §12 |
 | `every dog` | `ro lo gerku` | `ForAll(v, Or(Not(restrictor), matrix))` — **the rule shape** (becomes a `UniversalRuleRecord` at assert) |
 | `every the dog` | `ro le gerku` | ∀ over the opaque `le_domain_gerku` restrictor |
-| `exactly 2 dog` | `re lo gerku` | `Count{v, 2, And(restrictor, matrix)}` — entity-level counting (du-classes collapsed, xorlo witnesses excluded) |
+| `exactly 2 dog` | `re lo gerku` | `Count{v, 2, And(restrictor, matrix)}` — entity-level counting (du-classes collapsed, existential-import witnesses excluded) |
 | `no dog` | `no lo gerku` | sugar for `exactly 0 dog` |
 
-**Disclosed engine semantic — xorlo existential import:** asserting a universal rule
-(`animal(every dog).`) ALSO establishes that a dog exists: the engine mints a
-presupposition witness (Lojban xorlo semantics, implemented in logji), and witnesses
+**Disclosed engine semantic — existential import (Lojban's xorlo rule):** asserting a
+universal rule (`animal(every dog).`) ALSO establishes that a dog exists: the engine
+mints a presupposition witness (implemented in nibli-reason), and witnesses
 are excluded from `exactly N` counting. This is inherited engine behavior, kept
 byte-identical across both front-ends during the dual phase (the equivalence battery
-checks verdict identity), and re-decidable at clean-core v2 (§14's xorlo flag — a live
+checks verdict identity), and re-decidable at clean-core v2 (§14's existential-import flag — a live
 option per the §1 thesis).
 
 Determiner phrases appear **in argument position** (`animal(every dog).`) or as a

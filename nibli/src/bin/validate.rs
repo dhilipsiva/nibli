@@ -3,7 +3,7 @@
 //! Reads one KR statement per line from stdin. (The `--lang`/`NIBLI_LANG`
 //! selector retired with the Lojban front-end at THE DROP; the flag is no
 //! longer accepted and the env var is ignored. Former Lojban callers pin the
-//! env var). For each line, runs the selected front-end and smuni (compile to
+//! env var). For each line, runs the selected front-end and nibli-semantics (compile to
 //! FOL). Outputs one JSON object per line to stdout:
 //!   {"line":"...","valid":true}
 //!   {"line":"...","valid":false,"error":"parse error: ..."}

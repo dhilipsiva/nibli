@@ -1,6 +1,6 @@
 //! The nibli KR emitter: tree AST → `nibli_types::ast::AstBuffer` — the sole
 //! producer of the flat buffer `nibli_semantics::compile_from_ast` (and
-//! everything below it: logji, the oracles, the Lean-bridged conformance
+//! everything below it: nibli-reason, the oracles, the Lean-bridged conformance
 //! surface) consumes. Flattener discipline: child indices come from
 //! push-return values, never from length arithmetic.
 //!
@@ -626,7 +626,7 @@ fn abstraction_kind(kind: AbsKind) -> AbstractionKind {
 #[cfg(test)]
 mod tests {
     //! Golden tests. The load-bearing property: a nibli KR statement and its
-    //! smuni acceptance (compared via Debug formatting; smuni's variable
+    //! nibli-semantics acceptance (compared via Debug formatting; nibli-semantics's variable
     //! naming is deterministic, so structurally-equal ASTs give byte-equal
     //! buffers). The Lojban-twin equality leg these pins carried retired with
     //! the front-end at THE DROP — the structural-equality coverage lives in
@@ -638,8 +638,9 @@ mod tests {
 
     fn nibli_kr_lb(text: &str) -> String {
         let buffer = parse_checked(text).unwrap_or_else(|e| panic!("nibli-kr {text:?}: {e}"));
-        let lb = nibli_semantics::compile_from_ast(buffer)
-            .unwrap_or_else(|e| panic!("smuni rejected nibli-kr buffer for {text:?}: {e}"));
+        let lb = nibli_semantics::compile_from_ast(buffer).unwrap_or_else(|e| {
+            panic!("nibli-semantics rejected nibli-kr buffer for {text:?}: {e}")
+        });
         format!("{lb:?}")
     }
 
@@ -755,10 +756,10 @@ mod tests {
         twins("goes(Adam where dog).");
     }
 
-    // ── acceptance-only shapes (no clean Lojban twin; smuni must accept) ──
+    // ── acceptance-only shapes (no clean Lojban twin; nibli-semantics must accept) ──
 
     #[test]
-    fn emitted_buffers_are_smuni_valid() {
+    fn emitted_buffers_are_semantics_valid() {
         for text in [
             "some dog $d: big($d) & goes($d).",
             "goes(every loves(x2: it)).",
@@ -771,7 +772,7 @@ mod tests {
             "must past ~goes(me).",
             "[big fast] dog(Rex).",
         ] {
-            nibli_kr_lb(text); // panics if resolve/emit/smuni rejects
+            nibli_kr_lb(text); // panics if resolve/emit/nibli-semantics rejects
         }
     }
 
