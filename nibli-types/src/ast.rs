@@ -15,8 +15,8 @@ pub enum ModalTag {
     Custom(PredicateId),
 }
 
-/// SE-series conversion: permutes the x1 place with another.
-/// se=x1↔x2, te=x1↔x3, ve=x1↔x4, xe=x1↔x5.
+/// Place conversion: permutes the x1 place with another.
+/// Swap12=x1↔x2, Swap13=x1↔x3, Swap14=x1↔x4, Swap15=x1↔x5.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum Conversion {
     Swap12,
@@ -25,8 +25,7 @@ pub enum Conversion {
     Swap15,
 }
 
-/// Logical connective shared by predicate and argument connectives.
-/// je=AND(∧), ja=OR(∨), jo=IFF(↔), ju=XOR(⊕).
+/// Logical connective: AND(∧), OR(∨), IFF(↔), XOR(⊕).
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum Connective {
     And,
@@ -86,13 +85,13 @@ pub enum Argument {
     /// Pro-argument: me, you, this, that, yonder, it_a…it_u, `$vars`, plus the
     /// markers `it` (bound entity), `slot` (open place), and `?` (witness).
     Pronoun(String),
-    /// Determiner description: `lo/le` + predicate. Fields: (determiner, predicate-id).
+    /// Determiner description: `some`/`the` + predicate. Fields: (determiner, predicate-id).
     Description((Determiner, PredicateId)),
     /// Named entity: a capitalized rigid Name.
     Name(String),
-    /// Quoted literal: `lu ... li'u`.
+    /// Quoted string literal: `"any text"`.
     QuotedLiteral(String),
-    /// Unspecified placeholder (zo'e or implicit).
+    /// Unspecified placeholder (`_` or an omitted place).
     Unspecified,
     /// Place-tagged argument: (zero-based place index 0..=4, inner-argument-id).
     Tagged((u8, ArgumentId)),
@@ -100,9 +99,10 @@ pub enum Argument {
     ModalTagged((ModalTag, ArgumentId)),
     /// Argument with a relative clause: (inner-argument-id, relative-clause).
     Restricted((ArgumentId, RelClause)),
-    /// Number argument: `li` + PA.
+    /// Numeric literal argument.
     Number(f64),
-    /// Quantified description: PA lo/le predicate. Fields: (count, determiner, predicate-id).
+    /// Quantified description: `exactly N` + determiner + predicate.
+    /// Fields: (count, determiner, predicate-id).
     QuantifiedDescription((u32, Determiner, PredicateId)),
 }
 
@@ -119,11 +119,12 @@ pub enum Predicate {
     Converted((Conversion, PredicateId)),
     /// Negated predicate (`na`). Payload: inner-id.
     Negated(PredicateId),
-    /// Grouped predicate (`ke ... ke'e`). Payload: inner-id.
+    /// Grouped predicate (`[ ... ]` bracket group). Payload: inner-id.
     Grouped(PredicateId),
-    /// Predicate with be/bei arguments. Fields: (core-id, argument-argument-ids).
+    /// Predicate with linked arguments. Fields: (core-id, argument-ids).
     WithArgs((PredicateId, Vec<ArgumentId>)),
-    /// Abstraction: nu/du'u/ka/ni/si'o + sentence. Fields: (kind, sentence-id).
+    /// Abstraction: `event`/`fact`/`property`/`amount`/`concept` block.
+    /// Fields: (kind, sentence-id).
     Abstraction((AbstractionKind, u32)),
 }
 
@@ -171,10 +172,10 @@ pub enum Sentence {
     Simple(Proposition),
     /// Connected sentences. Fields: (connective, left-sentence-id, right-sentence-id).
     Connected((SentenceConnective, u32, u32)),
-    /// Prenex `ro da [ro de ...] zo'u <body>`: a sequence of universally
-    /// quantified logic variables (`da`/`de`/`di`) scoping a body sentence.
-    /// Fields: (variable names in prenex order, body-sentence-id). Lowers to
-    /// nested `∀` over the body in nibli-semantics.
+    /// Prenex `all $x, $y: <body>`: a sequence of universally quantified
+    /// logic variables scoping a body sentence. Fields: (variable names in
+    /// prenex order, body-sentence-id). Lowers to nested `∀` over the body
+    /// in nibli-semantics.
     Prenex((Vec<String>, u32)),
 }
 

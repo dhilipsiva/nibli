@@ -1,9 +1,9 @@
 //! The nibli KR reserved-word list — SINGLE SOURCE (NIBLI_KR.md §2).
 //!
-//! Consumed by this crate's `build.rs` (via `#[path]`, the nibli-lexicon
-//! `src/arity.rs` pattern) to reject curated aliases/labels that collide with a
-//! keyword, and by the future `nibli-kr` lexer for exact-match keyword reservation
-//! after maximal munch. Keep sorted (unit-tested); every entry must be a valid
+//! Consumed by the corpus const-validator (a shipped name must never collide
+//! with a keyword), by the nibli-kr grammar's self-guarded `kw_*` rules (pinned
+//! equal to this list by a conformance test), and by `tools/lexigen`'s
+//! sanitization. Keep sorted (unit-tested); every entry must be a valid
 //! nibli KR identifier shape (`[a-z][a-z0-9_]*`).
 
 /// Every nibli KR keyword, sorted ascending. A predicate alias or place label may

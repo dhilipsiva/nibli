@@ -137,7 +137,7 @@ their spellings are deliberately non-interchangeable:**
 | `some dog` | `lo gerku` (= `su'o lo`) | `Exists(v, And(restrictor, matrix))` — veridical ∃, existential-import witness handling applies |
 | `the dog` | `le gerku` | `Description("gerku")` — a *constant-like term*, no quantifier. **Trap for English speakers** — see lint L1, §12 |
 | `every dog` | `ro lo gerku` | `ForAll(v, Or(Not(restrictor), matrix))` — **the rule shape** (becomes a `UniversalRuleRecord` at assert) |
-| `every the dog` | `ro le gerku` | ∀ over the opaque `le_domain_gerku` restrictor |
+| `every the dog` | `ro le gerku` | ∀ over the opaque `the_domain_dog` restrictor |
 | `exactly 2 dog` | `re lo gerku` | `Count{v, 2, And(restrictor, matrix)}` — entity-level counting (du-classes collapsed, existential-import witnesses excluded) |
 | `no dog` | `no lo gerku` | sugar for `exactly 0 dog` |
 
@@ -588,20 +588,22 @@ These *look* Lojban-flavored but are load-bearing engine semantics, and v2 keeps
   markers** (`__abs_` content hash); **tense + deontic wrappers**; the **`via` modal
   conjunct shape**; fail-closed validation everywhere.
 - **Compute predicates** stay, under canonical names `product`/`sum`/`quotient`
-  (engine item: logji's compute set is currently keyed on `pilji/sumji/dilcu` relation
-  names — make the set configurable or rename). Tolerant-isclose and the trusted-backend
+  (the English rename LANDED at the predicate-name flip; the remaining engine item
+  is making the compute set configurable — today it is the hard-coded
+  `default_compute_predicates`). Tolerant-isclose and the trusted-backend
   policy are unchanged and stay disclosed.
 
 ### 14.4 Engine + gate checklist
 
 Engine (each contained, land one at a time):
 
-1. smuni: injectable schema source at the arity/label lookup seam (§14.1).
-2. smuni: lift the bare-variable cap (arbitrary variable names through Exists/prenex
-   closure).
-3. logji: xorlo witness minting behind a flag, **off** for clean-core — re-pin
-   GUARANTEES §Aggregation and the ASP count translator's witness-exclusion clause.
-4. logji: configurable compute-set relation names (`product/sum/quotient`).
+1. nibli-semantics: injectable schema source at the arity/label lookup seam (§14.1).
+2. nibli-semantics: lift the bare-variable cap (arbitrary variable names through
+   Exists/prenex closure).
+3. nibli-reason: existential-import witness minting behind a flag, **off** for
+   clean-core — re-pin GUARANTEES §Aggregation and the ASP count translator's
+   witness-exclusion clause.
+4. nibli-reason: configurable compute-set relation names (`product/sum/quotient`).
 5. `LOGIC_IR.md`: note that clean-core producers never emit `Description` terms or
    `le_domain_`/`ni`/`si'o` predicates, and drop the da/de/di variable-name pin for
    nibli KR-originated buffers (variable naming becomes fully internal).

@@ -211,8 +211,8 @@ interface logic-types {
 /// Host-provided external predicate evaluation.
 ///
 /// The reasoning engine calls this interface when it encounters a predicate
-/// registered for compute dispatch (e.g., `tenfa`, `dugri`). The host
-/// connects to an external TCP backend or evaluates built-in arithmetic.
+/// registered for compute dispatch (e.g., `exponential`, `logarithm`). The
+/// host connects to an external TCP backend or evaluates built-in arithmetic.
 ///
 /// Supports single evaluation, batch evaluation (amortises WASM boundary
 /// crossings and TCP round trips), and membership queries (for ∀/∃ over
@@ -258,7 +258,7 @@ interface engine {
     use error-types.{nibli-error};
 
     /// A user-facing session that wraps the full pipeline.
-    /// Internally creates a nibli-kr → smuni → logji chain with a fresh KB.
+    /// Internally creates a nibli-kr → nibli-semantics → nibli-reason chain with a fresh KB.
     resource session {
         /// Create a new session (internally creates a fresh KB).
         constructor();

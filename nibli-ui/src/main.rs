@@ -218,9 +218,10 @@ struct OutputEntry {
 // The full nibli-kr → nibli-semantics → nibli-reason pipeline runs in the WASM bundle
 // (mirrors `nibli-wasm`). Every query builds a fresh KnowledgeBase, re-asserts
 // the KB tab, then queries — matching the "queries reset the engine each
-// time" semantics. Built-in arithmetic (pilji/sumji/dilcu/zmadu/mleca/dunli)
-// resolves locally; external compute predicates (tenfa/dugri) have no TCP
-// backend in the browser and surface as errors, same as the live demo.
+// time" semantics. Built-in arithmetic (product/sum/quotient/greater/less/
+// num_equal) resolves locally; external compute predicates (exponential/
+// logarithm) have no TCP backend in the browser and surface as errors, same
+// as the live demo.
 
 /// Parse one KB line with the KR front-end, compile to FOL, and mark
 /// compute nodes. Fail-closed on any parse/compile error (the `NibliError`

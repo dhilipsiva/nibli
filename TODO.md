@@ -245,21 +245,6 @@ Pipeline-audit backlog (2026-07-17; three-agent audit of front-end / middle IRs 
 back-end — effort tags S/M/L; ordered quick-wins → correctness → structure →
 performance → future-facing):
 
-- **Display-leak + doc-drift sweep (S)** — `LogicalTerm::display`/`trace_display`
-  render `Description` as `le_{s}` / `lo {s}` (nibli-types/src/logic.rs:31,49 —
-  the LAST user-visible Lojban, missed by the residual pass; pick English forms
-  and re-pin consumers); NIBLI_KR.md:140 documents `le_domain_gerku` but the code
-  emits `the_domain_` (doc bug); the 11 stale Lojban doc-lines in
-  nibli-types/src/ast.rs (`se=x1↔x2`, `je=AND`, `lo/le`, `lu…li'u`, `zo'e`,
-  `li + PA`, `ke…ke'e`, `be/bei`, `nu/du'u/ka/ni/si'o`, the `ro da zo'u`/da-de-di
-  Prenex doc); wit/world.wit:261 "nibli-kr → smuni → logji chain" + :215
-  `tenfa`/`dugri` examples; render.rs:350,369 present-tense "the Lojban front-end
-  tolerates"; nibli-ui/src/main.rs:221 "pilji/sumji/dilcu" comment; the stale
-  "shared by build.rs via #[path]" headers in nibli-lexicon
-  arity.rs:18/label.rs:8/reserved.rs:3; CLAUDE.md's nibli-reason crate row
-  "lib.rs (single file, all logic)" (it is 7 files / ~21k lines); NIBLI_KR.md
-  §14.3's compute-set note (the rename half landed — only "configurable"
-  remains).
 - **Drop the `seeming` keyword (S)** — reserved and grammar'd but NO production
   rule uses it (nibli_kr.pest:67,89; reserved.rs:34), and NIBLI_KR.md:573's own
   decision table says it was DROPPED (contradicting §2's "reserved for a future

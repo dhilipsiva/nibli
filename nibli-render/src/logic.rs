@@ -124,7 +124,7 @@ fn render_tree_term(t: &LogicalTerm) -> String {
     match t {
         LogicalTerm::Variable(v) => v.clone(),
         LogicalTerm::Constant(c) => c.clone(),
-        LogicalTerm::Description(d) => format!("le {d}"),
+        LogicalTerm::Description(d) => format!("the {d}"),
         LogicalTerm::Unspecified => "something".to_string(),
         LogicalTerm::Number(n) => format_number(*n),
     }

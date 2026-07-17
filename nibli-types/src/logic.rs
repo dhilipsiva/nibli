@@ -28,7 +28,7 @@ impl LogicalTerm {
             LogicalTerm::Constant(s) => s.clone(),
             LogicalTerm::Number(n) => format!("{n}"),
             LogicalTerm::Variable(s) => s.clone(),
-            LogicalTerm::Description(s) => format!("le_{s}"),
+            LogicalTerm::Description(s) => format!("the_{s}"),
             LogicalTerm::Unspecified => "(unspecified)".to_string(),
         }
     }
@@ -46,7 +46,7 @@ impl LogicalTerm {
                 }
             }
             LogicalTerm::Variable(s) => format!("?{s}"),
-            LogicalTerm::Description(s) => format!("lo {s}"),
+            LogicalTerm::Description(s) => format!("the {s}"),
             LogicalTerm::Unspecified => "something".to_string(),
         }
     }

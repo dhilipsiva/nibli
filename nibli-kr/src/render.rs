@@ -366,8 +366,8 @@ impl<'a> Renderer<'a> {
         }
         if nibli_lexicon::get_arity(word).is_none() {
             return Err(nope(format!(
-                "word {word:?} is dictionary-unknown (the Lojban front-end tolerates it at \
-                 arity 2; nibli KR fails closed on unknown names — NIBLI_KR §13)"
+                "word {word:?} is dictionary-unknown (the retired Lojban front-end tolerated \
+                 it at arity 2; nibli KR fails closed on unknown names — NIBLI_KR §13)"
             )));
         }
         let mut chars = word.chars();

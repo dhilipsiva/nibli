@@ -115,7 +115,7 @@ Core component crates + runtime surfaces:
 | Crate | Name origin | Role | Key files |
 |-------|---------------|------|-----------|
 | `nibli-semantics` | — | Flat AST buffer -> FOL logic IR -> flat WIT logic buffer | `semantic.rs`, `ir.rs`, `lib.rs` (flattener) |
-| `nibli-reason` | — | FOL logic buffer -> backward-chaining assert/query | `lib.rs` (single file, all logic) |
+| `nibli-reason` | — | FOL logic buffer -> backward-chaining assert/query | `lib.rs`, `kb.rs`, `rules.rs`, `reasoning.rs`, `compute.rs`, `fact_store.rs` |
 | `nibli-pipeline` | — | Glue: chains nibli-kr -> nibli-semantics -> nibli-reason as the ONE WASM component. KR-only since THE DROP: `compile_pipeline` is `nibli_kr::parse_checked` → nibli-semantics → compute-marking; interactive text inputs emit the §12 lint notes as verbose-gated `[Note: …]` guest-stdout echoes (the `[Skolem]` precedent — `NIBLI_QUIET=1` suppresses; the replay path never lints) | `lib.rs` |
 | `nibli-host` | — | Native Wasmtime host, REPL, external compute backend TCP client. KR-only since THE DROP (`:load`/`--script` load any file as KR text) | `main.rs` |
 | `nibli-engine` | — | Native in-process embedding of the pipeline (used by tests + the store layer; no Wasmtime). `compile_text` is the sole text→AST seam (`nibli_kr::parse_checked` → nibli-semantics → compute-marking); buffer replay is text-free | `lib.rs` |

@@ -15,8 +15,8 @@
 //! close on `$`. Consequently bare prose `xN` (e.g. "x 4 times", "(cf. x4)"), a `{x4}`
 //! without `$`, and `$`-delimited math (money `$5`, an exponent `$10^9$`, `$m^3$`) are
 //! NOT markers and never fabricate a place — this is exactly the discipline that fixed
-//! the old prose byte-scan's over-arity bug. Shared by `build.rs` (via `#[path]`) and
-//! the crate's tests.
+//! the old prose byte-scan's over-arity bug. Pure string heuristics consumed by
+//! `tools/lexigen` (the corpus regeneration tool) and this crate's tests.
 
 /// Highest place index N over the canonical `$…$` place markers in a lensisku
 /// definition. A marker is a `$`-delimited run of `<letters>[_/{]*<digits>[}]?` atoms
