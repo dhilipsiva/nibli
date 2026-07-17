@@ -1388,6 +1388,25 @@ fn tensed_negation_is_flavor_exact() {
 }
 
 #[test]
+fn count_block_lowering_matches_term_position_behavior() {
+    // The BLOCK spelling `exactly 2 dog $d: big($d).` lowers to the same
+    // Count shape as `big(exactly 2 dog).` (seam-pinned), so it inherits the
+    // 2026-07-02 count-assertion semantics: two fresh witnesses materialize,
+    // each satisfying restrictor and body.
+    let engine = engine_with_facts(&["exactly 2 dog $d: big($d)."]);
+    for q in ["big(some dog).", "dog($da).", "big(exactly 2 dog)."] {
+        assert_true(
+            &engine.query_holds(q).unwrap(),
+            "count-block assertion must materialize satisfying witnesses",
+        );
+    }
+    assert_false(
+        &engine.query_holds("big(exactly 3 dog).").unwrap(),
+        "exactly 3 must be FALSE after a 2-witness count block",
+    );
+}
+
+#[test]
 fn count_assertion_materializes_witnesses() {
     // DECIDED 2026-07-02 (GUARANTEES §Aggregation): an exact-count ASSERTION
     // materializes PA distinct fresh witnesses satisfying the restrictor and

@@ -245,11 +245,6 @@ Pipeline-audit backlog (2026-07-17; three-agent audit of front-end / middle IRs 
 back-end — effort tags S/M/L; ordered quick-wins → correctness → structure →
 performance → future-facing):
 
-- **Lower the remaining block determiners (M–L)** — the grammar accepts
-  `exactly N X $v:` / `the X $v:` / `every the X $v:` blocks and rel-clauses on
-  block restrictors, but emit fails closed (emit.rs:300-306,333-338 — the
-  recorded emitter limitations). Implement the Count/definite lowerings so
-  parse-accepts ⇒ emit-lowers across the board.
 - **Single-resolution front-end (L)** — resolve.rs validates, then emit.rs
   RE-resolves every word (7 unreachable "internal (post-resolve)" error arms),
   and lint.rs resolves a THIRD time via raw nibli_lexicon calls. Thread resolved

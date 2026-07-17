@@ -286,6 +286,27 @@ fn kr_semantics_seam_conformance() {
     );
     metamorphic += 1;
 
+    // Block-determiner lowerings (2026-07-17, the superseded-O7 forms): each
+    // block form must compile canonically EQUAL to its term-position twin.
+    assert_eq!(
+        canonical(&kompile("exactly 2 dog $d: goes($d).").unwrap()),
+        canonical(&kompile("goes(exactly 2 dog).").unwrap()),
+        "exactly-block must lower to the term-position Count shape"
+    );
+    metamorphic += 1;
+    assert_eq!(
+        canonical(&kompile("every the dog $d: goes($d).").unwrap()),
+        canonical(&kompile("goes(every the dog).").unwrap()),
+        "every-the-block must lower to the term-position UniversalLe shape"
+    );
+    metamorphic += 1;
+    assert_eq!(
+        canonical(&kompile("the dog $d: goes($d).").unwrap()),
+        canonical(&kompile("goes(the dog).").unwrap()),
+        "the-block must desugar to the substituted definite form"
+    );
+    metamorphic += 1;
+
     // Named ≡ positional.
     assert_eq!(
         canonical(&kompile("goes(me, some market).").unwrap()),

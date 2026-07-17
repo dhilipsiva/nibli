@@ -156,10 +156,24 @@ Determiner phrases appear **in argument position** (`animal(every dog).`) or as 
 ```nibli-kr
 every dog $d: animal($d) & barks($d).      # ro lo gerku cu … (one rule, shared binder)
 some dog $d: big($d) & goes($d).           # shared existential witness across conjuncts
+exactly 2 dog $d: big($d) & goes($d).      # one Count over the shared binder
+every the dog $d: goes($d).                # rule over the opaque definite domain
+the dog $d: big($d) & goes($d).            # definite LET-BINDING sugar (see below)
 ```
 
 The block form also dissolves `gi'e`'s constant-head restriction safely: sharing a
 witness across conjuncts is now *explicit on the page* instead of a hidden hazard.
+
+**Every block determiner lowers** (2026-07-17; the earlier `exactly`/`the`
+limitation is superseded — see O7): `exactly N [the] X $v:` compiles to the SAME
+Count shape as its term-position twin, `every the X $v:` to the same
+`the_domain_` rule shape (both seam-pinned canonically equal), and `the X $v:`
+is pure SUGAR — a definite let-binding that substitutes the rigid `the X`
+designator for every `$v` before compilation (occurrences co-refer by head
+name; the block spelling does not survive round-trip — render shows the
+substituted form). Rel-clauses on a block's restrictor also lower: `where`
+folds on the domain side (a rule antecedent conjunct), `also` on the matrix
+side, with `it` bound to the block's `$v`.
 
 **Restrictors** are predicate words, optionally with tanru modifiers, linked arguments,
 a place selector, and relative clauses:
@@ -490,10 +504,13 @@ hyphen-vs-`->` lexing wrinkle.
   shape. Whether the two coincide after smuni (incl. `UniversalRuleRecord` registration
   at assert time) must be pinned by a seam-gate golden before the grammar freezes; if
   they differ, §6's block-form framing needs an erratum. *Update (2026-07-12, gate
-  landed):* the shape IS the prenex shape, CI-pinned by `verify-nibli-kr`'s O7 golden;
-  the emitter's `exactly N`/`the` block limitation stays DOCUMENTED fail-closed
-  (targeted error + inline-form workaround) rather than lifted — the Lojban→nibli KR
-  battery direction can never produce those forms.
+  landed):* the shape IS the prenex shape, CI-pinned by `verify-nibli-kr`'s O7 golden.
+  *Update (2026-07-17, user decision):* the `exactly N`/`the` block fail-closed
+  limitation is SUPERSEDED — its rationale (the Lojban→KR battery direction) died
+  with THE DROP. All block determiners now lower (§6): `exactly N [the]`/`every the`
+  via a sentence-level binder canonically equal to the term-position twins
+  (seam-pinned), `the` by let-binding substitution, and block-restrictor
+  rel-clauses fold domain/matrix-side.
 - **O8 (RESOLVED at introduction, 2026-07-12)**: the place-selector dot collides with
   the statement terminator under whitespace-insensitive parsing (`Kim = every dog.
   eats(me).` vs `every dog.eats`). Resolved fail-closed in the grammar: `selected` is
@@ -670,7 +687,7 @@ Statement   <- Claim "."                    # one statement = one independent fa
 Claim       <- Prenex / DetBlock / Impl
 Prenex      <- "all" Var ("," Var)* ":" Claim          # ForAll wraps body DIRECTLY
 DetBlock    <- BlockDet Restr Var ":" Claim            # named-binder block form
-BlockDet    <- "every" "the"? / "some" / "exactly" Nat "the"? / "no"
+BlockDet    <- "every" "the"? / "some" / "exactly" Nat "the"? / "no" / "the"
 Impl        <- IffE ("->" Impl)?                       # right-assoc; Or(Not A, B)
 IffE        <- XorE ("<->" XorE)*
 XorE        <- OrE  ("^" OrE)*

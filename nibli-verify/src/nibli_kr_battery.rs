@@ -13,11 +13,13 @@
 //!   (their coverage re-anchored in the KR seam gate's structural goldens +
 //!   metamorphic relations).
 //!
-//! Recorded decision (2026-07-12, was "decide when this gate lands"): the two
-//! emitter limitations — `exactly N`/`the` BLOCK determiners and block
-//! restrictors carrying relative clauses — stay DOCUMENTED fail-closed forms:
-//! KR authors get targeted errors with the inline-form workaround
-//! (NIBLI_KR O7).
+//! SUPERSEDED decision (2026-07-17, user): the former emitter limitations —
+//! `exactly N`/`the` BLOCK determiners and block restrictors carrying
+//! relative clauses — are now LOWERED (the 2026-07-12 fail-closed decision's
+//! rationale, "the Lojban→KR battery direction can never produce those
+//! forms", died with THE DROP). `the X $v:` desugars by substitution (a
+//! definite let-binding); the rest lower via `Sentence::Quantified`
+//! (NIBLI_KR §6 + the updated O7 erratum).
 
 use nibli_types::logic::LogicBuffer;
 
@@ -109,6 +111,13 @@ pub const CONSTRUCT_INVENTORY: &[ConstructCase] = &[
     case("§6", "all $x: dog($x) -> animal($x)."),
     case("§6", "every dog $d: animal($d)."),
     case("§6", "some dog $d: big($d) & goes($d)."),
+    case("§6", "exactly 2 dog $d: goes($d)."),
+    case("§6", "exactly 0 dog $d: goes($d)."),
+    case("§6", "exactly 2 the dog $d: goes($d)."),
+    case("§6", "every the dog $d: goes($d)."),
+    case("§6", "the dog $d: big($d) & goes($d)."),
+    case("§6", "every dog where big $d: goes($d)."),
+    case("§6", "some dog also big $d: goes($d)."),
     // ── §7 relative clauses ──
     case("§7", "permitted(every person where approves)."),
     case("§7", "beautiful(every person where ~cat)."),

@@ -165,7 +165,19 @@ pub enum SentenceConnective {
     Afterthought(Connective),
 }
 
-/// A sentence: a simple proposition, two connected sentences, or a prenex-quantified body.
+/// The quantifier kind of a [`Sentence::Quantified`] block.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BlockQuant {
+    /// `exactly N X $v:` — exact-count over the indefinite restrictor.
+    ExactCount(u32),
+    /// `exactly N the X $v:` — exact-count over the opaque definite domain.
+    ExactCountDefinite(u32),
+    /// `every the X $v:` — universal over the opaque definite domain.
+    UniversalDefinite,
+}
+
+/// A sentence: a simple proposition, two connected sentences, a
+/// prenex-quantified body, or a quantified binder block.
 #[derive(Clone, Debug)]
 pub enum Sentence {
     /// Simple predication.
@@ -177,6 +189,16 @@ pub enum Sentence {
     /// prenex order, body-sentence-id). Lowers to nested `∀` over the body
     /// in nibli-semantics.
     Prenex((Vec<String>, u32)),
+    /// Quantified binder block: `exactly N [the] X $v: body` / `every the X
+    /// $v: body`. Fields: (kind, variable particle `$v`,
+    /// restrictor-predicate-id, optional where-clause-sentence-id folded on
+    /// the DOMAIN side, body-sentence-id). The variable binds by name across
+    /// the whole block (the prenex mechanism); lowers to `Count{v, N,
+    /// And(domain, body)}` / `ForAll(v, Or(Not(domain), body))` in
+    /// nibli-semantics, where the definite kinds' domain is the opaque
+    /// `the_domain_<head>` restrictor. (`the X $v:` blocks never reach the
+    /// AST — they desugar by substitution at emission.)
+    Quantified((BlockQuant, String, PredicateId, Option<u32>, u32)),
 }
 
 /// Flat AST buffer: parallel arrays indexed by u32 IDs.

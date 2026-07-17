@@ -512,6 +512,69 @@ impl SemanticCompiler {
                 }
                 form
             }
+            Sentence::Quantified((kind, var, restr_id, clause_id, body_id)) => {
+                // Block binder: `exactly N [the] X $v: body` / `every the X
+                // $v: body`. The `$v` binds by the prenex mechanism (marked
+                // bound so no frame closes it existentially), the domain is
+                // built exactly like the term-position twin (close_quantifier's
+                // shapes), and any where-clause folds on the DOMAIN side.
+                let spur = self.interner.get_or_intern(var);
+                let newly_bound = self.prenex_vars.insert(spur);
+                let var_term = LogicalTerm::Variable(spur);
+
+                let mut domain = match kind {
+                    nibli_types::ast::BlockQuant::ExactCount(_) => {
+                        // Indefinite restrictor: `X($v, _, …)` — the
+                        // term-position ExactCount shape.
+                        let desc_arity = self.get_predicate_arity(*restr_id, predicates);
+                        let mut restrictor_args = Vec::with_capacity(desc_arity);
+                        restrictor_args.push(var_term.clone());
+                        while restrictor_args.len() < desc_arity {
+                            restrictor_args.push(LogicalTerm::Unspecified);
+                        }
+                        self.apply_predicate(
+                            *restr_id,
+                            &restrictor_args,
+                            predicates,
+                            arguments,
+                            sentences,
+                        )
+                    }
+                    nibli_types::ast::BlockQuant::ExactCountDefinite(_)
+                    | nibli_types::ast::BlockQuant::UniversalDefinite => {
+                        // Opaque definite domain: `the_domain_<head>($v)` —
+                        // the term-position ExactCountLe/UniversalLe shape.
+                        self.build_the_domain_restrictor(*restr_id, spur, predicates)
+                    }
+                };
+                if let Some(cl) = clause_id {
+                    let clause_form = self.compile_sentence(*cl, predicates, arguments, sentences);
+                    domain = LogicalForm::And(Box::new(domain), Box::new(clause_form));
+                }
+
+                let body_form = self.compile_sentence(*body_id, predicates, arguments, sentences);
+
+                let form = match kind {
+                    nibli_types::ast::BlockQuant::ExactCount(n)
+                    | nibli_types::ast::BlockQuant::ExactCountDefinite(n) => LogicalForm::Count {
+                        var: spur,
+                        count: *n,
+                        body: Box::new(LogicalForm::And(Box::new(domain), Box::new(body_form))),
+                    },
+                    nibli_types::ast::BlockQuant::UniversalDefinite => LogicalForm::ForAll(
+                        spur,
+                        Box::new(LogicalForm::Or(
+                            Box::new(LogicalForm::Not(Box::new(domain))),
+                            Box::new(body_form),
+                        )),
+                    ),
+                };
+
+                if newly_bound {
+                    self.prenex_vars.remove(&spur);
+                }
+                form
+            }
             Sentence::Connected((connective, left_id, right_id)) => {
                 let left_form = self.compile_sentence(*left_id, predicates, arguments, sentences);
                 let right_form = self.compile_sentence(*right_id, predicates, arguments, sentences);

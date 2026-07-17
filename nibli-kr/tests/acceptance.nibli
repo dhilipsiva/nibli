@@ -38,3 +38,6 @@ goes(me) via uses(this).
 computer+user(me).
 name("any text here", Adam).
 product(50, 5, 10).
+exactly 2 dog $d: goes($d).
+exactly 2 the dog $d: goes($d).
+every the dog $d: goes($d).

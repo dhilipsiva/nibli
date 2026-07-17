@@ -104,6 +104,14 @@ fn validate_ast_buffer(ast: &flat_ast::AstBuffer) -> Result<(), NibliError> {
                 }
                 Sentence::Connected((_, l, r)) => vec![(Kind::Sen, *l), (Kind::Sen, *r)],
                 Sentence::Prenex((_, body)) => vec![(Kind::Sen, *body)],
+                Sentence::Quantified((_, _, restr, clause, body)) => {
+                    let mut v = vec![(Kind::Sel, *restr)];
+                    if let Some(c) = clause {
+                        v.push((Kind::Sen, *c));
+                    }
+                    v.push((Kind::Sen, *body));
+                    v
+                }
             },
         }
     };

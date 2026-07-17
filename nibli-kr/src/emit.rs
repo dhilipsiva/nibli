@@ -24,11 +24,13 @@
 //! - abstractions → `Description((Indefinite, Abstraction(kind, body)))`
 //! - linked args → `Predicate::WithArgs` with `Unspecified` gap-fill from x2; a
 //!   named `it` marker at surface place p emits `Converted(x1↔p)` first
-//! - `every`/`some` BLOCK determiners lower via `Prenex + Implies` / `And`
-//!   (spec O7 forbids description-headed conjunction; the seam gate pins the
-//!   resulting LogicBuffer shape); `exactly`/`the` blocks and block restrs
-//!   with relative clauses are NOT yet lowerable and fail closed with a
-//!   targeted message (recorded emitter limitation)
+//! - BLOCK determiners all lower (the 2026-07-12 fail-closed limitation was
+//!   superseded 2026-07-17): `every`/`some` via `Prenex + Implies` / `And`
+//!   (spec O7), `exactly N [the]` and `every the` via `Sentence::Quantified`
+//!   (canonically equal to their term-position twins — seam-pinned), and
+//!   `the X $v:` desugars by SUBSTITUTION (definite let-binding — the block
+//!   form never reaches the AST). Block-restrictor rel-clauses fold `where`
+//!   on the domain side and `also` on the matrix side
 //! - `via` tags emit uniformly as `ModalTag::Custom(word)` — the modal is a
 //!   fi'o-style tag over the mapped predicate (spec §5 collapse)
 
@@ -40,10 +42,11 @@ use nibli_types::ast::{Connective, DeonticMood, Tense as AstTense};
 
 use crate::ast::{
     AbsKind, Arg, Claim, ClauseBody, Deontic, Det, KeyTerm, PredSeq, PredUnit, Predication,
-    RelKind, Restr, RestrKind, Statement, Tense, Term,
+    RelKind, Restr, RestrKind, Statement, Tag, Tense, Term,
 };
 use crate::parser::{ParseError, err_at};
 use crate::resolve::{PredInfo, ResolvedEntry, label_index, lookup, lookup_compound};
+use nibli_types::ast::BlockQuant;
 
 /// The canonical BASE relation name + swap place for a resolved corpus entry:
 /// a swapped (converted) entry names its base sibling by type; a plain entry
@@ -64,6 +67,7 @@ fn emit_name(entry: &ResolvedEntry) -> (String, Option<u8>) {
 pub fn emit(input: &str, statements: &[Statement]) -> Result<AstBuffer, ParseError> {
     let mut emitter = Emitter {
         input,
+        block_it_var: None,
         buffer: AstBuffer {
             predicates: Vec::new(),
             arguments: Vec::new(),
@@ -81,6 +85,11 @@ pub fn emit(input: &str, statements: &[Statement]) -> Result<AstBuffer, ParseErr
 struct Emitter<'a> {
     input: &'a str,
     buffer: AstBuffer,
+    /// While emitting a BLOCK determiner rel-clause's Full body, `it` maps to
+    /// the block's `$var` (the block binds the relativized entity by name);
+    /// nested term-position clauses suspend it so their `it` still binds the
+    /// inner entity.
+    block_it_var: Option<String>,
 }
 
 impl<'a> Emitter<'a> {
@@ -297,46 +306,132 @@ impl<'a> Emitter<'a> {
         body: &Claim,
         at: usize,
     ) -> Result<u32, ParseError> {
-        if !restr.rel_clauses.is_empty() {
-            return Err(self.fail(
-                restr.span.start,
-                "relative clauses on a BLOCK determiner's restrictor are not yet lowerable — \
-                 use the inline argument form, or fold the condition into the body \
-                 (emitter limitation, NIBLI_KR O7)",
-            ));
+        // `the X $v:` — definite LET-BINDING sugar (NIBLI_KR §6): `the X` is
+        // a rigid designator with no quantifier to bind, so the block
+        // substitutes the description for every `$v` in the body and emits
+        // the result (occurrences co-refer because the Description constant
+        // is keyed by head name). The block form does not survive into the
+        // AST — render yields the substituted spelling.
+        if det == Det::The {
+            let desugared = substitute_var_in_claim(body, var, restr);
+            return self.claim(&desugared, at);
         }
+
+        let particle = self.var_particle(var, at)?;
+        // Restrictor rel-clauses: `where` folds on the DOMAIN side, `also`
+        // on the BODY (matrix) side — mirroring close_quantifier's
+        // term-position placement.
+        let mut where_sents = Vec::new();
+        let mut also_sents = Vec::new();
+        for rc in &restr.rel_clauses {
+            let s = self.block_clause_sentence(rc, &particle)?;
+            match rc.kind {
+                RelKind::Where => where_sents.push(s),
+                RelKind::Also => also_sents.push(s),
+            }
+        }
+
         match det {
             Det::Every => {
-                let particle = self.var_particle(var, at)?;
                 let restr_sentence = self.restr_proposition_sentence(restr, &particle)?;
+                let antecedent = self.and_chain(restr_sentence, &where_sents);
                 let body_idx = self.claim(body, at)?;
+                let matrix = self.and_chain(body_idx, &also_sents);
                 let impl_idx = self.push_sentence(Sentence::Connected((
                     SentenceConnective::Implies,
-                    restr_sentence,
-                    body_idx,
+                    antecedent,
+                    matrix,
                 )));
                 Ok(self.push_sentence(Sentence::Prenex((vec![particle], impl_idx))))
             }
             Det::Some => {
-                let particle = self.var_particle(var, at)?;
                 let restr_sentence = self.restr_proposition_sentence(restr, &particle)?;
+                // A free `$v` closes existentially at its first occurrence
+                // (the restrictor proposition) — one flat conjunction keeps
+                // every conjunct in one fact; where/also placement is
+                // logically identical under ∃∧.
+                let with_wheres = self.and_chain(restr_sentence, &where_sents);
                 let body_idx = self.claim(body, at)?;
-                // Bare da/de/di closes existentially at its first occurrence
-                // (the restrictor proposition) — the ge…gi conjunction keeps both
-                // conjuncts in one fact, matching lo-with-restrictor.
-                Ok(self.push_sentence(Sentence::Connected((
+                let with_body = self.push_sentence(Sentence::Connected((
                     SentenceConnective::And,
-                    restr_sentence,
+                    with_wheres,
                     body_idx,
+                )));
+                Ok(self.and_chain(with_body, &also_sents))
+            }
+            Det::Exactly(_) | Det::ExactlyThe(_) | Det::EveryThe => {
+                let kind = match det {
+                    Det::Exactly(n) => BlockQuant::ExactCount(n),
+                    Det::ExactlyThe(n) => BlockQuant::ExactCountDefinite(n),
+                    Det::EveryThe => BlockQuant::UniversalDefinite,
+                    _ => unreachable!("matched above"),
+                };
+                let restr_pred = self.restr_predicate_for_block(restr)?;
+                let clause = match where_sents.len() {
+                    0 => None,
+                    _ => {
+                        let first = where_sents[0];
+                        Some(self.and_chain(first, &where_sents[1..]))
+                    }
+                };
+                let body_idx = self.claim(body, at)?;
+                let matrix = self.and_chain(body_idx, &also_sents);
+                Ok(self.push_sentence(Sentence::Quantified((
+                    kind, particle, restr_pred, clause, matrix,
                 ))))
             }
-            Det::The | Det::EveryThe | Det::Exactly(_) | Det::ExactlyThe(_) => Err(self.fail(
-                at,
-                "only `every` and `some` block determiners are lowerable today — write the \
-                 inline argument form (`pred(exactly 2 dog)`) instead (emitter limitation, \
-                 NIBLI_KR O7)",
-            )),
+            Det::The => unreachable!("handled by the substitution desugar above"),
         }
+    }
+
+    /// And-chain `extra` sentences onto `base` (left-fold).
+    fn and_chain(&mut self, mut base: u32, extra: &[u32]) -> u32 {
+        for &s in extra {
+            base = self.push_sentence(Sentence::Connected((SentenceConnective::And, base, s)));
+        }
+        base
+    }
+
+    /// A block rel-clause body as a sentence whose relativized entity is the
+    /// block's `$var`: the Bare sugar applies the (possibly negated) pair to
+    /// `$var` at x1; a Full claim emits with `it` mapped to `$var`
+    /// (the `block_it_var` context — nested term-position clauses suspend it,
+    /// so their `it` still binds the inner entity).
+    fn block_clause_sentence(
+        &mut self,
+        rc: &crate::ast::RelClause,
+        particle: &str,
+    ) -> Result<u32, ParseError> {
+        match &rc.body {
+            ClauseBody::Bare { negated, seq } => {
+                let mut relation = self.pred_seq(seq, rc.span.start)?;
+                if *negated {
+                    relation = self.push_predicate(Predicate::Negated(relation));
+                }
+                let head = self.push_argument(Argument::Pronoun(particle.to_owned()));
+                Ok(self.push_sentence(Sentence::Simple(Proposition {
+                    relation,
+                    head_terms: vec![head],
+                    tail_terms: vec![],
+                    negated: false,
+                    tense: None,
+                    deontic: None,
+                })))
+            }
+            ClauseBody::Full(claim) => {
+                let prev = self.block_it_var.replace(particle.to_owned());
+                let idx = self.claim(claim, rc.span.start);
+                self.block_it_var = prev;
+                idx
+            }
+        }
+    }
+
+    /// The restrictor PREDICATE of a Quantified block (negation, selectors,
+    /// linked args — everything `restr_predicate` supports; rel-clauses are
+    /// handled by the caller).
+    fn restr_predicate_for_block(&mut self, restr: &Restr) -> Result<u32, ParseError> {
+        self.restr_predicate(restr)
     }
 
     /// `<restr>(<var>)` as a Simple sentence — the antecedent/witness proposition of
@@ -410,6 +505,10 @@ impl<'a> Emitter<'a> {
             Term::Number(n) => Argument::Number(*n),
             Term::Str(s) => Argument::QuotedLiteral(s.clone()),
             Term::Var(v) => Argument::Pronoun(self.var_particle(v, at)?),
+            Term::Key(KeyTerm::It) if self.block_it_var.is_some() => {
+                // Inside a block rel-clause body, `it` IS the block's `$var`.
+                Argument::Pronoun(self.block_it_var.clone().expect("checked above"))
+            }
             Term::Key(k) => Argument::Pronoun(keyterm_particle(*k).into()),
             Term::Name { name, rel_clauses } => {
                 let mut idx =
@@ -560,6 +659,9 @@ impl<'a> Emitter<'a> {
             RelKind::Where => RelClauseKind::Restrictive,
             RelKind::Also => RelClauseKind::Incidental,
         };
+        // A term-position clause's `it` binds ITS OWN entity (nibli-semantics'
+        // rel_clause_var) — suspend any enclosing block's `it` mapping.
+        let suspended = self.block_it_var.take();
         let body_sentence = match &rc.body {
             ClauseBody::Bare { negated, seq } => {
                 let relation = self.pred_seq(seq, rc.span.start)?;
@@ -575,10 +677,155 @@ impl<'a> Emitter<'a> {
             }
             ClauseBody::Full(claim) => self.claim(claim, rc.span.start)?,
         };
+        self.block_it_var = suspended;
         Ok(RelClause {
             kind,
             body_sentence,
         })
+    }
+}
+
+/// Substitute every `$var` occurrence in `claim` with the definite
+/// description `the <restr>` — the `the X $v:` block's let-binding desugar.
+/// An inner binder that re-binds the same name (a prenex var or another
+/// block's `$var`) SHADOWS: its body is left untouched.
+fn substitute_var_in_claim(claim: &Claim, var: &str, the_restr: &Restr) -> Claim {
+    let sub = |c: &Claim| Box::new(substitute_var_in_claim(c, var, the_restr));
+    match claim {
+        Claim::Prenex { vars, body } => {
+            if vars.iter().any(|v| v == var) {
+                claim.clone() // shadowed
+            } else {
+                Claim::Prenex {
+                    vars: vars.clone(),
+                    body: sub(body),
+                }
+            }
+        }
+        Claim::DetBlock {
+            det,
+            restr,
+            var: inner_var,
+            body,
+        } => Claim::DetBlock {
+            det: *det,
+            restr: substitute_var_in_restr(restr, var, the_restr),
+            var: inner_var.clone(),
+            body: if inner_var == var {
+                body.clone() // shadowed
+            } else {
+                sub(body)
+            },
+        },
+        Claim::Impl(a, b) => Claim::Impl(sub(a), sub(b)),
+        Claim::Iff(a, b) => Claim::Iff(sub(a), sub(b)),
+        Claim::Xor(a, b) => Claim::Xor(sub(a), sub(b)),
+        Claim::Or(a, b) => Claim::Or(sub(a), sub(b)),
+        Claim::And(a, b) => Claim::And(sub(a), sub(b)),
+        Claim::Not(inner) => Claim::Not(sub(inner)),
+        Claim::Prefixed {
+            deontic,
+            tense,
+            atom,
+        } => Claim::Prefixed {
+            deontic: *deontic,
+            tense: *tense,
+            atom: sub(atom),
+        },
+        Claim::Equality(a, b) => Claim::Equality(
+            substitute_var_in_term(a, var, the_restr),
+            substitute_var_in_term(b, var, the_restr),
+        ),
+        Claim::Predication(p) => Claim::Predication(Predication {
+            seq: p.seq.clone(),
+            args: p
+                .args
+                .iter()
+                .map(|a| Arg {
+                    label: a.label.clone(),
+                    term: substitute_var_in_term(&a.term, var, the_restr),
+                    span: a.span.clone(),
+                })
+                .collect(),
+            tags: p
+                .tags
+                .iter()
+                .map(|t| Tag {
+                    pred: t.pred.clone(),
+                    term: substitute_var_in_term(&t.term, var, the_restr),
+                    span: t.span.clone(),
+                })
+                .collect(),
+            span: p.span.clone(),
+        }),
+    }
+}
+
+fn substitute_var_in_term(term: &Term, var: &str, the_restr: &Restr) -> Term {
+    match term {
+        Term::Var(v) if v == var => Term::Det {
+            det: Det::The,
+            restr: the_restr.clone(),
+        },
+        Term::Abstraction { kind, body } => Term::Abstraction {
+            kind: *kind,
+            body: Box::new(substitute_var_in_claim(body, var, the_restr)),
+        },
+        Term::Name { name, rel_clauses } => Term::Name {
+            name: name.clone(),
+            rel_clauses: rel_clauses
+                .iter()
+                .map(|rc| substitute_var_in_rel_clause(rc, var, the_restr))
+                .collect(),
+        },
+        Term::Det { det, restr } => Term::Det {
+            det: *det,
+            restr: substitute_var_in_restr(restr, var, the_restr),
+        },
+        other => other.clone(),
+    }
+}
+
+fn substitute_var_in_restr(restr: &Restr, var: &str, the_restr: &Restr) -> Restr {
+    Restr {
+        negated: restr.negated,
+        kind: match &restr.kind {
+            RestrKind::Seq { seq, linked_args } => RestrKind::Seq {
+                seq: seq.clone(),
+                linked_args: linked_args
+                    .iter()
+                    .map(|a| Arg {
+                        label: a.label.clone(),
+                        term: substitute_var_in_term(&a.term, var, the_restr),
+                        span: a.span.clone(),
+                    })
+                    .collect(),
+            },
+            selected @ RestrKind::Selected { .. } => selected.clone(),
+        },
+        rel_clauses: restr
+            .rel_clauses
+            .iter()
+            .map(|rc| substitute_var_in_rel_clause(rc, var, the_restr))
+            .collect(),
+        span: restr.span.clone(),
+    }
+}
+
+fn substitute_var_in_rel_clause(
+    rc: &crate::ast::RelClause,
+    var: &str,
+    the_restr: &Restr,
+) -> crate::ast::RelClause {
+    crate::ast::RelClause {
+        kind: rc.kind,
+        body: match &rc.body {
+            bare @ ClauseBody::Bare { .. } => bare.clone(),
+            ClauseBody::Full(claim) => {
+                ClauseBody::Full(Box::new(substitute_var_in_claim(claim, var, the_restr)))
+            }
+        },
+        span: rc.span.clone(),
     }
 }
 
@@ -803,14 +1050,87 @@ mod tests {
         );
     }
 
-    // ── emitter limitations fail closed ──
+    // ── block-determiner lowerings (the former emitter limitations) ──
 
     #[test]
-    fn unlowerable_blocks_fail_closed() {
-        let e = parse_checked("exactly 2 dog $d: goes($d).").unwrap_err();
-        assert!(format!("{e}").contains("block determiners"), "{e}");
-        let e = parse_checked("every dog where big $d: goes($d).").unwrap_err();
-        assert!(format!("{e}").contains("not yet lowerable"), "{e}");
+    fn quantified_blocks_lower_and_compile() {
+        // Every previously-fail-closed block form now lowers and is
+        // nibli-semantics-valid (the canonical-equality twins live in the
+        // seam gate, which owns the variable-renaming canonicalizer).
+        for text in [
+            "exactly 2 dog $d: goes($d).",
+            "exactly 2 dog $d: big($d) & goes($d).",
+            "exactly 0 dog $d: goes($d).",
+            "exactly 2 the dog $d: goes($d).",
+            "every the dog $d: goes($d).",
+            "every dog where big $d: goes($d).",
+            "every dog where owns(it, some data) $d: goes($d).",
+            "every dog also big $d: goes($d).",
+            "some dog where big $d: goes($d).",
+            "exactly 2 dog where big $d: goes($d).",
+        ] {
+            nibli_kr_lb(text); // panics if resolve/emit/smuni rejects
+        }
+    }
+
+    #[test]
+    fn exactly_block_emits_quantified_sentence() {
+        let b = parse_checked("exactly 2 dog $d: goes($d).").unwrap();
+        assert!(
+            b.sentences.iter().any(|s| matches!(
+                s,
+                nibli_types::ast::Sentence::Quantified((
+                    nibli_types::ast::BlockQuant::ExactCount(2), v, _, None, _
+                ))
+                    if v == "$d"
+            )),
+            "exactly-block must emit Sentence::Quantified(ExactCount(2), $d): {:?}",
+            b.sentences
+        );
+    }
+
+    #[test]
+    fn the_block_desugars_by_substitution() {
+        // `the X $v:` is definite let-binding sugar: the emitted buffer is the
+        // SUBSTITUTED form — every `$d` became `the dog` (a Definite
+        // description; occurrences co-refer by head name) and no Quantified
+        // sentence exists.
+        let b = parse_checked("the dog $d: big($d) & goes($d).").unwrap();
+        assert!(
+            !b.sentences
+                .iter()
+                .any(|s| matches!(s, nibli_types::ast::Sentence::Quantified(_))),
+            "the-block must desugar away, not bind"
+        );
+        let definite_count = b
+            .arguments
+            .iter()
+            .filter(|a| {
+                matches!(
+                    a,
+                    nibli_types::ast::Argument::Description((
+                        nibli_types::ast::Determiner::Definite,
+                        _
+                    ))
+                )
+            })
+            .count();
+        assert_eq!(definite_count, 2, "both $d occurrences become `the dog`");
+        // And the substituted spelling is what renders back.
+        let rendered = crate::render::render(&b).unwrap();
+        assert_eq!(rendered, "big(the dog) & goes(the dog).");
+    }
+
+    #[test]
+    fn where_clause_on_every_block_folds_into_antecedent() {
+        // `every dog where big $d: goes($d).` ≡ the hand-written prenex
+        // `all $d: dog($d) & big($d) -> goes($d).` — identical buffers
+        // (same variable names, so plain Debug equality works here).
+        assert_eq!(
+            nibli_kr_lb("every dog where big $d: goes($d)."),
+            nibli_kr_lb("all $d: dog($d) & big($d) -> goes($d)."),
+            "the where-clause must fold into the rule antecedent"
+        );
     }
 
     // ── errata pins survive through parse_checked (spec bullet requirement) ──

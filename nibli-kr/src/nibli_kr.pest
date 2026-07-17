@@ -114,7 +114,7 @@ claim      = { prenex | det_block | impl_chain }
 prenex     = { kw_all ~ var ~ ("," ~ var)* ~ ":" ~ claim }
 // `every dog $d: C` — named-binder block form (emission shape pinned by O7).
 det_block  = { block_det ~ restr ~ var ~ ":" ~ claim }
-block_det  = { (kw_every ~ kw_the?) | kw_some | (kw_exactly ~ number ~ kw_the?) | kw_no }
+block_det  = { (kw_every ~ kw_the?) | kw_some | (kw_exactly ~ number ~ kw_the?) | kw_no | kw_the }
 
 // The operator ladder (tightest first: modifiers · & · | · ^ · <-> · ->).
 impl_chain = { iff_chain ~ (op_impl ~ impl_chain)? }      // -> right-assoc

@@ -34,7 +34,10 @@ use nibli_types::error::NibliError;
 
 /// Render an `AstBuffer` (all roots, one statement per line) to nibli KR text.
 pub fn render(buffer: &AstBuffer) -> Result<String, NibliError> {
-    let renderer = Renderer { buffer };
+    let renderer = Renderer {
+        buffer,
+        it_subst: std::cell::RefCell::new(None),
+    };
     let mut out = Vec::new();
     for &root in &buffer.roots {
         out.push(format!("{}.", renderer.sentence(root, 0)?));
@@ -44,6 +47,10 @@ pub fn render(buffer: &AstBuffer) -> Result<String, NibliError> {
 
 struct Renderer<'a> {
     buffer: &'a AstBuffer,
+    /// While rendering a [`Sentence::Quantified`] block's where-clause, the
+    /// block's `$var` spells as `it` (the emitter did the inverse
+    /// substitution), so the clause re-parses under the mandatory-`it` rule.
+    it_subst: std::cell::RefCell<Option<String>>,
 }
 
 type R<T> = Result<T, NibliError>;
@@ -88,6 +95,35 @@ impl<'a> Renderer<'a> {
                 // The prenex variable names already carry their `$` sigil.
                 let vars = vars.iter().cloned().collect::<Vec<_>>().join(", ");
                 (format!("all {vars}: {}", self.sentence(*body, 0)?), 0)
+            }
+            Sentence::Quantified((kind, var, restr, clause, body)) => {
+                let det = match kind {
+                    nibli_types::ast::BlockQuant::ExactCount(n) => format!("exactly {n} "),
+                    nibli_types::ast::BlockQuant::ExactCountDefinite(n) => {
+                        format!("exactly {n} the ")
+                    }
+                    nibli_types::ast::BlockQuant::UniversalDefinite => "every the ".to_string(),
+                };
+                let restr_text = self.restr_predicate(*restr)?;
+                let clause_text = match clause {
+                    Some(c) => {
+                        // Inside the where-clause the block's `$var` spells as
+                        // `it` (mandatory-it, §7); the emitter substituted the
+                        // other direction.
+                        let prev = self.it_subst.replace(Some(var.clone()));
+                        let rendered = self.sentence(*c, 0);
+                        *self.it_subst.borrow_mut() = prev;
+                        format!(" where {}", rendered?)
+                    }
+                    None => String::new(),
+                };
+                (
+                    format!(
+                        "{det}{restr_text}{clause_text} {var}: {}",
+                        self.sentence(*body, 0)?
+                    ),
+                    0,
+                )
             }
             Sentence::Connected((conn, left, right)) => match conn {
                 SentenceConnective::Implies => (
@@ -489,8 +525,16 @@ impl<'a> Renderer<'a> {
                 | "yonder" | "it_a" | "it_e" | "it_i" | "it_o" | "it_u" | "it" | "slot" | "?" => {
                     word.clone()
                 }
-                // A logic variable is preserved as `$name` (no da/de/di lowering).
-                other if other.starts_with('$') => other.into(),
+                // A logic variable is preserved as `$name` (no da/de/di
+                // lowering) — except inside a Quantified block's where-clause,
+                // where the block's own variable spells as `it` (mandatory-it).
+                other if other.starts_with('$') => {
+                    if self.it_subst.borrow().as_deref() == Some(other) {
+                        "it".to_string()
+                    } else {
+                        other.into()
+                    }
+                }
                 other => {
                     // Out-of-scope pro-argument (§10 anaphora, a legacy cmavo
                     // like `zo'e`, …) fail closed BY NAME — in the battery this
@@ -710,6 +754,7 @@ pub fn __ast_parity_guard(
     argument: &Argument,
     predicate: &Predicate,
     sentence: &Sentence,
+    block_quant: &nibli_types::ast::BlockQuant,
     connective: &SentenceConnective,
     determiner: &Determiner,
     abstraction: &AbstractionKind,
@@ -745,6 +790,12 @@ pub fn __ast_parity_guard(
         Sentence::Simple(_) => {}
         Sentence::Connected(_) => {}
         Sentence::Prenex(_) => {}
+        Sentence::Quantified(_) => {}
+    }
+    match block_quant {
+        nibli_types::ast::BlockQuant::ExactCount(_) => {}
+        nibli_types::ast::BlockQuant::ExactCountDefinite(_) => {}
+        nibli_types::ast::BlockQuant::UniversalDefinite => {}
     }
     match connective {
         SentenceConnective::Implies => {}
