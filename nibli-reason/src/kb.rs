@@ -636,6 +636,14 @@ pub(super) struct KnowledgeBaseInner {
     /// detector for `depth_cut_table` inserts (snapshot before deriving a
     /// goal; unchanged ⇒ the subtree's Depth verdict is path-independent).
     pub(super) cycle_cut_epoch: Cell<u64>,
+    /// Transient SHARED budget for du-equivalence variant derivations
+    /// (`DU_VARIANT_BOUND`): the OUTERMOST fallback invocation owns it
+    /// (None → Some(bound)), nested probe fallbacks drain the same budget —
+    /// a variant's Cartesian product is the SAME class product as the
+    /// original goal's, so nested re-enumeration is redundant work, and the
+    /// shared budget caps the TOTAL probe count per top-level fallback.
+    /// Always restored to None by the owner.
+    pub(super) du_variant_budget: Cell<Option<usize>>,
     /// Diagnostic verbosity. When `false` (the default) the informational stdout
     /// `println!` diagnostics (`[Rule]`/`[Skolem]`/`[Constraint] Registered`) are
     /// suppressed — a silent library for the server/validate/tavla. nibli-pipeline (the
@@ -710,6 +718,7 @@ impl Clone for KnowledgeBaseInner {
             pred_cache_enabled: Cell::new(false),
             depth_cut_table: RefCell::new(HashMap::new()),
             cycle_cut_epoch: Cell::new(0),
+            du_variant_budget: Cell::new(None),
             verbose: self.verbose,
             strict: self.strict,
             strict_violations: Vec::new(),
@@ -758,6 +767,7 @@ impl KnowledgeBaseInner {
             pred_cache_enabled: Cell::new(false),
             depth_cut_table: RefCell::new(HashMap::new()),
             cycle_cut_epoch: Cell::new(0),
+            du_variant_budget: Cell::new(None),
             verbose: false,
             strict: false,
             strict_violations: Vec::new(),

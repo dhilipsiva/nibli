@@ -1527,6 +1527,19 @@ fn equals_substitution_note(orig: &StoredFact, variant: &StoredFact) -> String {
         .join(", ")
 }
 
+/// Bound on the du-equivalence VARIANT DERIVATION fan-out: the fallback in
+/// `check_predicate_in_kb_typed` (and its recording twin) runs a FULL
+/// recursive derivation per Cartesian combination of the arguments'
+/// equivalence classes — Π|class_i| derivations per goal. Real corpora merge
+/// a handful of terms; only adversarial du-merges exceed this. Past the
+/// bound the verdict fallback DOWNGRADES a would-be `False` to
+/// `ResourceExceeded(Depth)` (sound-but-incomplete, like a cycle cut —
+/// never a wrong definitive verdict; disclosed in GUARANTEES
+/// §Completeness). The cheap asserted-variant CONTAINS scan
+/// (`typed_fact_is_asserted_with_equivalence`) is deliberately unbounded:
+/// O(1) per combo, and truncating it could return a wrong `false`.
+const DU_VARIANT_BOUND: usize = 256;
+
 /// Simple cartesian product iterator over Vec<Vec<T>>.
 struct CartesianProduct<'a> {
     sets: &'a [Vec<GroundTerm>],
@@ -1729,7 +1742,26 @@ pub(super) fn check_predicate_in_kb_typed(
             // equivalence variants. Inserted here (not by the inner backward
             // chainer, which removes its own entry on return).
             let reinserted = visited.insert(cycle_key(fact));
+            // Each variant costs a FULL recursive derivation, so the total
+            // fan-out over big du-merged classes is bounded by a SHARED
+            // budget: the outermost fallback owns it; probes' own nested
+            // fallbacks (whose class product is the SAME as ours — variants
+            // are combos of the same classes) drain it rather than
+            // re-enumerating multiplicatively. The truncation downgrade
+            // below keeps the cut sound (GUARANTEES §Completeness).
+            let owns_budget = inner.du_variant_budget.get().is_none();
+            if owns_budget {
+                inner.du_variant_budget.set(Some(DU_VARIANT_BOUND));
+            }
+            let mut truncated = false;
             for combo in CartesianProduct::new(&equiv_args) {
+                match inner.du_variant_budget.get() {
+                    Some(0) | None => {
+                        truncated = true;
+                        break;
+                    }
+                    Some(b) => inner.du_variant_budget.set(Some(b - 1)),
+                }
                 let variant_gf = GroundFact::new(gf.relation.clone(), combo);
                 let variant = StoredFact::with_tense_from(variant_gf, fact);
                 if variant != *fact && !visited.contains(&cycle_key(&variant)) {
@@ -1741,10 +1773,21 @@ pub(super) fn check_predicate_in_kb_typed(
                     }
                 }
             }
+            if owns_budget {
+                inner.du_variant_budget.set(None);
+            }
             // Only remove `fact` if WE inserted it (don't clobber an entry an
             // outer frame is relying on for its own cycle guard).
             if reinserted {
                 visited.remove(&cycle_key(fact));
+            }
+            // SOUND TRUNCATION: an unexplored variant could still prove the
+            // goal, so a `False` past the bound would be a WRONG definitive
+            // verdict (and would poison the pred_cache). Downgrade to the
+            // sound-but-incomplete resource verdict instead — the same class
+            // as a cycle cut.
+            if truncated && result.is_false() {
+                result = QueryResult::ResourceExceeded(ResourceKind::Depth);
             }
         }
     }
@@ -2657,7 +2700,20 @@ pub(super) fn trace_predicate_provenance_typed(
             .collect();
         if equiv_args.iter().any(|cls| cls.len() > 1) {
             let mut satisfying: Option<StoredFact> = None;
+            // Same shared DU_VARIANT_BOUND budget as the verdict fallback
+            // (parity): a TRUE verdict's satisfying variant was found within
+            // the budget of the same deterministic iteration, and its True
+            // is pred_cache'd — this scan re-finds it via cache hits before
+            // the budget can run out.
+            let owns_budget = inner.du_variant_budget.get().is_none();
+            if owns_budget {
+                inner.du_variant_budget.set(Some(DU_VARIANT_BOUND));
+            }
             for combo in CartesianProduct::new(&equiv_args) {
+                match inner.du_variant_budget.get() {
+                    Some(0) | None => break,
+                    Some(b) => inner.du_variant_budget.set(Some(b - 1)),
+                }
                 let variant_gf = GroundFact::new(gf.relation.clone(), combo);
                 let variant = StoredFact::with_tense_from(variant_gf, fact);
                 if variant != *fact
@@ -2667,6 +2723,9 @@ pub(super) fn trace_predicate_provenance_typed(
                     satisfying = Some(variant);
                     break;
                 }
+            }
+            if owns_budget {
+                inner.du_variant_budget.set(None);
             }
             if let Some(variant) = satisfying {
                 let equals_note = equals_substitution_note(fact, &variant);

@@ -1162,3 +1162,42 @@ fn test_hypothetical_with_rule() {
         "danlu(alis) should NOT persist after hypothetical"
     );
 }
+
+// ─── DU_VARIANT_BOUND: the equivalence-variant fan-out cap ───────────────
+
+/// An adversarial du-merge whose variant Cartesian product exceeds
+/// `DU_VARIANT_BOUND` (a 17-member class on BOTH args of a 2-place goal =
+/// 289 combos > 256): the fallback must terminate promptly AND must not
+/// return a definitive False past the truncation — an unexplored variant
+/// could still prove the goal, so the sound verdict is the
+/// `ResourceExceeded` incompleteness class (like a cycle cut), never a
+/// wrong False.
+#[test]
+fn du_variant_fanout_is_bounded_and_never_a_wrong_false() {
+    let kb = new_kb();
+    for i in 1..17 {
+        assert_buf(&kb, make_equals("m0", &format!("m{i}")));
+    }
+    // Nothing asserted for the goal predicate: every variant is unprovable,
+    // and the 289-combo product truncates at the bound.
+    let result = query_result(&kb, make_assertion_2("m16", "m16", "zzunprovable"));
+    assert!(
+        !result.is_true(),
+        "no variant is provable — the goal must not be TRUE"
+    );
+    assert!(
+        matches!(result, QueryResult::ResourceExceeded(_)),
+        "past the variant bound the verdict must be the sound incompleteness \
+         class, never a definitive False: got {result:?}"
+    );
+
+    // Control UNDER the bound: a small merge still proves through a variant
+    // (the fallback's completeness within the cap is untouched).
+    let kb2 = new_kb();
+    assert_buf(&kb2, make_equals("n0", "n1"));
+    assert_buf(&kb2, make_assertion_2("n0", "n0", "loves"));
+    assert!(
+        query(&kb2, make_assertion_2("n1", "n1", "loves")),
+        "a within-bound variant must still prove TRUE"
+    );
+}

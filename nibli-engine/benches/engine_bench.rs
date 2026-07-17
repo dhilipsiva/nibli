@@ -82,27 +82,27 @@ fn bench_query_latency(c: &mut Criterion) {
 
 // ─── Benchmark: Recursive rule chains ────────────────────────────
 //
-// Depth set is [2, 4, 5], NOT deeper: since commit 90b3f59 (predicate cache
-// gated to definitive results + cross-depth tabling — a SOUNDNESS fix; the old
-// cache reused non-definitive results across deepening passes, so a pass-d
-// depth cut could poison pass d+1), per-hop cost on synthetic chains multiplies
-// by roughly 30x. Measured 2026-07-03: depth 2 = 163 µs, depth 4 = 41 ms,
-// depth 5 = 1.5 s, depth 6 = 47 s — so the former depth-10 configuration no
-// longer completes in benchmark time (the April 2026 pre-90b3f59 engine ran it
-// in ~1.3 s). If sound tabling ever recovers deep chains, re-extend the depth
-// set and re-run; the book quotes this group (P3_C07 Table 7.2).
+// Depth set re-extended to [2, 4, 6, 8, 10] at the 2026-07-18 sound-tabling
+// landing (the budget-keyed depth-cut table in nibli-reason): the deep-chain
+// cliff — ~30×/hop since the 90b3f59 predicate-cache soundness fix, measured
+// 2026-07-03 as 163 µs @ 2 / 41 ms @ 4 / 1.5 s @ 5 / 47 s @ 6, with depth 10
+// no longer completing — is RECOVERED. Measured 2026-07-18 (release):
+// depth 2 = 173 µs, 4 = 4.2 ms, 6 = 24 ms (was 47 s), 8 = 93 ms, 10 = 241 ms
+// — the formerly-exponential curve is polynomial, and depth 10 beats even the
+// pre-90b3f59 UNSOUND cache (~1.3 s) ~5×. The book's P3_C07 Table 7.2 still
+// quotes the pre-tabling cliff figures pending its own reconciliation pass.
+// Vocabulary went English at the committed-corpus milestone (gismu spellings
+// no longer resolve — the old gerku→danlu chain had silently broken this
+// bench).
 
 fn bench_rule_chain(c: &mut Criterion) {
     let mut group = c.benchmark_group("rule_chain_depth");
-    for &depth in &[2usize, 4, 5] {
+    for &depth in &[2usize, 4, 6, 8, 10] {
         group.bench_with_input(BenchmarkId::from_parameter(depth), &depth, |b, &depth| {
             let engine = fresh_engine();
-            // Build rule chain: gerku→danlu→jmive→... via KR identity-gismu
-            // spellings (raw dictionary words resolve as identity aliases, so
-            // the chain vocabulary is unchanged from the pre-DROP bench).
             let preds = [
-                "gerku", "danlu", "jmive", "cipni", "fenki", "lisri", "bangu", "prenu", "nixli",
-                "nanmu", "mlatu",
+                "dog", "animal", "alive", "big", "fast", "healthy", "thin", "eats", "goes",
+                "person", "cat",
             ];
             for i in 0..depth.min(preds.len() - 1) {
                 let text = format!("{}(every {}).", preds[i + 1], preds[i]);

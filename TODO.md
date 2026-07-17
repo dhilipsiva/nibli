@@ -276,14 +276,6 @@ performance → future-facing):
   `proof-rule`/`logic-node` types are tuple-shaped mirrors of the canonical
   named-field enums. Aligning the WIT shapes (a 0.2.x→0.3.0 ABI break —
   regenerate bindings, update nibli-host) lets most of that glue go.
-- **Sound tabling for the deep-chain cliff (L)** — confirmed root cause:
-  `pred_cache` stores only DEFINITIVE verdicts (reasoning.rs:1736-1746);
-  depth-cut/cycle-cut results are context-dependent and uncached, so iterative
-  deepening re-derives every horizon-cut subgoal (~30×/hop since the
-  predicate-cache soundness fix — do NOT revert that fix). SLG-style answer +
-  negative subgoal tables with depth/stratum context; also bound the du-class
-  equivalence-variant Cartesian fan-out (reasoning.rs:1700-1716). The single
-  biggest correctness-preserving perf lever.
 - **Existential-import witness flag (M)** — the xorlo rule mints presupposition
   witnesses unconditionally (kb.rs:632-638); NIBLI_KR §14 keeps "witness minting
   behind a flag, off for clean-core" as a live option. Add a KB config flag
