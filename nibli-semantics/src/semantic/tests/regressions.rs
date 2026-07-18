@@ -8,8 +8,8 @@ fn test_place_tag_beyond_arity_errors() {
     // never a silent drop of `do`.
     let predicates = vec![Predicate::Root("dog".into())];
     let arguments = vec![
-        Argument::Atom("you".into()), // 0
-        Argument::Tagged((4, 0)),     // 1: fu do
+        Argument::Pronoun(Pronoun::You), // 0
+        Argument::Tagged((4, 0)),        // 1: fu do
     ];
     let proposition = Proposition {
         relation: 0,
@@ -36,8 +36,8 @@ fn test_place_tag_within_arity_no_error() {
     // fe do gerku → `fe` targets x2; gerku is 2-place: fine.
     let predicates = vec![Predicate::Root("dog".into())];
     let arguments = vec![
-        Argument::Atom("you".into()), // 0
-        Argument::Tagged((1, 0)),     // 1: fe do
+        Argument::Pronoun(Pronoun::You), // 0
+        Argument::Tagged((1, 0)),        // 1: fe do
     ];
     let proposition = Proposition {
         relation: 0,
@@ -65,9 +65,9 @@ fn test_untagged_overflow_known_arity_errors() {
     // silently dropping it.
     let predicates = vec![Predicate::Root("dog".into())];
     let arguments = vec![
-        Argument::Atom("me".into()),   // 0
-        Argument::Atom("you".into()),  // 1
-        Argument::Atom("this".into()), // 2
+        Argument::Pronoun(Pronoun::Me),   // 0
+        Argument::Pronoun(Pronoun::You),  // 1
+        Argument::Pronoun(Pronoun::This), // 2
     ];
     let proposition = Proposition {
         relation: 0,
@@ -96,9 +96,9 @@ fn test_untagged_overflow_unknown_arity_no_error() {
     // the no-XML build defaults many proxy words to 2).
     let predicates = vec![Predicate::Root("zzzzz".into())];
     let arguments = vec![
-        Argument::Atom("me".into()),   // 0
-        Argument::Atom("you".into()),  // 1
-        Argument::Atom("this".into()), // 2
+        Argument::Pronoun(Pronoun::Me),   // 0
+        Argument::Pronoun(Pronoun::You),  // 1
+        Argument::Pronoun(Pronoun::This), // 2
     ];
     let proposition = Proposition {
         relation: 0,
@@ -122,10 +122,10 @@ fn test_tag_collision_errors() {
     // error, not silently last-wins (dropping `do`).
     let predicates = vec![Predicate::Root("dog".into())];
     let arguments = vec![
-        Argument::Atom("you".into()),  // 0
-        Argument::Atom("this".into()), // 1
-        Argument::Tagged((1, 0)),      // 2: fe do
-        Argument::Tagged((1, 1)),      // 3: fe ti
+        Argument::Pronoun(Pronoun::You),  // 0
+        Argument::Pronoun(Pronoun::This), // 1
+        Argument::Tagged((1, 0)),         // 2: fe do
+        Argument::Tagged((1, 1)),         // 3: fe ti
     ];
     let proposition = Proposition {
         relation: 0,
@@ -350,7 +350,7 @@ fn test_da_after_universal_closes_inside_forall() {
     ];
     let arguments = vec![
         Argument::Description((Determiner::Every, 0)), // 0: ro lo gerku
-        Argument::Atom("$da".into()),                  // 1: da
+        Argument::Variable("$da".into()),              // 1: da
     ];
     let proposition = Proposition {
         relation: 1,

@@ -26,9 +26,9 @@
 //! (e.g. a `some`-block's `GeGi` re-parses as an Afterthought `&`).
 
 use nibli_types::ast::{
-    AbstractionKind, Argument, AstBuffer, Connective, Conversion, DeonticMood, Determiner,
-    ModalTag, Predicate, Proposition, RelClause, RelClauseKind, Sentence, SentenceConnective,
-    Tense,
+    AbstractionKind, Argument, AstBuffer, Connective, Conversion, DeonticMood, Determiner, Marker,
+    ModalTag, Predicate, Pronoun, Proposition, RelClause, RelClauseKind, Sentence,
+    SentenceConnective, Tense,
 };
 use nibli_types::error::NibliError;
 
@@ -245,7 +245,9 @@ impl<'a> Renderer<'a> {
                     let ModalTag(predicate) = modal;
                     vias.push((*predicate, *inner));
                 }
-                Argument::Atom(_)
+                Argument::Variable(_)
+                | Argument::Marker(_)
+                | Argument::Pronoun(_)
                 | Argument::Description(_)
                 | Argument::Name(_)
                 | Argument::QuotedLiteral(_)
@@ -509,34 +511,25 @@ impl<'a> Renderer<'a> {
 
     fn term(&self, id: u32) -> R<String> {
         Ok(match self.argument(id)? {
-            Argument::Atom(word) => match word.as_str() {
-                // Atom strings ARE their KR spellings since the pronoun
-                // flip — identity over the emitter's exact vocabulary, so an
-                // unknown string still fails closed below.
-                "me" | "you" | "we" | "we_all" | "we_others" | "you_all" | "this" | "that"
-                | "yonder" | "it_a" | "it_e" | "it_i" | "it_o" | "it_u" | "it" | "slot" | "?" => {
-                    word.clone()
-                }
-                // A logic variable is preserved as `$name` (no da/de/di
-                // lowering) — except inside a Quantified block's where-clause,
-                // where the block's own variable spells as `it` (mandatory-it).
-                other if other.starts_with('$') => {
-                    if self.it_subst.borrow().as_deref() == Some(other) {
-                        "it".to_string()
-                    } else {
-                        other.into()
-                    }
-                }
-                other => {
-                    // Out-of-scope pro-argument (§10 anaphora, a legacy cmavo
-                    // like `zo'e`, …) fail closed BY NAME — in the battery this
-                    // is a genuine coverage signal.
-                    return Err(nope(format!(
-                        "pro-argument {other:?} is out of nibli KR's scope (NIBLI_KR §10) — \
-                         no spelling exists"
-                    )));
-                }
+            // Pronoun and marker spellings are the typed variants' single
+            // authority — out-of-scope pro-arguments (§10 anaphora, legacy
+            // cmavo) have NO AST form since the typed split (unrepresentable).
+            Argument::Pronoun(pronoun) => pronoun.as_str().to_string(),
+            Argument::Marker(marker) => match marker {
+                Marker::It => "it".to_string(),
+                Marker::Slot => "slot".to_string(),
+                Marker::Witness => "?".to_string(),
             },
+            // A logic variable is preserved as `$name` (no da/de/di
+            // lowering) — except inside a Quantified block's where-clause,
+            // where the block's own variable spells as `it` (mandatory-it).
+            Argument::Variable(v) => {
+                if self.it_subst.borrow().as_deref() == Some(v.as_str()) {
+                    "it".to_string()
+                } else {
+                    v.clone()
+                }
+            }
             Argument::Name(name) => render_name(name)?,
             Argument::QuotedLiteral(text) => {
                 if text.contains('\n') {
@@ -631,7 +624,7 @@ impl<'a> Renderer<'a> {
                 match (proposition.x1_present, proposition.terms.as_slice()) {
                     (false, []) => true,
                     (true, [only]) => {
-                        matches!(self.argument(*only)?, Argument::Atom(w) if w == "it")
+                        matches!(self.argument(*only)?, Argument::Marker(Marker::It))
                     }
                     _ => false,
                 },
@@ -662,7 +655,7 @@ impl<'a> Renderer<'a> {
                     Argument::Tagged((_, inner)) => *inner,
                     _ => term_id,
                 };
-                if matches!(self.argument(inner)?, Argument::Atom(w) if w == "it") {
+                if matches!(self.argument(inner)?, Argument::Marker(Marker::It)) {
                     return Ok(true);
                 }
             }
@@ -758,9 +751,13 @@ pub fn __ast_parity_guard(
     logical: &Connective,
     tense: &Tense,
     deontic: &DeonticMood,
+    marker: &Marker,
+    pronoun: &Pronoun,
 ) {
     match argument {
-        Argument::Atom(_) => {}
+        Argument::Variable(_) => {}
+        Argument::Marker(_) => {}
+        Argument::Pronoun(_) => {}
         Argument::Description(_) => {}
         Argument::Name(_) => {}
         Argument::QuotedLiteral(_) => {}
@@ -837,6 +834,27 @@ pub fn __ast_parity_guard(
         DeonticMood::Obligation => {}
         DeonticMood::Permission => {}
     }
+    match marker {
+        Marker::It => {}
+        Marker::Slot => {}
+        Marker::Witness => {}
+    }
+    match pronoun {
+        Pronoun::Me => {}
+        Pronoun::You => {}
+        Pronoun::We => {}
+        Pronoun::WeAll => {}
+        Pronoun::WeOthers => {}
+        Pronoun::YouAll => {}
+        Pronoun::This => {}
+        Pronoun::That => {}
+        Pronoun::Yonder => {}
+        Pronoun::ItA => {}
+        Pronoun::ItE => {}
+        Pronoun::ItI => {}
+        Pronoun::ItO => {}
+        Pronoun::ItU => {}
+    }
 }
 
 #[cfg(test)]
@@ -905,15 +923,11 @@ mod tests {
             })],
             roots: vec![0],
         };
+        // The §10 pro-argument negatives (`ko`/`ri`/`go'i`/`zo'e`/`mi`) died
+        // with the typed split: an out-of-scope pro-argument has NO AST form —
+        // unrepresentable by construction, so render cannot be handed one.
+        // What remains representable-but-unspellable still fails closed:
         for (buffer, needle) in [
-            (mk(Argument::Atom("ko".into())), "out of nibli KR's scope"),
-            (mk(Argument::Atom("ri".into())), "out of nibli KR's scope"),
-            (mk(Argument::Atom("go'i".into())), "out of nibli KR's scope"),
-            // A legacy cmavo pronoun string (the emitter's pre-flip vocabulary)
-            // has no spelling — the old `zo'e`→`_` arm silently changed meaning
-            // (Constant → Unspecified on reparse) and is gone.
-            (mk(Argument::Atom("zo'e".into())), "out of nibli KR's scope"),
-            (mk(Argument::Atom("mi".into())), "out of nibli KR's scope"),
             // A Name that collides with a pronoun constant would render `Me`,
             // which the parse-side guard now rejects — fail closed for parity.
             (mk(Argument::Name("me".into())), "collides with the pronoun"),

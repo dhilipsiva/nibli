@@ -24,7 +24,7 @@ use crate::dictionary::LexiconSchema;
 use crate::ir::{IrForm, IrTerm};
 use lasso::Rodeo;
 use nibli_types::ast::{
-    AbstractionKind, Argument, Connective, Conversion, DeonticMood, Determiner, ModalTag,
+    AbstractionKind, Argument, Connective, Conversion, DeonticMood, Determiner, Marker, ModalTag,
     Predicate, Proposition, RelClauseKind, Sentence, SentenceConnective, Tense,
 };
 

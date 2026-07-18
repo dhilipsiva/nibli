@@ -6,7 +6,7 @@ use super::*;
 fn test_tense_past_produces_past() {
     // pu mi klama → Past(klama(mi, ...))
     let predicates = vec![Predicate::Root("goes".into())];
-    let arguments = vec![Argument::Atom("me".into())];
+    let arguments = vec![Argument::Pronoun(Pronoun::Me)];
     let proposition = Proposition {
         relation: 0,
         terms: vec![0],
@@ -22,7 +22,7 @@ fn test_tense_past_produces_past() {
 #[test]
 fn test_tense_now_produces_present() {
     let predicates = vec![Predicate::Root("goes".into())];
-    let arguments = vec![Argument::Atom("me".into())];
+    let arguments = vec![Argument::Pronoun(Pronoun::Me)];
     let proposition = Proposition {
         relation: 0,
         terms: vec![0],
@@ -38,7 +38,7 @@ fn test_tense_now_produces_present() {
 #[test]
 fn test_tense_future_produces_future() {
     let predicates = vec![Predicate::Root("goes".into())];
-    let arguments = vec![Argument::Atom("me".into())];
+    let arguments = vec![Argument::Pronoun(Pronoun::Me)];
     let proposition = Proposition {
         relation: 0,
         terms: vec![0],
@@ -56,7 +56,7 @@ fn test_tense_future_produces_future() {
 #[test]
 fn test_deontic_must_produces_obligatory() {
     let predicates = vec![Predicate::Root("goes".into())];
-    let arguments = vec![Argument::Atom("me".into())];
+    let arguments = vec![Argument::Pronoun(Pronoun::Me)];
     let proposition = Proposition {
         relation: 0,
         terms: vec![0],
@@ -72,7 +72,7 @@ fn test_deontic_must_produces_obligatory() {
 #[test]
 fn test_deontic_may_produces_permitted() {
     let predicates = vec![Predicate::Root("goes".into())];
-    let arguments = vec![Argument::Atom("me".into())];
+    let arguments = vec![Argument::Pronoun(Pronoun::Me)];
     let proposition = Proposition {
         relation: 0,
         terms: vec![0],
@@ -91,7 +91,7 @@ fn test_deontic_may_produces_permitted() {
 fn test_predication_negation_produces_not() {
     // na mi klama → Not(klama(mi, ...))
     let predicates = vec![Predicate::Root("goes".into())];
-    let arguments = vec![Argument::Atom("me".into())];
+    let arguments = vec![Argument::Pronoun(Pronoun::Me)];
     let proposition = Proposition {
         relation: 0,
         terms: vec![0],
@@ -113,7 +113,10 @@ fn test_x2_conversion_swaps_args() {
         Predicate::Root("loves".into()),
         Predicate::Converted((Conversion::Swap12, 0)),
     ];
-    let arguments = vec![Argument::Atom("me".into()), Argument::Atom("you".into())];
+    let arguments = vec![
+        Argument::Pronoun(Pronoun::Me),
+        Argument::Pronoun(Pronoun::You),
+    ];
     let proposition = Proposition {
         relation: 1,
         terms: vec![0, 1],

@@ -6,7 +6,7 @@ use super::*;
 fn test_event_decompose_basic() {
     // mi klama → ∃e. klama(e) ∧ klama_x1(e, mi) ∧ klama_x2(e, zo'e) ∧ ...
     let predicates = vec![Predicate::Root("goes".into())];
-    let arguments = vec![Argument::Atom("me".into())];
+    let arguments = vec![Argument::Pronoun(Pronoun::Me)];
     let proposition = Proposition {
         relation: 0,
         terms: vec![0],
@@ -37,7 +37,7 @@ fn test_event_decompose_basic() {
 fn test_event_decompose_all_roles_emitted() {
     // klama has arity 5, all roles should be emitted
     let predicates = vec![Predicate::Root("goes".into())];
-    let arguments = vec![Argument::Atom("me".into())];
+    let arguments = vec![Argument::Pronoun(Pronoun::Me)];
     let proposition = Proposition {
         relation: 0,
         terms: vec![0],
@@ -65,7 +65,7 @@ fn test_event_pair_shared_event() {
         Predicate::Root("dog".into()),  // 1
         Predicate::Pair((0, 1)),        // 2
     ];
-    let arguments = vec![Argument::Atom("me".into())];
+    let arguments = vec![Argument::Pronoun(Pronoun::Me)];
     let proposition = Proposition {
         relation: 2,
         terms: vec![0],
@@ -107,7 +107,7 @@ fn test_event_pair_no_intersective_fallacy() {
         Predicate::Root("dog".into()), // 1
         Predicate::Pair((0, 1)),       // 2
     ];
-    let arguments = vec![Argument::Atom("me".into())];
+    let arguments = vec![Argument::Pronoun(Pronoun::Me)];
     let proposition = Proposition {
         relation: 2,
         terms: vec![0],
@@ -172,8 +172,8 @@ fn test_event_conversion_x2() {
         Predicate::Converted((Conversion::Swap12, 0)), // 1
     ];
     let arguments = vec![
-        Argument::Atom("me".into()),  // 0
-        Argument::Atom("you".into()), // 1
+        Argument::Pronoun(Pronoun::Me),  // 0
+        Argument::Pronoun(Pronoun::You), // 1
     ];
     let proposition = Proposition {
         relation: 1,

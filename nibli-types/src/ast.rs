@@ -93,14 +93,100 @@ pub struct RelClause {
     pub body_sentence: u32,
 }
 
+/// A positional marker: not a constant — nibli-semantics consumes each as a
+/// binding signal (`it` → the enclosing rel-clause's bound entity, `slot` →
+/// the enclosing `property { … }`'s open place, `?` → a fresh witness
+/// variable).
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum Marker {
+    /// The relativized entity of a where/also clause body (`it`).
+    It,
+    /// The open place of a `property { … }` body (`slot`).
+    Slot,
+    /// The witness marker (`?`): binds a fresh variable per occurrence.
+    Witness,
+}
+
+/// The fixed pronoun inventory — the closed set of pro-argument constants.
+/// [`Pronoun::as_str`] is the SINGLE spelling authority (the emit walk
+/// constructs from these spellings' keywords, render prints them, and
+/// nibli-semantics interns them as constants); a conformance test pins every
+/// spelling against nibli-lexicon's reserved-word list and the surface
+/// round-trip.
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum Pronoun {
+    Me,
+    You,
+    We,
+    WeAll,
+    WeOthers,
+    YouAll,
+    This,
+    That,
+    Yonder,
+    ItA,
+    ItE,
+    ItI,
+    ItO,
+    ItU,
+}
+
+impl Pronoun {
+    /// The canonical KR spelling — also the interned constant's identity.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Pronoun::Me => "me",
+            Pronoun::You => "you",
+            Pronoun::We => "we",
+            Pronoun::WeAll => "we_all",
+            Pronoun::WeOthers => "we_others",
+            Pronoun::YouAll => "you_all",
+            Pronoun::This => "this",
+            Pronoun::That => "that",
+            Pronoun::Yonder => "yonder",
+            Pronoun::ItA => "it_a",
+            Pronoun::ItE => "it_e",
+            Pronoun::ItI => "it_i",
+            Pronoun::ItO => "it_o",
+            Pronoun::ItU => "it_u",
+        }
+    }
+
+    /// Every variant, for conformance sweeps.
+    pub const ALL: [Pronoun; 14] = [
+        Pronoun::Me,
+        Pronoun::You,
+        Pronoun::We,
+        Pronoun::WeAll,
+        Pronoun::WeOthers,
+        Pronoun::YouAll,
+        Pronoun::This,
+        Pronoun::That,
+        Pronoun::Yonder,
+        Pronoun::ItA,
+        Pronoun::ItE,
+        Pronoun::ItI,
+        Pronoun::ItO,
+        Pronoun::ItU,
+    ];
+}
+
 /// A argument (argument term) in the AST.
 #[derive(Clone, Debug)]
 pub enum Argument {
-    /// Atomic string-keyed argument: a pronoun (me, you, this, that, yonder,
-    /// it_a…it_u), a `$var` logic variable, or a marker — `it` (bound entity),
-    /// `slot` (open place), `?` (witness). The category is recovered from the
-    /// string (a `$` prefix marks a variable; the markers are fixed spellings).
-    Atom(String),
+    /// A `$`-sigiled logic variable, preserved VERBATIM (the sigil IS the
+    /// variable signal all the way through the IR — the interner and the
+    /// free-variable/scope passes key on the `$`-prefixed string, and proof
+    /// traces display it). INVARIANT: the payload starts with `$`;
+    /// `validate_ast_buffer` rejects a sigil-less payload as corrupt (a bare
+    /// name here would silently become a free, never-closed IR variable).
+    Variable(String),
+    /// A positional marker consumed by nibli-semantics (never a constant):
+    /// `it` (bound entity), `slot` (open place), `?` (witness).
+    Marker(Marker),
+    /// A fixed pronoun constant (me, you, we, we_all, …, it_u); lowers to an
+    /// interned constant of its [`Pronoun::as_str`] spelling.
+    Pronoun(Pronoun),
     /// Determiner description: `some`/`the` + predicate. Fields: (determiner, predicate-id).
     Description((Determiner, PredicateId)),
     /// Named entity: a capitalized rigid Name.

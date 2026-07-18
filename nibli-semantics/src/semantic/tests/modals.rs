@@ -13,8 +13,8 @@ fn test_via_modal_produces_custom_modal() {
         Predicate::Root("makes".into()), // 1
     ];
     let arguments = vec![
-        Argument::Atom("me".into()),             // 0
-        Argument::Atom("you".into()),            // 1
+        Argument::Pronoun(Pronoun::Me),          // 0
+        Argument::Pronoun(Pronoun::You),         // 1
         Argument::ModalTagged((ModalTag(1), 1)), // 2
     ];
     let proposition = Proposition {
@@ -60,8 +60,8 @@ fn test_via_modal_arity_one_predicate_errors() {
         Predicate::Root("person".into()), // 1 (arity 1)
     ];
     let arguments = vec![
-        Argument::Atom("me".into()),             // 0
-        Argument::Atom("you".into()),            // 1
+        Argument::Pronoun(Pronoun::Me),          // 0
+        Argument::Pronoun(Pronoun::You),         // 1
         Argument::ModalTagged((ModalTag(1), 1)), // 2: fi'o prenu, inner=do
     ];
     let proposition = Proposition {

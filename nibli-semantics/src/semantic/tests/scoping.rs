@@ -12,7 +12,7 @@ fn test_da_before_universal_outscopes_it() {
         Predicate::Root("dog".into()),  // 1
     ];
     let arguments = vec![
-        Argument::Atom("$da".into()),                  // 0: da (x1)
+        Argument::Variable("$da".into()),              // 0: da (x1)
         Argument::Description((Determiner::Every, 1)), // 1: ro lo gerku (x2)
     ];
     let proposition = Proposition {
@@ -50,7 +50,7 @@ fn test_da_after_universal_is_inside_it() {
     ];
     let arguments = vec![
         Argument::Description((Determiner::Every, 1)), // 0: ro lo gerku (x1)
-        Argument::Atom("$da".into()),                  // 1: da (x2)
+        Argument::Variable("$da".into()),              // 1: da (x2)
     ];
     let proposition = Proposition {
         relation: 0,
@@ -87,7 +87,7 @@ fn test_da_interleaved_between_count_and_universal() {
     ];
     let arguments = vec![
         Argument::QuantifiedDescription((2, Determiner::Indefinite, 1)), // 0: re lo gerku (x1)
-        Argument::Atom("$da".into()),                                    // 1: da (x2)
+        Argument::Variable("$da".into()),                                // 1: da (x2)
         Argument::Description((Determiner::Every, 2)),                   // 2: ro lo mlatu (x3)
     ];
     let proposition = Proposition {
@@ -127,7 +127,7 @@ fn test_be_arg_da_with_universal_stays_innermost() {
     ];
     let arguments = vec![
         Argument::Description((Determiner::Every, 2)), // 0: ro lo gerku (x1)
-        Argument::Atom("$da".into()),                  // 1: da (be-arg)
+        Argument::Variable("$da".into()),              // 1: da (be-arg)
     ];
     let proposition = Proposition {
         relation: 1,
@@ -175,7 +175,7 @@ fn test_restrictor_internal_da_closed_innermost() {
                 body_sentence: 1,
             },
         )), // 1: ro lo gerku poi <body>
-        Argument::Atom("$da".into()),                  // 2: da
+        Argument::Variable("$da".into()),              // 2: da
         Argument::Tagged((1, 2)),                      // 3: fe da (x2 of the poi body)
     ];
     let sentences = vec![
@@ -221,7 +221,7 @@ fn test_prenex_da_top_level_not_reclosed() {
         Predicate::Root("dog".into()),  // 1
     ];
     let arguments = vec![
-        Argument::Atom("$da".into()),                       // 0: da (x1)
+        Argument::Variable("$da".into()),                   // 0: da (x1)
         Argument::Description((Determiner::Indefinite, 1)), // 1: lo gerku (x2)
     ];
     let sentences = vec![
@@ -257,8 +257,8 @@ fn test_da_repeated_dedups_to_one_exists() {
     // the safety-net subtraction).
     let predicates = vec![Predicate::Root("eats".into())];
     let arguments = vec![
-        Argument::Atom("$da".into()), // 0: da (x1)
-        Argument::Atom("$da".into()), // 1: da (x2)
+        Argument::Variable("$da".into()), // 0: da (x1)
+        Argument::Variable("$da".into()), // 1: da (x2)
     ];
     let proposition = Proposition {
         relation: 0,
@@ -284,8 +284,8 @@ fn test_equals_with_existential_closed() {
     // (the flat-du shape must not hide the logic var from the walk).
     let predicates = vec![Predicate::Root("equals".into())];
     let arguments = vec![
-        Argument::Atom("$da".into()), // 0
-        Argument::Atom("me".into()),  // 1
+        Argument::Variable("$da".into()), // 0
+        Argument::Pronoun(Pronoun::Me),   // 1
     ];
     let proposition = Proposition {
         relation: 0,

@@ -149,8 +149,8 @@ fn test_da_in_be_arg_closed() {
         Predicate::WithArgs((0, vec![1])), // 1: klama be da
     ];
     let arguments = vec![
-        Argument::Atom("me".into()),  // 0
-        Argument::Atom("$da".into()), // 1 (be-arg)
+        Argument::Pronoun(Pronoun::Me),   // 0
+        Argument::Variable("$da".into()), // 1 (be-arg)
     ];
     let proposition = Proposition {
         relation: 1,
@@ -179,9 +179,9 @@ fn test_abstraction_da_not_double_wrapped() {
         Predicate::Root("broda".into()),                     // 2
     ];
     let arguments = vec![
-        Argument::Atom("me".into()),                        // 0
+        Argument::Pronoun(Pronoun::Me),                     // 0
         Argument::Description((Determiner::Indefinite, 1)), // 1: lo nu ...
-        Argument::Atom("$da".into()),                       // 2 (broda body x1)
+        Argument::Variable("$da".into()),                   // 2 (broda body x1)
     ];
     let sentences = vec![
         Sentence::Simple(Proposition {

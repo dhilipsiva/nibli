@@ -59,6 +59,24 @@ fn validate_ast_buffer(ast: &flat_ast::AstBuffer) -> Result<(), NibliError> {
         ))
     };
 
+    // Typed-split invariant: a `Variable` payload carries its `$` sigil —
+    // variable identity IS the sigiled interned string (the IR-layer
+    // free-variable closure and scope-marker passes key on the prefix). A
+    // sigil-less payload can only come from a hand-built buffer; it would
+    // compile as a variable those passes ignore (a free-variable leak) and a
+    // pronoun-spelled one would re-render as a reparse-flipping pronoun.
+    for (i, argument) in ast.arguments.iter().enumerate() {
+        if let Argument::Variable(v) = argument {
+            if !v.starts_with('$') {
+                return Err(NibliError::Semantic(format!(
+                    "corrupt AST buffer: argument index {i} is a Variable \
+                     without its `$` sigil ({v:?}) — rejecting the whole \
+                     buffer (fail closed)"
+                )));
+            }
+        }
+    }
+
     // Child references of one node: (kind, index) pairs.
     let children = |kind: Kind, idx: u32| -> Vec<(Kind, u32)> {
         match kind {
@@ -76,7 +94,9 @@ fn validate_ast_buffer(ast: &flat_ast::AstBuffer) -> Result<(), NibliError> {
                 Predicate::Abstraction((_, s)) => vec![(Kind::Sen, *s)],
             },
             Kind::Sum => match &ast.arguments[idx as usize] {
-                Argument::Atom(_)
+                Argument::Variable(_)
+                | Argument::Marker(_)
+                | Argument::Pronoun(_)
                 | Argument::Name(_)
                 | Argument::QuotedLiteral(_)
                 | Argument::Unspecified
@@ -565,6 +585,26 @@ mod ast_buffer_validation_tests {
             roots: vec![0],
         };
         compile_from_ast(ast).expect("a shared (DAG) subterm is legal");
+    }
+
+    #[test]
+    fn sigil_less_variable_rejected() {
+        // Typed-split invariant: `Variable` carries its `$` sigil. A hand-built
+        // sigil-less payload would compile as a variable the IR-layer `$`-keyed
+        // passes ignore (a free-variable leak the old string design could not
+        // express), and a pronoun-spelled one ("me") would re-render as a
+        // reparse-flipping pronoun — both crash classes of the same corruption.
+        for payload in ["me", "da"] {
+            expect_corrupt(
+                AstBuffer {
+                    predicates: vec![Predicate::Root("gerku".to_string())],
+                    arguments: vec![Argument::Variable(payload.to_string())],
+                    sentences: vec![bare_proposition(0, vec![0])],
+                    roots: vec![0],
+                },
+                "sigil-less Variable payload",
+            );
+        }
     }
 }
 

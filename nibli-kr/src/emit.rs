@@ -37,12 +37,13 @@
 //!   compound entry its relation ident); a place-swapped entry emits
 //!   `Predicate::Converted`. No identity passthrough — an unknown name (or
 //!   uncurated `a+b` compound) is a compile error (NIBLI_KR §13, §5)
-//! - logic variables pass through verbatim as `Atom("$name")` — the `$`
+//! - logic variables pass through verbatim as `Variable("$name")` — the `$`
 //!   sigil IS the variable signal, so the user's own names survive into the IR
 //!   (no fixed `da`/`de`/`di` pool, no 3-variable cap); pronoun keyterms emit
-//!   their KR spellings verbatim (`me`, `you`, `this`, `it_a`…; `?`, `it`, and
-//!   `slot` are consumed by nibli-semantics as witness/bound-entity/open-place
-//!   markers, never constants). The walk fail-closes a capitalized Name that
+//!   typed `Pronoun` variants (spellings single-sourced on
+//!   `nibli_types::ast::Pronoun::as_str`); `?`, `it`, and `slot` emit typed
+//!   `Marker`s consumed by nibli-semantics as witness/bound-entity/open-place
+//!   signals, never constants. The walk fail-closes a capitalized Name that
 //!   would lower onto a pronoun constant (`Me` vs `me`)
 //! - named args → `Argument::Tagged((place_index, arg))` (the u8 index
 //!   addresses SURFACE places — those of the possibly-Converted predicate)
@@ -62,8 +63,8 @@
 //!   fi'o-style tag over the mapped predicate (spec §5 collapse)
 
 use nibli_types::ast::{
-    AbstractionKind, Argument, AstBuffer, Conversion, Determiner, ModalTag, Predicate, Proposition,
-    RelClause, RelClauseKind, Sentence, SentenceConnective,
+    AbstractionKind, Argument, AstBuffer, Conversion, Determiner, Marker, ModalTag, Predicate,
+    Pronoun, Proposition, RelClause, RelClauseKind, Sentence, SentenceConnective,
 };
 use nibli_types::ast::{Connective, DeonticMood, Tense};
 
@@ -577,7 +578,7 @@ impl<'a> Emitter<'a> {
                 if *negated {
                     relation = self.push_predicate(Predicate::Negated(relation));
                 }
-                let head = self.push_argument(Argument::Atom(particle.to_owned()));
+                let head = self.push_argument(Argument::Variable(particle.to_owned()));
                 Ok(self.push_sentence(Sentence::Simple(Proposition {
                     relation,
                     terms: vec![head],
@@ -604,7 +605,7 @@ impl<'a> Emitter<'a> {
         particle: &str,
     ) -> Result<u32, ParseError> {
         let relation = self.restr_predicate(restr)?;
-        let head = self.push_argument(Argument::Atom(particle.to_owned()));
+        let head = self.push_argument(Argument::Variable(particle.to_owned()));
         Ok(self.push_sentence(Sentence::Simple(Proposition {
             relation,
             terms: vec![head],
@@ -663,14 +664,15 @@ impl<'a> Emitter<'a> {
     fn term(&mut self, term: &Term, at: usize) -> Result<u32, ParseError> {
         let argument = match term {
             Term::Unspecified => Argument::Unspecified,
-            Term::Witness => Argument::Atom("?".into()),
+            Term::Witness => Argument::Marker(Marker::Witness),
             Term::Number(n) => Argument::Number(*n),
             Term::Str(s) => Argument::QuotedLiteral(s.clone()),
-            Term::Var(v) => Argument::Atom(self.var_particle(v, at)?),
+            Term::Var(v) => Argument::Variable(self.var_particle(v, at)?),
             Term::Key(KeyTerm::It) => match &self.block_it_var {
-                // Inside a block rel-clause body, `it` IS the block's `$var`.
-                Some(v) => Argument::Atom(v.clone()),
-                None if self.in_clause_body => Argument::Atom("it".into()),
+                // Inside a block rel-clause body, `it` IS the block's `$var`
+                // — a VARIABLE, not the marker (the context-sensitive arm).
+                Some(v) => Argument::Variable(v.clone()),
+                None if self.in_clause_body => Argument::Marker(Marker::It),
                 None => {
                     return Err(self.fail(
                         self.statement_start,
@@ -688,9 +690,10 @@ impl<'a> Emitter<'a> {
                          `property { … }` body (NIBLI_KR §3)",
                     ));
                 }
-                Argument::Atom(keyterm_particle(KeyTerm::Slot).into())
+                Argument::Marker(Marker::Slot)
             }
-            Term::Key(k) => Argument::Atom(keyterm_particle(*k).into()),
+            // It/Slot matched above, so only the 14 pronouns reach here.
+            Term::Key(k) => Argument::Pronoun(keyterm_pronoun(*k)),
             Term::Name { name, rel_clauses } => {
                 // A single-word Name that lowercases onto a pronoun constant
                 // (`Me` → "me") would silently co-refer with the pronoun in
@@ -920,7 +923,7 @@ impl<'a> Emitter<'a> {
         let body_sentence = match &rc.body {
             ClauseBody::Bare { negated, seq } => {
                 self.pred_seq(seq, rc.span.start).map(|relation| {
-                    let head = self.push_argument(Argument::Atom("it".into()));
+                    let head = self.push_argument(Argument::Marker(Marker::It));
                     self.push_sentence(Sentence::Simple(Proposition {
                         relation,
                         terms: vec![head],
@@ -1101,24 +1104,31 @@ fn conversion_for(place: u8) -> Conversion {
     }
 }
 
-fn keyterm_particle(k: KeyTerm) -> &'static str {
+/// Map a PRONOUN keyterm to its typed variant. `It`/`Slot` are deliberately
+/// unreachable — they are context-sensitive (a block body's `it` is the
+/// block's `$var`, a clause body's `it` is `Marker::It`, `slot` needs the
+/// `in_property` guard) and are matched BEFORE the pronoun catch-all in
+/// `term()`. Spellings live on `nibli_types::ast::Pronoun::as_str` (the
+/// single authority, conformance-locked against the grammar keywords).
+fn keyterm_pronoun(k: KeyTerm) -> Pronoun {
     match k {
-        KeyTerm::Me => "me",
-        KeyTerm::You => "you",
-        KeyTerm::We => "we",
-        KeyTerm::WeAll => "we_all",
-        KeyTerm::WeOthers => "we_others",
-        KeyTerm::YouAll => "you_all",
-        KeyTerm::This => "this",
-        KeyTerm::That => "that",
-        KeyTerm::Yonder => "yonder",
-        KeyTerm::ItA => "it_a",
-        KeyTerm::ItE => "it_e",
-        KeyTerm::ItI => "it_i",
-        KeyTerm::ItO => "it_o",
-        KeyTerm::ItU => "it_u",
-        KeyTerm::It => "it",
-        KeyTerm::Slot => "slot",
+        KeyTerm::Me => Pronoun::Me,
+        KeyTerm::You => Pronoun::You,
+        KeyTerm::We => Pronoun::We,
+        KeyTerm::WeAll => Pronoun::WeAll,
+        KeyTerm::WeOthers => Pronoun::WeOthers,
+        KeyTerm::YouAll => Pronoun::YouAll,
+        KeyTerm::This => Pronoun::This,
+        KeyTerm::That => Pronoun::That,
+        KeyTerm::Yonder => Pronoun::Yonder,
+        KeyTerm::ItA => Pronoun::ItA,
+        KeyTerm::ItE => Pronoun::ItE,
+        KeyTerm::ItI => Pronoun::ItI,
+        KeyTerm::ItO => Pronoun::ItO,
+        KeyTerm::ItU => Pronoun::ItU,
+        KeyTerm::It | KeyTerm::Slot => {
+            unreachable!("It/Slot are matched by their guarded term() arms")
+        }
     }
 }
 
@@ -1595,6 +1605,111 @@ mod tests {
             // body drops `$v` — the explicit pre-validation must still reject.
             let e = bad("the zzz $v: goes(me).");
             assert!(e.message.contains("unknown predicate"), "{e}");
+        }
+    }
+
+    // ── typed pronoun/marker conformance lock ──
+
+    mod typed_split_conformance {
+        use crate::parse_checked;
+        use crate::render::render;
+        use nibli_types::ast::{Argument, Marker, Pronoun};
+
+        /// `Pronoun::as_str` is a spelling authority in nibli-types — a crate
+        /// that depends on NEITHER existing lock (grammar `kw_*` ↔
+        /// reserved.rs ↔ `keyterm_pronoun`). Pin the layers together: every
+        /// pronoun spelling is a reserved word, a surface probe compiles to
+        /// exactly that variant, and render re-spells it byte-identically.
+        #[test]
+        fn every_pronoun_spelling_locks_reserved_surface_and_render() {
+            for pronoun in Pronoun::ALL {
+                let spelling = pronoun.as_str();
+                assert!(
+                    nibli_lexicon::reserved::is_reserved(spelling),
+                    "pronoun spelling {spelling:?} must be a reserved word"
+                );
+                let text = format!("goes({spelling}).");
+                let buffer = parse_checked(&text).unwrap_or_else(|e| panic!("parse {text:?}: {e}"));
+                assert!(
+                    buffer
+                        .arguments
+                        .iter()
+                        .any(|a| matches!(a, Argument::Pronoun(p) if *p == pronoun)),
+                    "{text:?} must compile to Argument::Pronoun({pronoun:?})"
+                );
+                let rendered = render(&buffer).unwrap_or_else(|e| panic!("render {text:?}: {e}"));
+                assert_eq!(
+                    rendered, text,
+                    "render must re-spell {pronoun:?} identically"
+                );
+            }
+        }
+
+        /// The three `Marker` spellings, pinned via their only-legal contexts
+        /// (`it` in a rel-clause body, `slot` in a `property` block, `?` as
+        /// the find-witness). Render has no byte-format contract for these
+        /// composite probes, so the pin is variant-stable round-trip: render
+        /// then reparse must yield the SAME marker variant again.
+        #[test]
+        fn every_marker_spelling_survives_render_reparse() {
+            for (marker, probe, reserved_spelling) in [
+                (
+                    Marker::It,
+                    "animal(every dog where loves(Alis, it)).",
+                    Some("it"),
+                ),
+                (
+                    Marker::Slot,
+                    "able(me, property { fast(slot) }).",
+                    Some("slot"),
+                ),
+                (Marker::Witness, "goes(?).", None), // `?` is punctuation, not a word
+            ] {
+                if let Some(word) = reserved_spelling {
+                    assert!(
+                        nibli_lexicon::reserved::is_reserved(word),
+                        "marker spelling {word:?} must be a reserved word"
+                    );
+                }
+                let has_marker = |buffer: &nibli_types::ast::AstBuffer| {
+                    buffer
+                        .arguments
+                        .iter()
+                        .any(|a| matches!(a, Argument::Marker(m) if *m == marker))
+                };
+                let buffer =
+                    parse_checked(probe).unwrap_or_else(|e| panic!("parse {probe:?}: {e}"));
+                assert!(
+                    has_marker(&buffer),
+                    "{probe:?} must compile to Argument::Marker({marker:?})"
+                );
+                let rendered = render(&buffer).unwrap_or_else(|e| panic!("render {probe:?}: {e}"));
+                let reparsed = parse_checked(&rendered)
+                    .unwrap_or_else(|e| panic!("reparse of rendered {rendered:?}: {e}"));
+                assert!(
+                    has_marker(&reparsed),
+                    "rendered {rendered:?} must reparse to Argument::Marker({marker:?})"
+                );
+            }
+        }
+
+        /// The emit/render Name↔pronoun collision guards share
+        /// `resolve::PRONOUN_COLLISION_NAMES` — pin it as EXACTLY the
+        /// no-underscore subset of the pronoun spellings (an underscore in
+        /// the surface Name is the guard's own separator check, so only
+        /// separator-free spellings can collide).
+        #[test]
+        fn collision_names_are_the_no_underscore_pronoun_subset() {
+            let no_underscore: Vec<&str> = Pronoun::ALL
+                .iter()
+                .map(|p| p.as_str())
+                .filter(|s| !s.contains('_'))
+                .collect();
+            assert_eq!(
+                crate::resolve::PRONOUN_COLLISION_NAMES.as_slice(),
+                no_underscore.as_slice(),
+                "PRONOUN_COLLISION_NAMES must track Pronoun::as_str"
+            );
         }
     }
 }

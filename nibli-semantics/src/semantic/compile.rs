@@ -453,7 +453,7 @@ impl SemanticCompiler {
             loop {
                 match s {
                     Argument::Tagged((_, inner_id)) => s = &arguments[*inner_id as usize],
-                    Argument::Atom(p) => return p.as_str() == "it",
+                    Argument::Marker(Marker::It) => return true,
                     _ => return false,
                 }
             }

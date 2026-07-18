@@ -126,18 +126,15 @@ fn test_lo_still_produces_exists() {
 fn compile_connected(
     conn: SentenceConnective,
     left_predicate: &str,
-    left_argument: &str,
+    left_argument: Argument,
     right_predicate: &str,
-    right_argument: &str,
+    right_argument: Argument,
 ) -> (IrForm, SemanticCompiler) {
     let predicates = vec![
         Predicate::Root(left_predicate.into()),
         Predicate::Root(right_predicate.into()),
     ];
-    let arguments = vec![
-        Argument::Atom(left_argument.into()),
-        Argument::Atom(right_argument.into()),
-    ];
+    let arguments = vec![left_argument, right_argument];
     let left_proposition = Proposition {
         relation: 0,
         terms: vec![0],
@@ -167,7 +164,13 @@ fn compile_connected(
 #[test]
 fn test_afterthought_je_compiles_to_and() {
     let conn = SentenceConnective::Afterthought(Connective::And);
-    let (form, _) = compile_connected(conn, "goes", "me", "loves", "you");
+    let (form, _) = compile_connected(
+        conn,
+        "goes",
+        Argument::Pronoun(Pronoun::Me),
+        "loves",
+        Argument::Pronoun(Pronoun::You),
+    );
     assert!(
         matches!(&form, IrForm::And(_, _)),
         "expected And, got {:?}",
@@ -178,7 +181,13 @@ fn test_afterthought_je_compiles_to_and() {
 #[test]
 fn test_afterthought_ja_compiles_to_or() {
     let conn = SentenceConnective::Afterthought(Connective::Or);
-    let (form, _) = compile_connected(conn, "goes", "me", "loves", "you");
+    let (form, _) = compile_connected(
+        conn,
+        "goes",
+        Argument::Pronoun(Pronoun::Me),
+        "loves",
+        Argument::Pronoun(Pronoun::You),
+    );
     assert!(
         matches!(&form, IrForm::Or(_, _)),
         "expected Or, got {:?}",
@@ -193,8 +202,8 @@ fn test_da_produces_exists() {
     // da prami mi → ∃da. event_decomposed_prami(da, mi, ...)
     let predicates = vec![Predicate::Root("loves".into())];
     let arguments = vec![
-        Argument::Atom("$da".into()), // 0
-        Argument::Atom("me".into()),  // 1
+        Argument::Variable("$da".into()), // 0
+        Argument::Pronoun(Pronoun::Me),   // 1
     ];
     let proposition = Proposition {
         relation: 0,
@@ -238,8 +247,8 @@ fn test_da_de_both_produce_nested_exists() {
     // da prami de → ∃da. ∃de. event_decomposed_prami(da, de, ...)
     let predicates = vec![Predicate::Root("loves".into())];
     let arguments = vec![
-        Argument::Atom("$da".into()), // 0
-        Argument::Atom("$de".into()), // 1
+        Argument::Variable("$da".into()), // 0
+        Argument::Variable("$de".into()), // 1
     ];
     let proposition = Proposition {
         relation: 0,
@@ -281,8 +290,8 @@ fn test_da_repeated_wraps_once() {
     // da prami da → ∃da. event_decomposed_prami(da, da, ...) (only one entity Exists)
     let predicates = vec![Predicate::Root("loves".into())];
     let arguments = vec![
-        Argument::Atom("$da".into()), // 0
-        Argument::Atom("$da".into()), // 1 (same variable)
+        Argument::Variable("$da".into()), // 0
+        Argument::Variable("$da".into()), // 1 (same variable)
     ];
     let proposition = Proposition {
         relation: 0,
@@ -323,7 +332,7 @@ fn test_da_repeated_wraps_once() {
 fn test_di_produces_exists() {
     // di barda → ∃di. barda(di, ...)
     let predicates = vec![Predicate::Root("big".into())];
-    let arguments = vec![Argument::Atom("$di".into())];
+    let arguments = vec![Argument::Variable("$di".into())];
     let proposition = Proposition {
         relation: 0,
         terms: vec![0],
@@ -348,7 +357,10 @@ fn test_da_with_negation() {
     // da na prami mi → ¬(∃da. prami(da, mi, ...))
     // negation wraps OUTSIDE the existential
     let predicates = vec![Predicate::Root("loves".into())];
-    let arguments = vec![Argument::Atom("$da".into()), Argument::Atom("me".into())];
+    let arguments = vec![
+        Argument::Variable("$da".into()),
+        Argument::Pronoun(Pronoun::Me),
+    ];
     let proposition = Proposition {
         relation: 0,
         terms: vec![0, 1],
@@ -377,7 +389,13 @@ fn test_da_with_negation() {
 fn test_afterthought_jo_compiles_to_biconditional() {
     // .i jo → Biconditional IR node (expanded at flattening)
     let conn = SentenceConnective::Afterthought(Connective::Iff);
-    let (form, _) = compile_connected(conn, "goes", "me", "loves", "you");
+    let (form, _) = compile_connected(
+        conn,
+        "goes",
+        Argument::Pronoun(Pronoun::Me),
+        "loves",
+        Argument::Pronoun(Pronoun::You),
+    );
     assert!(
         matches!(&form, IrForm::Biconditional(_, _)),
         "expected Biconditional, got {:?}",
@@ -393,7 +411,7 @@ fn test_ma_produces_exists() {
     // Each `ma` gets a fresh variable (independent query unknowns).
     let predicates = vec![Predicate::Root("goes".into())];
     let arguments = vec![
-        Argument::Atom("?".into()), // 0
+        Argument::Marker(Marker::Witness), // 0
     ];
     let proposition = Proposition {
         relation: 0,
@@ -434,8 +452,8 @@ fn test_two_ma_produce_independent_exists() {
     // each wrapped in its own ∃.
     let predicates = vec![Predicate::Root("likes".into())];
     let arguments = vec![
-        Argument::Atom("?".into()), // 0
-        Argument::Atom("?".into()), // 1
+        Argument::Marker(Marker::Witness), // 0
+        Argument::Marker(Marker::Witness), // 1
     ];
     let proposition = Proposition {
         relation: 0,
@@ -491,7 +509,7 @@ fn test_ma_in_rel_clause_not_stolen() {
         Predicate::Root("big".into()),   // 2
     ];
     let arguments = vec![
-        Argument::Atom("?".into()),                         // 0: ma
+        Argument::Marker(Marker::Witness),                  // 0: ma
         Argument::Description((Determiner::Indefinite, 1)), // 1: lo gerku
         Argument::Restricted((
             1,

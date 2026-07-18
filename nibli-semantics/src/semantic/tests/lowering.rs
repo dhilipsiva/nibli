@@ -10,8 +10,8 @@ fn test_equals_lowers_flat_not_event_decomposed() {
     // ingestion (which matches relation=="equals" && args.len()==2) fires.
     let predicates = vec![Predicate::Root("equals".into())];
     let arguments = vec![
-        Argument::Atom("me".into()),  // 0
-        Argument::Atom("you".into()), // 1
+        Argument::Pronoun(Pronoun::Me),  // 0
+        Argument::Pronoun(Pronoun::You), // 1
     ];
     let proposition = Proposition {
         relation: 0,
@@ -38,9 +38,9 @@ fn test_equals_with_more_than_two_arguments_is_rejected() {
     // silently dropping the third argument.
     let predicates = vec![Predicate::Root("equals".into())];
     let arguments = vec![
-        Argument::Atom("me".into()),   // 0
-        Argument::Atom("you".into()),  // 1
-        Argument::Atom("this".into()), // 2
+        Argument::Pronoun(Pronoun::Me),   // 0
+        Argument::Pronoun(Pronoun::You),  // 1
+        Argument::Pronoun(Pronoun::This), // 2
     ];
     let proposition = Proposition {
         relation: 0,
@@ -77,7 +77,7 @@ fn test_cll_place_counter_resumes_after_fi() {
     let arguments = vec![
         Argument::Description((Determiner::Definite, 1)), // 0: le zarci
         Argument::Tagged((2, 0)),                         // 1: fi le zarci
-        Argument::Atom("you".into()),                     // 2: do (untagged)
+        Argument::Pronoun(Pronoun::You),                  // 2: do (untagged)
     ];
     let proposition = Proposition {
         relation: 0,
@@ -114,9 +114,9 @@ fn test_untagged_before_tag_still_fills_x1() {
     // Regression: `mi klama fe do` — untagged `mi` fills x1, `fe do` fills x2.
     let predicates = vec![Predicate::Root("goes".into())];
     let arguments = vec![
-        Argument::Atom("me".into()),  // 0
-        Argument::Atom("you".into()), // 1
-        Argument::Tagged((1, 1)),     // 2: fe do
+        Argument::Pronoun(Pronoun::Me),  // 0
+        Argument::Pronoun(Pronoun::You), // 1
+        Argument::Tagged((1, 1)),        // 2: fe do
     ];
     let proposition = Proposition {
         relation: 0,

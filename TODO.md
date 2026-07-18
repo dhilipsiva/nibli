@@ -245,17 +245,6 @@ Pipeline-audit backlog (2026-07-17; three-agent audit of front-end / middle IRs 
 back-end — effort tags S/M/L; ordered quick-wins → correctness → structure →
 performance → future-facing):
 
-- **Split `Argument::Atom` into `Variable`/`Marker`/`Pronoun` (M)** — the
-  `Atom(String)` catch-all (renamed from `Pronoun` in the naming bundle) still
-  string-sniffs its payload into three categories: `$var` logic variables, the
-  markers `it`/`slot`/`?`, and the fixed pronoun list (render.rs `term()`,
-  nibli-semantics helpers.rs `resolve_argument`). A type-level split
-  (`Variable(String)` + `Marker(enum)` + `Pronoun(enum)`) would let
-  emit/render/nibli-semantics match exhaustively instead of on strings — but
-  the interner boundary keeps the `$`-tagged variable identity (compile.rs
-  free-var + scope-marker passes still `starts_with('$')`), so it is a
-  HALF-win, and it costs ~70 semantic.rs test-literal rewrites. Deferred from
-  the naming bundle (user chose the `Atom` rename) for that reason.
 - **Migrate hand-built semantic-shape tests toward KR-text level (M)** — the
   deferred remainder of the test-suite hygiene item (the splits + the
   parallel `--lib` sweep landed 2026-07-18): all 89 nibli-semantics

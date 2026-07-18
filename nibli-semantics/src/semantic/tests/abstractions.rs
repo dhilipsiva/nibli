@@ -68,7 +68,7 @@ fn test_fact_abstraction_produces_fact_predicate() {
     let (form, compiler) = compile_abstraction(
         AbstractionKind::Fact,
         "goes",
-        vec![Argument::Atom("me".into())],
+        vec![Argument::Pronoun(Pronoun::Me)],
     );
 
     // Should be Exists(_v0, And(duhu(_v0), And(klama_event, barda_event)))
@@ -97,7 +97,7 @@ fn test_property_with_slot_binds_open_variable() {
     let (form, compiler) = compile_abstraction(
         AbstractionKind::Property,
         "beautiful",
-        vec![Argument::Atom("slot".into())],
+        vec![Argument::Marker(Marker::Slot)],
     );
 
     // Should be Exists(_v0, And(ka(_v0), And(melbi_event, barda_event)))
@@ -136,7 +136,7 @@ fn test_amount_abstraction_produces_amount_predicate() {
     let (form, compiler) = compile_abstraction(
         AbstractionKind::Amount,
         "happy",
-        vec![Argument::Atom("me".into())],
+        vec![Argument::Pronoun(Pronoun::Me)],
     );
 
     match &form {
@@ -160,7 +160,7 @@ fn test_concept_abstraction_produces_concept_predicate() {
     let (form, compiler) = compile_abstraction(
         AbstractionKind::Concept,
         "goes",
-        vec![Argument::Atom("me".into())],
+        vec![Argument::Pronoun(Pronoun::Me)],
     );
 
     match &form {
@@ -184,7 +184,7 @@ fn test_event_abstraction_still_works() {
     let (form, compiler) = compile_abstraction(
         AbstractionKind::Event,
         "goes",
-        vec![Argument::Atom("me".into())],
+        vec![Argument::Pronoun(Pronoun::Me)],
     );
 
     match &form {
@@ -211,7 +211,7 @@ fn test_slot_outside_property_is_rejected() {
     // Fail closed: a semantic error is accumulated (NibliError::Semantic downstream),
     // and no free variable escapes.
     let predicates = vec![Predicate::Root("beautiful".into())];
-    let arguments = vec![Argument::Atom("slot".into())];
+    let arguments = vec![Argument::Marker(Marker::Slot)];
     let proposition = Proposition {
         relation: 0,
         terms: vec![0],

@@ -129,7 +129,7 @@ fn test_inject_variable_with_explicit_kea_no_error() {
     ];
     let arguments = vec![
         Argument::Description((Determiner::Indefinite, 0)), // 0: lo gerku
-        Argument::Atom("it".into()),                        // 1: ke'a
+        Argument::Marker(Marker::It),                       // 1: ke'a
         Argument::Restricted((
             0,
             RelClause {
@@ -257,7 +257,7 @@ fn test_x1_tag_name_x2_tag_it_skips_x1_injection() {
                 body_sentence: 1,
             },
         )), // 1: ro lo gerku poi <body>
-        Argument::Atom("it".into()),                   // 2: ke'a
+        Argument::Marker(Marker::It),                  // 2: ke'a
         Argument::Name("alis".into()),                 // 3: alis
         Argument::Tagged((0, 3)),                      // 4: fa alis  (x1, lover)
         Argument::Tagged((1, 2)),                      // 5: fe ke'a  (x2, loved)
@@ -322,7 +322,7 @@ fn test_x1_tagged_it_skips_x1_injection() {
                 body_sentence: 1,
             },
         )), // 1
-        Argument::Atom("it".into()),                   // 2: ke'a
+        Argument::Marker(Marker::It),                  // 2: ke'a
         Argument::Name("alis".into()),                 // 3: alis
         Argument::Tagged((0, 2)),                      // 4: fa ke'a (x1, lover)
         Argument::Tagged((1, 3)),                      // 5: fe alis (x2, loved)
@@ -387,7 +387,7 @@ fn test_x2_tagged_lone_it_leaves_x1_unspecified() {
                 body_sentence: 1,
             },
         )), // 1
-        Argument::Atom("it".into()),                   // 2: ke'a
+        Argument::Marker(Marker::It),                  // 2: ke'a
         Argument::Tagged((1, 2)),                      // 3: fe ke'a (x2, loved)
     ];
     let sentences = vec![

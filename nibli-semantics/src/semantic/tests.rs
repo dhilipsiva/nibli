@@ -1,8 +1,8 @@
 use super::*;
 use crate::ir::{IrForm, IrTerm};
 use nibli_types::ast::{
-    Argument, Connective, Determiner, Predicate, Proposition, RelClause, RelClauseKind, Sentence,
-    SentenceConnective,
+    Argument, Connective, Determiner, Marker, Predicate, Pronoun, Proposition, RelClause,
+    RelClauseKind, Sentence, SentenceConnective,
 };
 
 /// Helper: build a minimal buffer and compile the first sentence.

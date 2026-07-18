@@ -96,7 +96,7 @@ fn test_quoted_literal_compiles_to_constant() {
 fn test_known_gismu_gets_correct_arity() {
     // klama has arity 5, so there should be 5 role predicates (klama_x1..klama_x5)
     let predicates = vec![Predicate::Root("goes".into())];
-    let arguments = vec![Argument::Atom("me".into())];
+    let arguments = vec![Argument::Pronoun(Pronoun::Me)];
     let proposition = Proposition {
         relation: 0,
         terms: vec![0],
@@ -130,7 +130,7 @@ fn test_known_gismu_gets_correct_arity() {
 fn test_unknown_gismu_defaults_to_arity_2() {
     // An unrecognized word should default to arity 2 → 2 role predicates
     let predicates = vec![Predicate::Root("xyzzy".into())];
-    let arguments = vec![Argument::Atom("me".into())];
+    let arguments = vec![Argument::Pronoun(Pronoun::Me)];
     let proposition = Proposition {
         relation: 0,
         terms: vec![0],
@@ -174,7 +174,10 @@ fn test_sentence_connective_ge_gi_produces_and() {
         Predicate::Root("goes".into()),
         Predicate::Root("fast".into()),
     ];
-    let arguments = vec![Argument::Atom("me".into()), Argument::Atom("you".into())];
+    let arguments = vec![
+        Argument::Pronoun(Pronoun::Me),
+        Argument::Pronoun(Pronoun::You),
+    ];
     let sentences = vec![
         Sentence::Connected((
             SentenceConnective::And,

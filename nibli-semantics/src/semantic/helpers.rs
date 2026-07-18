@@ -255,44 +255,56 @@ impl SemanticCompiler {
         sentences: &[Sentence],
     ) -> (IrTerm, Vec<QuantifierEntry>) {
         match argument {
-            Argument::Atom(p) => {
-                let term = if p.as_str() == "?" {
-                    let var = self.fresh_var();
-                    self.question_vars.push(var);
-                    IrTerm::Variable(var)
-                } else if p.starts_with('$') {
-                    IrTerm::Variable(self.interner.get_or_intern(p.as_str()))
-                } else if p.as_str() == "it" {
-                    if let Some(var) = self.rel_clause_var {
-                        self.ref_used = true;
+            Argument::Variable(v) => (
+                // The `$` sigil is preserved into the interner — variable
+                // identity IS the sigiled string (the free-variable and
+                // scope-marker passes key on it); `validate_ast_buffer`
+                // rejects sigil-less payloads at the compile boundary.
+                (IrTerm::Variable(self.interner.get_or_intern(v.as_str()))),
+                vec![],
+            ),
+            Argument::Marker(marker) => {
+                let term = match marker {
+                    Marker::Witness => {
+                        let var = self.fresh_var();
+                        self.question_vars.push(var);
                         IrTerm::Variable(var)
-                    } else {
-                        IrTerm::Unspecified
                     }
-                } else if p.as_str() == "slot" {
-                    if let Some(var) = self.property_open_var {
-                        IrTerm::Variable(var)
-                    } else {
-                        // `slot` is the open place of a `property { … }` abstraction;
-                        // outside one it has no binder. The old "degrade to a fresh
-                        // variable" behavior leaked a FREE variable through compilation —
-                        // the free-variable safety net does not close `_v` fresh vars, so
-                        // the form reached the reasoner non-ground (the exact shape the
-                        // groundness boundary at `assert_typed_fact` now drops). Fail
-                        // closed at the SOURCE instead: reject with a semantic error.
-                        self.errors.push(
-                            "`slot` outside a `property { … }` abstraction has no \
-                             binder — the open place is only meaningful inside a \
-                             property block"
-                                .to_string(),
-                        );
-                        IrTerm::Unspecified
+                    Marker::It => {
+                        if let Some(var) = self.rel_clause_var {
+                            self.ref_used = true;
+                            IrTerm::Variable(var)
+                        } else {
+                            IrTerm::Unspecified
+                        }
                     }
-                } else {
-                    IrTerm::Constant(self.interner.get_or_intern(p.as_str()))
+                    Marker::Slot => {
+                        if let Some(var) = self.property_open_var {
+                            IrTerm::Variable(var)
+                        } else {
+                            // `slot` is the open place of a `property { … }` abstraction;
+                            // outside one it has no binder. The old "degrade to a fresh
+                            // variable" behavior leaked a FREE variable through compilation —
+                            // the free-variable safety net does not close `_v` fresh vars, so
+                            // the form reached the reasoner non-ground (the exact shape the
+                            // groundness boundary at `assert_typed_fact` now drops). Fail
+                            // closed at the SOURCE instead: reject with a semantic error.
+                            self.errors.push(
+                                "`slot` outside a `property { … }` abstraction has no \
+                                 binder — the open place is only meaningful inside a \
+                                 property block"
+                                    .to_string(),
+                            );
+                            IrTerm::Unspecified
+                        }
+                    }
                 };
                 (term, vec![])
             }
+            Argument::Pronoun(p) => (
+                IrTerm::Constant(self.interner.get_or_intern(p.as_str())),
+                vec![],
+            ),
             Argument::Name(n) => (
                 IrTerm::Constant(self.interner.get_or_intern(n.as_str())),
                 vec![],

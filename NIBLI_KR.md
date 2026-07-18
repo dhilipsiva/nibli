@@ -362,8 +362,8 @@ Lojban today (future work if the engine grows correlated find).
 
 | Lojban construct | Why it has no nibli KR form |
 |---|---|
-| `ri/ra/ru` anaphora | compile to *fixed* opaque constants with no antecedent resolution — an anaphoric-looking surface would be a silent-mistranslation trap; use names, `$vars`, or `it_a..it_u` |
-| `ko` imperative | engine gives it no imperative semantics (just `Constant("ko")`); write `you` |
+| `ri/ra/ru` anaphora | compile to *fixed* opaque constants with no antecedent resolution — an anaphoric-looking surface would be a silent-mistranslation trap; use names, `$vars`, or `it_a..it_u`. Since the typed argument split (`Variable`/`Marker`/`Pronoun`) they also have no AST form — unrepresentable by construction |
+| `ko` imperative | engine gives it no imperative semantics, and since the typed argument split it has no AST form (the old catch-all `Constant("ko")` shape is unrepresentable); write `you` |
 | `go'i` pro-bridi | REPL/session state (prior-bridi snapshot rewrite), never present in compiled output; a file format has no ambient "previous line" — write the claim again |
 | `si/sa/su` erasure | speech-stream self-repair; a written file is edited with an editor, and a self-destruct token invites injection abuse |
 | elidable terminators (`cu/vau/ku/kei/ku'o/ke'e/be'o/fe'u/lo'o`) | exist to disambiguate a terminator-elidable stream; nibli KR's explicit delimiters (`()`, `{}`, `[]`, `where`, `.`) leave nothing to terminate |
