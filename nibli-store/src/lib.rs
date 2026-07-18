@@ -19,7 +19,19 @@ const FACTS_TABLE: TableDefinition<u64, &[u8]> = TableDefinition::new("facts");
 const PREDICATE_INDEX_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("predicate_index");
 const META_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("metadata");
 
-const SCHEMA_VERSION: u32 = 2;
+/// On-disk schema version of the durable fact registry.
+///
+/// - **v3 (current):** every ACTIVE fact row is `StoredAssertion::Buffer`/`Direct`
+///   (or a bare `LogicBuffer` for engine-written DBs) — no active `Text` rows. The
+///   legacy `Text` recompile-on-replay path is gone; a v2 DB is migrated once on open
+///   (`migrate_v2_text_rows`, host) or restamped (`finalize_v3`, engine).
+/// - **v2:** accepted as *migratable* (see `open`), not rejected.
+/// - **v1:** hard-rejected — its payload byte layout predates the nibli-engine
+///   StoredLogicBuffer removal and cannot be reinterpreted.
+const SCHEMA_VERSION: u32 = 3;
+
+/// The immediately-prior schema version, accepted by `open` as migratable.
+const MIGRATABLE_FROM_VERSION: u32 = 2;
 
 // ─── Serializable mirror types ────────────────────────────────────
 
@@ -65,9 +77,13 @@ fn decode_stored_fact_record(bytes: &[u8]) -> Result<StoredFactRecord, StoreErro
 /// Assertion type for nibli-host (WASM host) persistence.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum StoredAssertion {
-    /// LEGACY: Lojban source text — replayed by recompiling via the WIT
-    /// `assert-text-with-id` (single composite fact, pre-split granularity).
-    /// No longer written; kept so old databases replay unchanged.
+    /// LEGACY, MIGRATION-DECODE-ONLY: pre-buffer-persistence source text.
+    /// NEVER constructed at runtime. Retained at discriminant 0 so `Direct`=1 /
+    /// `Buffer`=2 stay stable (postcard discriminants are declaration-ordered —
+    /// removing this variant would silently misread every existing row), and so
+    /// the v2→v3 migration can recover the source string to recompile it into a
+    /// `Buffer` (`migrate_v2_text_rows`). v3 has no ACTIVE `Text` rows; a
+    /// surviving active `Text` row on replay is a migration bug (fail-closed).
     Text(String),
     /// Direct fact injection — replayed via `assert_fact`.
     Direct {
@@ -90,7 +106,16 @@ pub enum StoreError {
     Io(String),
     Serialization(String),
     NotFound(u64),
-    SchemaVersion { expected: u32, found: u32 },
+    SchemaVersion {
+        expected: u32,
+        found: u32,
+    },
+    /// A v2→v3 migration could not recompile a legacy `Text` row. Fail-closed: the
+    /// store is left untouched at v2 so the row is never silently dropped.
+    Migration {
+        id: u64,
+        reason: String,
+    },
 }
 
 impl std::fmt::Display for StoreError {
@@ -104,6 +129,9 @@ impl std::fmt::Display for StoreError {
                     f,
                     "schema version mismatch: expected {expected}, found {found}"
                 )
+            }
+            StoreError::Migration { id, reason } => {
+                write!(f, "schema v2→v3 migration failed on fact {id}: {reason}")
             }
         }
     }
@@ -160,14 +188,25 @@ pub struct NibliStore {
     db: Database,
     node_id: String,
     hlc: u64,
+    /// The schema version found on disk at `open`. Equals `SCHEMA_VERSION` for a
+    /// fresh/current DB; `MIGRATABLE_FROM_VERSION` (2) when a migration is pending
+    /// (see `needs_migration`). Updated in place by `finalize_v3`/`migrate_v2_text_rows`.
+    found_version: u32,
 }
 
 impl NibliStore {
     /// Open or create a store at the given path.
+    ///
+    /// Version handling is three-way: the current `SCHEMA_VERSION` (3) opens as-is;
+    /// `MIGRATABLE_FROM_VERSION` (2) opens but flags a pending migration
+    /// (`needs_migration` → the caller runs `migrate_v2_text_rows` (host) or
+    /// `finalize_v3` (engine)); a fresh (versionless) DB is stamped current; anything
+    /// else (v1, or a future version) is hard-rejected with `SchemaVersion`.
     pub fn open(path: &Path, node_id: String) -> Result<Self, StoreError> {
         let db = Database::create(path)?;
 
         // Ensure tables exist and check schema version.
+        let mut found_version = SCHEMA_VERSION;
         let txn = db.begin_write()?;
         {
             // Create tables if they don't exist.
@@ -181,7 +220,16 @@ impl NibliStore {
                 .map(|g| postcard::from_bytes(g.value()))
                 .transpose()?;
             match existing_version {
-                Some(version) if version != SCHEMA_VERSION => {
+                Some(version) if version == SCHEMA_VERSION => {
+                    found_version = version;
+                }
+                // A v2 DB is migratable: open it, record the pending state, and do NOT
+                // stamp v3 yet — the caller migrates (recompiling any legacy Text rows)
+                // and finalizes. Stamping here would lose the "needs migration" signal.
+                Some(version) if version == MIGRATABLE_FROM_VERSION => {
+                    found_version = version;
+                }
+                Some(version) => {
                     return Err(StoreError::SchemaVersion {
                         expected: SCHEMA_VERSION,
                         found: version,
@@ -191,7 +239,6 @@ impl NibliStore {
                     let bytes = postcard::to_allocvec(&SCHEMA_VERSION)?;
                     meta.insert("schema_version", bytes.as_slice())?;
                 }
-                _ => {} // Version matches, no action needed.
             }
         }
         txn.commit()?;
@@ -211,7 +258,127 @@ impl NibliStore {
             max_hlc
         };
 
-        Ok(Self { db, node_id, hlc })
+        Ok(Self {
+            db,
+            node_id,
+            hlc,
+            found_version,
+        })
+    }
+
+    /// The schema version found on disk at `open` (before any migration).
+    pub fn found_version(&self) -> u32 {
+        self.found_version
+    }
+
+    /// Whether the DB opened at an older, migratable schema version and still needs
+    /// its migration run + finalize (`migrate_v2_text_rows` or `finalize_v3`).
+    pub fn needs_migration(&self) -> bool {
+        self.found_version != SCHEMA_VERSION
+    }
+
+    /// Stamp the on-disk schema version to `SCHEMA_VERSION` in one write transaction.
+    /// Shared by `finalize_v3` and the migration's final txn.
+    fn stamp_current_version(txn: &WriteTransaction) -> Result<(), StoreError> {
+        let mut meta = txn.open_table(META_TABLE)?;
+        let bytes = postcard::to_allocvec(&SCHEMA_VERSION)?;
+        meta.insert("schema_version", bytes.as_slice())?;
+        Ok(())
+    }
+
+    /// Finalize a v2→v3 upgrade with NO row changes — the engine path, whose payloads
+    /// are bare `LogicBuffer`s (no `StoredAssertion::Text` rows to recompile). Just
+    /// stamps the version. Idempotent.
+    pub fn finalize_v3(&mut self) -> Result<(), StoreError> {
+        let txn = self.db.begin_write()?;
+        Self::stamp_current_version(&txn)?;
+        txn.commit()?;
+        self.found_version = SCHEMA_VERSION;
+        Ok(())
+    }
+
+    /// Migrate a v2 host DB to v3: recompile every ACTIVE `StoredAssertion::Text` row
+    /// into a `StoredAssertion::Buffer` row (via the caller-supplied `recompile`, which
+    /// turns the source text into a postcard-serialized `LogicBuffer`), then stamp v3 —
+    /// all in one atomic write transaction.
+    ///
+    /// Fail-closed, never a silent drop: if `recompile` errors on any active Text row,
+    /// this returns `StoreError::Migration` BEFORE any write, so the DB is left untouched
+    /// at v2 and the row survives for recovery. Retracted Text rows are left as-is (they
+    /// are never replayed); the resulting invariant is "v3 has no ACTIVE Text rows".
+    /// A migrated row keeps its id/retracted/node_id/hlc/predicates and takes its label
+    /// from the recovered source text; the HLC is NOT ticked (a rewrite is not a new
+    /// logical event). Returns the number of rows migrated. Idempotent on a DB with no
+    /// active Text rows (it just stamps v3).
+    pub fn migrate_v2_text_rows<F, E>(&mut self, mut recompile: F) -> Result<usize, StoreError>
+    where
+        F: FnMut(&str) -> Result<Vec<u8>, E>,
+        E: std::fmt::Display,
+    {
+        // Phase 1 (read): collect active Text rows as (record, source-text). Direct/Buffer
+        // rows and retracted rows are left untouched. A payload that does not decode as
+        // StoredAssertion is fail-closed (a corrupt or wrong-encoding row — not silently
+        // skipped).
+        let pending: Vec<(StoredFactRecord, String)> = {
+            let rtxn = self.db.begin_read()?;
+            let table = rtxn.open_table(FACTS_TABLE)?;
+            let mut pending = Vec::new();
+            for entry in table.iter()? {
+                let (_, val) = entry?;
+                let record = decode_stored_fact_record(val.value())?;
+                if record.retracted {
+                    continue;
+                }
+                let assertion: StoredAssertion =
+                    postcard::from_bytes(&record.payload).map_err(|e| StoreError::Migration {
+                        id: record.id,
+                        reason: format!("payload is not a StoredAssertion ({e})"),
+                    })?;
+                if let StoredAssertion::Text(text) = assertion {
+                    pending.push((record, text));
+                }
+            }
+            pending
+        };
+
+        // Phase 2 (recompile, no writes yet): build every replacement record. Any failure
+        // returns here — before the write txn — so the DB stays at v2 untouched.
+        let mut rebuilt: Vec<(u64, Vec<u8>)> = Vec::with_capacity(pending.len());
+        for (record, text) in pending {
+            let inner = recompile(&text).map_err(|e| StoreError::Migration {
+                id: record.id,
+                reason: e.to_string(),
+            })?;
+            let payload = postcard::to_allocvec(&StoredAssertion::Buffer(inner))?;
+            let new_record = StoredFactRecord {
+                id: record.id,
+                payload,
+                // Source the label from the recovered payload text (byte-identical to the
+                // KB label the legacy Text replay used), independent of record.label.
+                label: text,
+                retracted: record.retracted,
+                node_id: record.node_id,
+                hlc_timestamp: record.hlc_timestamp,
+                predicates: record.predicates,
+            };
+            let bytes = postcard::to_allocvec(&new_record)?;
+            rebuilt.push((record.id, bytes));
+        }
+
+        // Phase 3 (one atomic write): rewrite the rows and stamp v3 together. A crash
+        // before commit leaves a clean v2 DB.
+        let migrated = rebuilt.len();
+        let txn = self.db.begin_write()?;
+        {
+            let mut table = txn.open_table(FACTS_TABLE)?;
+            for (id, bytes) in &rebuilt {
+                table.insert(*id, bytes.as_slice())?;
+            }
+        }
+        Self::stamp_current_version(&txn)?;
+        txn.commit()?;
+        self.found_version = SCHEMA_VERSION;
+        Ok(migrated)
     }
 
     /// Advance the HLC and return the new timestamp.
@@ -801,6 +968,242 @@ mod tests {
             StoredAssertion::Buffer(payload) => assert_eq!(payload, vec![1, 2, 3, 4]),
             _ => panic!("expected Buffer variant"),
         }
+    }
+
+    // ─── v2 → v3 migration ────────────────────────────────────────
+
+    /// Write records + stamp `schema_version = 2` directly, simulating a pre-migration
+    /// host DB (mirrors the raw-redb seed in `open_rejects_mismatched_schema_version`).
+    fn seed_v2_db(path: &Path, records: &[StoredFactRecord]) {
+        let db = Database::create(path).unwrap();
+        let txn = db.begin_write().unwrap();
+        {
+            let mut facts = txn.open_table(FACTS_TABLE).unwrap();
+            for r in records {
+                let bytes = postcard::to_allocvec(r).unwrap();
+                facts.insert(r.id, bytes.as_slice()).unwrap();
+            }
+            let mut meta = txn.open_table(META_TABLE).unwrap();
+            let vb = postcard::to_allocvec(&2u32).unwrap();
+            meta.insert("schema_version", vb.as_slice()).unwrap();
+        }
+        txn.commit().unwrap();
+    }
+
+    fn text_record(id: u64, text: &str, retracted: bool) -> StoredFactRecord {
+        StoredFactRecord {
+            id,
+            payload: postcard::to_allocvec(&StoredAssertion::Text(text.into())).unwrap(),
+            label: text.into(),
+            retracted,
+            node_id: "seed-node".into(),
+            hlc_timestamp: id, // arbitrary but distinct
+            predicates: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn open_accepts_v2_and_flags_migration() {
+        let path = temp_db_path("v2_migratable");
+        cleanup(&path);
+        seed_v2_db(&path, &[text_record(1, "dog(Adam).", false)]);
+
+        let store = NibliStore::open(&path, "node".into()).unwrap();
+        assert_eq!(store.found_version(), 2);
+        assert!(store.needs_migration());
+        drop(store);
+
+        // Opening must NOT auto-stamp: a reopen still reports the migratable v2 state.
+        let store = NibliStore::open(&path, "node".into()).unwrap();
+        assert_eq!(store.found_version(), 2);
+        assert!(store.needs_migration());
+
+        cleanup(&path);
+    }
+
+    #[test]
+    fn open_rejects_future_schema_version() {
+        let path = temp_db_path("v_future_reject");
+        cleanup(&path);
+        {
+            let db = Database::create(&path).unwrap();
+            let txn = db.begin_write().unwrap();
+            {
+                let mut meta = txn.open_table(META_TABLE).unwrap();
+                let bytes = postcard::to_allocvec(&(SCHEMA_VERSION + 1)).unwrap();
+                meta.insert("schema_version", bytes.as_slice()).unwrap();
+            }
+            txn.commit().unwrap();
+        }
+        match NibliStore::open(&path, "node".into()) {
+            Err(StoreError::SchemaVersion { expected, found }) => {
+                assert_eq!(expected, SCHEMA_VERSION);
+                assert_eq!(found, SCHEMA_VERSION + 1);
+            }
+            Err(other) => panic!("expected a SchemaVersion error, got: {other:?}"),
+            Ok(_) => panic!("a future schema version must be rejected"),
+        }
+        cleanup(&path);
+    }
+
+    #[test]
+    fn migrate_v2_text_rows_rewrites_only_active_text_and_stamps_v3() {
+        let path = temp_db_path("v3_migrate");
+        cleanup(&path);
+        let direct = StoredFactRecord {
+            id: 2,
+            payload: postcard::to_allocvec(&StoredAssertion::Direct {
+                relation: "cat".into(),
+                args: vec![StoredLogicalTerm::Constant("bel".into())],
+            })
+            .unwrap(),
+            label: ":assert cat bel".into(),
+            retracted: false,
+            node_id: "seed-node".into(),
+            hlc_timestamp: 2,
+            predicates: Vec::new(),
+        };
+        let buffer = StoredFactRecord {
+            id: 3,
+            payload: postcard::to_allocvec(&StoredAssertion::Buffer(vec![9, 9, 9])).unwrap(),
+            label: "person(Kim).".into(),
+            retracted: false,
+            node_id: "seed-node".into(),
+            hlc_timestamp: 3,
+            predicates: Vec::new(),
+        };
+        seed_v2_db(
+            &path,
+            &[
+                text_record(1, "dog(Adam).", false),
+                direct.clone(),
+                buffer.clone(),
+                text_record(4, "obsolete(X).", true), // retracted Text — left as-is
+            ],
+        );
+
+        let mut store = NibliStore::open(&path, "node".into()).unwrap();
+        // Mock recompile: text → deterministic inner bytes (the store treats them opaquely).
+        let migrated = store
+            .migrate_v2_text_rows(|text| Ok::<Vec<u8>, String>(format!("BUF:{text}").into_bytes()))
+            .unwrap();
+        assert_eq!(migrated, 1, "only the one ACTIVE Text row migrates");
+        assert!(!store.needs_migration());
+        assert_eq!(store.found_version(), SCHEMA_VERSION);
+
+        // Row 1: Text → Buffer(inner), label from the payload text, other fields preserved.
+        let r1 = store.get_fact(1).unwrap().unwrap();
+        match postcard::from_bytes::<StoredAssertion>(&r1.payload).unwrap() {
+            StoredAssertion::Buffer(inner) => assert_eq!(inner, b"BUF:dog(Adam)."),
+            other => panic!("row 1 must be Buffer, got {other:?}"),
+        }
+        assert_eq!(r1.label, "dog(Adam).");
+        assert!(!r1.retracted);
+        assert_eq!(r1.node_id, "seed-node");
+        assert_eq!(r1.hlc_timestamp, 1, "migration must not tick the HLC");
+
+        // Direct + Buffer rows untouched.
+        assert_eq!(store.get_fact(2).unwrap().unwrap().payload, direct.payload);
+        assert_eq!(store.get_fact(3).unwrap().unwrap().payload, buffer.payload);
+
+        // Retracted Text row is left as-is (still Text, still tombstoned).
+        let r4 = store.get_fact(4).unwrap().unwrap();
+        assert!(r4.retracted);
+        assert!(matches!(
+            postcard::from_bytes::<StoredAssertion>(&r4.payload).unwrap(),
+            StoredAssertion::Text(_)
+        ));
+
+        // Reopen: now a plain v3 store, no migration pending.
+        drop(store);
+        let store = NibliStore::open(&path, "node".into()).unwrap();
+        assert!(!store.needs_migration());
+        cleanup(&path);
+    }
+
+    #[test]
+    fn migrate_v2_text_rows_fails_closed_and_leaves_db_at_v2() {
+        let path = temp_db_path("v3_migrate_failclosed");
+        cleanup(&path);
+        seed_v2_db(&path, &[text_record(1, "unparseable lojban", false)]);
+
+        let mut store = NibliStore::open(&path, "node".into()).unwrap();
+        let err = store
+            .migrate_v2_text_rows(|_| Err::<Vec<u8>, String>("parse error".into()))
+            .unwrap_err();
+        assert!(
+            matches!(err, StoreError::Migration { id: 1, .. }),
+            "{err:?}"
+        );
+        drop(store);
+
+        // Fail-closed: the DB is untouched — still v2, the Text row intact.
+        let store = NibliStore::open(&path, "node".into()).unwrap();
+        assert_eq!(
+            store.found_version(),
+            2,
+            "must remain v2 after a failed migration"
+        );
+        let r1 = store.get_fact(1).unwrap().unwrap();
+        assert!(matches!(
+            postcard::from_bytes::<StoredAssertion>(&r1.payload).unwrap(),
+            StoredAssertion::Text(t) if t == "unparseable lojban"
+        ));
+        cleanup(&path);
+    }
+
+    #[test]
+    fn migrate_v2_text_rows_with_no_text_still_stamps_v3() {
+        // A v2 DB that is already all-Buffer/Direct (the common case) migrates zero rows
+        // but MUST still advance to v3.
+        let path = temp_db_path("v3_migrate_notext");
+        cleanup(&path);
+        let buffer = StoredFactRecord {
+            id: 1,
+            payload: postcard::to_allocvec(&StoredAssertion::Buffer(vec![1, 2, 3])).unwrap(),
+            label: "dog(Adam).".into(),
+            retracted: false,
+            node_id: "seed-node".into(),
+            hlc_timestamp: 1,
+            predicates: Vec::new(),
+        };
+        seed_v2_db(&path, &[buffer]);
+
+        let mut store = NibliStore::open(&path, "node".into()).unwrap();
+        let migrated = store
+            .migrate_v2_text_rows(|text| Ok::<Vec<u8>, String>(text.as_bytes().to_vec()))
+            .unwrap();
+        assert_eq!(migrated, 0);
+        assert!(!store.needs_migration());
+        assert_eq!(store.found_version(), SCHEMA_VERSION);
+        cleanup(&path);
+    }
+
+    #[test]
+    fn finalize_v3_restamps_without_touching_rows() {
+        // The engine path: bare-payload v2 DB → finalize_v3 restamps, rows untouched.
+        let path = temp_db_path("v3_finalize");
+        cleanup(&path);
+        let bare = StoredFactRecord {
+            id: 1,
+            payload: vec![42, 7, 7], // a bare LogicBuffer stand-in (not a StoredAssertion)
+            label: "dog(Adam).".into(),
+            retracted: false,
+            node_id: "seed-node".into(),
+            hlc_timestamp: 1,
+            predicates: Vec::new(),
+        };
+        seed_v2_db(&path, std::slice::from_ref(&bare));
+
+        let mut store = NibliStore::open(&path, "node".into()).unwrap();
+        assert!(store.needs_migration());
+        store.finalize_v3().unwrap();
+        assert!(!store.needs_migration());
+        assert_eq!(store.get_fact(1).unwrap().unwrap().payload, bare.payload);
+        drop(store);
+        let store = NibliStore::open(&path, "node".into()).unwrap();
+        assert!(!store.needs_migration());
+        cleanup(&path);
     }
 
     #[test]
