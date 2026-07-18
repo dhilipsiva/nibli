@@ -811,6 +811,76 @@ fn test_predicate_dictionary_source() {
 }
 
 #[test]
+fn synthetic_role_predicate_is_synthetic_and_arity_exempt() {
+    // Event decomposition emits `rel_xN` role predicates (always arity 2). They
+    // register as `Synthetic`, not `Inferred`, and are EXEMPT from arity
+    // validation — a `_xN` "arity mismatch" is not a user error.
+    let kb = new_kb();
+    let mut nodes = Vec::new();
+    let root = pred(
+        &mut nodes,
+        "goes_x1",
+        vec![
+            LogicalTerm::Constant("e0".to_string()),
+            LogicalTerm::Constant("alis".to_string()),
+        ],
+    );
+    assert_buf(
+        &kb,
+        LogicBuffer {
+            nodes,
+            roots: vec![root],
+        },
+    );
+    {
+        let inner = kb.inner.borrow();
+        let sig = inner.predicate_registry.get("goes_x1").unwrap();
+        assert!(
+            matches!(sig.source, SignatureSource::Synthetic),
+            "a `_xN` role predicate must register as Synthetic, got {:?}",
+            sig.source
+        );
+    }
+
+    // Under STRICT mode a differently-shaped `goes_x1` is ACCEPTED (the
+    // Synthetic exemption); a real user predicate would be rejected (see
+    // `strict::strict_mode_rejects_arity_mismatch`).
+    kb.set_strict(true);
+    let mut nodes2 = Vec::new();
+    let root2 = pred(
+        &mut nodes2,
+        "goes_x1",
+        vec![
+            LogicalTerm::Constant("e1".to_string()),
+            LogicalTerm::Constant("bel".to_string()),
+            LogicalTerm::Constant("extra".to_string()),
+        ],
+    );
+    kb.assert_fact_inner(
+        LogicBuffer {
+            nodes: nodes2,
+            roots: vec![root2],
+        },
+        String::new(),
+    )
+    .expect("a synthetic role predicate is exempt from strict arity rejection");
+}
+
+#[test]
+fn is_synthetic_role_predicate_classifies_by_suffix() {
+    use crate::kb::is_synthetic_role_predicate as syn;
+    assert!(syn("goes_x1"));
+    assert!(syn("goes_x12"));
+    assert!(syn("computer_user_x2")); // compound relation's role predicate
+    assert!(!syn("xyzzy")); // no `_x`
+    assert!(!syn("dog")); // plain predicate
+    assert!(!syn("goes")); // the type predicate itself, not a role
+    assert!(!syn("foo_x")); // no digits after `_x`
+    assert!(!syn("foo_xbar")); // non-digit suffix
+    assert!(!syn("_x1")); // empty base
+}
+
+#[test]
 fn test_predicate_registry_cleared_on_reset() {
     let kb = new_kb();
     assert_buf(&kb, make_assertion("alis", "gerku"));

@@ -245,13 +245,6 @@ Pipeline-audit backlog (2026-07-17; three-agent audit of front-end / middle IRs 
 back-end — effort tags S/M/L; ordered quick-wins → correctness → structure →
 performance → future-facing):
 
-- **Existential-import witness flag (M)** — the xorlo rule mints presupposition
-  witnesses unconditionally (kb.rs:632-638); NIBLI_KR §14 keeps "witness minting
-  behind a flag, off for clean-core" as a live option. Add a KB config flag
-  (the strict/verbose precedent), oracle re-pins ride along. Also the
-  SignatureSource oddity: synthetic `rel_xN` role predicates register as
-  `Inferred` and get arity-validated like real predicates — exclude them or add
-  a `Synthetic` source so the warnings stop being misleading.
 - **Tense×NAF (L, soundness-adjacent — design decision first)** —
   `NegatedExistsGroup` carries no tense (kb.rs:464-469): NAF restrictors
   evaluate tenselessly (a bare witness blocks a flavored query), documented

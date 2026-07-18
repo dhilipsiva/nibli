@@ -8,10 +8,29 @@ use std::cell::{Cell, RefCell};
 /// How a predicate's arity was determined.
 #[derive(Clone, Debug)]
 pub enum SignatureSource {
-    /// Arity from the jbovlaste PHF dictionary (known gismu/lujvo).
+    /// Arity from the committed English corpus (known predicate).
     Dictionary,
-    /// Arity inferred from the first assertion (not in dictionary).
+    /// Arity inferred from the first assertion (not in the corpus).
     Inferred,
+    /// An engine-synthesized `rel_xN` role predicate (from event
+    /// decomposition — always arity 2 `(event, filler)`). Never user-authored,
+    /// so it is NOT arity-validated: the "inferred from first use" label and
+    /// the arity-mismatch warning would both be category-confused for it.
+    Synthetic,
+}
+
+/// Whether a relation name is an engine-synthesized `rel_xN` role predicate
+/// (event decomposition emits `goes_x1`, `goes_x2`, … — always arity 2). These
+/// are never user-authored, so they are classified `Synthetic` and exempt from
+/// arity validation. Matches the `_x<digits>` suffix (the same role-predicate
+/// convention used in nibli-semantics, e.g. `helpers.rs`/`lib.rs`).
+pub(super) fn is_synthetic_role_predicate(rel: &str) -> bool {
+    match rel.rsplit_once("_x") {
+        Some((base, suffix)) => {
+            !base.is_empty() && !suffix.is_empty() && suffix.bytes().all(|b| b.is_ascii_digit())
+        }
+        None => false,
+    }
 }
 
 /// Registered predicate signature: arity + how it was determined.

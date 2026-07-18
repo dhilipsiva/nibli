@@ -817,11 +817,15 @@ pub(super) fn assert_typed_fact(fact: StoredFact, inner: &mut KnowledgeBaseInner
     let arity = fact.inner().args.len();
 
     if let Some(sig) = inner.predicate_registry.get(rel) {
-        // Known predicate — check arity.
-        if sig.arity != arity {
+        // Known predicate — check arity. Synthetic `rel_xN` role predicates are
+        // engine-generated at a fixed arity 2, so they are exempt: an "arity
+        // mismatch" against them is not a user error.
+        if sig.arity != arity && !matches!(sig.source, SignatureSource::Synthetic) {
             let source = match sig.source {
                 SignatureSource::Dictionary => "dictionary",
                 SignatureSource::Inferred => "inferred from first use",
+                // Excluded by the guard above; spelled for exhaustiveness.
+                SignatureSource::Synthetic => "engine-synthetic",
             };
             // STRICT MODE: reject the fact instead of warn-and-insert. Inert
             // during rebuild — a retraction replay must faithfully restore
@@ -845,8 +849,12 @@ pub(super) fn assert_typed_fact(fact: StoredFact, inner: &mut KnowledgeBaseInner
             );
         }
     } else {
-        // First time seeing this predicate — register it.
-        let source = if nibli_lexicon::get_arity(rel).is_some() {
+        // First time seeing this predicate — register it. An engine-synthesized
+        // `rel_xN` role predicate (event decomposition) is classified `Synthetic`
+        // so it is not later arity-validated like a user predicate.
+        let source = if crate::kb::is_synthetic_role_predicate(rel) {
+            SignatureSource::Synthetic
+        } else if nibli_lexicon::get_arity(rel).is_some() {
             SignatureSource::Dictionary
         } else {
             SignatureSource::Inferred
