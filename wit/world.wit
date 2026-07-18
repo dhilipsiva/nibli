@@ -11,7 +11,7 @@
 ///
 /// Data crossing the host↔component boundary uses flat index-based arrays
 /// (`u32` indices into parallel lists) — no heap pointers cross the WASM boundary.
-package nibli:engine@0.3.0;
+package nibli:engine@0.4.0;
 
 /// Structured error types shared across all Nibli components.
 interface error-types {
@@ -380,6 +380,11 @@ interface engine {
         /// warn-and-insert): when on, arity mismatches and integrity-constraint
         /// violations REJECT the offending fact and fail the assertion.
         set-strict: func(strict: bool);
+        /// Enable/disable EXISTENTIAL-IMPORT MODE (default ON — the v0.1 xorlo
+        /// behavior): when on, a description universal (`animal(every dog).`)
+        /// mints a presupposition witness so `∃x. dog(x)` holds. Off gives the
+        /// clean-core `some` = plain classical ∃ profile (no phantom witness).
+        set-existential-import: func(enabled: bool);
     }
 }
 

@@ -262,6 +262,27 @@ smoke-host-strict: build-wasm build-host
         echo "$t" | grep -qF '[Strict] OFF' || { echo 'FAIL: :strict off did not take'; exit 1; }; \
         echo 'PASS: NIBLI_STRICT=1 + :strict toggle plumbing works end to end'
 
+# Existential-import flag (xorlo witness minting): default ON presupposes a
+# description universal's domain non-empty; :existential-import off / the
+# NIBLI_EXISTENTIAL_IMPORT=0 env give the clean-core `some` = plain ∃ (no witness).
+smoke-host-existential-import: build-wasm build-host
+    @echo "Smoke-testing gasnu existential-import flag (env + :existential-import toggle)..."
+    @on=$(printf 'animal(every dog).\n? dog(?).\n' \
+        | NIBLI_WASM_PATH={{wasm_dir}}/nibli.wasm ./target/{{profile}}/nibli-host 2>&1); \
+        echo "$on"; \
+        echo "$on" | grep -qF '[Query] TRUE' || { echo 'FAIL: default-on existential import must presuppose a dog exists'; exit 1; }; \
+        off=$(printf ':existential-import off\nanimal(every dog).\n? dog(?).\n' \
+        | NIBLI_WASM_PATH={{wasm_dir}}/nibli.wasm ./target/{{profile}}/nibli-host 2>&1); \
+        echo "$off"; \
+        echo "$off" | grep -qF '[ExistentialImport] OFF' || { echo 'FAIL: :existential-import off did not take'; exit 1; }; \
+        echo "$off" | grep -qF '[Query] FALSE' || { echo 'FAIL: clean-core (:existential-import off) must NOT presuppose a dog'; exit 1; }; \
+        env=$(printf 'animal(every dog).\n? dog(?).\n' \
+        | NIBLI_EXISTENTIAL_IMPORT=0 NIBLI_WASM_PATH={{wasm_dir}}/nibli.wasm ./target/{{profile}}/nibli-host 2>&1); \
+        echo "$env"; \
+        echo "$env" | grep -qF 'Existential import: OFF' || { echo 'FAIL: NIBLI_EXISTENTIAL_IMPORT=0 startup banner missing'; exit 1; }; \
+        echo "$env" | grep -qF '[Query] FALSE' || { echo 'FAIL: NIBLI_EXISTENTIAL_IMPORT=0 must NOT presuppose a dog'; exit 1; }; \
+        echo 'PASS: existential-import env + :existential-import toggle works end to end'
+
 # Executes the full pipeline: Builds WASM modules, then boots the native REPL
 run: build-wasm
     @echo "Launching Neuro-Symbolic Engine ({{profile}})..."
@@ -375,7 +396,7 @@ ci: fmt-check clippy-runtime test test-engine test-host test-ui test-formalize t
 # them all: fuel exhaustion + post-trap recovery + journal replay
 # (trap-recovery), plus the script transcript, persist-replay, NAF-note,
 # :debug round-trip, and the determinism corpus.
-ci-wasm: smoke-host-script smoke-host-trap-recovery smoke-host-persist-replay smoke-host-split smoke-host-naf smoke-host-cwa-false smoke-host-debug smoke-host-collapse smoke-host-backend-unavailable smoke-host-quiet smoke-host-strict smoke-host-determinism verify-wasm-node
+ci-wasm: smoke-host-script smoke-host-trap-recovery smoke-host-persist-replay smoke-host-split smoke-host-naf smoke-host-cwa-false smoke-host-debug smoke-host-collapse smoke-host-backend-unavailable smoke-host-quiet smoke-host-strict smoke-host-existential-import smoke-host-determinism verify-wasm-node
 
 # Three-way determinism, WASMTIME leg: the shared determinism-corpus.nibli must produce
 # exactly its pinned annotations through the lasna component under gasnu. The

@@ -226,6 +226,7 @@ You query by **stating the proposition you want checked**, not by asking a quest
 | `:fuel [amount]` | Show or set the WASM fuel limit |
 | `:memory [mb]` | Show or set the WASM memory limit |
 | `:strict [on\|off]` | Show or set strict mode — reject arity/constraint violations instead of warn-and-insert (also `NIBLI_STRICT=1`) |
+| `:existential-import [on\|off]` | Show or set xorlo witness minting (default ON) — off is the clean-core profile where a description universal (`animal(every dog).`) presupposes nothing, so `some` = plain ∃ (also `NIBLI_EXISTENTIAL_IMPORT=0`) |
 | `:contradictions` | Scan the KB for contradictions |
 | `:trace <predicate>` | Enable tracing for a predicate |
 | `:untrace <predicate>` | Disable tracing for a predicate |

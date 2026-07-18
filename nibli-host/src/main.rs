@@ -633,6 +633,12 @@ struct Repl {
     /// at startup, toggled by `:strict on|off`; forwarded to the guest at
     /// (re)instantiation and re-applied to the live session on toggle.
     strict: bool,
+    /// EXISTENTIAL-IMPORT MODE (default ON — the v0.1 xorlo behavior). When on,
+    /// a description universal mints a presupposition witness. Off gives the
+    /// clean-core `some` = plain ∃ profile. Set from `NIBLI_EXISTENTIAL_IMPORT=0`
+    /// at startup, toggled by `:existential-import on|off`; forwarded to the
+    /// guest at (re)instantiation and re-applied to the live session on toggle.
+    existential_import: bool,
 }
 
 impl Repl {
@@ -648,6 +654,7 @@ impl Repl {
         backend_addr: Option<String>,
         quiet: bool,
         strict: bool,
+        existential_import: bool,
     ) -> Result<(Store<HostState>, pipeline_bind::NibliPipeline, ResourceAny)> {
         // Forward the quiet flag into the guest's WASI environment: the ctx
         // otherwise inherits only stdio, so `nibli-pipeline::Session::new` cannot see
@@ -661,6 +668,11 @@ impl Repl {
             }
             if strict {
                 b.env("NIBLI_STRICT", "1");
+            }
+            // Existential import defaults ON in the guest; forward the opt-OUT
+            // only when clean-core is active.
+            if !existential_import {
+                b.env("NIBLI_EXISTENTIAL_IMPORT", "0");
             }
             b.build()
         };
@@ -723,6 +735,7 @@ impl Repl {
             backend_addr,
             self.quiet,
             self.strict,
+            self.existential_import,
         ) {
             Ok((store, pipeline, session_handle)) => {
                 // The old store (with the dead session resource inside it) is
@@ -1083,6 +1096,9 @@ impl Repl {
                 println!(
                     "  :strict [on|off]    Show or set strict mode (reject arity/constraint violations)"
                 );
+                println!(
+                    "  :existential-import [on|off]  Show or set xorlo witness minting (off = clean-core ∃)"
+                );
                 println!("  :reset              Clear all facts (fresh KB)");
                 println!("  :quit               Exit");
                 return false;
@@ -1095,6 +1111,18 @@ impl Repl {
                         "reject the offending fact"
                     } else {
                         "warn and insert"
+                    }
+                );
+                return false;
+            }
+            ":existential-import" => {
+                println!(
+                    "[ExistentialImport] {} (a description universal {})",
+                    if self.existential_import { "ON" } else { "OFF" },
+                    if self.existential_import {
+                        "mints a presupposition witness"
+                    } else {
+                        "mints no witness — `some` = plain ∃"
                     }
                 );
                 return false;
@@ -1118,6 +1146,31 @@ impl Repl {
                 Ok(()) => {
                     self.strict = on;
                     println!("[Strict] {}", if on { "ON" } else { "OFF" });
+                }
+                Err(e) => {
+                    println!("{}", format_host_error(&e));
+                    self.needs_rebuild = true;
+                }
+            }
+            return false;
+        }
+        if let Some(mode) = input.strip_prefix(":existential-import ") {
+            let on = match mode.trim() {
+                "on" => true,
+                "off" => false,
+                other => {
+                    println!(
+                        "[ExistentialImport] Unknown mode '{other}' — use :existential-import on|off"
+                    );
+                    return false;
+                }
+            };
+            self.prepare_session();
+            let session = self.pipeline.nibli_engine_engine().session();
+            match session.call_set_existential_import(&mut self.store, self.session_handle, on) {
+                Ok(()) => {
+                    self.existential_import = on;
+                    println!("[ExistentialImport] {}", if on { "ON" } else { "OFF" });
                 }
                 Err(e) => {
                     println!("{}", format_host_error(&e));
@@ -1608,6 +1661,16 @@ fn main() -> Result<()> {
         println!("Strict mode: ON (arity/constraint violations reject)");
     }
 
+    // Existential import: default ON (v0.1 xorlo). Opt into clean-core (`some` =
+    // plain ∃) via `NIBLI_EXISTENTIAL_IMPORT=0`; toggleable with
+    // `:existential-import`.
+    let existential_import = std::env::var("NIBLI_EXISTENTIAL_IMPORT").ok().as_deref() != Some("0");
+    if !existential_import {
+        println!(
+            "Existential import: OFF (clean-core — `some` = plain ∃, no presupposition witness)"
+        );
+    }
+
     let script_path: Option<String> = {
         let args: Vec<String> = std::env::args().collect();
         args.windows(2)
@@ -1628,6 +1691,7 @@ fn main() -> Result<()> {
         backend_addr,
         quiet,
         strict,
+        existential_import,
     )?;
 
     // ── Persistent store (optional) ──
@@ -1665,6 +1729,7 @@ fn main() -> Result<()> {
         needs_rebuild: false,
         quiet,
         strict,
+        existential_import,
     };
 
     // Replay persisted facts into WASM session
@@ -1676,7 +1741,7 @@ fn main() -> Result<()> {
     let use_script_mode = script_path.is_some() || !std::io::stdin().is_terminal();
 
     println!(
-        "Ready. Commands: :quit :reset :load <file> :facts :retract <id> :debug <text> :compute <name> :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :strict [on|off] :db :help"
+        "Ready. Commands: :quit :reset :load <file> :facts :retract <id> :debug <text> :compute <name> :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :strict [on|off] :existential-import [on|off] :db :help"
     );
     println!(
         "Prefix '?' for queries with proof trace, '??' for find, plain text for assertions.\n"

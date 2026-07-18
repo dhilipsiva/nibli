@@ -180,7 +180,7 @@ fragment filter scans source tokens for exactly this reason). Scope details live
 - **Persistence** uses postcard (binary) over the same serde derives — `nibli-engine` stores
   each asserted root's `LogicBuffer` verbatim; a round-trip test covers every node and term
   variant.
-- **WIT** ([wit/world.wit](wit/world.wit), package `nibli:engine@0.3.0`) declares the same types
+- **WIT** ([wit/world.wit](wit/world.wit), package `nibli:engine@0.4.0`) declares the same types
   for the WASM component boundary: kebab-case variant names (`for-all-node` ↔ `ForAllNode`),
   identical declaration order (the component-model discriminant is positional). The
   ABI-matching types (`logic-node`/`logical-term`/`logic-buffer`/`query-result`/…) are
@@ -256,7 +256,7 @@ differentially tested), so a producer gets soundness checking for free.
 - The `ProofRule`/`ProofStep`/`ProofTrace` JSON contract, and the `[Syntax Error]` /
   `[Semantic Error]` / `[Reasoning Error]` / `[Backend Error]` prefixes of `NibliError`'s
   `Display` (documented in-source as a formal cross-consumer contract).
-- The WIT `logic-types` interface (`nibli:engine@0.3.0`).
+- The WIT `logic-types` interface (`nibli:engine@0.4.0`).
 
 **Internal (may change without notice):**
 - Variable naming (`_v0…`, `_ev0…`), Skolem names (`sk_N` — minted by the reasoner, never in a
@@ -267,7 +267,7 @@ differentially tested), so a producer gets soundness checking for free.
 - `AggregateOp` and the compute wire structs are Rust-side auxiliaries, not buffer types.
 
 **Versioning:** the buffer itself carries no version field. The WIT package version
-(`nibli:engine@0.3.0`) and the persistence layers' fail-closed schema versions (`nibli-store`)
+(`nibli:engine@0.4.0`) and the persistence layers' fail-closed schema versions (`nibli-store`)
 are the only version markers; adding a `LogicNode`/`LogicalTerm` variant is a breaking change
 across every conversion site (an in-source exhaustiveness guard enumerates them). Treat the
 format as pre-1.0: pin a commit if you build against it, and expect additive evolution.

@@ -273,6 +273,13 @@ impl GuestSession for Session {
         if std::env::var("NIBLI_STRICT").ok().as_deref() == Some("1") {
             core.set_strict(true);
         }
+        // EXISTENTIAL IMPORT defaults ON (the v0.1 xorlo behavior). The host
+        // forwards `NIBLI_EXISTENTIAL_IMPORT=0` into the WASI env to opt into
+        // clean-core (`some` = plain ∃); the `:existential-import` REPL toggle
+        // re-applies via `set-existential-import` after any post-trap rebuild.
+        if std::env::var("NIBLI_EXISTENTIAL_IMPORT").ok().as_deref() == Some("0") {
+            core.set_existential_import(false);
+        }
         Session {
             core: RefCell::new(core),
             linter: RefCell::new(nibli_kr::lint::Linter::new()),
@@ -282,6 +289,10 @@ impl GuestSession for Session {
 
     fn set_strict(&self, strict: bool) {
         self.core.borrow().set_strict(strict);
+    }
+
+    fn set_existential_import(&self, enabled: bool) {
+        self.core.borrow().set_existential_import(enabled);
     }
 
     /// Assert KR text, splitting a multi-statement input into one independent
