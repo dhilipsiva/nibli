@@ -18,6 +18,16 @@
 # tense, over-arity fail-closed rejection, built-in arithmetic verdicts, FNV-1a
 # reference vectors) and pinned two disclosed semantics (count assertions are
 # verdict-inert; li numbers never enter the quantifier domain).
+#
+# NOTE (2026-07-18): the entries below use the PRE-rename crate paths (`logji/` =
+# nibli-reason, `smuni/` = nibli-semantics) — they predate the crate rename and a
+# full re-cut has not been run since (a full `cargo mutants` sweep OOMs in the
+# current 45 GB WSL cap: a ballooning mutant hits ~25 GB). A path/description
+# refresh from a completable full sweep is pending (tracked in TODO.md). In the
+# meantime, incremental soundness changes are verified with `cargo mutants
+# --in-diff` over just the changed lines: the tense×NAF flavor-aware
+# `NegatedExistsGroup` change (2026-07-18) tested 7 mutants over its diff — 6
+# caught, 1 unviable, 0 survivors — so it added no new baseline entry.
 
 # ── Category A: EXPLANATION LAYER — trace/display/diagnostics text only, never a verdict: proof-step wording and indeterminate-reason strings, [Note:]/[Trace]/[Forward]/[Skolem] prints and their gates, rule branch labels, no-op trace sinks
 logji/src/kb.rs: delete ! in KnowledgeBaseInner::diag_enabled

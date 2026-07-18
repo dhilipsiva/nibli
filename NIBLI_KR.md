@@ -413,9 +413,11 @@ never invoke the linter.
   so there is nothing to disclose.
 - **L5 — constraint echo:** note when a disjunctive universal conclusion registers as an
   integrity constraint rather than a rule.
-- **L6 — tense×NAF advisory:** `past ~P` composes legally but lands in the corner the
-  verify-soundness oracles conservatively skip (tenseless `NegatedExistsGroup`); emit a
-  compile-time NOTE until the oracle gap closes. (`~past P` is rejected outright — §6.)
+- **L6 — tense-over-negation note:** `past ~P` reads as tense OUTSIDE the negation
+  (`Past(¬P)`, "it was not the case that P") — the one legal tense×NAF composition, and
+  flavor-exact (a Past witness blocks it, a bare/future one does not, symmetric with the
+  positive `past P` restrictor; differentially oracled by `verify-soundness`). Emit an
+  informational NOTE of the reading. (`~past P` is rejected outright — §6.)
 - **L7 — norm-encoding style:** warn when a KB mixes `must`/`may` wrappers with the
   `obligated()`/`permitted()` predicate idiom for what looks like the same norm — both
   are engine-faithful, but they don't chain with each other.
@@ -650,8 +652,8 @@ Verification:
 - Unchanged: **O6** (correlated multi-witness find — still needs engine support);
   **O7** (block-determiner shape pin) applies to both profiles.
 - Lints: **L1, L2, L4 obsolete** (their hazards are unwritable in v2);
-  **L3** (scope-by-written-order), **L5** (constraint echo), **L6** (tense×NAF
-  advisory), **L7** (norm-encoding style) remain.
+  **L3** (scope-by-written-order), **L5** (constraint echo), **L6** (tense-over-negation
+  reading note), **L7** (norm-encoding style) remain.
 
 ### 14.6 The GDPR erasure rule, clean-core
 

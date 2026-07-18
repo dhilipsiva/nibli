@@ -245,11 +245,14 @@ Pipeline-audit backlog (2026-07-17; three-agent audit of front-end / middle IRs 
 back-end — effort tags S/M/L; ordered quick-wins → correctness → structure →
 performance → future-facing):
 
-- **Tense×NAF (L, soundness-adjacent — design decision first)** —
-  `NegatedExistsGroup` carries no tense (kb.rs:464-469): NAF restrictors
-  evaluate tenselessly (a bare witness blocks a flavored query), documented
-  un-oracled in GUARANTEES. Either add tense flavor to the group + flavorize
-  NAF in the ASP oracle, or close the question formally.
+- **Mutation-baseline full re-cut (M)** — `mutants-baseline.txt` entries still use
+  the PRE-rename crate paths (`logji/`=nibli-reason, `smuni/`=nibli-semantics) from
+  the 2026-07-02 cut, so a full `just mutants` sweep flags every current survivor as
+  new (path mismatch) and the on-demand gate is effectively stale. A refresh needs a
+  COMPLETABLE full sweep, currently blocked by a ballooning mutant that hits ~25 GB
+  and OOMs under the 45 GB WSL cap — bound it (a per-test memory guard, a lower `-j`,
+  or fixing the runaway mutant) then re-cut paths + descriptions. Incremental changes
+  are verified via `cargo mutants --in-diff` in the meantime (see the baseline header).
 - **Store schema v3 migration (M)** — `StoredAssertion::Text` is "LEGACY:
   Lojban source text — no longer written" and `StoredFactRecord.label` is
   documented as Lojban source (nibli-store lib.rs:48,68); a v3 MIGRATION

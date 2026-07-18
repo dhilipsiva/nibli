@@ -363,6 +363,46 @@ fn tensed_negated_restrictor_future_witness_does_not_block() {
     );
 }
 
+#[test]
+fn bare_negated_restrictor_is_temporally_lifted_by_the_query() {
+    // A BARE `~eats(it)` restrictor under a bare-headed rule, queried at PAST: the NAF
+    // is temporally LIFTED to the query flavor (like a bare positive condition), so it
+    // checks "no PAST eats". rex past-ate → the lifted `~eats` is FALSE → the rule does
+    // NOT fire at Past → `past be_hungry(rex)` is FALSE. (Pre-fix, the tenseless NAF
+    // checked bare `eats` — none stored — and the rule wrongly fired.)
+    let engine = engine_with_facts(&[
+        "be_hungry(every dog where ~eats(it)).",
+        "past dog(Rex).",
+        "past eats(Rex).",
+    ]);
+    let (holds, _t, _j) = engine
+        .query_text_with_proof("past be_hungry(Rex).")
+        .unwrap();
+    assert_false(
+        &holds,
+        "a bare NAF restrictor lifts to the query flavor: a Past witness blocks a Past query",
+    );
+}
+
+#[test]
+fn bare_negated_restrictor_lifted_query_fires_without_matching_witness() {
+    // Same bare rule, queried at PAST, but rex has only a BARE eating (no PAST one):
+    // the lifted `~eats` checks "no PAST eats" → holds → the rule fires at Past →
+    // `past be_hungry(rex)` is TRUE. Pins that the lift is flavor-exact, not blanket.
+    let engine = engine_with_facts(&[
+        "be_hungry(every dog where ~eats(it)).",
+        "past dog(Rex).",
+        "eats(Rex).",
+    ]);
+    let (holds, _t, _j) = engine
+        .query_text_with_proof("past be_hungry(Rex).")
+        .unwrap();
+    assert_true(
+        &holds,
+        "a bare eating must not block the Past-lifted NAF restrictor",
+    );
+}
+
 // ── Disjunctive rule antecedents (DNF rule-splitting) ──
 // `ro lo X poi P ja Q cu R` is `∀x.(P(x)∨Q(x))→R(x)`, compiled as one
 // backward-chaining rule per disjunct. Previously fail-closed-rejected.

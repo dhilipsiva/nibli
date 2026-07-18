@@ -226,16 +226,17 @@ impl Walk<'_> {
                 if deontic.is_some() {
                     self.linter.deontic_prefix_seen = true;
                 }
-                // L6 — tense over NAF is the oracle-skip corner.
+                // L6 — tense over a negated claim: the tense-outside-negation reading.
                 if tense.is_some() && matches!(atom.as_ref(), Claim::Not(_)) {
                     push(
                         self.notes,
                         self.input,
                         at,
                         "L6",
-                        "tense over a negated claim ('past ~P') composes legally but \
-                         lands in the tense×NAF corner the verify-soundness oracles \
-                         conservatively skip — advisory until that oracle gap closes"
+                        "tense over a negated claim ('past ~P') reads as tense OUTSIDE \
+                         the negation ('Past(not P)', 'it was not the case that P') — the \
+                         one legal tense×NAF composition, and flavor-exact: a Past witness \
+                         blocks it, a bare/future one does not (symmetric with 'past P')"
                             .to_string(),
                     );
                 }
@@ -592,7 +593,7 @@ mod tests {
         assert!(!codes("every dog $d: big($d) & fast($d).").contains(&"L5"));
     }
 
-    // ── L6 — tense×NAF advisory ──
+    // ── L6 — tense-over-negation informational note (`past ~P`) ──
 
     #[test]
     fn l6_fires_on_past_not() {
