@@ -1165,6 +1165,13 @@ fn register_clause_rule(
         // `x__vN` (shared) and a group-local event pvar. It is excluded from
         // `typed_conditions` AND from the existential-import presupposition (a `poi na zanru`
         // person must NOT get an asserted consent witness).
+        //
+        // The restrictor's tense (`past ~P` → `Past(Not(Exists))`, tense OUTSIDE
+        // the negation — the one legal tense×NAF composition) is threaded onto the
+        // group's inner templates, so the NAF check is FLAVOR-EXACT: `past ~P`
+        // checks for Past-flavor witnesses, exactly like a positive `past P`
+        // restrictor. A bare `~P` builds bare templates (temporally lifted to the
+        // query flavor at firing, like a bare positive condition).
         if let Some((ev_var, leaf_ids)) = detect_negated_exists_group(buffer, cid) {
             let ev_pvar = format!("ev__{}", ev_var);
             let mut group_pattern_vars: HashMap<String, String> = pattern_vars.clone();
@@ -1177,7 +1184,7 @@ fn register_clause_rule(
                     &group_pattern_vars,
                     ground_skolems,
                     dependent_skolems,
-                    None,
+                    tense,
                 ) {
                     Some(f) => group_conditions.push(f),
                     None => {

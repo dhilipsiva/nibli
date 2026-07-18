@@ -298,6 +298,71 @@ fn tensed_restrictor_bare_premise_control() {
     assert_false(&holds, "a bare premise must not satisfy a Past antecedent");
 }
 
+// ── Tensed NEGATED restrictor (tense × NAF). `where past ~eats(it)` compiles
+// to a Past-flavored NegatedExistsGroup ("has not past-eaten"). The NAF check
+// is flavor-exact, symmetric with the positive `where past eats(it)` above: a
+// PAST witness blocks it, a bare/future witness does NOT. ──
+
+#[test]
+fn tensed_negated_restrictor_fires_without_witness() {
+    // rex is a dog that has NOT past-eaten → `past ~eats` holds → rule fires.
+    let engine = engine_with_facts(&["be_hungry(every dog where past ~eats(it)).", "dog(Rex)."]);
+    let (holds, _t, _j) = engine.query_text_with_proof("be_hungry(Rex).").unwrap();
+    assert_true(
+        &holds,
+        "a tensed NAF restrictor fires when no matching-flavor witness exists",
+    );
+}
+
+#[test]
+fn tensed_negated_restrictor_blocked_by_past_witness() {
+    // rex DID past-eat → `past ~eats` is FALSE for rex → the rule must NOT fire.
+    // (The soundness fix: pre-fix the Past witness was invisible to the tenseless
+    // NAF and the rule over-fired.)
+    let engine = engine_with_facts(&[
+        "be_hungry(every dog where past ~eats(it)).",
+        "dog(Rex).",
+        "past eats(Rex).",
+    ]);
+    let (holds, _t, _j) = engine.query_text_with_proof("be_hungry(Rex).").unwrap();
+    assert_false(
+        &holds,
+        "a Past witness blocks a `past ~P` NAF restrictor (flavor-exact)",
+    );
+}
+
+#[test]
+fn tensed_negated_restrictor_bare_witness_does_not_block() {
+    // rex has a BARE eating but no PAST eating → `past ~eats` (checks PAST) still
+    // holds → rule fires. (The flavor-exactness: a bare witness must not block a
+    // Past NAF — the mirror of `tensed_restrictor_bare_premise_control`.)
+    let engine = engine_with_facts(&[
+        "be_hungry(every dog where past ~eats(it)).",
+        "dog(Rex).",
+        "eats(Rex).",
+    ]);
+    let (holds, _t, _j) = engine.query_text_with_proof("be_hungry(Rex).").unwrap();
+    assert_true(
+        &holds,
+        "a bare witness must not block a Past NAF restrictor",
+    );
+}
+
+#[test]
+fn tensed_negated_restrictor_future_witness_does_not_block() {
+    // rex WILL eat (future) but has no PAST eating → `past ~eats` holds → fires.
+    let engine = engine_with_facts(&[
+        "be_hungry(every dog where past ~eats(it)).",
+        "dog(Rex).",
+        "future eats(Rex).",
+    ]);
+    let (holds, _t, _j) = engine.query_text_with_proof("be_hungry(Rex).").unwrap();
+    assert_true(
+        &holds,
+        "a Future witness must not block a Past NAF restrictor",
+    );
+}
+
 // ── Disjunctive rule antecedents (DNF rule-splitting) ──
 // `ro lo X poi P ja Q cu R` is `∀x.(P(x)∨Q(x))→R(x)`, compiled as one
 // backward-chaining rule per disjunct. Previously fail-closed-rejected.

@@ -263,17 +263,33 @@ fn eval_negated_exists_group(
     candidates_slot: &mut Option<Vec<GroundTerm>>,
     depth: usize,
     visited: &mut HashSet<StoredFact>,
+    tense_fact: Option<&StoredFact>,
 ) -> QueryResult {
+    // Flavor-exact NAF: the group's inner templates already carry any EXPLICIT
+    // restrictor flavor (`past ~P` → Past templates, built at construction). In
+    // the TEMPORAL-LIFTING phase (`tense_fact = Some(query)`), a BARE template is
+    // lifted to the query flavor exactly like a bare positive condition;
+    // `apply_tense_to_fact` leaves an already-flavored template unchanged, so an
+    // explicit `past ~P` is never re-lifted (explicit flavor wins). The lifted
+    // templates drive BOTH candidate narrowing and the witness check, so the two
+    // stay flavor-consistent (a Past query narrows to Past witnesses).
+    let effective: Vec<StoredFact> = match tense_fact {
+        Some(src) => group
+            .conditions
+            .iter()
+            .map(|c| apply_tense_to_fact(c, src))
+            .collect(),
+        None => group.conditions.clone(),
+    };
     // Narrow the event candidates to those that could actually satisfy the inner
     // existential (asserted-fact index hits ∪ rule-derivable witnesses), falling
     // back to the full pool only when no condition cleanly anchors the event var.
     // Without this, the group enumerates the whole members^k pool per firing —
     // the GDPR full-corpus erasure rule blows past its time budget.
-    let candidates =
-        match collect_group_event_candidates(&group.conditions, &group.event_var, inner) {
-            Some(narrowed) => narrowed,
-            None => ensure_candidates(candidates_slot, inner).to_vec(),
-        };
+    let candidates = match collect_group_event_candidates(&effective, &group.event_var, inner) {
+        Some(narrowed) => narrowed,
+        None => ensure_candidates(candidates_slot, inner).to_vec(),
+    };
     let mut best: Option<QueryResult> = None;
     let mut any_witness = false;
     for cand in &candidates {
@@ -281,7 +297,7 @@ fn eval_negated_exists_group(
         b.insert(group.event_var.clone(), cand.clone());
         let mut all_inner_true = true;
         let mut inner_pending: Option<QueryResult> = None;
-        for tmpl in &group.conditions {
+        for tmpl in &effective {
             let cs = substitute_fact(tmpl, &b);
             let r = check_predicate_in_kb_typed(&cs, inner, depth + 1, visited);
             if r.is_false() {
@@ -323,12 +339,21 @@ fn fold_negated_groups(
     visited: &mut HashSet<StoredFact>,
     hold: &mut bool,
     pending: &mut Option<QueryResult>,
+    tense_fact: Option<&StoredFact>,
 ) {
     if rule.negated_exists_groups.is_empty() || (!*hold && pending.is_none()) {
         return;
     }
     for group in &rule.negated_exists_groups {
-        let gv = eval_negated_exists_group(group, bindings, inner, candidates_slot, depth, visited);
+        let gv = eval_negated_exists_group(
+            group,
+            bindings,
+            inner,
+            candidates_slot,
+            depth,
+            visited,
+            tense_fact,
+        );
         if gv.is_false() {
             *hold = false;
             *pending = None;
@@ -2211,8 +2236,10 @@ fn process_phase<S: TraceSink>(
                             pending_here = prefer_non_definitive(pending_here, verdict);
                         }
                     }
-                    // Negated-exists groups are intrinsically tenseless: checked
-                    // bare, not lifted, in both phases.
+                    // Negated-exists groups are flavor-aware: an explicit `past
+                    // ~P` restrictor carries its flavor on the templates; a bare
+                    // `~P` is temporally lifted with the goal's tense (`tense_fact`)
+                    // exactly like the positive conditions above.
                     fold_negated_groups(
                         rule,
                         &bindings,
@@ -2222,6 +2249,7 @@ fn process_phase<S: TraceSink>(
                         visited,
                         &mut all_hold,
                         &mut pending_here,
+                        tense_fact,
                     );
                     if all_hold {
                         found = true;
@@ -2282,6 +2310,7 @@ fn process_phase<S: TraceSink>(
                 visited,
                 &mut all_conditions_hold,
                 &mut rule_pending,
+                tense_fact,
             );
 
             if all_conditions_hold {
