@@ -202,31 +202,11 @@ impl Guest for NibliPipeline {
 }
 
 impl Session {
-    /// LEGACY REPLAY body for `assert_text_with_id`: recompiles `input` and
-    /// asserts the WHOLE buffer (multi-root stays composite) under the
-    /// CALLER-CHOSEN id — exactly the pre-split single-fact granularity, kept
-    /// so durable stores written before buffer persistence (text-payload rows)
-    /// replay unchanged. New code persists the per-root buffers `assert_text`
-    /// returns and replays via `assert_buffer_with_id`. (`compile_pipeline`
-    /// fails closed on any parse error, so no per-caller warning check is
-    /// needed.)
-    fn assert_text_inner(&self, input: String, id: u64) -> Result<(), pipeline_err::NibliError> {
-        let core = self.core.borrow();
-        let buf = core.compile_text(&input)?;
-        core.kb()
-            .assert_fact_with_id(buf, input, id)
-            // The assert is the reasoning stage (buffer already past nibli-semantics);
-            // nibli-reason's `assert_fact_with_id` returns a String, so wrap as Reasoning.
-            .map_err(pipeline_err::NibliError::Reasoning)?;
-        Ok(())
-    }
-
     /// Emit the KR lint notes for an interactive text input (NIBLI_KR
     /// §12 L1–L9) to guest stdout as `[Note: …]` lines — the `[Skolem]`/`[Rule]`
     /// echo precedent: verbose-gated (NIBLI_QUIET suppresses), non-blocking
-    /// (never affects the compile result). The legacy replay path
-    /// (`assert_text_with_id`) deliberately does NOT lint — replay is
-    /// mechanical, not authoring.
+    /// (never affects the compile result). Buffer replay
+    /// (`assert_buffer_with_id`) is mechanical, not authoring, so it never lints.
     fn emit_lints(&self, input: &str) {
         if !self.verbose {
             return;
@@ -309,10 +289,6 @@ impl GuestSession for Session {
         // The per-root (id, buffer) pairs ARE `(u64, logic::LogicBuffer)` — the
         // WIT return type now — so they pass straight through.
         self.core.borrow().assert_text(&input)
-    }
-
-    fn assert_text_with_id(&self, input: String, id: u64) -> Result<(), pipeline_err::NibliError> {
-        self.assert_text_inner(input, id)
     }
 
     /// Recompile-free replay: assert an already-compiled buffer (as returned

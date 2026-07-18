@@ -574,13 +574,6 @@ fn format_nibli_error(e: &NibliError) -> String {
 /// and Skolem numbering). Queries are not journaled — their only KB side
 /// effect (flat-path compute auto-ingestion) is recomputed on demand.
 enum JournalEntry {
-    /// LEGACY (seeded only when replaying pre-buffer `StoredAssertion::Text`
-    /// store rows): replayed via `assert-text-with-id`, recompiling the text
-    /// as ONE composite fact — the pre-split granularity those rows carry.
-    AssertText {
-        text: String,
-        id: u64,
-    },
     /// A compiled single-root fact buffer (one per root of a text assertion).
     /// Replayed recompile-free via `assert-buffer-with-id`. `id` is the fact
     /// id assigned at the original assertion (or the durable store id at
@@ -780,11 +773,6 @@ impl Repl {
         refuel(&mut self.store, self.fuel_budget);
         let session = self.pipeline.nibli_engine_engine().session();
         match entry {
-            JournalEntry::AssertText { text, id } => {
-                session
-                    .call_assert_text_with_id(&mut self.store, self.session_handle, text, *id)?
-                    .map_err(|e| anyhow::anyhow!("{}", format_nibli_error(&e)))?;
-            }
             JournalEntry::AssertBuffer { buffer, label, id } => {
                 let wit_buf = types_logic_buffer_to_wit(buffer);
                 session
@@ -824,75 +812,97 @@ impl Repl {
         Ok(())
     }
 
+    /// Recompile a legacy source-text row into a postcard `LogicBuffer` payload, via
+    /// the component's side-effect-free `compile-debug` (the SAME chain the old Text
+    /// replay used, so the migrated buffer is byte-identical). The v2→v3 migration
+    /// injects this as its recompile closure.
+    fn recompile_via_compile_debug(&mut self, text: &str) -> std::result::Result<Vec<u8>, String> {
+        refuel(&mut self.store, self.fuel_budget);
+        let session = self.pipeline.nibli_engine_engine().session();
+        let wit_buf = session
+            .call_compile_debug(&mut self.store, self.session_handle, text)
+            .map_err(|e| format_host_error(&e))?
+            .map_err(|e| format_nibli_error(&e))?;
+        let buffer = wit_logic_buffer_to_types(&wit_buf);
+        postcard::to_allocvec(&buffer).map_err(|e| e.to_string())
+    }
+
+    /// Schema v2→v3 migration: recompile any legacy `StoredAssertion::Text` rows in the
+    /// durable registry into `Buffer` rows (once, on open), then stamp v3. Fail-closed —
+    /// a row that will not recompile leaves the DB untouched at v2 and aborts startup, so
+    /// nothing is silently dropped. A no-op restamp for a v2 DB that has no Text rows.
+    fn migrate_store(&mut self) -> Result<()> {
+        let needs = matches!(&self.nibli_store, Some(s) if s.needs_migration());
+        if !needs {
+            return Ok(());
+        }
+        // Take the registry out so the recompile closure can borrow the session on
+        // `self` while `migrate_v2_text_rows` borrows the moved-out store (disjoint).
+        let mut store = self.nibli_store.take().expect("Some checked above");
+        let result = store.migrate_v2_text_rows(|text| self.recompile_via_compile_debug(text));
+        self.nibli_store = Some(store);
+        match result {
+            Ok(0) => {} // no legacy Text rows — the v2 registry was restamped to v3
+            Ok(n) => println!("[Store] Migrated {n} legacy text fact(s) → v3 buffers."),
+            Err(e) => {
+                return Err(anyhow::anyhow!(
+                    "[Store] cannot upgrade the database to schema v3: {e}. The database is \
+                     unchanged (still v2) — recover with the v0.1-lojban-final binary or start fresh."
+                ));
+            }
+        }
+        Ok(())
+    }
+
     /// Replay persisted facts from the durable store into the WASM session.
-    fn replay_persisted(&mut self) {
+    ///
+    /// Fail-closed (never a silent drop): a corrupt payload/buffer, a legacy Text row
+    /// that survived the v3 migration, or a per-fact reasoning rejection aborts startup —
+    /// a store that cannot be faithfully rebuilt is not served partially. A wasm TRAP is
+    /// the one recoverable case (a resource issue, not corruption): it flags a rebuild and
+    /// replay continues.
+    fn replay_persisted(&mut self) -> Result<()> {
         let facts = match self.nibli_store.as_ref() {
             Some(s) => match s.all_active_facts() {
                 Ok(facts) if !facts.is_empty() => facts,
-                _ => return,
+                Ok(_) => return Ok(()),
+                Err(e) => {
+                    return Err(anyhow::anyhow!(
+                        "[Store] failed to read persisted facts: {e}"
+                    ));
+                }
             },
-            None => return,
+            None => return Ok(()),
         };
         println!("[Store] Replaying {} persisted facts...", facts.len());
         let mut replayed = 0u32;
-        let mut replay_errors = 0u32;
         for fact in &facts {
-            let assertion: StoredAssertion = match postcard::from_bytes(&fact.payload) {
-                Ok(a) => a,
-                Err(e) => {
-                    println!("[Store] Fact #{} deserialize error: {}", fact.id, e);
-                    replay_errors += 1;
-                    continue;
-                }
-            };
+            let assertion: StoredAssertion = postcard::from_bytes(&fact.payload).map_err(|e| {
+                anyhow::anyhow!(
+                    "[Store] fact #{} payload is corrupt ({e}) — the store cannot be faithfully \
+                     rebuilt; recover with :reset or restore a backup",
+                    fact.id
+                )
+            })?;
             self.prepare_session();
             let session = self.pipeline.nibli_engine_engine().session();
             match assertion {
-                StoredAssertion::Text(ref text) => {
-                    // Replay with the DURABLE store id so the live session's
-                    // fact-id namespace stays equal to the store's (no drift).
-                    match session.call_assert_text_with_id(
-                        &mut self.store,
-                        self.session_handle,
-                        text,
-                        fact.id,
-                    ) {
-                        Ok(Ok(_)) => {
-                            self.journal.push(JournalEntry::AssertText {
-                                text: text.clone(),
-                                id: fact.id,
-                            });
-                            replayed += 1;
-                        }
-                        Ok(Err(e)) => {
-                            println!(
-                                "[Store] Replay fact #{}: {}",
-                                fact.id,
-                                format_nibli_error(&e)
-                            );
-                            replay_errors += 1;
-                        }
-                        Err(e) => {
-                            println!(
-                                "[Store] Replay fact #{}: {}",
-                                fact.id,
-                                format_host_error(&e)
-                            );
-                            self.needs_rebuild = true;
-                            replay_errors += 1;
-                        }
-                    }
+                StoredAssertion::Text(_) => {
+                    return Err(anyhow::anyhow!(
+                        "[Store] fact #{} is a legacy text row that survived the v3 migration \
+                         (internal bug) — recover with :reset",
+                        fact.id
+                    ));
                 }
                 StoredAssertion::Buffer(ref inner) => {
                     // Recompile-free replay: the stored payload IS the fact.
-                    let buffer: NibliBuffer = match postcard::from_bytes(inner) {
-                        Ok(b) => b,
-                        Err(e) => {
-                            println!("[Store] Fact #{} buffer decode error: {}", fact.id, e);
-                            replay_errors += 1;
-                            continue;
-                        }
-                    };
+                    let buffer: NibliBuffer = postcard::from_bytes(inner).map_err(|e| {
+                        anyhow::anyhow!(
+                            "[Store] fact #{} buffer is corrupt ({e}) — the store cannot be \
+                             faithfully rebuilt; recover with :reset",
+                            fact.id
+                        )
+                    })?;
                     let wit_buf = types_logic_buffer_to_wit(&buffer);
                     match session.call_assert_buffer_with_id(
                         &mut self.store,
@@ -910,21 +920,21 @@ impl Repl {
                             replayed += 1;
                         }
                         Ok(Err(e)) => {
-                            println!(
-                                "[Store] Replay fact #{}: {}",
+                            return Err(anyhow::anyhow!(
+                                "[Store] fact #{} failed to replay: {} — the store cannot be \
+                                 faithfully rebuilt; recover with :reset",
                                 fact.id,
                                 format_nibli_error(&e)
-                            );
-                            replay_errors += 1;
+                            ));
                         }
                         Err(e) => {
+                            // A wasm trap is recoverable via rebuild, not corruption.
                             println!(
-                                "[Store] Replay fact #{}: {}",
+                                "[Store] Replay fact #{} trapped: {}",
                                 fact.id,
                                 format_host_error(&e)
                             );
                             self.needs_rebuild = true;
-                            replay_errors += 1;
                         }
                     }
                 }
@@ -950,31 +960,27 @@ impl Repl {
                             replayed += 1;
                         }
                         Ok(Err(e)) => {
-                            println!(
-                                "[Store] Replay fact #{}: {}",
+                            return Err(anyhow::anyhow!(
+                                "[Store] fact #{} failed to replay: {} — the store cannot be \
+                                 faithfully rebuilt; recover with :reset",
                                 fact.id,
                                 format_nibli_error(&e)
-                            );
-                            replay_errors += 1;
+                            ));
                         }
                         Err(e) => {
                             println!(
-                                "[Store] Replay fact #{}: {}",
+                                "[Store] Replay fact #{} trapped: {}",
                                 fact.id,
                                 format_host_error(&e)
                             );
                             self.needs_rebuild = true;
-                            replay_errors += 1;
                         }
                     }
                 }
             }
         }
-        if replay_errors > 0 {
-            println!("[Store] Replay: {} ok, {} errors", replayed, replay_errors);
-        } else {
-            println!("[Store] Replay complete ({} facts)", replayed);
-        }
+        println!("[Store] Replay complete ({} facts)", replayed);
+        Ok(())
     }
 
     /// Per-command dispatch shared by interactive and script modes.
@@ -1732,8 +1738,12 @@ fn main() -> Result<()> {
         existential_import,
     };
 
-    // Replay persisted facts into WASM session
-    repl.replay_persisted();
+    // Migrate a legacy v2 store to v3 (recompile any Text rows), then replay the
+    // persisted facts into the WASM session. Both are fail-closed: a failed migration
+    // leaves the DB at v2, and an unreplayable store aborts startup rather than serving
+    // a partial KB.
+    repl.migrate_store()?;
+    repl.replay_persisted()?;
 
     // Mode selection: interactive (reedline) vs. non-interactive script mode.
     // Script mode triggers when --script <file> is passed OR stdin is not a TTY,

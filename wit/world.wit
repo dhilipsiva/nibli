@@ -11,7 +11,7 @@
 ///
 /// Data crossing the host↔component boundary uses flat index-based arrays
 /// (`u32` indices into parallel lists) — no heap pointers cross the WASM boundary.
-package nibli:engine@0.4.0;
+package nibli:engine@0.5.0;
 
 /// Structured error types shared across all Nibli components.
 interface error-types {
@@ -341,12 +341,6 @@ interface engine {
         /// root's compiled buffer so a persisting host can store the FACT
         /// itself (recompile-free replay via `assert-buffer-with-id`).
         assert-text: func(input: string) -> result<list<tuple<fact-id, logic-buffer>>, nibli-error>;
-        /// LEGACY REPLAY ONLY — recompiles `input` and asserts it as ONE fact
-        /// (multi-root buffers stay composite) under a CALLER-CHOSEN id. Kept
-        /// so durable stores written before buffer persistence (text-payload
-        /// rows) still replay with their original single-fact granularity.
-        /// New code persists buffers and replays via `assert-buffer-with-id`.
-        assert-text-with-id: func(input: string, id: fact-id) -> result<_, nibli-error>;
         /// Query whether KR text is entailed.
         query-text: func(input: string) -> result<query-result, nibli-error>;
         /// Query KR text with proof trace.
@@ -364,8 +358,8 @@ interface engine {
         register-compute-predicate: func(name: string);
         /// Assert a ground fact directly into the KB (bypasses text parsing).
         assert-fact: func(relation: string, args: list<logical-term>) -> result<fact-id, nibli-error>;
-        /// Assert a ground fact directly with a CALLER-CHOSEN fact id (see
-        /// `assert-text-with-id` — for persistent restart-replay).
+        /// Assert a ground fact directly with a CALLER-CHOSEN fact id (for
+        /// persistent restart-replay; see `assert-buffer-with-id`).
         assert-fact-with-id: func(relation: string, args: list<logical-term>, id: fact-id) -> result<_, nibli-error>;
         /// Assert an already-compiled logic buffer under a CALLER-CHOSEN fact
         /// id — the recompile-free replay primitive for hosts that persist the

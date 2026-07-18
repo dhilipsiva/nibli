@@ -253,12 +253,6 @@ performance → future-facing):
   and OOMs under the 45 GB WSL cap — bound it (a per-test memory guard, a lower `-j`,
   or fixing the runaway mutant) then re-cut paths + descriptions. Incremental changes
   are verified via `cargo mutants --in-diff` in the meantime (see the baseline header).
-- **Store schema v3 migration (M)** — `StoredAssertion::Text` is "LEGACY:
-  Lojban source text — no longer written" and `StoredFactRecord.label` is
-  documented as Lojban source (nibli-store lib.rs:48,68); a v3 MIGRATION
-  (recompile-once on open — never a silent drop; old DBs must replay) retires
-  the Text replay path + the WIT legacy `assert-text-with-id` seam.
-
 - **Ontology-row import (brismu/zatske interchange)** — korvo proposed flat rows
   `[P, Q, mapping]` (predicate subrelation with place mapping: identity
   `["gerku","danlu",[1,2]]`; place deletion `["skari","ckaji",[1,2]]` — unmapped

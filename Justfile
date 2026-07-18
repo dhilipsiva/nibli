@@ -136,6 +136,39 @@ smoke-host-split: build-wasm build-host
         rm -rf "$dir"; \
         echo 'PASS: nibli KR statements split into independent, per-statement-retractable, buffer-replayed facts; conjunctions stay whole'
 
+# Schema v2→v3 migration smoke: a legacy `StoredAssertion::Text` row (which the host can
+# no longer WRITE) is recompiled once on open into a `Buffer` row via `compile-debug`,
+# replays to the right verdict, and the DB is stamped v3 (a second run does NOT
+# re-migrate). Negative: a non-KR (Lojban-era) Text row that will not recompile aborts
+# startup NON-destructively — the DB stays v2 (a re-run still attempts migration). Seeds
+# the pre-v3 fixture with the `seed_v2_text` bin (raw redb). Pre-release gate.
+smoke-host-schema-v3-migration: build-wasm build-host
+    @echo "Smoke-testing gasnu schema v2→v3 migration (Text→Buffer recompile-once)..."
+    @cargo build {{cargo_profile_flag}} -p nibli-store --bin seed_v2_text >/dev/null 2>&1; \
+        dir=$(mktemp -d); db="$dir/nibli-v2.redb"; \
+        ./target/{{profile}}/seed_v2_text "$db" 5 'dog(Adam).'; \
+        out1=$(printf ':facts\n? dog(Adam).\n' \
+            | NIBLI_DB_PATH="$db" NIBLI_WASM_PATH={{wasm_dir}}/nibli.wasm ./target/{{profile}}/nibli-host 2>&1); \
+        echo "$out1"; \
+        echo "$out1" | grep -qF 'Migrated 1 legacy text fact' || { echo 'FAIL: migration did not run on the v2 Text row'; rm -rf "$dir"; exit 1; }; \
+        echo "$out1" | grep -qF '[Query] TRUE' || { echo 'FAIL: migrated fact did not replay to TRUE'; rm -rf "$dir"; exit 1; }; \
+        out2=$(printf '? dog(Adam).\n' \
+            | NIBLI_DB_PATH="$db" NIBLI_WASM_PATH={{wasm_dir}}/nibli.wasm ./target/{{profile}}/nibli-host 2>&1); \
+        echo "$out2"; \
+        if echo "$out2" | grep -qF 'Migrated'; then echo 'FAIL: second run re-migrated (DB not stamped v3)'; rm -rf "$dir"; exit 1; fi; \
+        echo "$out2" | grep -qF '[Query] TRUE' || { echo 'FAIL: v3 buffer replay lost the fact'; rm -rf "$dir"; exit 1; }; \
+        db2="$dir/nibli-v2-bad.redb"; \
+        ./target/{{profile}}/seed_v2_text "$db2" 5 'ro lo gerku cu danlu'; \
+        out3=$(printf '? dog(Adam).\n' \
+            | NIBLI_DB_PATH="$db2" NIBLI_WASM_PATH={{wasm_dir}}/nibli.wasm ./target/{{profile}}/nibli-host 2>&1 || true); \
+        echo "$out3"; \
+        echo "$out3" | grep -qF 'migration failed' || { echo 'FAIL: a non-KR Text row must abort with a migration error'; rm -rf "$dir"; exit 1; }; \
+        out4=$(printf '? dog(Adam).\n' \
+            | NIBLI_DB_PATH="$db2" NIBLI_WASM_PATH={{wasm_dir}}/nibli.wasm ./target/{{profile}}/nibli-host 2>&1 || true); \
+        echo "$out4" | grep -qF 'migration failed' || { echo 'FAIL: a failed migration must leave the DB at v2 (re-run still migrates)'; rm -rf "$dir"; exit 1; }; \
+        rm -rf "$dir"; \
+        echo 'PASS: schema v2→v3 migrates Text→Buffer (replays TRUE, stamps v3) and fails closed non-destructively on non-KR rows'
+
 # NAF-note smoke: the closed-world / negation-as-failure flag is now a first-class
 # WIT `proof-trace` field — computed once in the guest (ProofTrace::has_naf_dependency),
 # carried across the boundary, and READ by gasnu (no longer recomputed host-side). A
@@ -396,7 +429,7 @@ ci: fmt-check clippy-runtime test test-engine test-host test-ui test-formalize t
 # them all: fuel exhaustion + post-trap recovery + journal replay
 # (trap-recovery), plus the script transcript, persist-replay, NAF-note,
 # :debug round-trip, and the determinism corpus.
-ci-wasm: smoke-host-script smoke-host-trap-recovery smoke-host-persist-replay smoke-host-split smoke-host-naf smoke-host-cwa-false smoke-host-debug smoke-host-collapse smoke-host-backend-unavailable smoke-host-quiet smoke-host-strict smoke-host-existential-import smoke-host-determinism verify-wasm-node
+ci-wasm: smoke-host-script smoke-host-trap-recovery smoke-host-persist-replay smoke-host-split smoke-host-schema-v3-migration smoke-host-naf smoke-host-cwa-false smoke-host-debug smoke-host-collapse smoke-host-backend-unavailable smoke-host-quiet smoke-host-strict smoke-host-existential-import smoke-host-determinism verify-wasm-node
 
 # Three-way determinism, WASMTIME leg: the shared determinism-corpus.nibli must produce
 # exactly its pinned annotations through the lasna component under gasnu. The
