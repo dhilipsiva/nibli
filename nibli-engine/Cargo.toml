@@ -21,6 +21,9 @@ criterion = { version = "0.5", features = ["html_reports"] }
 serde_json = "1"
 nibli-render = { path = "../nibli-render" }
 nibli-protocol = { path = "../nibli-protocol", features = ["compute-client"] }
+# Test-only: seed legacy v2 on-disk fixtures (a Text row, a downgraded version
+# stamp) for the schema-v3 migration tests. Matches nibli-store's redb version.
+redb = "2"
 
 [[bench]]
 name = "engine_bench"

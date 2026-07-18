@@ -154,8 +154,19 @@ impl NibliEngine {
     /// Opens a `RedbFactStore` for typed fact persistence and replays
     /// the legacy `NibliStore` (LogicBuffer-level) for backward compatibility.
     pub fn open(db_path: &Path) -> Result<Self, String> {
-        let store = NibliStore::open(db_path, "local".to_string())
+        let mut store = NibliStore::open(db_path, "local".to_string())
             .map_err(|e| format!("Store error: {e}"))?;
+
+        // Upgrade a legacy v2 registry to v3. Engine-written DBs hold bare
+        // `LogicBuffer` payloads (never `StoredAssertion::Text`), so this is a
+        // version restamp only — NOT `migrate_v2_text_rows` (decoding a bare
+        // buffer as a `StoredAssertion` is a category error). Any genuinely
+        // undecodable row still fails closed in `replay_from_store` below.
+        if store.needs_migration() {
+            store
+                .finalize_v3()
+                .map_err(|e| format!("Store error: {e}"))?;
+        }
 
         // Open persistent typed fact store alongside the legacy store.
         let typed_db_path = db_path.with_extension("typed.redb");

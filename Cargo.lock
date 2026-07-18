@@ -2672,6 +2672,7 @@ dependencies = [
  "nibli-store",
  "nibli-types",
  "postcard",
+ "redb",
  "serde_json",
 ]
 

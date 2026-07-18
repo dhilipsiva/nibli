@@ -2283,6 +2283,148 @@ fn persistent_engine_retraction_via_engine_api_survives_reopen() {
 }
 
 // ════════════════════════════════════════════════════════════════════
+// Schema v3 migration (finalize_v3 restamp; Text→Buffer recompile-once)
+// ════════════════════════════════════════════════════════════════════
+
+/// Stamp `schema_version = 2` into an existing DB, simulating a pre-v3 database.
+/// The table name mirrors nibli-store's private `META_TABLE` (a stable on-disk name).
+fn v2_meta_downgrade(path: &Path) {
+    use redb::{Database, TableDefinition};
+    const META: TableDefinition<&str, &[u8]> = TableDefinition::new("metadata");
+    let db = Database::create(path).unwrap();
+    let txn = db.begin_write().unwrap();
+    {
+        let mut meta = txn.open_table(META).unwrap();
+        let bytes = postcard::to_allocvec(&2u32).unwrap();
+        meta.insert("schema_version", bytes.as_slice()).unwrap();
+    }
+    txn.commit().unwrap();
+}
+
+/// Seed a fresh v2 HOST DB with exactly one active `StoredAssertion::Text` row
+/// (table names mirror nibli-store's stable `FACTS_TABLE` / `META_TABLE`).
+fn seed_v2_host_text_row(path: &Path, id: u64, text: &str) {
+    use nibli_store::{StoredAssertion, StoredFactRecord};
+    use redb::{Database, TableDefinition};
+    const FACTS: TableDefinition<u64, &[u8]> = TableDefinition::new("facts");
+    const META: TableDefinition<&str, &[u8]> = TableDefinition::new("metadata");
+    let record = StoredFactRecord {
+        id,
+        payload: postcard::to_allocvec(&StoredAssertion::Text(text.to_string())).unwrap(),
+        label: text.to_string(),
+        retracted: false,
+        node_id: "seed".to_string(),
+        hlc_timestamp: id,
+        predicates: Vec::new(),
+    };
+    let db = Database::create(path).unwrap();
+    let txn = db.begin_write().unwrap();
+    {
+        let mut facts = txn.open_table(FACTS).unwrap();
+        let bytes = postcard::to_allocvec(&record).unwrap();
+        facts.insert(id, bytes.as_slice()).unwrap();
+        let mut meta = txn.open_table(META).unwrap();
+        let vb = postcard::to_allocvec(&2u32).unwrap();
+        meta.insert("schema_version", vb.as_slice()).unwrap();
+    }
+    txn.commit().unwrap();
+}
+
+/// A legacy v2 ENGINE DB (bare `LogicBuffer` payloads, no `Text` rows) upgrades to v3
+/// by a version restamp (`finalize_v3`) and replays — it is not rejected like v1.
+#[test]
+fn v2_engine_db_restamps_to_v3_and_replays() {
+    let path = temp_db_path("v3_engine_restamp");
+    cleanup(&path);
+    {
+        let engine = fresh_open(&path, "engine should open");
+        engine.assert_text("dog(Adam).").expect("fact persists");
+    }
+    v2_meta_downgrade(&path); // simulate a pre-v3 engine DB
+    {
+        let store = NibliStore::open(&path, "local".into()).expect("store opens v2");
+        assert!(
+            store.needs_migration(),
+            "downgraded DB should read as migratable"
+        );
+    }
+    {
+        let engine = fresh_open(&path, "engine reopens v2 → v3");
+        assert!(
+            engine.query_holds("dog(Adam).").unwrap().is_true(),
+            "a v2 engine DB must replay after the v3 restamp, not be rejected",
+        );
+    }
+    {
+        let store = NibliStore::open(&path, "local".into()).expect("store reopens");
+        assert!(
+            !store.needs_migration(),
+            "engine open must have finalized v3"
+        );
+    }
+    cleanup(&path);
+}
+
+/// A legacy v2 HOST DB with a `StoredAssertion::Text` row migrates: the source text is
+/// recompiled (real compiler — the same chain the host's `compile-debug` uses) into a
+/// Buffer row that preserves the WHOLE composite buffer (no `split_roots`), and the
+/// migrated buffer replays to the same verdict as asserting the text fresh.
+#[test]
+fn v2_text_row_migrates_via_real_compiler_and_replays() {
+    use nibli_store::StoredAssertion;
+    use nibli_types::logic::LogicBuffer;
+
+    let path = temp_db_path("v3_text_fidelity");
+    cleanup(&path);
+    let text = "dog(Adam). dog(Bel)."; // multi-`.i` composite → one whole fact
+    seed_v2_host_text_row(&path, 7, text);
+
+    let preds = nibli_reason::default_compute_predicates();
+    let mut store = NibliStore::open(&path, "local".into()).expect("store opens v2");
+    assert!(store.needs_migration());
+    let migrated = store
+        .migrate_v2_text_rows(|t| {
+            nibli_session::compile_text(t, &preds)
+                .map(|buf| postcard::to_allocvec(&buf).expect("serialize buffer"))
+                .map_err(|e| e.to_string())
+        })
+        .expect("KR text migrates");
+    assert_eq!(migrated, 1);
+    assert!(!store.needs_migration());
+
+    // Migrated row is a Buffer holding the WHOLE composite (both roots, not split).
+    let rec = store.get_fact(7).unwrap().unwrap();
+    let inner = match postcard::from_bytes::<StoredAssertion>(&rec.payload).unwrap() {
+        StoredAssertion::Buffer(inner) => inner,
+        other => panic!("migrated row must be Buffer, got {other:?}"),
+    };
+    let buf: LogicBuffer = postcard::from_bytes(&inner).expect("inner decodes as LogicBuffer");
+    let fresh = nibli_session::compile_text(text, &preds).unwrap();
+    assert_eq!(
+        buf.roots.len(),
+        fresh.roots.len(),
+        "whole composite buffer preserved (not split into per-root rows)",
+    );
+    assert!(
+        buf.roots.len() >= 2,
+        "the two-sentence composite has multiple roots"
+    );
+    assert_eq!(
+        rec.label, text,
+        "label sourced from the recovered payload text"
+    );
+
+    // Replay the migrated buffer (as the host's Buffer replay does) → same verdict.
+    let core = nibli_session::CoreSession::new();
+    core.kb()
+        .assert_fact_with_id(buf, text.to_string(), rec.id)
+        .expect("replay asserts the migrated buffer");
+    assert!(core.query_text("dog(Adam).").unwrap().is_true());
+    assert!(core.query_text("dog(Bel).").unwrap().is_true());
+    cleanup(&path);
+}
+
+// ════════════════════════════════════════════════════════════════════
 // GDPR compliance engine (Chapter 20 case study)
 //
 // Every assertion below uses a construct verified to reason end-to-end. The
