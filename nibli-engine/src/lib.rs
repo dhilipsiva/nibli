@@ -101,6 +101,15 @@ impl NibliEngine {
         self.core.kb().set_strict(strict);
     }
 
+    /// Enable/disable EXISTENTIAL-IMPORT MODE (default ON — the v0.1 xorlo
+    /// behavior). OFF gives the clean-core `some` = plain classical ∃ profile:
+    /// a description universal no longer mints a presupposition witness. The
+    /// runtime surfaces read `NIBLI_EXISTENTIAL_IMPORT=0` (nibli-host forwards it
+    /// into the guest, where `nibli-pipeline::Session::new` applies it).
+    pub fn set_existential_import(&self, on: bool) {
+        self.core.kb().set_existential_import(on);
+    }
+
     /// Register this engine's external compute dispatch (per-instance). Without
     /// it, external predicates (e.g. `tenfa`/`dugri`) return an error; built-in
     /// arithmetic (pilji/sumji/dilcu) works regardless. Replaces the old

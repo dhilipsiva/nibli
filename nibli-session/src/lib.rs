@@ -127,6 +127,12 @@ impl CoreSession {
         self.kb.set_strict(strict);
     }
 
+    /// EXISTENTIAL-IMPORT MODE (default ON — the v0.1 xorlo behavior). OFF gives
+    /// the clean-core `some` = plain ∃ profile (no presupposition witnesses).
+    pub fn set_existential_import(&self, on: bool) {
+        self.kb.set_existential_import(on);
+    }
+
     /// THE compile chain against this session's compute-predicate set.
     pub fn compile_text(&self, text: &str) -> Result<LogicBuffer, NibliError> {
         compile_text(text, &self.compute_predicates)

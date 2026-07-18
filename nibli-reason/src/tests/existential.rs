@@ -61,6 +61,40 @@ fn test_existential_import_presupposition_basic() {
 }
 
 #[test]
+fn clean_core_flag_off_mints_no_presupposition_witness() {
+    // With existential import OFF (the clean-core profile, NIBLI_KR §14.4 item
+    // 3), a description universal is a plain ∀x. R(x) → C(x): it mints NO
+    // phantom witness, so `∃x. gerku(x)` is NOT made true by the rule alone —
+    // the exact inverse of `test_existential_import_presupposition_basic`, which
+    // is TRUE at the ON default. The flag is configuration and survives reset.
+    let kb = new_kb();
+    kb.set_existential_import(false);
+    assert!(!kb.is_existential_import());
+    assert_buf(&kb, make_universal("gerku", "danlu"));
+
+    let mut nodes = Vec::new();
+    let body = pred(
+        &mut nodes,
+        "gerku",
+        vec![
+            LogicalTerm::Variable("x".to_string()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let root = exists(&mut nodes, "x", body);
+    assert!(
+        !query(
+            &kb,
+            LogicBuffer {
+                nodes,
+                roots: vec![root]
+            }
+        ),
+        "clean-core (existential import off) must not mint a presupposition witness"
+    );
+}
+
+#[test]
 fn test_existential_import_presupposition_consequent() {
     // ro lo gerku cu danlu → presupposition creates sk entity → rule fires
     // Query ∃x. danlu(x) should find the derived fact

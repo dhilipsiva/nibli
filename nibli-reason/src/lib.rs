@@ -787,6 +787,21 @@ impl KnowledgeBase {
         self.inner.borrow().strict
     }
 
+    /// Enable/disable EXISTENTIAL-IMPORT MODE (default ON — the v0.1 xorlo
+    /// behavior, kept byte-identical). When on, a description universal
+    /// (`animal(every dog).`) mints a presupposition witness so `∃x. dog(x)`
+    /// holds. Set OFF for the clean-core profile (`some` = plain classical ∃,
+    /// no phantom entity injected — NIBLI_KR §14.4 item 3). Configuration, not
+    /// derived state — survives `reset()`.
+    pub fn set_existential_import(&self, on: bool) {
+        self.inner.borrow_mut().existential_import = on;
+    }
+
+    /// Whether existential-import (xorlo witness minting) is enabled.
+    pub fn is_existential_import(&self) -> bool {
+        self.inner.borrow().existential_import
+    }
+
     /// Register this KB's external compute dispatch (per-instance — replaces the
     /// old thread-local `register_compute_dispatch`, which the multithreaded
     /// server could never register because each tokio blocking-pool worker had

@@ -657,6 +657,13 @@ pub(super) struct KnowledgeBaseInner {
     /// `rebuilding` (a retraction replay must faithfully restore facts that
     /// were accepted when asserted).
     pub(super) strict: bool,
+    /// EXISTENTIAL-IMPORT MODE (default ON — the v0.1 xorlo behavior, kept
+    /// byte-identical). When true, a DESCRIPTION universal (`animal(every dog).`)
+    /// mints a presupposition witness (see `presupposition_witnesses`) so
+    /// `∃x. dog(x)` holds. Set false for the clean-core `some` = plain ∃ profile
+    /// (NIBLI_KR §14.4 item 3): no phantom entity is injected. Like `strict`,
+    /// this is CONFIGURATION — NOT cleared by `reset()`.
+    pub(super) existential_import: bool,
     /// Constants minted as existential-import PRESUPPOSITION witnesses at
     /// description-universal registration (`animal(every dog).` presupposes
     /// ≥1 dog — Lojban's xorlo rule, kept by design).
@@ -721,6 +728,7 @@ impl Clone for KnowledgeBaseInner {
             du_variant_budget: Cell::new(None),
             verbose: self.verbose,
             strict: self.strict,
+            existential_import: self.existential_import,
             strict_violations: Vec::new(),
             presupposition_witnesses: self.presupposition_witnesses.clone(),
             find_horizon_hit: false,
@@ -770,6 +778,9 @@ impl KnowledgeBaseInner {
             du_variant_budget: Cell::new(None),
             verbose: false,
             strict: false,
+            // Existential import defaults ON — the v0.1 xorlo behavior kept
+            // byte-identical; clean-core opts OUT via `set_existential_import(false)`.
+            existential_import: true,
             strict_violations: Vec::new(),
             presupposition_witnesses: HashSet::new(),
             find_horizon_hit: false,
@@ -806,8 +817,11 @@ impl KnowledgeBaseInner {
         self.pred_cache_enabled.set(false);
         self.depth_cut_table.borrow_mut().clear();
         // Note: integrity_constraints, compute_eval/compute_batch_eval, cancel,
-        // and verbose are NOT cleared on reset — they're structural declarations /
-        // configuration, not derived state. Clear explicitly if needed.
+        // verbose, strict, and existential_import are NOT cleared on reset —
+        // they're structural declarations / configuration, not derived state.
+        // (The `presupposition_witnesses` SET above IS cleared — it's derived,
+        // re-minted on replay — but the flag that gates minting survives.)
+        // Clear explicitly if needed.
     }
 
     /// Whether informational stdout diagnostics should print: only when the

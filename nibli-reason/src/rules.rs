@@ -1268,7 +1268,11 @@ fn register_clause_rule(
     // description universals `_v{n}` and prenex universals `da`/`de`/`di`.
     let is_description_universal =
         !universals.is_empty() && universals.iter().all(|v| v.starts_with("_v"));
-    if branch_idx == 0 && is_description_universal {
+    // Gated by the existential-import flag (default ON — the v0.1 xorlo
+    // behavior). Under clean-core (flag OFF) a description universal is a plain
+    // `∀x. R(x) → C(x)` with no phantom witness, so `∃x. R(x)` is not made true
+    // by the rule alone (NIBLI_KR §14.4 item 3).
+    if branch_idx == 0 && is_description_universal && inner.existential_import {
         // One FRESH witness PER universal. `ro lo gerku cu pendo ro lo mlatu`
         // presupposes ≥1 dog AND ≥1 cat as DISTINCT entities; a single shared
         // witness would assert `gerku(xp) ∧ mlatu(xp)` — a phantom dog-cat (an
