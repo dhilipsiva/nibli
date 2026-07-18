@@ -218,53 +218,61 @@ fn types_logic_buffer_to_wit(buf: &NibliBuffer) -> EngineLogicBuffer {
 fn rule_to_proto(rule: &ProofRule) -> ProtoRule {
     match rule {
         ProofRule::Conjunction => ProtoRule::Conjunction,
-        ProofRule::DisjunctionCheck(s) => ProtoRule::DisjunctionCheck { detail: s.clone() },
-        ProofRule::DisjunctionIntro(s) => ProtoRule::DisjunctionIntro { side: s.clone() },
+        ProofRule::DisjunctionCheck(r) => ProtoRule::DisjunctionCheck {
+            detail: r.detail.clone(),
+        },
+        ProofRule::DisjunctionIntro(r) => ProtoRule::DisjunctionIntro {
+            side: r.side.clone(),
+        },
         ProofRule::Negation => ProtoRule::Negation,
-        ProofRule::ModalPassthrough(s) => ProtoRule::ModalPassthrough { kind: s.clone() },
-        ProofRule::ExistsWitness((var, term)) => ProtoRule::ExistsWitness {
-            var: var.clone(),
-            term: wit_term_to_types(term),
+        ProofRule::ModalPassthrough(r) => ProtoRule::ModalPassthrough {
+            kind: r.kind.clone(),
+        },
+        ProofRule::ExistsWitness(r) => ProtoRule::ExistsWitness {
+            var: r.var.clone(),
+            term: wit_term_to_types(&r.term),
         },
         ProofRule::ExistsFailed => ProtoRule::ExistsFailed,
         ProofRule::ForallVacuous => ProtoRule::ForallVacuous,
-        ProofRule::ForallVerified(entities) => ProtoRule::ForallVerified {
-            entities: entities.iter().map(wit_term_to_types).collect(),
+        ProofRule::ForallVerified(r) => ProtoRule::ForallVerified {
+            entities: r.entities.iter().map(wit_term_to_types).collect(),
         },
-        ProofRule::ForallCounterexample(term) => ProtoRule::ForallCounterexample {
-            entity: wit_term_to_types(term),
+        ProofRule::ForallCounterexample(r) => ProtoRule::ForallCounterexample {
+            entity: wit_term_to_types(&r.entity),
         },
-        ProofRule::CountResult((expected, actual)) => ProtoRule::CountResult {
-            expected: *expected,
-            actual: *actual,
+        ProofRule::CountResult(r) => ProtoRule::CountResult {
+            expected: r.expected,
+            actual: r.actual,
         },
-        ProofRule::PredicateCheck((method, detail)) => ProtoRule::PredicateCheck {
-            method: method.clone(),
-            detail: detail.clone(),
+        ProofRule::PredicateCheck(r) => ProtoRule::PredicateCheck {
+            method: r.method.clone(),
+            detail: r.detail.clone(),
         },
-        ProofRule::ComputeCheck((method, detail)) => ProtoRule::ComputeCheck {
-            method: method.clone(),
-            detail: detail.clone(),
+        ProofRule::ComputeCheck(r) => ProtoRule::ComputeCheck {
+            method: r.method.clone(),
+            detail: r.detail.clone(),
         },
-        ProofRule::Asserted(fact) => ProtoRule::Asserted { fact: fact.clone() },
-        ProofRule::Derived((label, fact)) => ProtoRule::Derived {
-            label: label.clone(),
-            fact: fact.clone(),
+        ProofRule::Asserted(r) => ProtoRule::Asserted {
+            fact: r.fact.clone(),
         },
-        ProofRule::ProofRef(fact) => ProtoRule::ProofRef { fact: fact.clone() },
-        ProofRule::EqualitySubstitution((original, equality_facts, substituted)) => {
-            ProtoRule::EqualitySubstitution {
-                original: original.clone(),
-                equality_facts: equality_facts.clone(),
-                substituted: substituted.clone(),
-            }
-        }
-        ProofRule::RuleAttemptFailed((label, cond)) => ProtoRule::RuleAttemptFailed {
-            rule_label: label.clone(),
-            failed_condition: cond.clone(),
+        ProofRule::Derived(r) => ProtoRule::Derived {
+            label: r.label.clone(),
+            fact: r.fact.clone(),
         },
-        ProofRule::PredicateNotFound(pred) => ProtoRule::PredicateNotFound {
-            predicate: pred.clone(),
+        ProofRule::ProofRef(r) => ProtoRule::ProofRef {
+            fact: r.fact.clone(),
+        },
+        ProofRule::EqualitySubstitution(r) => ProtoRule::EqualitySubstitution {
+            original: r.original.clone(),
+            equality_facts: r.equality_facts.clone(),
+            substituted: r.substituted.clone(),
+        },
+        ProofRule::RuleAttemptFailed(r) => ProtoRule::RuleAttemptFailed {
+            rule_label: r.rule_label.clone(),
+            failed_condition: r.failed_condition.clone(),
+        },
+        ProofRule::PredicateNotFound(r) => ProtoRule::PredicateNotFound {
+            predicate: r.predicate.clone(),
         },
     }
 }

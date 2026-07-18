@@ -245,16 +245,6 @@ Pipeline-audit backlog (2026-07-17; three-agent audit of front-end / middle IRs 
 back-end — effort tags S/M/L; ordered quick-wins → correctness → structure →
 performance → future-facing):
 
-- **Align the WIT proof-rule tuple shape with the canonical named-field enum
-  (M, 0.2.x ABI touch)** — the deferred sub-item of the Shared CoreSession
-  extraction (landed 2026-07-18: nibli-session's `CoreSession` is now the one
-  compile/assert/query core every surface wraps). nibli-pipeline still carries
-  ~290 lines of WIT boundary conversion (lib.rs ~40-330: terms/nodes/buffers
-  both directions, query-result, `convert_proof_rule` + `convert_proof_trace`,
-  witness/fact-summary, error) that exist only because the WIT
-  `proof-rule`/`logic-node` types are tuple-shaped mirrors of the canonical
-  named-field enums. Aligning the WIT shapes (a 0.2.x→0.3.0 ABI break —
-  regenerate bindings, update nibli-host) lets most of that glue go.
 - **Existential-import witness flag (M)** — the xorlo rule mints presupposition
   witnesses unconditionally (kb.rs:632-638); NIBLI_KR §14 keeps "witness minting
   behind a flag, off for clean-core" as a live option. Add a KB config flag

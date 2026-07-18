@@ -56,61 +56,87 @@ pub struct Session {
 // on both sides (logical-term IS remapped), so no term conversion is needed.
 
 fn convert_proof_rule(r: &logic::ProofRule) -> export_logic::ProofRule {
+    use export_logic as e;
     match r {
-        logic::ProofRule::Conjunction => export_logic::ProofRule::Conjunction,
+        logic::ProofRule::Conjunction => e::ProofRule::Conjunction,
         logic::ProofRule::DisjunctionCheck { detail } => {
-            export_logic::ProofRule::DisjunctionCheck(detail.clone())
+            e::ProofRule::DisjunctionCheck(e::DisjunctionCheckRule {
+                detail: detail.clone(),
+            })
         }
         logic::ProofRule::DisjunctionIntro { side } => {
-            export_logic::ProofRule::DisjunctionIntro(side.clone())
+            e::ProofRule::DisjunctionIntro(e::DisjunctionIntroRule { side: side.clone() })
         }
-        logic::ProofRule::Negation => export_logic::ProofRule::Negation,
+        logic::ProofRule::Negation => e::ProofRule::Negation,
         logic::ProofRule::ModalPassthrough { kind } => {
-            export_logic::ProofRule::ModalPassthrough(kind.clone())
+            e::ProofRule::ModalPassthrough(e::ModalPassthroughRule { kind: kind.clone() })
         }
         logic::ProofRule::ExistsWitness { var, term } => {
-            export_logic::ProofRule::ExistsWitness((var.clone(), term.clone()))
+            e::ProofRule::ExistsWitness(e::ExistsWitnessRule {
+                var: var.clone(),
+                term: term.clone(),
+            })
         }
-        logic::ProofRule::ExistsFailed => export_logic::ProofRule::ExistsFailed,
-        logic::ProofRule::ForallVacuous => export_logic::ProofRule::ForallVacuous,
+        logic::ProofRule::ExistsFailed => e::ProofRule::ExistsFailed,
+        logic::ProofRule::ForallVacuous => e::ProofRule::ForallVacuous,
         logic::ProofRule::ForallVerified { entities } => {
-            export_logic::ProofRule::ForallVerified(entities.clone())
+            e::ProofRule::ForallVerified(e::ForallVerifiedRule {
+                entities: entities.clone(),
+            })
         }
         logic::ProofRule::ForallCounterexample { entity } => {
-            export_logic::ProofRule::ForallCounterexample(entity.clone())
+            e::ProofRule::ForallCounterexample(e::ForallCounterexampleRule {
+                entity: entity.clone(),
+            })
         }
         logic::ProofRule::CountResult { expected, actual } => {
-            export_logic::ProofRule::CountResult((*expected, *actual))
+            e::ProofRule::CountResult(e::CountResultRule {
+                expected: *expected,
+                actual: *actual,
+            })
         }
         logic::ProofRule::PredicateCheck { method, detail } => {
-            export_logic::ProofRule::PredicateCheck((method.clone(), detail.clone()))
+            e::ProofRule::PredicateCheck(e::PredicateCheckRule {
+                method: method.clone(),
+                detail: detail.clone(),
+            })
         }
         logic::ProofRule::ComputeCheck { method, detail } => {
-            export_logic::ProofRule::ComputeCheck((method.clone(), detail.clone()))
+            e::ProofRule::ComputeCheck(e::ComputeCheckRule {
+                method: method.clone(),
+                detail: detail.clone(),
+            })
         }
-        logic::ProofRule::Asserted { fact } => export_logic::ProofRule::Asserted(fact.clone()),
-        logic::ProofRule::Derived { label, fact } => {
-            export_logic::ProofRule::Derived((label.clone(), fact.clone()))
+        logic::ProofRule::Asserted { fact } => {
+            e::ProofRule::Asserted(e::AssertedRule { fact: fact.clone() })
         }
-        logic::ProofRule::ProofRef { fact } => export_logic::ProofRule::ProofRef(fact.clone()),
+        logic::ProofRule::Derived { label, fact } => e::ProofRule::Derived(e::DerivedRule {
+            label: label.clone(),
+            fact: fact.clone(),
+        }),
+        logic::ProofRule::ProofRef { fact } => {
+            e::ProofRule::ProofRef(e::ProofRefRule { fact: fact.clone() })
+        }
         logic::ProofRule::EqualitySubstitution {
             original,
             equality_facts,
             substituted,
-        } => export_logic::ProofRule::EqualitySubstitution((
-            original.clone(),
-            equality_facts.clone(),
-            substituted.clone(),
-        )),
+        } => e::ProofRule::EqualitySubstitution(e::EqualitySubstitutionRule {
+            original: original.clone(),
+            equality_facts: equality_facts.clone(),
+            substituted: substituted.clone(),
+        }),
         logic::ProofRule::RuleAttemptFailed {
             rule_label,
             failed_condition,
-        } => export_logic::ProofRule::RuleAttemptFailed((
-            rule_label.clone(),
-            failed_condition.clone(),
-        )),
+        } => e::ProofRule::RuleAttemptFailed(e::RuleAttemptFailedRule {
+            rule_label: rule_label.clone(),
+            failed_condition: failed_condition.clone(),
+        }),
         logic::ProofRule::PredicateNotFound { predicate } => {
-            export_logic::ProofRule::PredicateNotFound(predicate.clone())
+            e::ProofRule::PredicateNotFound(e::PredicateNotFoundRule {
+                predicate: predicate.clone(),
+            })
         }
     }
 }

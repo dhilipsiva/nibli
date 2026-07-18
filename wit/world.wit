@@ -11,7 +11,7 @@
 ///
 /// Data crossing the host↔component boundary uses flat index-based arrays
 /// (`u32` indices into parallel lists) — no heap pointers cross the WASM boundary.
-package nibli:engine@0.2.0;
+package nibli:engine@0.3.0;
 
 /// Structured error types shared across all Nibli components.
 interface error-types {
@@ -126,48 +126,119 @@ interface logic-types {
         resource-exceeded(resource-kind),
     }
 
-    /// Proof rule applied at a proof step.
+    /// Named-field payload records for `proof-rule`'s data-carrying variants.
+    /// WIT variant cases hold at most one payload type, so each carries a record
+    /// whose fields mirror the canonical `nibli_types::logic::ProofRule` — the
+    /// interface self-documents (named fields) instead of positional tuples.
+    record disjunction-check-rule {
+        /// The disjunction fact checked in the fact store.
+        detail: string,
+    }
+    record disjunction-intro-rule {
+        /// Which disjunct was proved: "left" or "right".
+        side: string,
+    }
+    record modal-passthrough-rule {
+        /// The transparent tense/deontic wrapper kind.
+        kind: string,
+    }
+    record exists-witness-rule {
+        /// The existential variable.
+        var: string,
+        /// The witness term that satisfied it.
+        term: logical-term,
+    }
+    record forall-verified-rule {
+        /// The entities verified against the universal body.
+        entities: list<logical-term>,
+    }
+    record forall-counterexample-rule {
+        /// The entity that falsified the universal.
+        entity: logical-term,
+    }
+    record count-result-rule {
+        expected: u32,
+        actual: u32,
+    }
+    record predicate-check-rule {
+        method: string,
+        detail: string,
+    }
+    record compute-check-rule {
+        method: string,
+        detail: string,
+    }
+    record asserted-rule {
+        /// The ground fact that was directly asserted.
+        fact: string,
+    }
+    record derived-rule {
+        /// The universal rule's label.
+        label: string,
+        /// The conclusion fact it derived.
+        fact: string,
+    }
+    record proof-ref-rule {
+        /// The already-proved fact referenced (its full proof was shown at first occurrence).
+        fact: string,
+    }
+    record equality-substitution-rule {
+        original: string,
+        equality-facts: string,
+        substituted: string,
+    }
+    record rule-attempt-failed-rule {
+        rule-label: string,
+        failed-condition: string,
+    }
+    record predicate-not-found-rule {
+        /// Display of the predicate that no fact/rule could satisfy.
+        predicate: string,
+    }
+
+    /// Proof rule applied at a proof step. Data-carrying variants carry the
+    /// named-field records above (mirroring `nibli_types::logic::ProofRule`).
     variant proof-rule {
         /// Both conjuncts checked. Children: [left, right].
         conjunction,
-        /// Disjunction checked in fact store. Payload: fact checked.
-        disjunction-check(string),
-        /// One disjunct checked. Payload: "left" or "right". Children: [winner].
-        disjunction-intro(string),
+        /// Disjunction checked in fact store.
+        disjunction-check(disjunction-check-rule),
+        /// One disjunct checked. Children: [winner].
+        disjunction-intro(disjunction-intro-rule),
         /// Inner formula failed. Children: [inner-attempt].
         negation,
-        /// Transparent tense/deontic wrapper. Payload: wrapper kind. Children: [inner].
-        modal-passthrough(string),
-        /// Entity witness found. Payload: (variable, witness-term). Children: [body-proof].
-        exists-witness(tuple<string, logical-term>),
+        /// Transparent tense/deontic wrapper. Children: [inner].
+        modal-passthrough(modal-passthrough-rule),
+        /// Entity witness found. Children: [body-proof].
+        exists-witness(exists-witness-rule),
         /// No witness found for existential.
         exists-failed,
         /// Empty domain, vacuously true.
         forall-vacuous,
-        /// All entities verified. Payload: entity list. Children: [body-proof per entity].
-        forall-verified(list<logical-term>),
-        /// Counterexample found. Payload: failing entity. Children: [failed-body-proof].
-        forall-counterexample(logical-term),
-        /// Count check. Payload: (expected, actual).
-        count-result(tuple<u32, u32>),
-        /// Predicate leaf checked. Payload: (method, fact-or-detail).
-        predicate-check(tuple<string, string>),
-        /// Compute node checked. Payload: (method, relation-or-detail).
-        compute-check(tuple<string, string>),
-        /// Directly asserted fact (ground truth). Payload: fact string that was asserted.
-        asserted(string),
-        /// Derived via universal rule backward-chaining. Payload: (rule-label, conclusion-fact).
+        /// All entities verified. Children: [body-proof per entity].
+        forall-verified(forall-verified-rule),
+        /// Counterexample found. Children: [failed-body-proof].
+        forall-counterexample(forall-counterexample-rule),
+        /// Count check.
+        count-result(count-result-rule),
+        /// Predicate leaf checked.
+        predicate-check(predicate-check-rule),
+        /// Compute node checked.
+        compute-check(compute-check-rule),
+        /// Directly asserted fact (ground truth).
+        asserted(asserted-rule),
+        /// Derived via universal rule backward-chaining.
         /// Children: proof traces of each premise that triggered the rule.
-        derived(tuple<string, string>),
-        /// Reference to an already-proved fact. Payload: fact string that was proved.
+        derived(derived-rule),
+        /// Reference to an already-proved fact.
         /// No children — the full proof was shown at its first occurrence.
-        proof-ref(string),
-        /// Equality substitution. Payload: (original-fact, equality-facts-used, substituted-fact).
-        equality-substitution(tuple<string, string, string>),
-        /// Rule was tried but a condition failed. Payload: (rule-label, failed-condition).
-        rule-attempt-failed(tuple<string, string>),
-        /// Predicate not found in KB and no rule could derive it. Payload: predicate display.
-        predicate-not-found(string),
+        proof-ref(proof-ref-rule),
+        /// Equality substitution.
+        equality-substitution(equality-substitution-rule),
+        /// Rule was tried but a condition failed.
+        rule-attempt-failed(rule-attempt-failed-rule),
+        /// Predicate not found in KB and no rule could derive it.
+        predicate-not-found(predicate-not-found-rule),
     }
 
     /// A single step in a proof trace.

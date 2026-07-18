@@ -338,11 +338,19 @@ pub struct FactSummary {
 /// wildcard-free matches force `E0004` *here* the moment a variant is added, and
 /// the checklist below names every site that must then be updated.
 ///
+/// Since the WIT `with`-remap (nibli-pipeline/Cargo.toml, 2026-07-18),
+/// `LogicNode`/`LogicalTerm` (and `LogicBuffer`/`QueryResult`/errors/witness/
+/// fact-summary) ARE the WIT boundary types on the guest side — no converter to
+/// touch there for a new variant of those. `ProofRule` alone keeps a hand map
+/// (the WIT `proof-rule` is a tuple/newtype-record mirror wit-bindgen can't
+/// make struct-variant, so it stays generated).
+///
 /// When you add or remove a variant of any of these three enums, update:
-/// - `nibli-pipeline/src/lib.rs` — `convert_logical_term_to_export` /
-///   `convert_logical_term_from_export` / `convert_proof_rule` (→ WIT guest types);
-///   for a new `LogicNode`/`LogicalTerm` variant also `convert_logic_node_to_export`
-///   / `convert_logic_buffer_to_export` (the `:debug` typed-buffer export)
+/// - `nibli-pipeline/src/lib.rs` — `convert_proof_rule` (→ the WIT guest
+///   `proof-rule` record mirror); a new `LogicNode`/`LogicalTerm` variant needs
+///   NO guest converter (the type is `with`-remapped onto this crate) but DOES
+///   need the matching WIT `logic-node`/`logical-term` case in `wit/world.wit`
+///   plus a regenerate
 /// - `nibli-protocol/src/lib.rs` — **re-exports** `ProofRule`/`ProofStep`/`ProofTrace`
 ///   (and `LogicalTerm`) from this crate and owns only the `proof_trace_to_json` /
 ///   `proof_trace_from_json` free fns. No wire mirror or `from_canonical_*` converter
@@ -355,8 +363,9 @@ pub struct FactSummary {
 ///   the `:debug` reverse converter)
 /// - `nibli-render/src/proof.rs` — `icon` / `label` / `css_class` / `trace_display`
 ///   for a new `ProofRule` variant (the readable rendering of the wire rule)
-/// - `wit/world.wit` — the `logical-term` / `proof-rule` variant lists, then
-///   regenerate bindings with `cargo component build`
+/// - `wit/world.wit` — the `logical-term` / `proof-rule` variant lists (for
+///   `proof-rule`, add both the payload `record …-rule` and the variant case),
+///   then regenerate bindings with `cargo component build`
 /// - for a new `LogicNode`/`LogicalTerm` variant: nibli-reason lowering + evaluation,
 ///   `nibli-render/src/logic.rs` (`render_logic_buffer` English + `render_logic_tree`
 ///   structural tree) + `term.rs` (IR back-translation rendering), and
