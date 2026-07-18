@@ -68,8 +68,9 @@ pub fn buffer_non_classical(buf: &LogicBuffer) -> Option<&'static str> {
 /// keyed by its content hash (`asp::abs_const_of`), so a deontic-NAF rule like GDPR's
 /// `ro lo prenu poi na zanru cu se bilga lo nu se vimcu` maps. The other non-classical node kinds
 /// (compute / deontic modal / exact-count) are still rejected; tense nodes pass through to
-/// `tense::flavorize`, which rewrites the verified shapes and skips tense×NAF (audit U1)
-/// rather than mis-judging it. Ground sole-root `du` equality is ACCEPTED (see
+/// `tense::flavorize`, which rewrites the verified shapes (tense × restrictor-NAF now
+/// flavorizes to a flavor-suffixed `not`) rather than mis-judging them. Ground sole-root `du`
+/// equality is ACCEPTED (see
 /// [`du_mappable`]; the translator canonicalizes the classes away); any other `du` shape is
 /// skipped.
 ///

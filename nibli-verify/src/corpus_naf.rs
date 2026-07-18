@@ -218,10 +218,10 @@ pub const NAF_CASES: &[Case] = &[
         query: "Adam = Bel.",
         expect: Expect::False,
     },
-    // ── Tense flavors through the ASP translator (positive programs only — a program
-    // that mixes tense with a NAF rule is conservatively SKIPPED by `tense::flavorize`:
-    // the engine's NegatedExistsGroup is tenseless (audit U1), and the gate must not
-    // canonize that behavior as oracle expectation). ──
+    // ── Tense flavors through the ASP translator. Positive programs exercise the
+    // flavor-exact facts (diagonal) + polymorphic/explicit rules; the tense×NAF cases
+    // below exercise the flavor-aware NegatedExistsGroup — all now flavorized by
+    // `tense::flavorize` (the inner NAF predicate gains the restrictor's suffix). ──
     Case {
         name: "tense_asp_diag_pu_true",
         kb: &["past person(Adam)."],
@@ -245,6 +245,71 @@ pub const NAF_CASES: &[Case] = &[
         kb: &["all $da: dog($da) -> past animal($da).", "dog(Kim)."],
         query: "past animal(Kim).",
         expect: Expect::True,
+    },
+    // ── Tense × NAF (flavor-aware NegatedExistsGroup): `past ~dog(it)` checks for a
+    // PAST-flavor dog witness. A Past witness blocks the rule; a bare or future one does
+    // not — the exact mirror of the positive `where past eats` restrictor. (A MODIFIED
+    // where-restrictor needs the full-claim `pred(it)` form; the bare `where ~dog`
+    // shorthand rejects modifiers.) Flavorized to `not dog__pu` and differentially checked
+    // against clingo. ──
+    Case {
+        name: "tense_naf_no_past_witness_fires",
+        kb: &["dead(every person where past ~dog(it)).", "person(Adam)."],
+        query: "dead(Adam).",
+        expect: Expect::True,
+    },
+    Case {
+        name: "tense_naf_past_witness_blocks",
+        kb: &[
+            "dead(every person where past ~dog(it)).",
+            "person(Adam).",
+            "past dog(Adam).",
+        ],
+        query: "dead(Adam).",
+        expect: Expect::False,
+    },
+    Case {
+        name: "tense_naf_bare_witness_does_not_block",
+        kb: &[
+            "dead(every person where past ~dog(it)).",
+            "person(Adam).",
+            "dog(Adam).",
+        ],
+        query: "dead(Adam).",
+        expect: Expect::True,
+    },
+    Case {
+        name: "tense_naf_future_witness_does_not_block",
+        kb: &[
+            "dead(every person where past ~dog(it)).",
+            "person(Adam).",
+            "future dog(Adam).",
+        ],
+        query: "dead(Adam).",
+        expect: Expect::True,
+    },
+    // ── Tense × NAF through a Horn chain: the flavor-aware restrictor feeds a positive
+    // rule. `past ~dog(it)` → animal (fires only without a past-dog witness) → alive. ──
+    Case {
+        name: "tense_naf_taxonomy_chain_fires",
+        kb: &[
+            "alive(every animal).",
+            "animal(every person where past ~dog(it)).",
+            "person(Adam).",
+        ],
+        query: "alive(Adam).",
+        expect: Expect::True,
+    },
+    Case {
+        name: "tense_naf_taxonomy_chain_blocked_by_past_witness",
+        kb: &[
+            "alive(every animal).",
+            "animal(every person where past ~dog(it)).",
+            "person(Adam).",
+            "past dog(Adam).",
+        ],
+        query: "alive(Adam).",
+        expect: Expect::False,
     },
     // ── Exact-count queries (`PA lo X cu Y`) → clingo `#count` aggregates. Guarded to
     // ground-fact KBs: with a rule in the KB the existential-import import witness gets counted, and

@@ -24,13 +24,19 @@
 //! with no tense nodes passes through untouched (identity fast-path), so the
 //! pre-du/NAF pipelines are byte-identical to before when tense is absent.
 //!
+//! **Tense × restrictor-NAF is flavorized** (since the flavor-aware `NegatedExistsGroup`):
+//! a `past ~P` restrictor compiles to `Not(Past(Not(∃P)))`; the rewrite consumes the tense
+//! wrapper and suffixes the inner NAF predicate, yielding `Not(Not(∃P__pu))` — which the ASP
+//! translator maps to `not P__pu` = "no Past-flavor P witness", exactly the engine's
+//! flavor-exact NAF (a Past witness blocks; a bare/future one does not). A bare `~P` in a
+//! tensed program is lifted with the rule copy's flavor (each unmarked rule is emitted once
+//! per flavor), mirroring the engine's temporal lifting. This leg is differentially oracled
+//! by the tense×NAF cases in `corpus_naf.rs` and `generator::random_tense_naf_case`.
+//!
 //! **Conservative skips** (returned as `Err`, surfaced as a skip — never mis-judged):
-//! - **tense × NAF** (a double-negation restrictor or a `na` query in a program that
-//!   contains any tense node): the engine's `NegatedExistsGroup` carries NO tense
-//!   field, so NAF restrictors are evaluated tenselessly (audit finding U1) — a
-//!   witness in the query's flavor does NOT block, a bare witness DOES. Encoding
-//!   that into an oracle would canonize behavior the audit flagged as possibly
-//!   unintended; it stays un-oracled until U1 is resolved.
+//! - **top-level negated (`na`) query** in a tensed program: not a shape the gate poses
+//!   (every curated / generated query is positive), and a directly-negated query's tense
+//!   semantics were not part of the `NegatedExistsGroup` fix — skip rather than oracle it.
 //! - **tense × abstraction** (`__abs_` under any flavor): suffixing would break the
 //!   opaque content-hash identity between rule head and query.
 //! - **nested / exotic tense placements** (tense inside an event group, tensed
@@ -112,7 +118,10 @@ pub fn flavorize(
         return Ok((kb.to_vec(), query.clone()));
     }
 
-    // 2. Conservative guards (see module docs).
+    // 2. Conservative guards (see module docs). Tense × restrictor-NAF is NO LONGER
+    //    skipped — the rewrite below suffixes the inner NAF predicates so `past ~P`
+    //    flavorizes to `not P__pu`. Only abstraction and a top-level `na` query skip here;
+    //    exotic placements fail closed inside the rewrite (`copy_suffixed`).
     for buf in kb.iter().chain(std::iter::once(query)) {
         for node in &buf.nodes {
             if let LogicNode::Predicate((rel, _)) = node {
@@ -122,20 +131,15 @@ pub fn flavorize(
                     );
                 }
             }
-            if let LogicNode::NotNode(x) = node {
-                if subtree_has_not(buf, *x)? {
-                    return Err(
-                        "tense with NAF (NegatedExistsGroup is tenseless — audit U1)".to_string(),
-                    );
-                }
-            }
         }
-        // A `na` query (root-level NotNode) in a tensed program is NAF territory too.
+        // A top-level negated (`na`) query in a tensed program is not a shape the gate
+        // poses; skip rather than oracle an untested (non-restrictor) NAF placement.
         if std::ptr::eq(buf, query) {
             for &r in &buf.roots {
                 if matches!(node_at(buf, r)?, LogicNode::NotNode(_)) {
                     return Err(
-                        "tense with NAF (NegatedExistsGroup is tenseless — audit U1)".to_string(),
+                        "top-level negated (`na`) query in a tensed program (not a gate shape)"
+                            .to_string(),
                     );
                 }
             }
@@ -155,22 +159,6 @@ pub fn flavorize(
         return Err("query rewrote to multiple flavor copies (unsupported query shape)".into());
     }
     Ok((out_kb, out_query.remove(0)))
-}
-
-/// Whether the subtree rooted at `id` contains a `NotNode` (used to spot the
-/// double-negation NAF restrictor under an antecedent's outer `Not`).
-fn subtree_has_not(buf: &LogicBuffer, id: u32) -> Result<bool, String> {
-    Ok(match node_at(buf, id)? {
-        LogicNode::NotNode(_) => true,
-        LogicNode::AndNode((l, r)) | LogicNode::OrNode((l, r)) => {
-            subtree_has_not(buf, *l)? || subtree_has_not(buf, *r)?
-        }
-        LogicNode::ExistsNode((_, b)) | LogicNode::ForAllNode((_, b)) => subtree_has_not(buf, *b)?,
-        n => match tense_of(n) {
-            Some((_, c)) => subtree_has_not(buf, c)?,
-            None => false,
-        },
-    })
 }
 
 /// Rewrite one buffer: a fact/query (per-root, single output buffer) or a rule
@@ -488,21 +476,26 @@ mod tests {
     }
 
     #[test]
-    fn tense_with_naf_is_skipped() {
-        // A double-negation (NAF) restrictor + a tensed fact → Err (audit U1: the
-        // engine's NegatedExistsGroup is tenseless; do not canonize that behavior).
+    fn tense_with_naf_restrictor_is_flavorized() {
+        // A `past ~gerku` restrictor compiles to `Not(Past(Not(∃gerku)))`. With the
+        // flavor-aware NegatedExistsGroup this is no longer skipped: the rewrite consumes
+        // the Past wrapper and suffixes the inner NAF predicate, so every rule copy carries
+        // `gerku__pu` (= clingo `not gerku__pu` = "no Past-flavor gerku") and NO bare gerku
+        // NAF (the restrictor is an explicit flavor constant).
         let mut n = Vec::new();
         let dom = group1(&mut n, "_e0", "prenu", var("_v0"));
         let ndom = not(&mut n, dom);
         let r = group1(&mut n, "_e1", "gerku", var("_v0"));
-        let nr = not(&mut n, r);
-        let nnr = not(&mut n, nr); // Not(Not(gerku)) — the `poi na` shape
+        let nr = not(&mut n, r); // Not(∃gerku)
+        let pnr = past(&mut n, nr); // Past(Not(∃gerku)) — `past ~gerku`
+        let nnr = not(&mut n, pnr); // Not(Past(Not(∃gerku))) — antecedent negation
         let cons = group1(&mut n, "_e2", "morsi", var("_v0"));
         let o2 = or(&mut n, nnr, cons);
         let o1 = or(&mut n, ndom, o2);
         let root = forall(&mut n, "_v0", o1);
         let rule = buf(n, vec![root]);
 
+        // A tensed fact forces the flavor set past {Bare} so the rewrite runs.
         let mut fn_ = Vec::new();
         let g = group1(&mut fn_, "_ev0", "prenu", con("adam"));
         let froot = past(&mut fn_, g);
@@ -512,8 +505,16 @@ mod tests {
         let qroot = group1(&mut qn, "_ev0", "morsi", con("adam"));
         let query = buf(qn, vec![qroot]);
 
-        let err = flavorize(&[rule, fact], &query).unwrap_err();
-        assert!(err.contains("NAF"), "{err}");
+        let (kb2, _q2) = flavorize(&[rule, fact], &query).expect("tense×NAF now flavorizes");
+        let all: Vec<Vec<String>> = kb2.iter().map(rels).collect();
+        assert!(
+            all.iter().any(|r| r.contains(&"gerku__pu".to_string())),
+            "NAF predicate must be Past-suffixed: {all:?}"
+        );
+        assert!(
+            all.iter().all(|r| !r.contains(&"gerku".to_string())),
+            "explicit `past ~gerku` must not leave a bare gerku NAF: {all:?}"
+        );
     }
 
     #[test]

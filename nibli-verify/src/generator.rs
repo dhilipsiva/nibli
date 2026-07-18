@@ -214,6 +214,69 @@ pub fn random_naf_case(seed: u64) -> GeneratedCase {
     }
 }
 
+/// Explicit tense flavors for a restrictor / witness (bareness is decided by the caller).
+const NAF_TENSES: &[&str] = &["past ", "now ", "future "];
+
+/// Generate a random **tense × stratified-NAF** case for `seed`: like [`random_naf_case`]
+/// but the restrictor is EXPLICITLY tensed (`Q(every person where <flavor> ~R)`) and each
+/// R-witness carries a random flavor (bare or one of past/now/future). This exercises the
+/// flavor-aware `NegatedExistsGroup` at scale: only a witness whose flavor MATCHES the
+/// restrictor blocks the rule — a bare or different-flavor witness does not. The head and
+/// query stay bare, so the rule's bare copy fires with the explicit-flavor restrictor as a
+/// flavor constant (`not R__<suffix>` on the clingo side), and the engine's flavor-exact NAF
+/// is checked against clingo. Stratified by construction (R base; see [`NAF_BASE`]) and
+/// ASP-mappable (tense handled by `tense::flavorize` now that tense×NAF is flavorized); the
+/// filter in `run_lines_asp` is still the final arbiter.
+pub fn random_tense_naf_case(seed: u64) -> GeneratedCase {
+    let mut rng = Lcg::new(seed);
+    let mut kb: Vec<String> = Vec::new();
+
+    let r = rng.pick(NAF_BASE); // negated restrictor (base predicate)
+    let q = rng.pick(NAF_DERIVED); // NAF-rule head (derived predicate)
+    let rtense = rng.pick(NAF_TENSES); // explicit restrictor flavor
+
+    // The stratified, explicitly-tensed NAF rule. A MODIFIED where-restrictor needs the
+    // full-claim `pred(it)` form (the bare `where ~R` shorthand rejects modifiers), so the
+    // bound member is spelled explicitly as `it`.
+    kb.push(format!("{q}(every {NAF_DOMAIN} where {rtense}~{r}(it))."));
+
+    // Optionally a positive Horn chain Q → S (bare — keeps the head/query flavor space small).
+    let mut derivable = vec![q];
+    if rng.below(2) == 0 {
+        let s = rng.pick(NAF_DERIVED);
+        kb.push(format!("{s}(every {q})."));
+        derivable.push(s);
+    }
+
+    // 1..=2 domain members; each MAY carry an R-witness at a random flavor (bare or a tense).
+    // Only a witness whose flavor equals `rtense` blocks the rule.
+    let n_ent = 1 + rng.below(2);
+    let mut ents: Vec<&'static str> = Vec::new();
+    for _ in 0..n_ent {
+        let e = rng.pick(ENTITIES);
+        kb.push(format!("{NAF_DOMAIN}({e})."));
+        if rng.below(2) == 0 {
+            let wtense = if rng.below(2) == 0 {
+                ""
+            } else {
+                rng.pick(NAF_TENSES)
+            };
+            kb.push(format!("{wtense}{r}({e})."));
+        }
+        ents.push(e);
+    }
+
+    let qe = ents[rng.below(ents.len())];
+    let qp = derivable[rng.below(derivable.len())];
+    let query = format!("{qp}({qe})."); // bare query
+
+    GeneratedCase {
+        name: format!("tnaf_seed{seed}"),
+        kb,
+        query,
+    }
+}
+
 /// Digits for the exact-count quantifier `Q(exactly N P).` (1, 2, 3).
 const COUNT_DIGITS: &[&str] = &["1", "2", "3"];
 
@@ -351,6 +414,59 @@ mod tests {
         let b = random_naf_case(7);
         assert_eq!(a.kb, b.kb);
         assert_eq!(a.query, b.query);
+    }
+
+    #[test]
+    fn tense_naf_case_deterministic_and_well_formed() {
+        let a = random_tense_naf_case(11);
+        let b = random_tense_naf_case(11);
+        assert_eq!(a.kb, b.kb);
+        assert_eq!(a.query, b.query);
+
+        // Every tense×NAF case has exactly one restrictor rule, EXPLICITLY tensed
+        // (`where <flavor> ~R`), R a BASE predicate, and a BARE query.
+        for seed in 0u64..100 {
+            let c = random_tense_naf_case(seed);
+            let naf_lines: Vec<&String> = c.kb.iter().filter(|l| l.contains("where ")).collect();
+            assert_eq!(
+                naf_lines.len(),
+                1,
+                "expected one restrictor rule: {:?}",
+                c.kb
+            );
+            let after = naf_lines[0]
+                .split("where ")
+                .nth(1)
+                .expect("text after `where `");
+            let tensed = ["past ~", "now ~", "future ~"]
+                .iter()
+                .any(|p| after.starts_with(p));
+            assert!(
+                tensed,
+                "restrictor must be explicitly tensed: {}",
+                naf_lines[0]
+            );
+            // `now ~dog(it)).` → base predicate is the ident between `~` and `(`.
+            let neg = after
+                .rsplit('~')
+                .next()
+                .and_then(|rest| rest.split('(').next())
+                .expect("a negated predicate after `~`");
+            assert!(
+                NAF_BASE.contains(&neg),
+                "negated predicate '{neg}' must be BASE: {:?}",
+                c.kb
+            );
+            // The query is a bare atomic fact (no tense prefix, no `~`).
+            assert!(
+                !c.query.starts_with("past ")
+                    && !c.query.starts_with("now ")
+                    && !c.query.starts_with("future ")
+                    && !c.query.contains('~'),
+                "tense×NAF query must be bare: {}",
+                c.query
+            );
+        }
     }
 
     #[test]

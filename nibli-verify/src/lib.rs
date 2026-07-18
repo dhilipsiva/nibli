@@ -634,9 +634,11 @@ pub fn run_lines_asp(
         };
     }
 
-    // 2b. Tense flavorization (identity when no tense occurs). Tense×NAF is a
-    //     conservative skip: the engine's NegatedExistsGroup is tenseless (audit U1),
-    //     and the gate must not canonize that behavior as oracle expectation.
+    // 2b. Tense flavorization (identity when no tense occurs). Tense × restrictor-NAF is
+    //     now flavorized: the flavor-aware NegatedExistsGroup means `past ~P` checks for a
+    //     PAST-flavor witness, and the rewrite suffixes the inner NAF predicate to match
+    //     (clingo `not P__pu`). Only tense×abstraction, a top-level `na` query, and exotic
+    //     placements still skip (see `tense::flavorize`).
     let (kb_buffers, query_buf) = match tense::flavorize(&kb_buffers, &query_buf) {
         Ok(x) => x,
         Err(e) => return Outcome::SkipNonMappable { name, reason: e },
@@ -718,6 +720,23 @@ pub fn run_random_naf(count: u64, base_seed: u64, cfg: &AspConfig) -> Report {
     let outcomes = (0..count)
         .map(|i| {
             let case = generator::random_naf_case(base_seed.wrapping_add(i));
+            let kb: Vec<&str> = case.kb.iter().map(String::as_str).collect();
+            run_lines_asp(&engine, &case.name, &kb, &case.query, cfg)
+        })
+        .collect();
+    Report { outcomes }
+}
+
+/// Run `count` deterministically-generated random **tense × stratified-NAF** cases (seeds
+/// `base_seed .. base_seed+count`) against clingo on a fresh engine. Each case has an
+/// explicitly-tensed restrictor (`Q(every person where <flavor> ~R)`) with randomly-flavored
+/// witnesses (see [`generator::random_tense_naf_case`]) — the flavor-aware `NegatedExistsGroup`
+/// leg. Stratified + flavorizable by construction; the filter is still the final arbiter.
+pub fn run_random_tense_naf(count: u64, base_seed: u64, cfg: &AspConfig) -> Report {
+    let engine = kr_engine();
+    let outcomes = (0..count)
+        .map(|i| {
+            let case = generator::random_tense_naf_case(base_seed.wrapping_add(i));
             let kb: Vec<&str> = case.kb.iter().map(String::as_str).collect();
             run_lines_asp(&engine, &case.name, &kb, &case.query, cfg)
         })

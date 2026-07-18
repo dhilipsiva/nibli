@@ -7,6 +7,7 @@ use nibli_verify::oracle_asp::AspConfig;
 use nibli_verify::{
     corpora, corpus, corpus_naf, oracle::OracleConfig, run_corpus, run_corpus_slice,
     run_naf_corpus, run_predilex_taxonomy, run_random, run_random_count, run_random_naf,
+    run_random_tense_naf,
 };
 
 /// The gate must actually compare a meaningful number of cases — otherwise a future
@@ -30,6 +31,10 @@ const MIN_CHECKED_TAXONOMY: usize = 35;
 /// How many random stratified-NAF cases the ASP gate runs; override with
 /// `NIBLI_VERIFY_NAF_RANDOM_COUNT`.
 const DEFAULT_NAF_RANDOM_COUNT: u64 = 100;
+
+/// How many random tense × stratified-NAF cases the ASP gate runs; override with
+/// `NIBLI_VERIFY_TENSE_NAF_RANDOM_COUNT`.
+const DEFAULT_TENSE_NAF_RANDOM_COUNT: u64 = 100;
 
 /// How many random exact-count cases the ASP gate runs; override with
 /// `NIBLI_VERIFY_COUNT_RANDOM_COUNT`.
@@ -322,6 +327,57 @@ fn random_naf_cases_agree_with_clingo() {
     assert!(
         report.checked() as u64 >= count / 2,
         "only {} of {count} random NAF cases reached the oracle; sweep near-vacuous",
+        report.checked()
+    );
+}
+
+/// Random tense × NAF coverage: N deterministically-generated programs, each with an
+/// explicitly-tensed restrictor (`Q(every person where <flavor> ~R)`) and randomly-flavored
+/// witnesses, must have nibli agree with clingo. This is the differential proof that the
+/// flavor-aware `NegatedExistsGroup` (engine) and the flavor-suffixed NAF (`tense::flavorize`)
+/// implement the SAME semantics — a same-flavor witness blocks, a different one does not.
+#[test]
+fn random_tense_naf_cases_agree_with_clingo() {
+    let cfg = AspConfig::default();
+    if !nibli_verify::oracle_asp::available(&cfg) {
+        eprintln!(
+            "nibli-verify random tense×NAF gate SKIPPED: solver '{}' unavailable.",
+            cfg.binary
+        );
+        return;
+    }
+
+    let count: u64 = std::env::var("NIBLI_VERIFY_TENSE_NAF_RANDOM_COUNT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(DEFAULT_TENSE_NAF_RANDOM_COUNT);
+    let report = run_random_tense_naf(count, 0, &cfg);
+
+    let (agree, diverge, skip, error) = report.tally();
+    eprintln!(
+        "nibli-verify random tense×NAF: {agree} agree / {diverge} diverge / {skip} skip / \
+         {error} error ({} of {count} checked)",
+        report.checked()
+    );
+
+    let errors: Vec<String> = report.errors().iter().map(|o| o.summary()).collect();
+    assert!(
+        errors.is_empty(),
+        "harness errors on random tense×NAF cases:\n{}",
+        errors.join("\n")
+    );
+
+    let divergences: Vec<String> = report.divergences().iter().map(|o| o.summary()).collect();
+    assert!(
+        divergences.is_empty(),
+        "soundness divergences on random tense×NAF cases (nibli disagreed with clingo):\n{}",
+        divergences.join("\n")
+    );
+
+    // Stratified + flavorizable by construction, so most must actually reach the oracle.
+    assert!(
+        report.checked() as u64 >= count / 2,
+        "only {} of {count} random tense×NAF cases reached the oracle; sweep near-vacuous",
         report.checked()
     );
 }
