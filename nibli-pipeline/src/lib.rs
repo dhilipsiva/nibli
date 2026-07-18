@@ -7,13 +7,19 @@
 #[allow(warnings)]
 mod bindings;
 
-// The component's own WIT export types (the boundary we serialize through)
+// The component's own WIT export types. Since the `[package.metadata.component.bindings]`
+// `with`-remap (Cargo.toml), the ABI-matching boundary types ARE `nibli_types`
+// directly — the generated `logic_types`/`error_types` modules now retain only
+// the types that could NOT be remapped: `proof-rule`/`proof-step`/`proof-trace`
+// (proof-rule is named-field in Rust but wit-bindgen emits only tuple/newtype
+// variants). Those three keep the hand `convert_proof_*` bridge below.
 use bindings::exports::nibli::engine::engine::{Guest, GuestSession};
 use bindings::nibli::engine::compute_backend as cb;
-use bindings::nibli::engine::error_types as export_err;
 use bindings::nibli::engine::logic_types as export_logic;
 
-// Canonical pipeline types (shared across nibli-kr/nibli-semantics/nibli-reason)
+// Canonical pipeline types (shared across nibli-kr/nibli-semantics/nibli-reason).
+// These are ALSO the WIT boundary types now (via the `with`-remap), so most of
+// the former converter glue is gone — the boundary speaks `nibli_types`.
 use nibli_types::error as pipeline_err;
 use nibli_types::logic;
 
@@ -40,140 +46,15 @@ pub struct Session {
     verbose: bool,
 }
 
-// ─── Type conversion: nibli-reason → nibli-pipeline export boundary ───
+// ─── The one surviving type bridge: proof-rule / proof-trace ───
+//
+// `proof-rule` is the sole boundary type NOT `with`-remapped onto `nibli_types`
+// (Cargo.toml): the canonical `logic::ProofRule` is named-field, but wit-bindgen
+// can only emit tuple/newtype variants, so the generated `export_logic::ProofRule`
+// stays tuple-shaped and needs a hand map. `proof-step`/`proof-trace` reference
+// it, so they stay generated too. Embedded terms are ALREADY `logic::LogicalTerm`
+// on both sides (logical-term IS remapped), so no term conversion is needed.
 
-fn convert_logical_term_to_export(t: &logic::LogicalTerm) -> export_logic::LogicalTerm {
-    match t {
-        logic::LogicalTerm::Variable(v) => export_logic::LogicalTerm::Variable(v.clone()),
-        logic::LogicalTerm::Constant(c) => export_logic::LogicalTerm::Constant(c.clone()),
-        logic::LogicalTerm::Description(d) => export_logic::LogicalTerm::Description(d.clone()),
-        logic::LogicalTerm::Number(n) => export_logic::LogicalTerm::Number(*n),
-        logic::LogicalTerm::Unspecified => export_logic::LogicalTerm::Unspecified,
-    }
-}
-
-/// Convert one nibli-reason `LogicNode` to the WIT export node (pure 1:1 — the WIT
-/// `logic-node` variant mirrors `nibli_types::logic::LogicNode` exactly).
-fn convert_logic_node_to_export(n: &logic::LogicNode) -> export_logic::LogicNode {
-    use export_logic::LogicNode as E;
-    use logic::LogicNode as L;
-    match n {
-        L::Predicate((rel, args)) => E::Predicate((
-            rel.clone(),
-            args.iter().map(convert_logical_term_to_export).collect(),
-        )),
-        L::ComputeNode((rel, args)) => E::ComputeNode((
-            rel.clone(),
-            args.iter().map(convert_logical_term_to_export).collect(),
-        )),
-        L::AndNode((l, r)) => E::AndNode((*l, *r)),
-        L::OrNode((l, r)) => E::OrNode((*l, *r)),
-        L::NotNode(i) => E::NotNode(*i),
-        L::ExistsNode((v, b)) => E::ExistsNode((v.clone(), *b)),
-        L::ForAllNode((v, b)) => E::ForAllNode((v.clone(), *b)),
-        L::PastNode(i) => E::PastNode(*i),
-        L::PresentNode(i) => E::PresentNode(*i),
-        L::FutureNode(i) => E::FutureNode(*i),
-        L::ObligatoryNode(i) => E::ObligatoryNode(*i),
-        L::PermittedNode(i) => E::PermittedNode(*i),
-        L::CountNode((v, c, b)) => E::CountNode((v.clone(), *c, *b)),
-    }
-}
-
-/// Convert the full nibli-reason `LogicBuffer` to the WIT export buffer (typed IR
-/// crosses the boundary; the host renders it — no S-expression string).
-fn convert_logic_buffer_to_export(buf: &logic::LogicBuffer) -> export_logic::LogicBuffer {
-    export_logic::LogicBuffer {
-        nodes: buf.nodes.iter().map(convert_logic_node_to_export).collect(),
-        roots: buf.roots.clone(),
-    }
-}
-
-fn convert_logical_term_from_export(t: &export_logic::LogicalTerm) -> logic::LogicalTerm {
-    match t {
-        export_logic::LogicalTerm::Variable(v) => logic::LogicalTerm::Variable(v.clone()),
-        export_logic::LogicalTerm::Constant(c) => logic::LogicalTerm::Constant(c.clone()),
-        export_logic::LogicalTerm::Description(d) => logic::LogicalTerm::Description(d.clone()),
-        export_logic::LogicalTerm::Number(n) => logic::LogicalTerm::Number(*n),
-        export_logic::LogicalTerm::Unspecified => logic::LogicalTerm::Unspecified,
-    }
-}
-
-/// Convert one WIT import node back to the nibli-reason `LogicNode` (pure 1:1 inverse
-/// of `convert_logic_node_to_export`; `CountNode`'s middle field is a COUNT,
-/// not a node index — copied verbatim, never remapped).
-fn convert_logic_node_from_export(n: &export_logic::LogicNode) -> logic::LogicNode {
-    use export_logic::LogicNode as E;
-    use logic::LogicNode as L;
-    match n {
-        E::Predicate((rel, args)) => L::Predicate((
-            rel.clone(),
-            args.iter().map(convert_logical_term_from_export).collect(),
-        )),
-        E::ComputeNode((rel, args)) => L::ComputeNode((
-            rel.clone(),
-            args.iter().map(convert_logical_term_from_export).collect(),
-        )),
-        E::AndNode((l, r)) => L::AndNode((*l, *r)),
-        E::OrNode((l, r)) => L::OrNode((*l, *r)),
-        E::NotNode(i) => L::NotNode(*i),
-        E::ExistsNode((v, b)) => L::ExistsNode((v.clone(), *b)),
-        E::ForAllNode((v, b)) => L::ForAllNode((v.clone(), *b)),
-        E::PastNode(i) => L::PastNode(*i),
-        E::PresentNode(i) => L::PresentNode(*i),
-        E::FutureNode(i) => L::FutureNode(*i),
-        E::ObligatoryNode(i) => L::ObligatoryNode(*i),
-        E::PermittedNode(i) => L::PermittedNode(*i),
-        E::CountNode((v, c, b)) => L::CountNode((v.clone(), *c, *b)),
-    }
-}
-
-/// Convert a WIT import buffer back to the nibli-reason `LogicBuffer` (inverse of
-/// `convert_logic_buffer_to_export`) — the `assert-buffer-with-id` replay path.
-fn convert_logic_buffer_from_export(buf: &export_logic::LogicBuffer) -> logic::LogicBuffer {
-    logic::LogicBuffer {
-        nodes: buf
-            .nodes
-            .iter()
-            .map(convert_logic_node_from_export)
-            .collect(),
-        roots: buf.roots.clone(),
-    }
-}
-
-fn convert_query_result_to_export(result: &logic::QueryResult) -> export_logic::QueryResult {
-    match result {
-        logic::QueryResult::True => export_logic::QueryResult::True,
-        logic::QueryResult::False => export_logic::QueryResult::False,
-        logic::QueryResult::Unknown(logic::UnknownReason::CycleCut) => {
-            export_logic::QueryResult::Unknown(export_logic::UnknownReason::CycleCut)
-        }
-        logic::QueryResult::Unknown(logic::UnknownReason::IncompleteKnowledge) => {
-            export_logic::QueryResult::Unknown(export_logic::UnknownReason::IncompleteKnowledge)
-        }
-        logic::QueryResult::Unknown(logic::UnknownReason::NafDependent) => {
-            export_logic::QueryResult::Unknown(export_logic::UnknownReason::NafDependent)
-        }
-        logic::QueryResult::Unknown(logic::UnknownReason::BackendUnavailable) => {
-            export_logic::QueryResult::Unknown(export_logic::UnknownReason::BackendUnavailable)
-        }
-        logic::QueryResult::Unknown(logic::UnknownReason::NonFinite) => {
-            export_logic::QueryResult::Unknown(export_logic::UnknownReason::NonFinite)
-        }
-        logic::QueryResult::ResourceExceeded(logic::ResourceKind::Depth) => {
-            export_logic::QueryResult::ResourceExceeded(export_logic::ResourceKind::Depth)
-        }
-        logic::QueryResult::ResourceExceeded(logic::ResourceKind::Fuel) => {
-            export_logic::QueryResult::ResourceExceeded(export_logic::ResourceKind::Fuel)
-        }
-        logic::QueryResult::ResourceExceeded(logic::ResourceKind::Memory) => {
-            export_logic::QueryResult::ResourceExceeded(export_logic::ResourceKind::Memory)
-        }
-    }
-}
-
-// nibli-reason's `ProofRule` is now the named-field canonical type; the WIT export type
-// stays tuple-shaped (generated from world.wit), so this maps named fields → tuples.
 fn convert_proof_rule(r: &logic::ProofRule) -> export_logic::ProofRule {
     match r {
         logic::ProofRule::Conjunction => export_logic::ProofRule::Conjunction,
@@ -187,20 +68,16 @@ fn convert_proof_rule(r: &logic::ProofRule) -> export_logic::ProofRule {
         logic::ProofRule::ModalPassthrough { kind } => {
             export_logic::ProofRule::ModalPassthrough(kind.clone())
         }
-        logic::ProofRule::ExistsWitness { var, term } => export_logic::ProofRule::ExistsWitness((
-            var.clone(),
-            convert_logical_term_to_export(term),
-        )),
+        logic::ProofRule::ExistsWitness { var, term } => {
+            export_logic::ProofRule::ExistsWitness((var.clone(), term.clone()))
+        }
         logic::ProofRule::ExistsFailed => export_logic::ProofRule::ExistsFailed,
         logic::ProofRule::ForallVacuous => export_logic::ProofRule::ForallVacuous,
-        logic::ProofRule::ForallVerified { entities } => export_logic::ProofRule::ForallVerified(
-            entities
-                .iter()
-                .map(convert_logical_term_to_export)
-                .collect(),
-        ),
+        logic::ProofRule::ForallVerified { entities } => {
+            export_logic::ProofRule::ForallVerified(entities.clone())
+        }
         logic::ProofRule::ForallCounterexample { entity } => {
-            export_logic::ProofRule::ForallCounterexample(convert_logical_term_to_export(entity))
+            export_logic::ProofRule::ForallCounterexample(entity.clone())
         }
         logic::ProofRule::CountResult { expected, actual } => {
             export_logic::ProofRule::CountResult((*expected, *actual))
@@ -260,55 +137,13 @@ fn convert_proof_trace(t: logic::ProofTrace) -> export_logic::ProofTrace {
     }
 }
 
-fn convert_witness_bindings(
-    wbs: Vec<Vec<logic::WitnessBinding>>,
-) -> Vec<Vec<export_logic::WitnessBinding>> {
-    wbs.into_iter()
-        .map(|bindings| {
-            bindings
-                .into_iter()
-                .map(|wb| export_logic::WitnessBinding {
-                    variable: wb.variable,
-                    term: convert_logical_term_to_export(&wb.term),
-                })
-                .collect()
-        })
-        .collect()
-}
-
-fn convert_fact_summaries(fs: Vec<logic::FactSummary>) -> Vec<export_logic::FactSummary> {
-    fs.into_iter()
-        .map(|f| export_logic::FactSummary {
-            id: f.id,
-            label: f.label,
-            root_count: f.root_count,
-        })
-        .collect()
-}
-
-/// Convert pipeline error → WIT export error (for the WASM component boundary).
-fn convert_pipeline_error(e: pipeline_err::NibliError) -> export_err::NibliError {
-    match e {
-        pipeline_err::NibliError::Syntax(d) => {
-            export_err::NibliError::Syntax(export_err::SyntaxDetail {
-                message: d.message,
-                line: d.line,
-                column: d.column,
-            })
-        }
-        pipeline_err::NibliError::Semantic(m) => export_err::NibliError::Semantic(m),
-        pipeline_err::NibliError::Reasoning(m) => export_err::NibliError::Reasoning(m),
-        pipeline_err::NibliError::Backend((k, m)) => export_err::NibliError::Backend((k, m)),
-    }
-}
-
 // ─── Compute dispatch bridge (nibli-reason → nibli-pipeline WIT import) ───
+// The compute-backend import speaks `logical-term`, which IS remapped, so the
+// args pass straight through — no term conversion.
 
 fn eval_via_host(rel: &str, args: &[logic::LogicalTerm]) -> Result<bool, String> {
-    let converted: Vec<export_logic::LogicalTerm> =
-        args.iter().map(convert_logical_term_to_export).collect();
-    cb::evaluate(rel, &converted).map_err(|e| match e {
-        export_err::NibliError::Backend((_, m)) => m,
+    cb::evaluate(rel, args).map_err(|e| match e {
+        pipeline_err::NibliError::Backend((_, m)) => m,
         other => format!("{:?}", other),
     })
 }
@@ -318,7 +153,7 @@ fn batch_eval_via_host(requests: &[nibli_reason::ComputeRequest]) -> Vec<Result<
         .iter()
         .map(|r| cb::ComputeRequest {
             relation: r.relation.clone(),
-            args: r.args.iter().map(convert_logical_term_to_export).collect(),
+            args: r.args.clone(),
         })
         .collect();
     let results = cb::evaluate_batch(&wit_requests);
@@ -349,14 +184,14 @@ impl Session {
     /// returns and replays via `assert_buffer_with_id`. (`compile_pipeline`
     /// fails closed on any parse error, so no per-caller warning check is
     /// needed.)
-    fn assert_text_inner(&self, input: String, id: u64) -> Result<(), export_err::NibliError> {
+    fn assert_text_inner(&self, input: String, id: u64) -> Result<(), pipeline_err::NibliError> {
         let core = self.core.borrow();
-        let buf = core.compile_text(&input).map_err(convert_pipeline_error)?;
+        let buf = core.compile_text(&input)?;
         core.kb()
             .assert_fact_with_id(buf, input, id)
             // The assert is the reasoning stage (buffer already past nibli-semantics);
             // nibli-reason's `assert_fact_with_id` returns a String, so wrap as Reasoning.
-            .map_err(export_err::NibliError::Reasoning)?;
+            .map_err(pipeline_err::NibliError::Reasoning)?;
         Ok(())
     }
 
@@ -377,20 +212,16 @@ impl Session {
 
     /// Shared body for `assert_fact` / `assert_fact_with_id` — delegates to
     /// the core's `assert_fact_direct` (label `":assert {relation}"`,
-    /// event-decomposed to the surface shape, caller-chosen id for replay);
-    /// only the WIT term/error conversion happens here.
+    /// event-decomposed to the surface shape, caller-chosen id for replay). The
+    /// args and error ARE the canonical `nibli_types` types now (the boundary
+    /// is `with`-remapped), so nothing is converted here.
     fn assert_fact_inner(
         &self,
         relation: String,
-        args: Vec<export_logic::LogicalTerm>,
+        args: Vec<logic::LogicalTerm>,
         id: Option<u64>,
-    ) -> Result<u64, export_err::NibliError> {
-        let logic_args: Vec<logic::LogicalTerm> =
-            args.iter().map(convert_logical_term_from_export).collect();
-        self.core
-            .borrow()
-            .assert_fact_direct(&relation, &logic_args, id)
-            .map_err(convert_pipeline_error)
+    ) -> Result<u64, pipeline_err::NibliError> {
+        self.core.borrow().assert_fact_direct(&relation, &args, id)
     }
 }
 
@@ -436,20 +267,14 @@ impl GuestSession for Session {
     fn assert_text(
         &self,
         input: String,
-    ) -> Result<Vec<(u64, export_logic::LogicBuffer)>, export_err::NibliError> {
+    ) -> Result<Vec<(u64, logic::LogicBuffer)>, pipeline_err::NibliError> {
         self.emit_lints(&input);
-        let pairs = self
-            .core
-            .borrow()
-            .assert_text(&input)
-            .map_err(convert_pipeline_error)?;
-        Ok(pairs
-            .into_iter()
-            .map(|(id, sub)| (id, convert_logic_buffer_to_export(&sub)))
-            .collect())
+        // The per-root (id, buffer) pairs ARE `(u64, logic::LogicBuffer)` — the
+        // WIT return type now — so they pass straight through.
+        self.core.borrow().assert_text(&input)
     }
 
-    fn assert_text_with_id(&self, input: String, id: u64) -> Result<(), export_err::NibliError> {
+    fn assert_text_with_id(&self, input: String, id: u64) -> Result<(), pipeline_err::NibliError> {
         self.assert_text_inner(input, id)
     }
 
@@ -457,74 +282,48 @@ impl GuestSession for Session {
     /// by `assert-text`) under a caller-chosen id.
     fn assert_buffer_with_id(
         &self,
-        buffer: export_logic::LogicBuffer,
+        buffer: logic::LogicBuffer,
         label: String,
         id: u64,
-    ) -> Result<(), export_err::NibliError> {
-        let buf = convert_logic_buffer_from_export(&buffer);
+    ) -> Result<(), pipeline_err::NibliError> {
         self.core
             .borrow()
             .kb()
-            .assert_fact_with_id(buf, label, id)
-            .map_err(export_err::NibliError::Reasoning)
+            .assert_fact_with_id(buffer, label, id)
+            .map_err(pipeline_err::NibliError::Reasoning)
     }
 
-    fn query_text(
-        &self,
-        input: String,
-    ) -> Result<export_logic::QueryResult, export_err::NibliError> {
+    fn query_text(&self, input: String) -> Result<logic::QueryResult, pipeline_err::NibliError> {
         self.emit_lints(&input);
-        self.core
-            .borrow()
-            .query_text(&input)
-            .map(|result| convert_query_result_to_export(&result))
-            .map_err(convert_pipeline_error)
+        self.core.borrow().query_text(&input)
     }
 
     fn query_find_text(
         &self,
         input: String,
-    ) -> Result<Vec<Vec<export_logic::WitnessBinding>>, export_err::NibliError> {
+    ) -> Result<Vec<Vec<logic::WitnessBinding>>, pipeline_err::NibliError> {
         self.emit_lints(&input);
-        let result = self
-            .core
-            .borrow()
-            .query_find_text(&input)
-            .map_err(convert_pipeline_error)?;
-        Ok(convert_witness_bindings(result))
+        self.core.borrow().query_find_text(&input)
     }
 
     fn query_text_with_proof(
         &self,
         input: String,
-    ) -> Result<(export_logic::QueryResult, export_logic::ProofTrace), export_err::NibliError> {
+    ) -> Result<(logic::QueryResult, export_logic::ProofTrace), pipeline_err::NibliError> {
         self.emit_lints(&input);
-        let (result, trace) = self
-            .core
-            .borrow()
-            .query_text_with_proof(&input)
-            .map_err(convert_pipeline_error)?;
-        Ok((
-            convert_query_result_to_export(&result),
-            convert_proof_trace(trace),
-        ))
+        // query-result IS remapped; proof-trace is NOT (it embeds proof-rule),
+        // so only the trace is bridged.
+        let (result, trace) = self.core.borrow().query_text_with_proof(&input)?;
+        Ok((result, convert_proof_trace(trace)))
     }
 
-    fn compile_debug(
-        &self,
-        input: String,
-    ) -> Result<export_logic::LogicBuffer, export_err::NibliError> {
-        let buf = self
-            .core
-            .borrow()
-            .compile_text(&input)
-            .map_err(convert_pipeline_error)?;
-        Ok(convert_logic_buffer_to_export(&buf))
+    fn compile_debug(&self, input: String) -> Result<logic::LogicBuffer, pipeline_err::NibliError> {
+        self.core.borrow().compile_text(&input)
     }
 
-    fn reset_kb(&self) -> Result<(), export_err::NibliError> {
+    fn reset_kb(&self) -> Result<(), pipeline_err::NibliError> {
         self.linter.borrow_mut().reset();
-        self.core.borrow().reset().map_err(convert_pipeline_error)
+        self.core.borrow().reset()
     }
 
     fn register_compute_predicate(&self, name: String) {
@@ -534,34 +333,26 @@ impl GuestSession for Session {
     fn assert_fact(
         &self,
         relation: String,
-        args: Vec<export_logic::LogicalTerm>,
-    ) -> Result<u64, export_err::NibliError> {
+        args: Vec<logic::LogicalTerm>,
+    ) -> Result<u64, pipeline_err::NibliError> {
         self.assert_fact_inner(relation, args, None)
     }
 
     fn assert_fact_with_id(
         &self,
         relation: String,
-        args: Vec<export_logic::LogicalTerm>,
+        args: Vec<logic::LogicalTerm>,
         id: u64,
-    ) -> Result<(), export_err::NibliError> {
+    ) -> Result<(), pipeline_err::NibliError> {
         self.assert_fact_inner(relation, args, Some(id)).map(|_| ())
     }
 
-    fn retract_fact(&self, id: u64) -> Result<(), export_err::NibliError> {
-        self.core
-            .borrow()
-            .retract_fact(id)
-            .map_err(convert_pipeline_error)
+    fn retract_fact(&self, id: u64) -> Result<(), pipeline_err::NibliError> {
+        self.core.borrow().retract_fact(id)
     }
 
-    fn list_facts(&self) -> Result<Vec<export_logic::FactSummary>, export_err::NibliError> {
-        let facts = self
-            .core
-            .borrow()
-            .list_facts()
-            .map_err(convert_pipeline_error)?;
-        Ok(convert_fact_summaries(facts))
+    fn list_facts(&self) -> Result<Vec<logic::FactSummary>, pipeline_err::NibliError> {
+        self.core.borrow().list_facts()
     }
 }
 

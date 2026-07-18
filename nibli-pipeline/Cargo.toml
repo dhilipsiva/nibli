@@ -21,6 +21,25 @@ package = "nibli:engine"
 path = "../wit/world.wit"
 world = "nibli-pipeline"
 
+# Remap the ABI-matching boundary types onto the canonical `nibli_types` enums
+# instead of generating distinct mirror types — this deletes the hand-written
+# 1:1 converters in lib.rs (the generated shapes match these types exactly:
+# tuple-variant ↔ tuple-variant, record ↔ struct). `proof-rule`/`proof-step`/
+# `proof-trace` are deliberately NOT remapped — `proof-rule` is named-field in
+# Rust but wit-bindgen can only emit tuple/newtype variants, so it keeps a
+# converter (and the trio references it).
+[package.metadata.component.bindings.with]
+"nibli:engine/logic-types@0.2.0/logical-term" = "nibli_types::logic::LogicalTerm"
+"nibli:engine/logic-types@0.2.0/logic-node" = "nibli_types::logic::LogicNode"
+"nibli:engine/logic-types@0.2.0/logic-buffer" = "nibli_types::logic::LogicBuffer"
+"nibli:engine/logic-types@0.2.0/query-result" = "nibli_types::logic::QueryResult"
+"nibli:engine/logic-types@0.2.0/unknown-reason" = "nibli_types::logic::UnknownReason"
+"nibli:engine/logic-types@0.2.0/resource-kind" = "nibli_types::logic::ResourceKind"
+"nibli:engine/logic-types@0.2.0/witness-binding" = "nibli_types::logic::WitnessBinding"
+"nibli:engine/logic-types@0.2.0/fact-summary" = "nibli_types::logic::FactSummary"
+"nibli:engine/error-types@0.2.0/nibli-error" = "nibli_types::error::NibliError"
+"nibli:engine/error-types@0.2.0/syntax-detail" = "nibli_types::error::SyntaxDetail"
+
 [lib]
 name = "nibli"
 crate-type = ["cdylib", "lib"]
