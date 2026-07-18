@@ -637,14 +637,24 @@ fuzz-ci SECONDS="120": fuzz-seed (fuzz-assert SECONDS) (fuzz-query SECONDS) (fuz
 # ── Mutation testing (soundness paths) ──────────────────────────
 
 # Mutation-testing gate over the soundness-critical paths (scope lives in
-# .cargo/mutants.toml: logji reasoning/rules/kb + smuni semantic). Runs the
-# full sweep, then diffs survivors against the checked-in baseline
-# (mutants-baseline.txt; line:col stripped so unrelated edits don't shift
-# entries): exits non-zero on any NEW survivor — a regression in test kill
-# power. Baseline entries that are now KILLED print a shrink prompt.
-mutants JOBS="8":
+# .cargo/mutants.toml: nibli-reason reasoning/rules/kb + nibli-semantics
+# semantic). Runs the full sweep, then diffs survivors against the checked-in
+# baseline (mutants-baseline.txt; line:col stripped so unrelated edits don't
+# shift entries): exits non-zero on any NEW survivor — a regression in test
+# kill power. Baseline entries that are now KILLED print a shrink prompt.
+mutants JOBS="3":
     #!/usr/bin/env bash
     set -u
+    # MEMORY GUARD: a runaway mutant can balloon a test process unboundedly (a
+    # bound-removing mutation; observed ~25 GB anon-rss, which made the kernel
+    # OOM-killer SIGTERM the whole sweep under WSL's ~46 GB cap). Cap each
+    # process's virtual address space so the balloon dies ALONE — cargo-mutants
+    # counts the killed test as CAUGHT (like a timeout: the tests noticed).
+    # 12 GiB clears the normal build+test peaks with wide margin (acceptance-
+    # tested: heaviest-crate rebuild + the full per-mutant test set both pass
+    # under it). JOBS defaults to 3 so even JOBS simultaneous balloons stay
+    # within the WSL cap (3 × 12 GiB = 36 GiB); raise it on hosts with more RAM.
+    ulimit -v 12582912
     cargo mutants -j {{ JOBS }}
     status=$?
     # 0 = all caught; 2 = missed mutants (diffed against the baseline below);
