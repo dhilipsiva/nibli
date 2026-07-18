@@ -27,6 +27,9 @@ pub mod parser;
 pub mod render;
 pub mod resolve;
 
+#[cfg(test)]
+mod shape_tests;
+
 /// The pest PEG grammar source — the normative form of NIBLI_KR §15, embedded so
 /// downstream tooling (e.g. the nibli-formalize LLM prompt) can ground on the
 /// EXACT accepted syntax, in-sync BY CONSTRUCTION: this is the same file the
