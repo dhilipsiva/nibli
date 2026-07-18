@@ -226,53 +226,12 @@ was a meaning trap); the L4 lint echoes the committed structure on first use.
 (deletion rides the site-migration bullet). Zero verdict drift across the series: full
 ci + ci-wasm green per commit (determinism corpus pinned identically on
 native/Wasmtime/V8).
-- **demo site migration (cross-repo, dhilipsiva.dev — SEPARATE Claude session)** —
-  the copy-pastable prompt was handed to the user 2026-07-12. URGENCY UP since THE
-  DROP landed (2026-07-13, user-accepted): the deployed /nibli demo is BROKEN —
-  its Lojban-era KBs no longer compile against main. Site session scope: /nibli
-  guided demo KBs+queries+copy → nibli KR. The engine side is DONE: nibli-wasm is
-  KR-only; `set_language` is a deprecated NO-OP shim (any string accepted, so
-  the prompt's `set_language("klaro")` instruction still works) and
-  `back_translate` is a deprecated echo no-op since the committed-corpus
-  milestone (the gloss layer died with the cmavo tables). Both DELETE here, in
-  this session, once the site stops calling them. ALSO in scope: remove
-  `build_nibli.sh`'s now-obsolete `dictionary-en.json` fetch step (the corpus
-  is committed — no build reads the JSON). If the site needs the old engine
-  meanwhile, pin the `v0.1-lojban-final` tag in `build_nibli.sh`.
 
 Engine bullets (language-independent; the KR program above takes precedence).
 Pipeline-audit backlog (2026-07-17; three-agent audit of front-end / middle IRs /
 back-end — effort tags S/M/L; ordered quick-wins → correctness → structure →
 performance → future-facing):
 
-- **Mutation-baseline full re-cut (M)** — `mutants-baseline.txt` entries still use
-  the PRE-rename crate paths (`logji/`=nibli-reason, `smuni/`=nibli-semantics) from
-  the 2026-07-02 cut, so a full `just mutants` sweep flags every current survivor as
-  new (path mismatch) and the on-demand gate is effectively stale. A refresh needs a
-  COMPLETABLE full sweep, currently blocked by a ballooning mutant that hits ~25 GB
-  and OOMs under the 45 GB WSL cap — bound it (a per-test memory guard, a lower `-j`,
-  or fixing the runaway mutant) then re-cut paths + descriptions. Incremental changes
-  are verified via `cargo mutants --in-diff` in the meantime (see the baseline header).
-- **Ontology-row import (brismu/zatske interchange)** — korvo proposed flat rows
-  `[P, Q, mapping]` (predicate subrelation with place mapping: identity
-  `["gerku","danlu",[1,2]]`; place deletion `["skari","ckaji",[1,2]]` — unmapped
-  source places dropped; permutation `["lanzu","cmima",[2,1]]`) as the interchange
-  format between brismu / zaha / zatske and downstream consumers (2026-07-05 Lojban
-  Discord #proga thread; korvo confirmed rows are "a good compromise"). Build an
-  importer beside `nibli-import/src/rdf.rs`/`owl.rs`: each row compiles to one
-  monotone Horn rule at the IR level (event decomposition — mapping is a role
-  renaming, deletion = roles absent from the head), arity/place validation against
-  the lexicon (strict-mode rejection semantics), per-row source/provenance field
-  surfaced in proof traces, curated Vampire differential cases for the three row
-  shapes, plus mutual-row (equivalence) cases like dugri/tenfa — positive cycles
-  legal, fuel-bounded. BLOCKED on korvo pinning the row schema + publishing a
-  baseline export. Spec feedback already sent in-thread: the mapping-list direction
-  is ambiguous (a 3-cycle case pins it), and rows want a source field for
-  provenance. POST-PIVOT NOTE: rows arrive keyed on gismu (they come from the
-  Lojban community's tools) — the importer maps them through
-  `nibli_lexicon::by_provenance`, the permanent gismu→English bridge (the same
-  one the Predilex gates key through); the importer itself is
-  language-independent.
 - **nibli-reason: upgrade the reversed material-conditional arm (`Or(Q, Not P)`)** —
   a negation on the RIGHT operand of an asserted disjunction (KR:
   `goes(me) | ~eats(me).`) registers a conditional whose condition templates carry
