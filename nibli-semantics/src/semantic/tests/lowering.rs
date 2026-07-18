@@ -1,35 +1,11 @@
+//! The identity flat-lowering and place-placement *shape* tests migrated to
+//! `nibli-kr/src/shape_tests/lowering.rs`. What stays here are the two
+//! defense-in-depth cases with no KR surface: n-ary identity (surface `=` is
+//! strictly binary) and the CLL place-counter resume (positional-after-named
+//! is parse-rejected, so an untagged term after a tagged one is a buffer shape
+//! the emitter never produces).
+
 use super::*;
-
-// ─── du (identity) predicate lowering ───────────────────────────
-
-#[test]
-fn test_equals_lowers_flat_not_event_decomposed() {
-    // `la .X. cu du la .Y.` (Root("equals") + 2 argument) must lower to a FLAT
-    // 2-arg du(X,Y) predicate — NOT the Neo-Davidsonian event form
-    // (∃e. du(e) ∧ du_x1(e,X) ∧ du_x2(e,Y)) — so nibli-reason's union-find
-    // ingestion (which matches relation=="equals" && args.len()==2) fires.
-    let predicates = vec![Predicate::Root("equals".into())];
-    let arguments = vec![
-        Argument::Pronoun(Pronoun::Me),  // 0
-        Argument::Pronoun(Pronoun::You), // 1
-    ];
-    let proposition = Proposition {
-        relation: 0,
-        terms: vec![0, 1],
-        x1_present: true,
-        negated: false,
-        tense: None,
-        deontic: None,
-    };
-    let (form, compiler) = compile_one(predicates, arguments, proposition);
-    let args =
-        get_pred_args(&form, "equals", &compiler).expect("flat du predicate must be present");
-    assert_eq!(args.len(), 2, "du must be a flat 2-arg predicate");
-    assert!(
-        !has_pred(&form, "du_x1", &compiler),
-        "du must NOT be event-decomposed (no role predicates)"
-    );
-}
 
 #[test]
 fn test_equals_with_more_than_two_arguments_is_rejected() {
@@ -107,29 +83,4 @@ fn test_cll_place_counter_resumes_after_fi() {
         "fi `le zarci` must fill x3, got {:?}",
         x3[1]
     );
-}
-
-#[test]
-fn test_untagged_before_tag_still_fills_x1() {
-    // Regression: `mi klama fe do` — untagged `mi` fills x1, `fe do` fills x2.
-    let predicates = vec![Predicate::Root("goes".into())];
-    let arguments = vec![
-        Argument::Pronoun(Pronoun::Me),  // 0
-        Argument::Pronoun(Pronoun::You), // 1
-        Argument::Tagged((1, 1)),        // 2: fe do
-    ];
-    let proposition = Proposition {
-        relation: 0,
-        terms: vec![0, 2],
-        x1_present: true,
-        negated: false,
-        tense: None,
-        deontic: None,
-    };
-    let (form, compiler) = compile_one(predicates, arguments, proposition);
-    assert!(compiler.errors.is_empty(), "errors: {:?}", compiler.errors);
-    let x1 = get_pred_args(&form, "goes_x1", &compiler).expect("goes_x1");
-    let x2 = get_pred_args(&form, "goes_x2", &compiler).expect("goes_x2");
-    assert_eq!(const_str(&compiler, &x1[1]), "me");
-    assert_eq!(const_str(&compiler, &x2[1]), "you");
 }

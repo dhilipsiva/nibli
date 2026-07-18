@@ -1,8 +1,8 @@
 use super::*;
 use crate::ir::{IrForm, IrTerm};
 use nibli_types::ast::{
-    Argument, Connective, Determiner, Marker, Predicate, Pronoun, Proposition, RelClause,
-    RelClauseKind, Sentence, SentenceConnective,
+    Argument, Determiner, Marker, Predicate, Pronoun, Proposition, RelClause, RelClauseKind,
+    Sentence,
 };
 
 /// Helper: build a minimal buffer and compile the first sentence.
@@ -265,17 +265,25 @@ fn compile_sentence_full(
     (form, compiler)
 }
 
-// ─── Topical submodules (split 2026-07-18; the shared compile/assert
-//     helpers above are reachable via `use super::*;`) ────────────────────
+// ─── Topical submodules (the shared compile/assert helpers above are
+//     reachable via `use super::*;`) ────────────────────────────────────
+//
+// SCOPE (2026-07-18): the KR-text-expressible *shape* tests migrated to
+// `nibli-kr/src/shape_tests/` (flat-vs-surface discipline). What remains here
+// is exactly the set with NO KR surface: corrupt-buffer negative controls
+// (`crate::ast_buffer_validation_tests`), the direct-injection API tests
+// (`crate::injected_fact_tests`), the internal-static units (the
+// `count_unspecified`/`inject_variable`/`fresh_var` white-box tests), and the
+// defense-in-depth guards whose inputs the KR parser/emitter rejects or cannot
+// spell first (over-arity/collision/overflow place tags, mandatory-`it`
+// firewall, unknown-word arity, `WithArgs` at proposition level, the
+// CLL place-counter, n-ary identity, arity-1 `via`).
 
 mod abstractions;
-mod events;
 mod injection;
 mod lowering;
 mod modals;
-mod quantifiers;
 mod regressions;
 mod rel_clauses;
 mod scoping;
 mod terms_misc;
-mod wrappers;

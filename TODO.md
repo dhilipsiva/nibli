@@ -245,16 +245,6 @@ Pipeline-audit backlog (2026-07-17; three-agent audit of front-end / middle IRs 
 back-end — effort tags S/M/L; ordered quick-wins → correctness → structure →
 performance → future-facing):
 
-- **Migrate hand-built semantic-shape tests toward KR-text level (M)** — the
-  deferred remainder of the test-suite hygiene item (the splits + the
-  parallel `--lib` sweep landed 2026-07-18): all 89 nibli-semantics
-  `semantic/tests/*` tests plus lib.rs's `ast_buffer_validation_tests` /
-  `injected_fact_tests` hand-build flat AstBuffers and assert IrForm shapes.
-  Migrating them per the flat-vs-surface discipline means RELOCATING to
-  nibli-engine or nibli-kr (dependency direction forbids a
-  nibli-semantics→nibli-kr dev-dep, and the crate has no KR-text helper) —
-  keep the corrupt-buffer negative controls where they are (they exist to
-  exercise the programmatic-build path).
 - **Align the WIT proof-rule tuple shape with the canonical named-field enum
   (M, 0.2.x ABI touch)** — the deferred sub-item of the Shared CoreSession
   extraction (landed 2026-07-18: nibli-session's `CoreSession` is now the one
