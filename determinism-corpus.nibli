@@ -89,3 +89,18 @@ red(Bel).
 # => FALSE
 ? beautiful(Adam).
 # => TRUE
+
+# ── negative conjunct: `A & ~B.` is ONE compound assert that ingests the
+#    positive fact AND the negative record (the `&` stays a single fact — the
+#    statement-split smoke pins that); the record decides the negated side,
+#    and the post-state of a later CONTRADICTING assert (permissive mode:
+#    warn-and-insert, contradiction surfaced by the scan, not the assert) is
+#    pinned identically across all three runtimes ──
+fast(Tam) & ~small(Tam).
+? fast(Tam).
+# => TRUE
+? small(Tam).
+# => FALSE
+small(Tam).
+? small(Tam).
+# => TRUE

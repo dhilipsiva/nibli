@@ -232,8 +232,3 @@ Pipeline-audit backlog (2026-07-17; three-agent audit of front-end / middle IRs 
 back-end — effort tags S/M/L; ordered quick-wins → correctness → structure →
 performance → future-facing):
 
-- **Determinism corpus: add a negative-conjunct line** — the corpus predates the
-  shape: add an `A & ~B.` assert + contradiction-check sequence (KR spelling) so
-  all three runtime surfaces pin it (requires re-pinning the corpus verdicts on
-  native + Wasmtime + node, and regenerating the twin while the twins gate lives).
-  The GIhA legs of the original bullet went to fanva's tracker with gerna.
