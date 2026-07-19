@@ -64,6 +64,60 @@ fn pair_emits_no_intersective_type_predicate() {
 }
 
 #[test]
+fn three_unit_stack_keeps_every_modifier() {
+    // `big fast dog(me).` — a 3-unit stack: the head `dog` gets the type
+    // predicate; BOTH modifiers contribute role predicates on the one shared
+    // event, and neither gets a standalone type predicate. Before 2026-07-19
+    // the nested pair side was collapsed to its single head name, so `fast`
+    // was silently dropped from the compiled buffer.
+    let b = lb("big fast dog(me).");
+    assert!(has_pred(&b, "dog"));
+    let dog_x1 = pred_args(&b, "dog_x1").unwrap();
+    let big_x1 = pred_args(&b, "big_x1").unwrap();
+    let fast_x1 = pred_args(&b, "fast_x1").unwrap();
+    assert_eq!(dog_x1[0], big_x1[0], "head and first modifier share the event var");
+    assert_eq!(dog_x1[0], fast_x1[0], "head and second modifier share the event var");
+    assert!(role_is_const(&b, "big_x1", "me"));
+    assert!(role_is_const(&b, "fast_x1", "me"));
+    assert!(!has_pred(&b, "big"), "modifier must not emit a standalone type pred");
+    assert!(!has_pred(&b, "fast"), "modifier must not emit a standalone type pred");
+}
+
+#[test]
+fn bracketed_stack_compiles_like_unbracketed() {
+    // `[big fast] dog(me).` — grouping is head-selection only in the
+    // shared-event encoding: every unit's roles land on the one event, so the
+    // bracketed and unbracketed spellings compile to the same buffer. Before
+    // 2026-07-19 the bracketed modifier group was collapsed to `fast` and
+    // `big` was silently dropped.
+    let bracketed = lb("[big fast] dog(me).");
+    let unbracketed = lb("big fast dog(me).");
+    assert_eq!(bracketed, unbracketed, "grouping must not drop or reorder units");
+    for r in ["dog", "dog_x1", "big_x1", "fast_x1"] {
+        assert!(has_pred(&bracketed, r), "missing {r}");
+    }
+    assert!(!has_pred(&bracketed, "big"));
+    assert!(!has_pred(&bracketed, "fast"));
+}
+
+#[test]
+fn observative_with_modifier_compiles() {
+    // `big rain().` — an observative (zero arguments) with a modifier stack:
+    // the head's and the modifier's role predicates all emit with Unspecified
+    // fillers, sharing one event; the empty argument list must not be indexed.
+    // KILLS predicate.rs `replace && with ||` on the pair-modifier
+    // `!args.is_empty() && *mod_arity > 0` face (the mutant would read
+    // args[0] from the empty list).
+    let b = lb("big rain().");
+    assert!(has_pred(&b, "rain"));
+    assert!(has_pred(&b, "rain_x1"));
+    assert!(has_pred(&b, "big_x1"), "modifier roles must emit on an observative");
+    assert!(!has_pred(&b, "big"), "modifier must not emit a standalone type pred");
+    assert_eq!(role_filler(&b, "big_x1"), Some(LogicalTerm::Unspecified));
+    assert_eq!(role_filler(&b, "rain_x1"), Some(LogicalTerm::Unspecified));
+}
+
+#[test]
 fn decompose_with_quantified_argument() {
     // `goes(some dog).` — the quantified argument still decomposes: both
     // relations and both x1 role predicates are present under the existential.

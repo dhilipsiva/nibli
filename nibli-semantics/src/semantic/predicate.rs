@@ -199,27 +199,26 @@ impl SemanticCompiler {
                 let fitted = Self::fit_args(args, arity);
                 self.event_decompose(g.as_str(), &fitted)
             }
-            Predicate::Pair((mod_id, head_id)) => {
-                // Per-unit (name, arity, conversion swaps): a converted unit's
-                // args are mapped fit-then-swap through its swap chain, exactly
-                // like the `Predicate::Converted` arm — `menli se ponse` puts the
-                // shared x1 in ponse_x2, and `se ponse datni` as a restrictor
-                // modifier likewise (the pre-2026-07-12 flatten dropped the
-                // swap silently).
-                let (mod_name, mod_arity, mod_swaps) =
-                    self.get_predicate_unit_base(*mod_id, predicates);
-                let (head_name, head_arity, head_swaps) =
-                    self.get_predicate_unit_base(*head_id, predicates);
+            Predicate::Pair(_) => {
+                // Flatten the WHOLE stack (nested pairs and groups included):
+                // one shared event; the head unit contributes the type
+                // predicate plus its roles, and every other unit contributes
+                // role predicates only — no standalone type predicate (that
+                // would be the intersective fallacy). Per-unit (name, arity,
+                // conversion swaps): a converted unit's args are mapped
+                // fit-then-swap through its swap chain, exactly like the
+                // `Predicate::Converted` arm — `menli se ponse` puts the
+                // shared x1 in ponse_x2 (the pre-2026-07-12 flatten dropped
+                // the swap silently; the pre-2026-07-19 two-unit collapse
+                // dropped whole units of a 3+ stack silently).
+                let mut modifier_units: Vec<(&str, usize, Vec<usize>)> = Vec::new();
+                let (head_name, head_arity, head_swaps) = self.collect_stack_units(
+                    predicate_id,
+                    predicates,
+                    Vec::new(),
+                    &mut modifier_units,
+                );
 
-                let mut mod_args = vec![IrTerm::Unspecified; mod_arity];
-                if !args.is_empty() && mod_arity > 0 {
-                    mod_args[0] = args[0].clone();
-                }
-                for &idx in &mod_swaps {
-                    if idx < mod_args.len() {
-                        mod_args.swap(0, idx);
-                    }
-                }
                 let mut head_args = Self::fit_args(args, head_arity);
                 for &idx in &head_swaps {
                     if idx < head_args.len() {
@@ -231,7 +230,7 @@ impl SemanticCompiler {
                 let ev_term = IrTerm::Variable(ev);
 
                 let type_pred = IrForm::Predicate {
-                    relation: self.interner.get_or_intern(&head_name),
+                    relation: self.interner.get_or_intern(head_name),
                     args: vec![ev_term.clone()],
                 };
                 let mut form = type_pred;
@@ -249,15 +248,27 @@ impl SemanticCompiler {
                     form = IrForm::And(Box::new(form), Box::new(role_pred));
                 }
 
-                // Modifier roles likewise emit Unspecified slots (shared event var
-                // keeps modifier and head describing one predication).
-                for (i, arg) in mod_args.iter().enumerate() {
-                    let role = format!("{}_x{}", mod_name, i + 1);
-                    let role_pred = IrForm::Predicate {
-                        relation: self.interner.get_or_intern(&role),
-                        args: vec![ev_term.clone(), arg.clone()],
-                    };
-                    form = IrForm::And(Box::new(form), Box::new(role_pred));
+                // Modifier roles likewise emit Unspecified slots (the shared
+                // event var keeps every unit describing one predication). Each
+                // modifier links the referent through its own x1, post-swap.
+                for (mod_name, mod_arity, mod_swaps) in &modifier_units {
+                    let mut mod_args = vec![IrTerm::Unspecified; *mod_arity];
+                    if !args.is_empty() && *mod_arity > 0 {
+                        mod_args[0] = args[0].clone();
+                    }
+                    for &idx in mod_swaps {
+                        if idx < mod_args.len() {
+                            mod_args.swap(0, idx);
+                        }
+                    }
+                    for (i, arg) in mod_args.iter().enumerate() {
+                        let role = format!("{}_x{}", mod_name, i + 1);
+                        let role_pred = IrForm::Predicate {
+                            relation: self.interner.get_or_intern(&role),
+                            args: vec![ev_term.clone(), arg.clone()],
+                        };
+                        form = IrForm::And(Box::new(form), Box::new(role_pred));
+                    }
                 }
 
                 IrForm::Exists(ev, Box::new(form))

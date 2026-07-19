@@ -213,6 +213,10 @@ rains().                               # observative — all places Unspecified
 - **Tanru:** 2+ juxtaposed predicate words — `health data(Kanrek)` (`kanro datni`).
   Right-grouping; `[ … ]` brackets give explicit grouping (`ke…ke'e`):
   `[big fast] dog`. Compiles to the shared-event tanru shape, never intersection.
+  Every unit's role predicates land on the ONE shared event — stacks of any depth
+  keep every unit (since 2026-07-19; earlier builds silently dropped units of 3+
+  stacks). Grouping is head-selection only in this encoding: `[big fast] dog` and
+  `big fast dog` compile identically (a disclosed flattening).
 - **Compounds:** `computer+user` — a multi-part `a+b` spelling resolves **only via a
   committed corpus CompoundEntry** (nibli-lexicon `src/corpus/compounds.rs`), which
   declares the relation ident it compiles to (`computer_user`) and its full place

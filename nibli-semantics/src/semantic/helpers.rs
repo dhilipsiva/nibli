@@ -192,43 +192,60 @@ impl SemanticCompiler {
         }
     }
 
-    /// Resolves a pair UNIT to its base head name, arity, and the conversion
-    /// swap chain (outermost first, as x1↔x{n} target indices 1..=4) collected
-    /// from `Converted` layers on the way down. The pair arm of `apply_predicate`
-    /// maps each unit's argument vector through these swaps (fit-then-swap,
-    /// mirroring the `Predicate::Converted` arm), so a converted unit keeps its
-    /// surface place structure: `menli se ponse` puts the shared x1 in
-    /// ponse_x2 (possessed), not ponse_x1. Before 2026-07-12 the pair arm
-    /// flattened units through `get_predicate_head_name`/`get_predicate_arity`,
-    /// which unwrap `Converted` WITHOUT the swap — silently compiling
+    /// Flattens a (possibly nested) modifier stack into its full unit list.
+    ///
+    /// Returns the stack's true HEAD unit as `(name, arity, swaps)` and pushes
+    /// every other unit into `modifiers` (surface order, left to right), each
+    /// with the conversion swap chain (outermost first, as x1↔x{n} target
+    /// indices 1..=4) collected from its own `Converted` layers. The pair arm
+    /// of `apply_predicate` maps each unit's argument vector through these
+    /// swaps (fit-then-swap, mirroring the `Predicate::Converted` arm), so a
+    /// converted unit keeps its surface place structure: `menli se ponse` puts
+    /// the shared x1 in ponse_x2 (possessed), not ponse_x1. Before 2026-07-12
+    /// the pair arm flattened units WITHOUT the swap — silently compiling
     /// `menli se ponse` identically to `menli ponse`, a CLL-fidelity bug.
-    pub(crate) fn get_predicate_unit_base<'a>(
+    ///
+    /// Grouping is head-selection only in the shared-event encoding: every
+    /// unit's role predicates land on the ONE shared event, so `[big fast] dog`
+    /// and `big fast dog` compile to the same buffer (head `dog`, modifiers
+    /// `big` + `fast`). Before 2026-07-19 a nested pair SIDE was collapsed to
+    /// a single head name, silently dropping the other unit(s) of a 3+ stack
+    /// from the compiled buffer — silent assertion loss, fixed by this
+    /// recursive walk.
+    pub(crate) fn collect_stack_units<'a>(
         &self,
         predicate_id: u32,
         predicates: &'a [Predicate],
+        swaps: Vec<usize>,
+        modifiers: &mut Vec<(&'a str, usize, Vec<usize>)>,
     ) -> (&'a str, usize, Vec<usize>) {
-        let mut swaps: Vec<usize> = Vec::new();
-        let mut id = predicate_id;
-        loop {
-            match &predicates[id as usize] {
-                Predicate::Converted((conv, inner_id)) => {
-                    swaps.push(match conv {
-                        Conversion::Swap12 => 1,
-                        Conversion::Swap13 => 2,
-                        Conversion::Swap14 => 3,
-                        Conversion::Swap15 => 4,
-                    });
-                    id = *inner_id;
-                }
-                Predicate::Grouped(inner_id) => id = *inner_id,
-                _ => break,
+        match &predicates[predicate_id as usize] {
+            Predicate::Converted((conv, inner_id)) => {
+                let mut s = swaps;
+                s.push(match conv {
+                    Conversion::Swap12 => 1,
+                    Conversion::Swap13 => 2,
+                    Conversion::Swap14 => 3,
+                    Conversion::Swap15 => 4,
+                });
+                self.collect_stack_units(*inner_id, predicates, s, modifiers)
             }
+            Predicate::Grouped(inner_id) => {
+                self.collect_stack_units(*inner_id, predicates, swaps, modifiers)
+            }
+            Predicate::Pair((mod_id, head_id)) => {
+                // The modifier side contributes ALL of its units as modifiers
+                // of the shared event — including its own internal head.
+                let m = self.collect_stack_units(*mod_id, predicates, Vec::new(), modifiers);
+                modifiers.push(m);
+                self.collect_stack_units(*head_id, predicates, swaps, modifiers)
+            }
+            _ => (
+                self.get_predicate_head_name(predicate_id, predicates),
+                self.get_predicate_arity(predicate_id, predicates),
+                swaps,
+            ),
         }
-        (
-            self.get_predicate_head_name(id, predicates),
-            self.get_predicate_arity(id, predicates),
-            swaps,
-        )
     }
 
     /// Builds an opaque the_domain_X restrictor predicate for le descriptions.

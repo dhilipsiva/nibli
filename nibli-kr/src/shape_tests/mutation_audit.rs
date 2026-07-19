@@ -143,7 +143,7 @@ fn mutation_audit_block_exact_count_converted_domain_binds_swapped_place() {
 #[test]
 fn mutation_audit_pair_converted_modifier_keeps_swap() {
     // KILLS helpers.rs `delete match arm Predicate::Converted(...) in
-    // SemanticCompiler::get_predicate_unit_base` AND predicate.rs
+    // SemanticCompiler::collect_stack_units` AND predicate.rs
     // `replace < with ==` / `with >` on the `idx < mod_args.len()`
     // pair-modifier swap face of apply_predicate: in `owned dog(Rex)` the
     // converted modifier unit must keep its swap — Rex is the OWNED thing
@@ -176,7 +176,7 @@ fn mutation_audit_pair_converted_head_keeps_swap() {
 #[test]
 fn mutation_audit_grouped_converted_unit_keeps_swap() {
     // KILLS helpers.rs `delete match arm Predicate::Grouped(...) in
-    // SemanticCompiler::get_predicate_unit_base`: the unit-base walk must keep
+    // SemanticCompiler::collect_stack_units`: the unit walk must keep
     // collecting swaps THROUGH a `[...]` group, or `[owned] dog(Rex)` silently
     // loses the conversion the ungrouped spelling keeps.
     let b = lb("[owned] dog(Rex).");
