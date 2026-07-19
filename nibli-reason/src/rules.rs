@@ -1366,7 +1366,7 @@ pub(super) fn compile_forall_to_rule(
             | LogicNode::FutureNode(_)
             | LogicNode::ObligatoryNode(_)
             | LogicNode::PermittedNode(_) => {
-                return Err("cannot compile a tense (pu/ca/ba) or deontic (ei/e'e) \
+                return Err("cannot compile a tense (past/now/future) or deontic (must/may) \
                      wrapping a whole universal/conditional rule: a timeless \
                      backward-chaining rule cannot carry whole-rule tense or \
                      modality without over-claiming on untensed facts. Rejecting \

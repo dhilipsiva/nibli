@@ -198,7 +198,7 @@ a place selector, and relative clauses:
 pred(term, term, …)                    # positional: fills x1..xN in order
 pred(label: term, …)                   # named: label from the place_labels map, or raw x1..x5
 goes(me, destination: some market).    # mixed: positionals first, then named
-rains().                               # observative — all places Unspecified
+rain().                                # observative — all places Unspecified
 ```
 
 - Parens are **mandatory** — a bare word is never a claim (the "bridi needs a selbri"
@@ -605,11 +605,16 @@ pred obligated(who, duty).
 
 These *look* Lojban-flavored but are load-bearing engine semantics, and v2 keeps them:
 
-- **Neo-Davidsonian event decomposition** — it is what makes omitted/named arguments
-  work (`goes(me)` matches a fact `goes(me, market)` via role predicates). Removing it
-  would require a replacement subsumption mechanism and would invalidate the verified
-  seam, the ASP translator's regrouping, and the conformance surface bridging the Lean
-  proofs. Role predicates simply carry declared names (`goes_x1(ev, a)`).
+- **Neo-Davidsonian event decomposition** — the representation that turns each
+  predication into an event with declared role predicates (`goes_x1(ev, a)`), which the
+  verified seam, the ASP translator's regrouping, and the conformance surface bridging
+  the Lean proofs all build on. Removing it would require a replacement mechanism and
+  would invalidate all three. It does **not** make omitted arguments wildcard-match:
+  named args and converted aliases route mechanically to the right role, but an omitted
+  place is an explicit `Unspecified` **value**, not a wildcard — so `goes(me)` and
+  `goes(me, Paris)` are different claims that do not unify (asserting the latter leaves
+  the former FALSE). Only identically-padded predications match: `goes(me, Paris)` ≡
+  `goes(me, destination: Paris)`, since the named form routes to the same place.
 - **`=` (du) union-find equality**; **stratified NAF + CWA** (with assert-time
   stratification rejection); **`exactly N`/`no` CountNode counting** — now *without* the
   witness-exclusion clause, since xorlo witnesses no longer exist; **abstraction opacity

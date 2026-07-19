@@ -1066,7 +1066,7 @@ mod tests {
     #[test]
     fn ground_facts_and_terms() {
         assert_claim("person(Adam).", pred("person", vec![pos(name("Adam"))]));
-        assert_claim("rains().", pred("rains", vec![]));
+        assert_claim("rain().", pred("rain", vec![]));
         assert_claim(
             "goes(me, to: some market).",
             pred(
