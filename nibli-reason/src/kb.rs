@@ -1198,32 +1198,22 @@ pub(super) fn register_ground_material_conditional(
                 true
             }
             // Also check Or(Q, Not(P)) — reversed order (commutativity). nibli-semantics's
-            // ganai/go/jo always emit Not-on-left, but a `na` on the RIGHT operand of a
-            // disjunction (`mi klama .i ja mi na citka`, `… gi'a na citka`) lands here.
-            // KNOWN LIMITATION (completeness only, see TODO.md): this simpler path bakes
-            // the assertion's own event-Skolem CONSTANTS into the condition templates, so
-            // an event-decomposed condition never unifies with a later assertion's fresh
-            // event Skolem — the registered conditional is inert (never fires modus
-            // ponens). The forward arm above was upgraded to `compile_forall_to_rule`
-            // (ev__ pattern vars) precisely to fix that orientation; mirroring it here is
-            // tracked in TODO.md. Never unsound — a missing derivation is FALSE = "not
-            // derivable", within stated semantics.
-            else if let Ok(LogicNode::NotNode(neg_inner)) = get_node(buffer, *r) {
-                let mut typed_conds = Vec::new();
-                collect_ground_facts(buffer, *neg_inner, subs, None, &mut typed_conds);
-                let mut typed_concls = Vec::new();
-                collect_ground_facts(buffer, *l, subs, None, &mut typed_concls);
-                let label = build_typed_rule_label(&typed_conds, &typed_concls);
-                register_rule(
-                    inner,
-                    label,
-                    vec![],
-                    typed_conds,
-                    typed_concls,
-                    vec![],
-                    vec![],
-                    false,
-                )?;
+            // `->`/`<->` always emit Not-on-left, but a `~` on the RIGHT operand of a
+            // disjunction (KR `goes(me) | ~eats(me).`) lands here. Same conditional
+            // (¬P∨Q ≡ P→Q), so route through the SAME compiler as the forward arm —
+            // `decompose_implication` only matches Not-on-LEFT, so present it a swapped
+            // copy: clone the buffer and append `Or(Not P, Q)` (all child indices stay
+            // valid; the new node sits at the max index, preserving the post-order
+            // invariant). Condition-side event existentials become `ev__` pattern vars,
+            // so the rule FIRES on later assertions (this arm used to bake the
+            // assertion's own event-Skolem constants — an inert rule; and for a
+            // non-leaf Not body it registered a zero-condition rule that derived the
+            // consequent unconditionally — both repaired by the swap route).
+            else if matches!(get_node(buffer, *r), Ok(LogicNode::NotNode(_))) {
+                let mut swapped = buffer.clone();
+                swapped.nodes.push(LogicNode::OrNode((*r, *l)));
+                let swapped_id = (swapped.nodes.len() - 1) as u32;
+                compile_forall_to_rule(&swapped, swapped_id, subs, inner)?;
                 true
             } else {
                 // A bare disjunction Or(P, Q) with no negation is not a material

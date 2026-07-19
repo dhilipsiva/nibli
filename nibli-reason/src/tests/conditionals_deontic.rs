@@ -101,6 +101,113 @@ fn test_material_conditional_chain() {
     assert!(query(&kb, make_query("sol", "melbi")));
 }
 
+// ── Reversed material conditional (`A | ~B`, Not on the RIGHT operand) ──
+// SHAPE-DEPENDENT (event-Skolem unification), so these build the buffers the
+// real way via `compile_surface` — the flat helper above would not exhibit the
+// pre-fix inertness (no event decomposition). The reversed arm now routes
+// through the same rule compiler as the forward spelling.
+
+#[test]
+fn reversed_material_conditional_surface_modus_ponens() {
+    // `goes(Adam) | ~eats(Adam).` ≡ eats→goes; + eats(Adam) ⊢ goes(Adam).
+    let kb = new_kb();
+    assert_buf(&kb, compile_surface("goes(Adam) | ~eats(Adam)."));
+    assert_buf(&kb, compile_surface("eats(Adam)."));
+    assert!(query(&kb, compile_surface("goes(Adam).")));
+}
+
+#[test]
+fn reversed_material_conditional_surface_order_invariant() {
+    // Premise first, disjunction second — backward chaining is order-independent.
+    let kb = new_kb();
+    assert_buf(&kb, compile_surface("eats(Adam)."));
+    assert_buf(&kb, compile_surface("goes(Adam) | ~eats(Adam)."));
+    assert!(query(&kb, compile_surface("goes(Adam).")));
+}
+
+#[test]
+fn reversed_material_conditional_surface_negative_controls() {
+    // Without the premise, the consequent stays underivable (closed-world FALSE).
+    let kb = new_kb();
+    assert_buf(&kb, compile_surface("goes(Adam) | ~eats(Adam)."));
+    assert!(query_false(&kb, compile_surface("goes(Adam).")));
+
+    // The entity constant stays CONSTANT in the condition template — only the
+    // event variable generalizes. A different entity's premise must not fire.
+    let kb2 = new_kb();
+    assert_buf(&kb2, compile_surface("goes(Adam) | ~eats(Adam)."));
+    assert_buf(&kb2, compile_surface("eats(Bel)."));
+    assert!(query_false(&kb2, compile_surface("goes(Adam).")));
+}
+
+#[test]
+fn reversed_and_forward_spellings_behave_identically() {
+    // `goes(A) | ~eats(A).` and `~eats(A) | goes(A).` are the same conditional —
+    // both orientations must fire modus ponens now.
+    let fwd = new_kb();
+    assert_buf(&fwd, compile_surface("~eats(Adam) | goes(Adam)."));
+    assert_buf(&fwd, compile_surface("eats(Adam)."));
+    assert!(query(&fwd, compile_surface("goes(Adam).")));
+
+    let rev = new_kb();
+    assert_buf(&rev, compile_surface("goes(Adam) | ~eats(Adam)."));
+    assert_buf(&rev, compile_surface("eats(Adam)."));
+    assert!(query(&rev, compile_surface("goes(Adam).")));
+}
+
+#[test]
+fn reversed_arm_nonleaf_not_body_no_longer_registers_zero_condition_rule() {
+    // RAW-FOL regression (no KR surface: `~(A & B)` operands are grammar-rejected):
+    // `Or(A, Not(And(B, C)))` ≡ (B∧C)→A. The old reversed arm collected ZERO
+    // conditions from the non-leaf Not body (collect_ground_facts skips And under
+    // Not) and registered a condition-less rule that derived A unconditionally —
+    // UNSOUND. The swap route DNF-expands it soundly; A must NOT be derivable
+    // from an empty KB, and must derive once both conjuncts hold.
+    let kb = new_kb();
+    let mut nodes = Vec::new();
+    let a = pred(
+        &mut nodes,
+        "gusni",
+        vec![
+            LogicalTerm::Constant("sol".to_string()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let b = pred(
+        &mut nodes,
+        "barda",
+        vec![
+            LogicalTerm::Constant("sol".to_string()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let c = pred(
+        &mut nodes,
+        "tsali",
+        vec![
+            LogicalTerm::Constant("sol".to_string()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let bc = and(&mut nodes, b, c);
+    let nbc = not(&mut nodes, bc);
+    let root = or(&mut nodes, a, nbc);
+    assert_buf(
+        &kb,
+        LogicBuffer {
+            nodes,
+            roots: vec![root],
+        },
+    );
+    // No premises → A is not derivable (the old code derived it from NOTHING).
+    assert!(query_false(&kb, make_query("sol", "gusni")));
+
+    // With both conjuncts asserted, (B∧C)→A fires.
+    assert_buf(&kb, make_assertion("sol", "barda"));
+    assert_buf(&kb, make_assertion("sol", "tsali"));
+    assert!(query(&kb, make_query("sol", "gusni")));
+}
+
 // ── Deontic predicate tests ──
 
 /// Helper: build a 3-place deontic assertion: Pred(rel, [Const(entity), Const(action), Zoe])

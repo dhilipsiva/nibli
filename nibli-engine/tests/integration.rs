@@ -1986,6 +1986,144 @@ fn forethought_implication_reasons() {
     assert_false(&holds, "ganai: danlu must NOT hold without gerku");
 }
 
+// ── Reversed material conditional (`A | ~B` — negation on the RIGHT operand) ──
+// `goes(Adam) | ~eats(Adam).` compiles to Or(Q, Not P) ≡ eats→goes. The reversed
+// arm now routes through the same rule compiler as the forward `~B | A` spelling
+// (adversarial-review finding 2026-07-10: it used to register an INERT rule whose
+// condition templates froze the assertion's own event Skolems).
+
+#[test]
+fn reversed_disjunction_reasons_modus_ponens() {
+    // eats(Adam) + (eats→goes) ⊢ goes(Adam) — the Q→P + Q ⊢ P case.
+    let engine = engine_with_facts(&["goes(Adam) | ~eats(Adam).", "eats(Adam)."]);
+    let (holds, _t, _j) = engine.query_text_with_proof("goes(Adam).").unwrap();
+    assert_true(
+        &holds,
+        "A | ~B: goes should derive from eats (modus ponens through the reversed arm)",
+    );
+
+    // Negative control: without the premise, the consequent is not derivable.
+    let only_rule = engine_with_facts(&["goes(Adam) | ~eats(Adam)."]);
+    let (holds, _t, _j) = only_rule.query_text_with_proof("goes(Adam).").unwrap();
+    assert_false(&holds, "A | ~B: goes must NOT hold without eats");
+
+    // Wrong-entity control: the real constant stays constant in the template —
+    // only the EVENT variable generalizes. A different entity's eating must not fire.
+    let wrong = engine_with_facts(&["goes(Adam) | ~eats(Adam).", "eats(Bel)."]);
+    let (holds, _t, _j) = wrong.query_text_with_proof("goes(Adam).").unwrap();
+    assert_false(&holds, "A | ~B: eats(Bel) must not derive goes(Adam)");
+}
+
+#[test]
+fn reversed_disjunction_assertion_order_invariant() {
+    // Backward chaining fires at query time, so premise-first works too.
+    let engine = engine_with_facts(&["eats(Adam).", "goes(Adam) | ~eats(Adam)."]);
+    let (holds, _t, _j) = engine.query_text_with_proof("goes(Adam).").unwrap();
+    assert_true(
+        &holds,
+        "A | ~B: premise asserted BEFORE the disjunction must still derive",
+    );
+}
+
+#[test]
+fn trailing_negation_multi_disjunct_registers_constraint() {
+    // `A | B | ~C.` left-folds to Or(Or(A,B), Not C) — the reversed arm with a
+    // DISJUNCTIVE consequent. It used to fail ("no extractable conclusions");
+    // now it swaps into the same DisjunctiveConstraint path as the grouped
+    // forward spelling: C → A∨B, an integrity constraint (deriving a disjunct
+    // would be unsound), violated when C holds and both disjuncts are denied.
+    let engine = engine_with_facts(&[
+        "goes(Adam) | walks(Adam) | ~eats(Adam).",
+        "eats(Adam).",
+        "~goes(Adam).",
+        "~walks(Adam).",
+    ]);
+    let v = engine.check_contradictions();
+    assert!(
+        v.iter()
+            .any(|m| m.contains("Disjunctive constraint violated")),
+        "eats holds and both positive disjuncts denied → constraint violation: {v:?}"
+    );
+}
+
+// ── Mutation-audit kill-tests (2026-07-18 re-cut): each pins a behavior a
+// surviving mutant showed to be untested. ──
+
+#[test]
+fn tensed_find_enumerates_witnesses_per_flavor() {
+    // find_witnesses' Past/Present/Future arms: a tensed find query must
+    // enumerate the flavor's witnesses (deleting an arm degrades to a
+    // verdict-only walk with an EMPTY binding set — wrong [Find]/count output).
+    let engine = engine_with_facts(&["past dog(Dan).", "now dog(Adam).", "future dog(Bel)."]);
+    for (q, who) in [
+        ("past dog($da).", "dan"),
+        ("now dog($da).", "adam"),
+        ("future dog($da).", "bel"),
+    ] {
+        let tuples = engine.query_find_text(q).unwrap();
+        assert_eq!(tuples.len(), 1, "{q}: exactly one witness expected");
+        let bound = format!("{:?}", tuples[0]).to_lowercase();
+        assert!(
+            bound.contains(who),
+            "{q}: binding must name {who}, got {bound}"
+        );
+    }
+}
+
+#[test]
+fn now_and_future_naf_restrictors_blocked_by_matching_witness() {
+    // collect_group_event_candidates' Present/Future condition arms: the
+    // candidate NARROWING must stay flavor-consistent with the witness check —
+    // deleting a flavor arm anchors the group tenseless, misses the flavored
+    // witness, and fires the rule on a spurious "no witness" (a WRONG TRUE).
+    // The Past twin is pinned by tensed_negated_restrictor_blocked_by_past_witness.
+    for flavor in ["now", "future"] {
+        let engine = engine_with_facts(&[
+            &format!("beautiful(every person where {flavor} ~dog(it))."),
+            "person(Adam).",
+            &format!("{flavor} dog(Adam)."),
+        ]);
+        let (holds, _t, _j) = engine.query_text_with_proof("beautiful(Adam).").unwrap();
+        assert_false(
+            &holds,
+            &format!("a `{flavor}` witness must block the `{flavor} ~dog` restrictor"),
+        );
+
+        // Fires-side control: a different person with no witness derives.
+        let fires = engine_with_facts(&[
+            &format!("beautiful(every person where {flavor} ~dog(it))."),
+            "person(Bel).",
+        ]);
+        let (holds, _t, _j) = fires.query_text_with_proof("beautiful(Bel).").unwrap();
+        assert_true(&holds, "no witness → the tensed NAF restrictor fires");
+    }
+}
+
+#[test]
+fn deontic_negated_fact_asserts_ok() {
+    // find_negation_body's deontic arm: `must ~P.` is legal KR (deontic outside,
+    // `~` innermost) — deleting the arm flips the assertion to a zero-ingest
+    // rejection. Pin that it asserts cleanly.
+    let engine = fresh_engine();
+    let ids = engine
+        .assert_text("must ~eats(Adam).")
+        .expect("`must ~eats(Adam).` is a legal, representable assertion");
+    assert!(!ids.is_empty(), "the deontic negation must ingest a record");
+}
+
+#[test]
+fn negated_tail_xor_forward_half_reasons() {
+    // `goes(me) ^ ~eats(me).` flattens to And(Or(K, Not C), Not(And(K, Not C))):
+    // the inner Or hits the reversed arm, so its K↔C forward half (eats→goes) now
+    // FIRES — sound (Xor(K,¬C) ≡ K↔C entails C→K). Previously the half was inert.
+    let engine = engine_with_facts(&["goes(me) ^ ~eats(me).", "eats(me)."]);
+    let (holds, _t, _j) = engine.query_text_with_proof("goes(me).").unwrap();
+    assert_true(
+        &holds,
+        "negated-tail xor: eats should derive goes (the K↔C forward half)",
+    );
+}
+
 #[test]
 fn forethought_biconditional_go_gi_reasons_both_directions() {
     // go A gi B  ==  A <-> B. Reasons from either side (no CycleCut).
@@ -2019,6 +2157,140 @@ fn afterthought_biconditional_jo_reasons_both_directions() {
     assert_true(
         &holds,
         ".i jo biconditional: danlu should derive gerku (reverse)",
+    );
+}
+
+#[test]
+fn second_witness_family_survives_skolem_registry_dedup() {
+    // Kills rules.rs `replace == with != in compile_forall_to_rule` (the
+    // skolem_fn_registry dedup `any(|e| e.base_name == *base)`). Under the
+    // mutant, once the FIRST rule occupies the registry every LATER distinct
+    // witness base is skipped, so a base with dep_count 2 falls back to the
+    // `unwrap_or(1)` default and its candidates are built with the wrong
+    // dependency shape (`sk(a)` instead of `sk((a, b))`) — the second
+    // family's entailment and find silently die.
+    let engine = engine_with_facts(&[
+        "loves(every dog, some cat).",
+        "gives(every person, recipient: every dog, gift: some book).",
+        "dog(Rex).",
+        "person(Adam).",
+    ]);
+    let (holds, _t, _j) = engine
+        .query_text_with_proof("loves(Rex, some cat).")
+        .unwrap();
+    assert_true(&holds, "first family: the dog's loved-cat witness derives");
+    let (holds, _t, _j) = engine
+        .query_text_with_proof("gives(Adam, some book, Rex).")
+        .unwrap();
+    assert_true(
+        &holds,
+        "second family: the (person, dog)-dependent book witness derives",
+    );
+    let tuples = engine.query_find_text("gives(Adam, $b, Rex).").unwrap();
+    assert_eq!(
+        tuples.len(),
+        1,
+        "find must enumerate the dep-2 book witness: {tuples:?}"
+    );
+    let tuples = engine.query_find_text("loves(Rex, $c).").unwrap();
+    assert_eq!(
+        tuples.len(),
+        1,
+        "find must enumerate the dep-1 cat witness: {tuples:?}"
+    );
+}
+
+#[test]
+fn existentially_scoped_ground_conditional_registers_and_chains() {
+    // Kills kb.rs `replace match guard subs.contains_key(v.as_str()) with false
+    // in register_ground_material_conditional`: the root ∃ of a prenex-some
+    // conditional must be peeled (its variable IS in the Skolem subs) so the
+    // inner Or(Not P, Q) registers as a backward-chaining rule. Under the
+    // mutant the assertion still ingests the positive person leaf (no error),
+    // but the conditional silently vanishes and the entailment below is lost.
+    let engine = engine_with_facts(&[
+        "some person $p: goes($p) -> eats($p).",
+        "goes(every person).",
+        "person(Kim).",
+    ]);
+    let (holds, _t, _j) = engine
+        .query_text_with_proof("some person $p: eats($p).")
+        .unwrap();
+    assert_true(
+        &holds,
+        "the ∃-witness person goes (universal) hence eats (the ∃-scoped conditional)",
+    );
+}
+
+#[test]
+fn impure_negation_body_stays_fail_closed() {
+    // Kills kb.rs `replace && with || in negation_body_purely_representable`
+    // (both sites). A negation body carrying a disjunction cannot be
+    // represented by the negative-fact registry (`collect_ground_facts` drops
+    // Or leaves — recording would STRENGTHEN ¬(dog ∧ (walks ∨ goes)) to
+    // ¬(dog ∧ …)), so the assertion must stay a loud zero-ingest rejection.
+    // Under either || mutant the pure siblings (And site) or the skolemized ∃
+    // guard (Exists site) short-circuit the walk to `true` and the assert
+    // wrongly succeeds.
+    let engine = fresh_engine();
+    let err = engine
+        .assert_text("~eats(some dog where walks(it) | goes(it)).")
+        .expect_err("a disjunctive negation body must be rejected fail-closed");
+    assert!(
+        err.to_string().contains("no representable content"),
+        "expected the zero-ingest rejection, got: {err}"
+    );
+    // Control: the pure-conjunction body is representable and asserts fine.
+    assert!(
+        engine
+            .assert_text("~eats(some dog where walks(it) & goes(it)).")
+            .is_ok(),
+        "a pure-conjunction negation body must stay assertable"
+    );
+    // Second observable for the And site: the Xor lowering's Not(And(K, ¬C))
+    // half is impure too — recording its strengthened body would fabricate a
+    // ¬goes group and flag a contradiction on this CONSISTENT KB.
+    let xor = engine_with_facts(&["goes(me) ^ ~eats(me).", "goes(me)."]);
+    assert!(
+        xor.check_contradictions().is_empty(),
+        "no negative group may be recorded from the impure Xor half: {:?}",
+        xor.check_contradictions()
+    );
+}
+
+#[test]
+fn find_expands_du_aliases_from_the_index() {
+    // Kills kb.rs `delete ! in extract_from_index` (the
+    // `!equivalence_parent.is_empty()` guard; the `!tense_matches` twin dies
+    // too). The dog index holds the raw alias `kim`; the du link Kim = Adam
+    // must expand the candidate set with the canonical name, and the
+    // deterministic dedup then keeps the canonical-name tuple. Without the
+    // expansion the surviving binding displays `kim` (equivalence mutant) or
+    // the index yields nothing at all (tense mutant).
+    let engine = engine_with_facts(&["dog(Kim).", "dog(Bel).", "Kim = Adam."]);
+    let tuples = engine.query_find_text("dog($da).").unwrap();
+    assert_eq!(tuples.len(), 2, "two distinct dogs expected: {tuples:?}");
+    let bound = format!("{tuples:?}").to_lowercase();
+    assert!(
+        bound.contains("adam") && bound.contains("bel"),
+        "du-expanded canonical witness (adam) + the plain dog (bel) expected, got {bound}"
+    );
+}
+
+#[test]
+fn negated_conjunct_inside_existential_records_for_contradictions() {
+    // Kills kb.rs `replace match guard subs.contains_key(v.as_str()) with false
+    // in record_negative_conjuncts`: the ∃-root must be peeled so the negated
+    // conjunct INSIDE the existential's And-spine reaches the negative-fact
+    // registry. Under the mutant the walk falls to the single-negation arm,
+    // which sees a non-negation And and records nothing — the later contrary
+    // positive then sails through check_contradictions.
+    let engine = engine_with_facts(&["some person $p: goes($p) & ~dog(Kim).", "dog(Kim)."]);
+    let v = engine.check_contradictions();
+    assert!(
+        v.iter()
+            .any(|m| m.contains("Negation contradiction") && m.contains("dog")),
+        "the ∃-scoped ~dog(Kim) must be recorded and contradicted by dog(Kim): {v:?}"
     );
 }
 
