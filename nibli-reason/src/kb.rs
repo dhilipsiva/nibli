@@ -491,7 +491,7 @@ pub(super) struct NegatedExistsGroup {
 /// Templates use bare pattern variables (e.g., `x__v0`) instead of bound values.
 #[derive(Clone)]
 pub(super) struct UniversalRuleRecord {
-    /// Human-readable label, e.g. "gerku → danlu"
+    /// Human-readable label, e.g. "dog → animal"
     pub(super) label: String,
     /// Condition templates (with PatternVar terms for structural unification).
     pub(super) typed_conditions: Vec<StoredFact>,
@@ -1992,7 +1992,8 @@ fn asserted_numeric_comparison(leaves: &[StoredFact]) -> Option<&'static str> {
 
 /// Entailment-side ∃ candidate narrowing (the ∃-heavy query blowup fix).
 ///
-/// Unlike `collect_candidates` (the find path), this narrows ONLY from
+/// Unlike the retired find-only collector (`collect_candidates`, whose path
+/// now shares this one), this narrows ONLY from
 /// MANDATORY positive anchors — predicates not under any `Or` (an Or-branch
 /// anchor is optional, so narrowing by it could miss witnesses), and never
 /// compute or query-time-evaluated relations (`du`, `zmadu`, `mleca`,
