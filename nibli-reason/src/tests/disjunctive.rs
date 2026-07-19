@@ -298,6 +298,52 @@ fn make_deontic_event_assertion(entity: &str, predicate: &str, permitted: bool) 
 }
 
 #[test]
+fn tensed_ground_conditional_fails_closed_plain_tensed_fact_still_asserts() {
+    // RAW-FOL defense-in-depth (no KR surface: a tensed sentence connective does
+    // not parse): `Past(Or(Not P, Q))` used to be silently STRIPPED to a bare —
+    // flavor-polymorphic, MORE permissive — rule. It now fails closed, mirroring
+    // compile_forall_to_rule's whole-rule-tense rejection.
+    let kb = new_kb();
+    let mut nodes = Vec::new();
+    let p = pred(
+        &mut nodes,
+        "barda",
+        vec![
+            LogicalTerm::Constant("sol".to_string()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let q = pred(
+        &mut nodes,
+        "tsali",
+        vec![
+            LogicalTerm::Constant("sol".to_string()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let np = not(&mut nodes, p);
+    let o = or(&mut nodes, np, q);
+    let past_id = nodes.len() as u32;
+    nodes.push(LogicNode::PastNode(o));
+    let tensed_conditional = LogicBuffer {
+        nodes,
+        roots: vec![past_id],
+    };
+    let err = kb
+        .assert_fact_inner(tensed_conditional, String::new())
+        .expect_err("a tensed ground conditional must be rejected, not silently stripped");
+    assert!(
+        err.contains("whole-rule tense or modality"),
+        "rejection must name the whole-rule tense/modality hazard: {err}"
+    );
+
+    // Control: a PLAIN tensed/deontic fact (no conditional inside) still asserts —
+    // the guard is shape-conditional, not a blanket tense rejection.
+    let kb2 = new_kb();
+    assert_buf(&kb2, make_deontic_event_assertion("sol", "citka", false));
+}
+
+#[test]
 fn test_deontic_obligatory_antecedent_is_flavor_exact() {
     // `Obligatory(P(x)) → R(x)` fires only on a stored Obligatory(P) fact — a
     // BARE P must not satisfy the deontic condition. (2026-07 fix: this test

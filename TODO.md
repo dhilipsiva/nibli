@@ -232,25 +232,6 @@ Pipeline-audit backlog (2026-07-17; three-agent audit of front-end / middle IRs 
 back-end — effort tags S/M/L; ordered quick-wins → correctness → structure →
 performance → future-facing):
 
-- **nibli-reason: upgrade the reversed material-conditional arm (`Or(Q, Not P)`)** —
-  a negation on the RIGHT operand of an asserted disjunction (KR:
-  `goes(me) | ~eats(me).`) registers a conditional whose condition templates carry
-  the assertion's own event-Skolem CONSTANTS, so it can never unify with a later
-  assertion's fresh event Skolem — the rule is inert (modus ponens never fires;
-  completeness-only, never unsound; adversarial-review finding 2026-07-10, found
-  via the Lojban `.i ja … na` spelling — the same IR shape is reachable from KR).
-  The forward arm (Not-on-left) was upgraded to `compile_forall_to_rule` (ev__
-  pattern vars) precisely for this; mirror it in the reversed arm
-  (`register_ground_material_conditional`, nibli-reason kb.rs) and add the
-  `Q→P + Q ⊢ P` engine test the adversarial review used to confirm the gap.
-  AUDIT CONFIRMATIONS (2026-07-17): the reversed arm is kb.rs:1143-1159 (bakes
-  the Skolem constants via `collect_ground_facts` + `register_rule`; the forward
-  arm's `compile_forall_to_rule` at kb.rs:1123-1130 is the model). Two
-  same-family findings ride along: the `^`/Xor assert path flattens to
-  And(Or, Not(And)) and registers nothing (kb.rs:1800 — fails closed rather than
-  reasons), and the self-labeled "SURFACE-UNREACHABLE dead-defensive"
-  tense/deontic strip inside the same fn (kb.rs:1102-1113) should become a
-  debug_assert or be deleted.
 - **Determinism corpus: add a negative-conjunct line** — the corpus predates the
   shape: add an `A & ~B.` assert + contradiction-check sequence (KR spelling) so
   all three runtime surfaces pin it (requires re-pinning the corpus verdicts on

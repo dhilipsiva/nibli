@@ -1151,6 +1151,34 @@ pub(super) fn invalidate_pred_cache(inner: &KnowledgeBaseInner) {
     inner.pred_cache_enabled.set(false);
 }
 
+/// Detector for the tense/deontic fail-closed guard below: does the subtree
+/// contain a material-conditional shape (an `Or` with a `Not` operand on either
+/// side) reachable through the same transparent wrappers
+/// `register_ground_material_conditional` itself walks (Exists/And/tense)?
+/// Pure — no registration side effects (the `tense_wraps_skolemized_exists_over_forall`
+/// detector-then-reject precedent).
+fn tensed_body_hides_conditional(buffer: &LogicBuffer, node_id: u32) -> bool {
+    let Ok(node) = get_node(buffer, node_id) else {
+        return false;
+    };
+    match node {
+        LogicNode::ExistsNode((_, body)) => tensed_body_hides_conditional(buffer, *body),
+        LogicNode::PastNode(n)
+        | LogicNode::PresentNode(n)
+        | LogicNode::FutureNode(n)
+        | LogicNode::ObligatoryNode(n)
+        | LogicNode::PermittedNode(n) => tensed_body_hides_conditional(buffer, *n),
+        LogicNode::AndNode((l, r)) => {
+            tensed_body_hides_conditional(buffer, *l) || tensed_body_hides_conditional(buffer, *r)
+        }
+        LogicNode::OrNode((l, r)) => {
+            matches!(get_node(buffer, *l), Ok(LogicNode::NotNode(_)))
+                || matches!(get_node(buffer, *r), Ok(LogicNode::NotNode(_)))
+        }
+        _ => false,
+    }
+}
+
 pub(super) fn register_ground_material_conditional(
     buffer: &LogicBuffer,
     node_id: u32,
@@ -1167,16 +1195,29 @@ pub(super) fn register_ground_material_conditional(
         LogicNode::ExistsNode((v, body)) if subs.contains_key(v.as_str()) => {
             register_ground_material_conditional(buffer, *body, subs, inner)?
         }
-        // Transparent tense/deontic strip. SURFACE-UNREACHABLE: tense (pu/ca/ba) and
-        // deontics (ei/e'e) are proposition-level, never wrapping a sentence connective —
-        // `pu ganai P gi Q` does not parse — so nibli-semantics never produces a tensed/deontic
-        // ground material conditional `Past(Or(Not(P), Q))`. Kept as dead-defensive
-        // raw-FOL completeness (mirrors the assert-path strip in `collect_ground_facts`).
+        // Tense/deontic wrapper. SURFACE-UNREACHABLE for conditionals: tense (past/now/
+        // future) and deontics (must/may) are proposition-level, never wrapping a sentence
+        // connective — a tensed conditional does not parse — so nibli-semantics never produces
+        // `Past(Or(Not(P), Q))`. A RAW-FOL injector can, though, and the old transparent
+        // strip silently compiled it to a BARE (flavor-polymorphic) rule — MORE permissive
+        // than the tensed conditional licenses. FAIL CLOSED on that shape instead
+        // (mirroring `compile_forall_to_rule`'s whole-rule-tense rejection); plain tensed/
+        // deontic facts still recurse harmlessly to `false` as before.
         LogicNode::PastNode(n)
         | LogicNode::PresentNode(n)
         | LogicNode::FutureNode(n)
         | LogicNode::ObligatoryNode(n)
         | LogicNode::PermittedNode(n) => {
+            if tensed_body_hides_conditional(buffer, *n) {
+                return Err(
+                    "cannot register a tense (past/now/future) or deontic (must/may) \
+                     wrapping a ground material conditional: a timeless backward-chaining \
+                     rule cannot carry whole-rule tense or modality without over-claiming \
+                     on untensed facts. Rejecting the assertion to preserve soundness; \
+                     restate the temporal/deontic scope on the relevant predicate instead."
+                        .to_string(),
+                );
+            }
             register_ground_material_conditional(buffer, *n, subs, inner)?
         }
         LogicNode::AndNode((l, r)) => {
