@@ -389,3 +389,68 @@ fn test_assert_fact_with_description_terms() {
         }
     ));
 }
+
+/// Kills kb.rs `replace match guard subs.contains_key(v.as_str()) with false
+/// in register_ground_material_conditional`. The guard peels a SKOLEMIZED
+/// root ∃ so the conditional under it registers as a rule. The KR front-end
+/// distributes ∃-closure per operand (the compiled root is an And whose Or
+/// conjunct sits at the top level), so the peel only fires on RAW-FOL
+/// buffers — `assert_fact` is a public buffer API, and this is exactly the
+/// shape: ∃x.(goes(x) → eats(x)). Under the mutant the ∃ never peels: no
+/// rule registers AND nothing was collected, so the assertion is wrongly
+/// rejected as having no representable content — and the chained entailment
+/// below is lost.
+#[test]
+fn skolemized_root_exists_over_conditional_registers_and_chains() {
+    let kb = new_kb();
+    let mut nodes = Vec::new();
+    let goes = pred(
+        &mut nodes,
+        "goes",
+        vec![
+            LogicalTerm::Variable("x".to_string()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let eats = pred(
+        &mut nodes,
+        "eats",
+        vec![
+            LogicalTerm::Variable("x".to_string()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let n_goes = not(&mut nodes, goes);
+    let cond = or(&mut nodes, n_goes, eats);
+    let root = exists(&mut nodes, "x", cond);
+    assert_buf(
+        &kb,
+        LogicBuffer {
+            nodes,
+            roots: vec![root],
+        },
+    );
+    // Everything goes (a bare prenex universal), so the ∃-witness goes,
+    // hence — through the registered conditional — it eats.
+    let mut nodes = Vec::new();
+    let body = pred(
+        &mut nodes,
+        "goes",
+        vec![
+            LogicalTerm::Variable("_y0".to_string()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let root = forall(&mut nodes, "_y0", body);
+    assert_buf(
+        &kb,
+        LogicBuffer {
+            nodes,
+            roots: vec![root],
+        },
+    );
+    assert!(
+        query(&kb, make_find_query("eats")),
+        "the ∃-scoped conditional must register and chain: something eats"
+    );
+}

@@ -603,6 +603,87 @@ fn cycle_plus_deep_chain_stays_complete() {
     );
 }
 
+/// Build a 2-condition flat rule ∀x. (c1(x) ∧ c2(x)) → concl(x),
+/// encoded as ∀x. ¬(c1(x) ∧ c2(x)) ∨ concl(x).
+fn make_universal_2cond(c1: &str, c2: &str, concl: &str) -> LogicBuffer {
+    let mut nodes = Vec::new();
+    let mk = |nodes: &mut Vec<LogicNode>, rel: &str| {
+        pred(
+            nodes,
+            rel,
+            vec![
+                LogicalTerm::Variable("_v0".to_string()),
+                LogicalTerm::Unspecified,
+            ],
+        )
+    };
+    let a = mk(&mut nodes, c1);
+    let b = mk(&mut nodes, c2);
+    let ante = and(&mut nodes, a, b);
+    let head = mk(&mut nodes, concl);
+    let neg_ante = not(&mut nodes, ante);
+    let disj = or(&mut nodes, neg_ante, head);
+    let root = forall(&mut nodes, "_v0", disj);
+    LogicBuffer {
+        nodes,
+        roots: vec![root],
+    }
+}
+
+/// Kills reasoning.rs `replace + with * in try_backward_chain_core` — the
+/// `cycle_cut_epoch.get() + 1` bump at the cycle guard. Freezing the epoch
+/// lets a cycle-CONTAMINATED depth cut be tabled; the poisoned entry then
+/// replays for the same goal's CLEAN, deeper occurrence on the other branch
+/// and the query freezes at ResourceExceeded instead of proving TRUE.
+///
+/// Topology (all flat; registration order = rule try order):
+///   rrr ← aaa ∧ fff            (branch 1: evaluating aaa is what poisons ggg)
+///   rrr ← xxx1 ← xxx2 ← ggg    (branch 2: the clean path, ggg at depth 3)
+///   aaa ← ggg                  (tried first: descends into ggg with aaa on
+///                               the visited stack)
+///   aaa ← yyy1 ← yyy2 ← yyy3.  (resolves aaa TRUE at pass 4 — cached)
+///   ggg ← aaa                  (the cycle back-edge: CUT under branch 1,
+///                               provable via the aaa cache under branch 2)
+///   ggg ← ddd1 ← … ← ddd12     (dead chain: exhausts every pass's budget)
+///   fff ← fff                  (positive self-loop: keeps rule 1 permanently
+///                               pending-not-firing WITHOUT a definitive False
+///                               that could abort the condition loop before
+///                               aaa is evaluated)
+/// At max_chain_depth 5: pass 4 evaluates ggg under aaa's frame — the ggg←aaa
+/// branch cycle-cuts (epoch bump) and the ddd chain exhausts, a CONTAMINATED
+/// Depth cut. Unmutated it is NOT tabled, so pass 5's branch-2 re-derivation
+/// proves ggg via the (by then cached-TRUE) aaa and the query is TRUE. The
+/// mutant tables it (remaining 3) and replays it at branch 2's remaining 2,
+/// freezing every pass at ResourceExceeded.
+#[test]
+fn contaminated_depth_cut_is_not_tabled_for_replay() {
+    let kb = new_kb();
+    kb.set_max_chain_depth(5);
+    assert_buf(&kb, make_universal_2cond("aaa", "fff", "rrr"));
+    assert_buf(&kb, make_universal("xxx1", "rrr"));
+    assert_buf(&kb, make_universal("xxx2", "xxx1"));
+    assert_buf(&kb, make_universal("ggg", "xxx2"));
+    assert_buf(&kb, make_universal("ggg", "aaa"));
+    assert_buf(&kb, make_universal("yyy1", "aaa"));
+    assert_buf(&kb, make_universal("yyy2", "yyy1"));
+    assert_buf(&kb, make_universal("yyy3", "yyy2"));
+    assert_buf(&kb, make_universal("aaa", "ggg"));
+    assert_buf(&kb, make_universal("ddd1", "ggg"));
+    for i in 1..12 {
+        assert_buf(
+            &kb,
+            make_universal(&format!("ddd{}", i + 1), &format!("ddd{i}")),
+        );
+    }
+    assert_buf(&kb, make_universal("fff", "fff"));
+    assert_buf(&kb, make_assertion("adam", "yyy3"));
+    assert!(
+        query(&kb, make_query("adam", "rrr")),
+        "the clean branch-2 derivation must prove rrr despite the contaminated \
+         depth cut recorded (and correctly NOT tabled) under branch 1"
+    );
+}
+
 /// The depth-cut table shares pred_cache's mutation lifecycle: a query that
 /// populates the table (unresolvable chain head) must not leak stale Depth
 /// entries into the re-query after the missing base fact is asserted.

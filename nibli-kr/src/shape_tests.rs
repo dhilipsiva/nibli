@@ -277,6 +277,7 @@ mod abstractions;
 mod events;
 mod injection;
 mod lowering;
+mod mutation_audit;
 mod quantifiers;
 mod regressions;
 mod rel_clauses;

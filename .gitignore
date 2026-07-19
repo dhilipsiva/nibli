@@ -28,3 +28,5 @@ data/
 models/
 .claude
 mutants.out*
+# Local cargo-install root (wasm-pack etc., created inside the nix shell)
+.cargo-local/

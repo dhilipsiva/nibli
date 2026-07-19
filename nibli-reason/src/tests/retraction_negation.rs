@@ -325,3 +325,50 @@ fn split_roots_keeps_connective_as_one_fact() {
         "a connective (`.i je`) must stay one compound fact"
     );
 }
+
+/// Kills kb.rs `replace match guard subs.contains_key(v.as_str()) with false
+/// in record_negative_conjuncts`. The guard peels a SKOLEMIZED root ∃ so a
+/// negated conjunct inside its And-spine reaches the negative-fact registry.
+/// The KR front-end distributes ∃-closure per conjunct (the root is an And),
+/// so the peel only fires on RAW-FOL buffers — `assert_fact` is a public
+/// buffer API, and this is exactly the shape: ∃x.(person(x) ∧ ¬dog(kim)).
+/// Under the mutant the walk falls to the single-negation arm, whose own
+/// root-shape check sees a non-negation And under the ∃ and records nothing —
+/// the later contrary positive then sails through check_contradictions.
+#[test]
+fn negated_conjunct_under_raw_root_exists_records_for_contradictions() {
+    let kb = new_kb();
+    let mut nodes = Vec::new();
+    let person = pred(
+        &mut nodes,
+        "person",
+        vec![
+            LogicalTerm::Variable("x".to_string()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let dog_kim = pred(
+        &mut nodes,
+        "dog",
+        vec![
+            LogicalTerm::Constant("kim".to_string()),
+            LogicalTerm::Unspecified,
+        ],
+    );
+    let neg = not(&mut nodes, dog_kim);
+    let both = and(&mut nodes, person, neg);
+    let root = exists(&mut nodes, "x", both);
+    assert_buf(
+        &kb,
+        LogicBuffer {
+            nodes,
+            roots: vec![root],
+        },
+    );
+    assert_buf(&kb, make_assertion("kim", "dog"));
+    let v = kb.check_contradictions();
+    assert!(
+        v.iter().any(|m| m.contains("dog")),
+        "the ∃-scoped ¬dog(kim) must be recorded and contradicted by dog(kim): {v:?}"
+    );
+}

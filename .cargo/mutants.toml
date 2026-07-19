@@ -12,13 +12,17 @@ examine_globs = [
     "nibli-semantics/src/semantic/*.rs",
 ]
 
-# Run the three suites that actually pin these paths for EVERY mutant: the two
-# mutated crates' own tests plus nibli-engine's integration tests (full
-# parse -> compile -> reason pipeline — much of the kill power for nibli-reason/smuni
-# lives there). Never the whole workspace: a workspace `cargo test` links the
-# cdylib component crates (WIT `@` export symbols break the linker), and the
-# nibli-verify differential sweeps are far too slow per-mutant.
-test_package = ["nibli-reason", "nibli-semantics", "nibli-engine"]
+# Run the suites that actually pin these paths for EVERY mutant: the two
+# mutated crates' own tests, nibli-engine's integration tests (full
+# parse -> compile -> reason pipeline), AND nibli-kr — its shape_tests/ suite
+# (migrated out of nibli-semantics 2026-07-18) is the killer for most
+# nibli-semantics compile-shape mutants; omitting it silently dropped that
+# kill power from this gate (2026-07-18 re-cut audit finding: 9 survivors
+# whose killers lived only there). Never the whole workspace: a workspace
+# `cargo test` links the cdylib component crates (WIT `@` export symbols
+# break the linker), and the nibli-verify differential sweeps are far too
+# slow per-mutant.
+test_package = ["nibli-reason", "nibli-semantics", "nibli-engine", "nibli-kr"]
 
 # --tests = unit + integration targets, no doctests (doctests are not part of
 # the CI gate). logji's reasoning tests share global state via RefCell and
