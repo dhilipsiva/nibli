@@ -197,7 +197,7 @@ a place selector, and relative clauses:
 ```nibli-kr
 pred(term, term, …)                    # positional: fills x1..xN in order
 pred(label: term, …)                   # named: label from the place_labels map, or raw x1..x5
-goes(me, to: some market).             # mixed: positionals first, then named
+goes(me, destination: some market).    # mixed: positionals first, then named
 rains().                               # observative — all places Unspecified
 ```
 
@@ -227,10 +227,10 @@ rains().                               # observative — all places Unspecified
   `product(50, 5, 10).` (`pilji`; tolerant isclose, trusted-backend policy unchanged).
   There is deliberately **no infix arithmetic sugar** — the three equality notions
   (du / dunli / compute-isclose) must stay unconflatable.
-- **Modal tags** (`via`): `goes(me, to: some market) via cause(some rain).`
+- **Modal tags** (`via`): `goes(me, destination: some market) via cause(some rain).`
   = `… ri'a lo carvi`. BAI and `fi'o` are one construct (BAI compiles exactly as `fi'o`
   over the mapped gismu): `cause↦rinka(ri'a)`, `entails↦nibli(ni'i)`, `motive↦mukti(mu'i)`,
-  `reason↦krinu(ki'u)`, `tool↦pilno(pi'o)`, `instead_of↦basti(ba'i)`; any predicate name
+  `reason↦krinu(ki'u)`, `uses↦pilno(pi'o)`, `replace↦basti(ba'i)`; any predicate name
   works (`via uses(some car)`). Arity<2 modals fail closed at compile, as today.
 
 **Abstractions** are brace-delimited opaque terms (implicit-`some` descriptions over the
@@ -339,7 +339,7 @@ equivalent). A claim containing `?` run as a query returns `[Find]` bindings:
 
 ```nibli-kr
 eats(Adam).                   # asserted: a fact — queried: an entailment check
-goes(?, to: some market).     # ma-style find
+goes(?, destination: some market).     # ma-style find
 ```
 
 `?` is anonymous and per-occurrence independent (exact `ma` semantics). Named find-vars
