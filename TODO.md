@@ -227,8 +227,13 @@ was a meaning trap); the L4 lint echoes the committed structure on first use.
 ci + ci-wasm green per commit (determinism corpus pinned identically on
 native/Wasmtime/V8).
 
-Engine bullets (language-independent; the KR program above takes precedence).
-Pipeline-audit backlog (2026-07-17; three-agent audit of front-end / middle IRs /
-back-end — effort tags S/M/L; ordered quick-wins → correctness → structure →
-performance → future-facing):
-
+**ENGINE BACKLOG: DRAINED (2026-07-19).** The 2026-07-17 pipeline-audit backlog is
+fully worked or deliberately retired: Tense×NAF (flavor-aware + clingo-oracled),
+store schema v3 (Text→Buffer migrate-on-open, WIT 0.5.0), the reversed
+material-conditional arm (+ the fail-closed tense-strip rider), the
+determinism-corpus negative-conjunct line (pinned on native/Wasmtime/node), and the
+mutation-baseline full re-cut (985-mutant sweep under the new 12 GiB OOM guard,
+nibli-kr added to the per-mutant set, 33 new kill-tests, one latent raw-FOL
+unsoundness repaired) all LANDED; the ontology-row import (externally blocked) and
+the demo-site migration (cross-repo session) were removed as stale by the user.
+New engine work starts a fresh list here.

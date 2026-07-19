@@ -1,150 +1,206 @@
 # Mutation-testing survivor baseline — soundness paths (`just mutants`)
 #
-# Cut 2026-07-02 (triage COMPLETE — no pending category): every survivor below is
-# individually bucketed into a justified category. Scope + per-mutant test set in
-# .cargo/mutants.toml (logji + smuni + nibli-engine suites; stabilized timeouts —
-# long-but-finite mutants complete deterministically instead of flapping between
-# the timeout bucket and missed under parallel load).
+# RE-CUT 2026-07-19 (triage COMPLETE — no pending category) from a 985-mutant
+# full sweep on current paths/identifiers: 702 caught + 26 timeouts (a mutant
+# that hangs or trips the recipe's 12 GiB ulimit -v guard IS a catch — the
+# tests noticed), 73 unviable, 184 missed = 164 survivors after line:col
+# normalization. Scope + per-mutant test set in .cargo/mutants.toml
+# (nibli-reason + nibli-semantics + nibli-engine + nibli-kr — nibli-kr's
+# shape_tests joined the set at this re-cut; their 2026-07-18 migration out of
+# nibli-semantics had silently dropped that kill power).
 #
-# Format: mutants.out/missed.txt lines with line:col stripped (unrelated edits do
-# not shift entries). `just mutants` FAILS on any survivor not listed here and
-# prompts a shrink when a listed one is killed. Lines starting with # are ignored.
+# Format: mutants.out/missed.txt lines with line:col stripped (unrelated edits
+# do not shift entries). `just mutants` FAILS on any survivor not listed here
+# and prompts a shrink when a listed one is killed. Lines starting with # are
+# ignored. A normalized line can cover MULTIPLE mutation sites of the same
+# description in one function; the category below applies to the SURVIVING
+# faces (killed faces were verified dead by raw line:col at the re-cut).
 #
-# Triage history: first sweep 139 survivors; round 1 killed 24 (+ the deontic
-# rule-position soundness fix); round 2 killed ~30 more via targeted tests
-# (tense/deontic rule conditions and consequents per flavor, disjunctive
-# witnesses, NAF antecedents, exact-count bounds with non-definitive members,
-# forall-over-compute batch polarity, te/xe conversions, be+fi merge, du across
-# tense, over-arity fail-closed rejection, built-in arithmetic verdicts, FNV-1a
-# reference vectors) and pinned two disclosed semantics (count assertions are
-# verdict-inert; li numbers never enter the quantifier domain).
-#
-# NOTE (2026-07-18): the entries below use the PRE-rename crate paths (`logji/` =
-# nibli-reason, `smuni/` = nibli-semantics) — they predate the crate rename and a
-# full re-cut has not been run since (a full `cargo mutants` sweep OOMs in the
-# current 45 GB WSL cap: a ballooning mutant hits ~25 GB). A path/description
-# refresh from a completable full sweep is pending (tracked in TODO.md). In the
-# meantime, incremental soundness changes are verified with `cargo mutants
-# --in-diff` over just the changed lines: the tense×NAF flavor-aware
-# `NegatedExistsGroup` change (2026-07-18) tested 7 mutants over its diff — 6
-# caught, 1 unviable, 0 survivors — so it added no new baseline entry.
+# Triage history: 2026-07-02 first cut — 139 survivors, two targeted-test
+# rounds (~54 killed), one real deontic soundness bug found and fixed, 112
+# baselined. 2026-07-19 re-cut audit: 106 new survivors triaged (three
+# parallel per-file passes), 33 killed by new targeted tests (strict-rollback
+# atomicity, stratification-rollback arithmetic, skolem-registry dedup,
+# NAF-group early-return, depth-cut epoch poisoning, tensed find enumeration,
+# now/future NAF narrowing, deontic negation-body, du-alias find expansion,
+# Exists-scoped conditionals, impure negation bodies, abstraction content-key
+# integrity (canon_term/canon_wrap/canon_var), Swap13/14/15 place routing,
+# converted description/block domains, pair converted units, arity-2 via) —
+# incl. one latent raw-FOL UNSOUNDNESS repaired en route (the reversed
+# material-conditional arm's zero-condition rule) and two old mis-filed C
+# entries (Future-arm find/narrowing) re-examined and killed; 9 survivors
+# resolved by the nibli-kr scope fix; the rest re-verified into the four
+# categories below.
 
-# ── Category A: EXPLANATION LAYER — trace/display/diagnostics text only, never a verdict: proof-step wording and indeterminate-reason strings, [Note:]/[Trace]/[Forward]/[Skolem] prints and their gates, rule branch labels, no-op trace sinks
-logji/src/kb.rs: delete ! in KnowledgeBaseInner::diag_enabled
-logji/src/kb.rs: delete ! in process_assertion
-logji/src/kb.rs: replace && with || in GroundTerm::to_display_string
-logji/src/kb.rs: replace && with || in process_assertion
-logji/src/kb.rs: replace < with <= in GroundTerm::to_display_string
-logji/src/kb.rs: replace == with != in GroundTerm::to_display_string
-logji/src/kb.rs: replace KnowledgeBaseInner::diag_enabled -> bool with true
-logji/src/reasoning.rs: delete ! in trace_predicate_provenance_typed
-logji/src/reasoning.rs: delete ! in try_backward_chain_core
-logji/src/reasoning.rs: delete match arm QueryResult::ResourceExceeded(k) in check_formula_holds_core
-logji/src/reasoning.rs: delete match arm QueryResult::Unknown(r) in check_formula_holds_core
-logji/src/reasoning.rs: delete match arm StoredFact::Future(_) in tense_label_of
-logji/src/reasoning.rs: delete match arm StoredFact::Present(_) in tense_label_of
-logji/src/reasoning.rs: replace != with == in du_substitution_note
-logji/src/reasoning.rs: replace && with || in trace_predicate_provenance_typed
-logji/src/reasoning.rs: replace && with || in try_backward_chain_core
-logji/src/reasoning.rs: replace + with * in emit_derived
-logji/src/reasoning.rs: replace < with <= in trace_predicate_provenance_typed
-logji/src/reasoning.rs: replace <impl TraceSink for NoOpSink>::push -> u32 with 1
-logji/src/reasoning.rs: replace <impl TraceSink for NoOpSink>::trace_child -> u32 with 1
-logji/src/reasoning.rs: replace > with == in trace_predicate_provenance_typed
-logji/src/reasoning.rs: replace > with >= in trace_predicate_provenance_typed
-logji/src/rules.rs: delete ! in trigger_forward_rules
-logji/src/rules.rs: replace != with == in trigger_forward_rules
-logji/src/rules.rs: replace -= with /= in trigger_forward_rules
-logji/src/rules.rs: replace > with < in register_clause_rule
+# ── Category A: EXPLANATION LAYER — trace/display/diagnostics text only, never a verdict: proof-step wording and indeterminate-reason strings (incl. the equals_substitution_note variants), [Note:]/[Trace]/[Forward]/[Skolem] prints and their gates, rule branch labels, no-op trace sinks, int-vs-float display thresholds
+nibli-reason/src/kb.rs: delete ! in KnowledgeBaseInner::diag_enabled
+nibli-reason/src/kb.rs: delete ! in process_assertion
+nibli-reason/src/kb.rs: replace && with || in GroundTerm::to_display_string
+nibli-reason/src/kb.rs: replace && with || in KnowledgeBaseInner::diag_enabled
+nibli-reason/src/kb.rs: replace && with || in process_assertion
+nibli-reason/src/kb.rs: replace < with <= in GroundTerm::to_display_string
+nibli-reason/src/kb.rs: replace < with == in GroundTerm::to_display_string
+nibli-reason/src/kb.rs: replace < with > in GroundTerm::to_display_string
+nibli-reason/src/kb.rs: replace == with != in GroundTerm::to_display_string
+nibli-reason/src/kb.rs: replace KnowledgeBaseInner::diag_enabled -> bool with false
+nibli-reason/src/kb.rs: replace KnowledgeBaseInner::diag_enabled -> bool with true
+nibli-reason/src/reasoning.rs: delete ! in trace_predicate_provenance_typed
+nibli-reason/src/reasoning.rs: delete ! in try_backward_chain_core
+nibli-reason/src/reasoning.rs: delete match arm QueryResult::ResourceExceeded(k) in check_formula_holds_core
+nibli-reason/src/reasoning.rs: delete match arm QueryResult::Unknown(r) in check_formula_holds_core
+nibli-reason/src/reasoning.rs: delete match arm StoredFact::Future(_) in tense_label_of
+nibli-reason/src/reasoning.rs: delete match arm StoredFact::Present(_) in tense_label_of
+nibli-reason/src/reasoning.rs: replace != with == in equals_substitution_note
+nibli-reason/src/reasoning.rs: replace && with || in trace_predicate_provenance_typed
+nibli-reason/src/reasoning.rs: replace && with || in try_backward_chain_core
+nibli-reason/src/reasoning.rs: replace + with * in emit_derived
+nibli-reason/src/reasoning.rs: replace < with <= in trace_predicate_provenance_typed
+nibli-reason/src/reasoning.rs: replace <impl TraceSink for NoOpSink>::push -> u32 with 1
+nibli-reason/src/reasoning.rs: replace <impl TraceSink for NoOpSink>::trace_child -> u32 with 1
+nibli-reason/src/reasoning.rs: replace > with == in trace_predicate_provenance_typed
+nibli-reason/src/reasoning.rs: replace > with >= in trace_predicate_provenance_typed
+nibli-reason/src/reasoning.rs: replace equals_substitution_note -> String with "xyzzy".into()
+nibli-reason/src/reasoning.rs: replace equals_substitution_note -> String with String::new()
+nibli-reason/src/rules.rs: delete ! in trigger_forward_rules
+nibli-reason/src/rules.rs: replace != with == in trigger_forward_rules
+nibli-reason/src/rules.rs: replace -= with += in trigger_forward_rules
+nibli-reason/src/rules.rs: replace -= with /= in trigger_forward_rules
+nibli-reason/src/rules.rs: replace > with < in register_clause_rule
+nibli-semantics/src/semantic/helpers.rs: replace == with != in SemanticCompiler::resolve_argument
 
-# ── Category B: WARN-ONLY PATHS — permissive-mode sort/constraint warnings (eprintln), the documented warn-and-insert semantics; verdicts unchanged by design (strict mode is a tracked item)
-logji/src/kb.rs: delete ! in check_constraints_for_predicate
-logji/src/kb.rs: delete ! in is_sort_compatible
-logji/src/kb.rs: replace == with != in check_constraints_for_predicate
-logji/src/kb.rs: replace == with != in is_sort_compatible
-logji/src/kb.rs: replace check_constraints_for_predicate -> Option<String> with Some("xyzzy".into())
-logji/src/kb.rs: replace check_constraints_for_predicate -> Option<String> with Some(String::new())
-logji/src/kb.rs: replace is_sort_compatible -> bool with true
-logji/src/rules.rs: delete ! in assert_typed_fact
-logji/src/rules.rs: replace && with || in assert_typed_fact
-logji/src/rules.rs: replace >= with < in assert_typed_fact
+# ── Category B: WARN-ONLY PATHS — permissive-mode sort/constraint warnings (eprintln), the documented warn-and-insert semantics; verdicts unchanged by design (strict mode has its own pinned rejection path)
+nibli-reason/src/kb.rs: delete ! in is_sort_compatible
+nibli-reason/src/kb.rs: replace == with != in is_sort_compatible
+nibli-reason/src/kb.rs: replace is_sort_compatible -> bool with false
+nibli-reason/src/kb.rs: replace is_sort_compatible -> bool with true
+nibli-reason/src/rules.rs: delete ! in assert_typed_fact
+nibli-reason/src/rules.rs: replace && with || in assert_typed_fact
+nibli-reason/src/rules.rs: replace >= with < in assert_typed_fact
 
-# ── Category C: STRATEGY/REDUNDANCY-EQUIVALENT — every branch computes the same verdict: index and candidate-selection heuristics (smallest-index pick, non-indexable/decidability fast paths, rule-bucket sort, Cow fast-paths), the union-find rank/path-compression choices, predicate-cache lifecycle (every query begins clear+enable; asserts clear entries), the DNF resource-cap boundary, NAF depth-accounting off-by-one (shifts only the resource boundary; cycle guard still terminates), cycle-key under-collapse (cost/RE, never a flip), du equivalence-shortcut layers that are redundant with assert/query-time canonicalization (du suites pass with each layer stubbed), candidate-filter/lookahead condition selection where the downstream full evaluation is authoritative, and find_witnesses wrapper arms whose default branch evaluates the same formula for boolean entailment (they shape witness ENUMERATION, a gasnu/UI surface)
-logji/src/kb.rs: delete match arm (Cow::Borrowed(_), Cow::Borrowed(_)) in substitute_term
-logji/src/kb.rs: delete match arm LogicNode::ObligatoryNode(inner_id) | LogicNode::PermittedNode(inner_id) in collect_mandatory_anchors
-logji/src/kb.rs: delete match arm StoredFact::Future(_) in collect_group_event_candidates
-logji/src/kb.rs: replace != with == in collect_group_event_candidates
-logji/src/kb.rs: replace < with <= in collect_group_event_candidates
-logji/src/kb.rs: replace < with > in collect_group_event_candidates
-logji/src/kb.rs: replace == with != in find_canonical
-logji/src/kb.rs: replace enable_pred_cache with ()
-logji/src/kb.rs: replace invalidate_pred_cache with ()
-logji/src/kb.rs: replace is_non_indexable_relation -> bool with false
-logji/src/kb.rs: replace match guard candidates.len() < prev.len() with false in collect_group_event_candidates
-logji/src/kb.rs: replace match guard candidates.len() < prev.len() with true in collect_entailment_candidates
-logji/src/kb.rs: replace match guard p != &current with true in find_canonical_readonly
-logji/src/reasoning.rs: delete ! in check_predicate_in_kb_typed
-logji/src/reasoning.rs: delete ! in filter_event_candidates
-logji/src/reasoning.rs: delete match arm GroundTerm::Constant(s) in is_event_skolem_term
-logji/src/reasoning.rs: delete match arm GroundTerm::DepPair(a, b) in stored_fact_contains_var::term_contains_var
-logji/src/reasoning.rs: delete match arm GroundTerm::SkolemFn(_, dep) in stored_fact_contains_var::term_contains_var
-logji/src/reasoning.rs: delete match arm LogicNode::AndNode((l, r)) in find_witnesses
-logji/src/reasoning.rs: delete match arm LogicNode::FutureNode(inner_node) in find_witnesses
-logji/src/reasoning.rs: delete match arm LogicNode::OrNode((l, r)) in find_witnesses
-logji/src/reasoning.rs: replace != with == in condition_is_index_decidable
-logji/src/reasoning.rs: replace != with == in typed_fact_is_asserted_with_equivalence
-logji/src/reasoning.rs: replace && with || in bind_join_vars_from_index
-logji/src/reasoning.rs: replace && with || in check_predicate_in_kb_typed
-logji/src/reasoning.rs: replace && with || in process_phase
-logji/src/reasoning.rs: replace > with == in check_predicate_in_kb_typed
-logji/src/reasoning.rs: replace condition_is_index_decidable -> bool with false
-logji/src/reasoning.rs: replace sort_rule_bucket with ()
-logji/src/reasoning.rs: replace typed_fact_is_asserted_with_equivalence -> Option<StoredFact> with None
-logji/src/reasoning.rs: replace || with && in stored_fact_contains_var::term_contains_var
-logji/src/rules.rs: replace > with >= in generate_count_extra_witnesses
-logji/src/rules.rs: delete ! in generate_count_extra_witnesses
-logji/src/kb.rs: delete match arm LogicNode::AndNode((l, r)) | LogicNode::OrNode((l, r)) in contains_count_node
-smuni/src/semantic/compile.rs: replace += with *= in SemanticCompiler::compile_bridi
-smuni/src/semantic/compile.rs: replace < with > in SemanticCompiler::compile_bridi
+# ── Category C: STRATEGY/REDUNDANCY-EQUIVALENT — every branch computes the same verdict: index and candidate-selection heuristics (anchor tie-breaks, smallest-set picks, non-indexable/decidability fast paths with authoritative downstream evaluation, find_var_position extraction fallback, rule-bucket sort, Cow fast-paths), union-find rank/orientation choices, predicate-cache lifecycle, DNF/du resource-cap boundaries (cost or Unknown only, never a flip), NAF depth-accounting off-by-ones, cycle-key under-collapse, du equivalence-shortcut layers redundant with assert/query-time canonicalization, skolem-fn dep-chain duplication that stays injective through the single builder
+nibli-reason/src/kb.rs: delete ! in find_var_position
+nibli-reason/src/kb.rs: delete match arm (Cow::Borrowed(_), Cow::Borrowed(_)) in substitute_term
+nibli-reason/src/kb.rs: delete match arm LogicNode::AndNode((l, r)) | LogicNode::OrNode((l, r)) in contains_count_node
+nibli-reason/src/kb.rs: delete match arm LogicNode::FutureNode(inner_id) in collect_mandatory_anchors
+nibli-reason/src/kb.rs: delete match arm LogicNode::ObligatoryNode(inner_id) | LogicNode::PermittedNode(inner_id) in collect_mandatory_anchors
+nibli-reason/src/kb.rs: delete match arm LogicNode::PastNode(inner_id) in collect_mandatory_anchors
+nibli-reason/src/kb.rs: delete match arm LogicNode::PresentNode(inner_id) in collect_mandatory_anchors
+nibli-reason/src/kb.rs: delete match arm None in collect_group_event_candidates
+nibli-reason/src/kb.rs: replace != with == in collect_group_event_candidates
+nibli-reason/src/kb.rs: replace < with <= in collect_entailment_candidates
+nibli-reason/src/kb.rs: replace < with <= in collect_group_event_candidates
+nibli-reason/src/kb.rs: replace < with == in collect_entailment_candidates
+nibli-reason/src/kb.rs: replace < with == in collect_group_event_candidates
+nibli-reason/src/kb.rs: replace < with > in collect_entailment_candidates
+nibli-reason/src/kb.rs: replace < with > in collect_group_event_candidates
+nibli-reason/src/kb.rs: replace == with != in find_canonical
+nibli-reason/src/kb.rs: replace >= with < in union_terms
+nibli-reason/src/kb.rs: replace collect_group_event_candidates -> Option<Vec<GroundTerm>> with None
+nibli-reason/src/kb.rs: replace enable_pred_cache with ()
+nibli-reason/src/kb.rs: replace invalidate_pred_cache with ()
+nibli-reason/src/kb.rs: replace is_non_indexable_relation -> bool with false
+nibli-reason/src/kb.rs: replace match guard !is_abstraction_marker(buffer, *l) with true in all_conjuncts_reduce_to_negation
+nibli-reason/src/kb.rs: replace match guard candidates.len() < prev.len() with false in collect_entailment_candidates
+nibli-reason/src/kb.rs: replace match guard candidates.len() < prev.len() with false in collect_group_event_candidates
+nibli-reason/src/kb.rs: replace match guard candidates.len() < prev.len() with true in collect_entailment_candidates
+nibli-reason/src/kb.rs: replace match guard candidates.len() < prev.len() with true in collect_group_event_candidates
+nibli-reason/src/kb.rs: replace match guard p != &current with true in find_canonical_readonly
+nibli-reason/src/kb.rs: replace root_reduces_to_negation -> bool with true
+nibli-reason/src/kb.rs: replace || with && in is_non_indexable_relation
+nibli-reason/src/reasoning.rs: delete ! in check_predicate_in_kb_typed
+nibli-reason/src/reasoning.rs: delete ! in condition_is_index_decidable
+nibli-reason/src/reasoning.rs: delete ! in filter_event_candidates
+nibli-reason/src/reasoning.rs: delete match arm GroundTerm::Constant(s) in is_event_skolem_term
+nibli-reason/src/reasoning.rs: delete match arm GroundTerm::DepPair(a, b) in stored_fact_contains_var::term_contains_var
+nibli-reason/src/reasoning.rs: delete match arm GroundTerm::SkolemFn(_, dep) in stored_fact_contains_var::term_contains_var
+nibli-reason/src/reasoning.rs: delete match arm LogicNode::AndNode((l, r)) in find_witnesses
+nibli-reason/src/reasoning.rs: delete match arm LogicNode::OrNode((l, r)) in find_witnesses
+nibli-reason/src/reasoning.rs: replace != with == in typed_fact_is_asserted_with_equivalence
+nibli-reason/src/reasoning.rs: replace && with || in bind_join_vars_from_index
+nibli-reason/src/reasoning.rs: replace && with || in check_predicate_in_kb_typed
+nibli-reason/src/reasoning.rs: replace && with || in is_event_skolem_term
+nibli-reason/src/reasoning.rs: replace && with || in process_phase
+nibli-reason/src/reasoning.rs: replace + with * in eval_negated_exists_group
+nibli-reason/src/reasoning.rs: replace - with + in trace_predicate_provenance_typed
+nibli-reason/src/reasoning.rs: replace - with / in trace_predicate_provenance_typed
+nibli-reason/src/reasoning.rs: replace <= with > in typed_fact_is_asserted_with_equivalence
+nibli-reason/src/reasoning.rs: replace > with >= in check_predicate_in_kb_typed
+nibli-reason/src/reasoning.rs: replace condition_is_index_decidable -> bool with false
+nibli-reason/src/reasoning.rs: replace sort_rule_bucket with ()
+nibli-reason/src/reasoning.rs: replace typed_fact_is_asserted_with_equivalence -> Option<StoredFact> with None
+nibli-reason/src/reasoning.rs: replace || with && in stored_fact_contains_var::term_contains_var
+nibli-reason/src/rules.rs: delete ! in generate_count_extra_witnesses
+nibli-reason/src/rules.rs: replace - with / in build_skolem_fn_term
+nibli-reason/src/rules.rs: replace > with == in dnf_of_node
+nibli-reason/src/rules.rs: replace > with >= in dnf_of_node
+nibli-semantics/src/semantic/compile.rs: replace + with * in SemanticCompiler::compile_proposition
+nibli-semantics/src/semantic/compile.rs: replace += with *= in SemanticCompiler::compile_proposition
+nibli-semantics/src/semantic/compile.rs: replace < with <= in SemanticCompiler::compile_sentence
+nibli-semantics/src/semantic/compile.rs: replace < with > in SemanticCompiler::compile_proposition
+nibli-semantics/src/semantic/helpers.rs: replace < with <= in SemanticCompiler::close_quantifier
 
-# ── Category D: DEFENSIVE / UNREACHABLE-BY-INVARIANT — guards whose failing side the pipeline cannot produce, wrapper match arms on pre-peeled nodes, and mutants that panic loudly on first reach: conversion arity guards (args arrive arity-fitted; guard-to-true panics on OOB swap), the WithArgs merge leg that is tautological at runtime (i starts at merged.len() == bound_count) and its multi-`bei` arithmetic (usize underflow panics), assert-path skolemization preceding the conditional walks (every Exists var is already in subs; tense/deontic cannot wrap a sentence connective from the surface), build_stored_fact/build_rule_template wrapper arms (callers pass pre-peeled leaves and thread flavors via the tense parameter), skdep filters feeding Constant-only filter_maps, the len-1 skolem-fn fast arm (general chain handles it; index mutants panic OOB), exact-count assert machinery whose remaining mutants alter only fresh-skolem NAME allocation within one assertion or the detection of counts under sentence connectives (assert-routing of compound count sentences) — the materialization semantics itself is pinned by count_assertion_materializes_witnesses and the 400-seed clingo count sweep, the stored-number compute-arg extraction kept surface-unreachable by numbers never entering the quantifier domain (numeric_terms_are_not_universal_domain_members), the ForAll/Count compute-batch decisive branches which need numeric members to fire (with real members the batch is always backend-pending — pinned non-definitive by flat_forall_and_count_over_compute_batch_stays_non_definitive), mixed numeric/entity du detection legs that agree on all well-formed inputs, x1-slot detection whose widened reach targets role shapes smuni never emits, Count-shadow substitution (clause vs count binder namespaces cannot collide; count component verdict-inert), NAF-group leaf collection where the mutant only widens the loud fail-closed rejection, and per-relation arity uniformity in the join index
-logji/src/kb.rs: delete match arm LogicNode::NotNode(n) | LogicNode::ExistsNode((_, n)) | LogicNode::ForAllNode((_, n)) | LogicNode::PastNode(n) | LogicNode::PresentNode(n) | LogicNode::FutureNode(n) | LogicNode::ObligatoryNode(n) | LogicNode::PermittedNode(n) in contains_count_node
-logji/src/kb.rs: delete match arm LogicNode::PastNode(n) | LogicNode::PresentNode(n) | LogicNode::FutureNode(n) | LogicNode::ObligatoryNode(n) | LogicNode::PermittedNode(n) in register_ground_material_conditional
-logji/src/kb.rs: replace && with || in asserted_numeric_comparison
-logji/src/kb.rs: replace == with != in asserted_numeric_comparison
-logji/src/kb.rs: replace GroundTerm::as_f64 -> Option<f64> with None
-logji/src/kb.rs: replace GroundTerm::as_f64 -> Option<f64> with Some(1.0)
-logji/src/kb.rs: replace match guard !is_skdep(gt) with true in leading_skolemized_exists_over_forall
-logji/src/kb.rs: replace match guard subs.contains_key(v.as_str()) with false in root_reduces_to_negation
-logji/src/kb.rs: replace match guard subs.contains_key(v.as_str()) with true in find_negation_body
-logji/src/kb.rs: replace match guard subs.contains_key(v.as_str()) with true in root_reduces_to_negation
-logji/src/kb.rs: replace || with && in contains_count_node
-logji/src/kb.rs: replace || with && in register_ground_material_conditional
-logji/src/reasoning.rs: delete ! in check_formula_holds_core
-logji/src/reasoning.rs: replace == with != in check_formula_holds_core
-logji/src/rules.rs: delete ! in compile_forall_to_rule
-logji/src/rules.rs: delete match arm 1 in build_skolem_fn_term
-logji/src/rules.rs: delete match arm LogicNode::ExistsNode((v, body)) in build_rule_template_fact
-logji/src/rules.rs: delete match arm LogicNode::ExistsNode((v, body)) in build_stored_fact_from_node
-logji/src/rules.rs: delete match arm LogicNode::ObligatoryNode(inner) in build_stored_fact_from_node
-logji/src/rules.rs: delete match arm LogicNode::ObligatoryNode(inner) | LogicNode::PermittedNode(inner) in build_rule_template_fact
-logji/src/rules.rs: delete match arm LogicNode::PermittedNode(inner) in build_stored_fact_from_node
-logji/src/rules.rs: delete match arm LogicNode::PresentNode(inner) in build_stored_fact_from_node
-logji/src/rules.rs: replace += with *= in collect_exists_for_skolem
-logji/src/rules.rs: replace += with -= in collect_exists_for_skolem
-logji/src/rules.rs: replace == with != in flatten_group_leaves
-logji/src/rules.rs: replace match guard condition_exists.contains(v.as_str()) with true in flatten_conjuncts_through_exists
-logji/src/rules.rs: replace match guard skolem_subs.contains_key(v.as_str()) with true in flatten_consequent
-logji/src/rules.rs: replace match guard v.as_str() == ev with false in flatten_group_leaves
-logji/src/rules.rs: replace match guard v.as_str() == ev with true in flatten_group_leaves
-logji/src/rules.rs: replace || with && in detect_negated_exists_group
-smuni/src/semantic/helpers.rs: replace && with || in SemanticCompiler::collect_unspecified_subject_slots
-smuni/src/semantic/helpers.rs: replace += with *= in SemanticCompiler::collect_unspecified_subject_slots
-smuni/src/semantic/helpers.rs: replace == with != in SemanticCompiler::substitute_variable
-smuni/src/semantic/helpers.rs: replace >= with < in SemanticCompiler::collect_unspecified_subject_slots
-smuni/src/semantic/selbri.rs: delete ! in SemanticCompiler::apply_selbri
-smuni/src/semantic/selbri.rs: replace && with || in SemanticCompiler::apply_selbri
-smuni/src/semantic/selbri.rs: replace >= with < in SemanticCompiler::apply_selbri
-smuni/src/semantic/selbri.rs: replace match guard permuted.len() >= 2 with true in SemanticCompiler::apply_selbri
-smuni/src/semantic/selbri.rs: replace match guard permuted.len() >= 4 with false in SemanticCompiler::apply_selbri
-smuni/src/semantic/selbri.rs: replace match guard permuted.len() >= 5 with true in SemanticCompiler::apply_selbri
+# ── Category D: DEFENSIVE / UNREACHABLE-BY-INVARIANT — guards whose failing side no producer emits, wrapper match arms on pre-peeled nodes (tense/deontic under build_stored_fact/build_rule_template; the ExistsNode skip-wrapper legs), the tensed_body_hides_conditional detector's defense-in-depth walker arms beyond its killed load-bearing OrNode face, phase-1-skolemization invariants (subs.contains_key guards forced true), skdep filters feeding Constant-only filter_maps, the WithArgs merge leg tautological at runtime (its multi-bei arithmetic and Unspecified-either-way padding faces — the pair/selector faces of the same normalized keys are KILLED), place<=arity swap-guard forced-true branches (panic-on-reach), arity>=1 invariants, and mutants that panic loudly on first reach
+nibli-reason/src/kb.rs: delete match arm GroundTerm::Number(bits) in GroundTerm::as_f64
+nibli-reason/src/kb.rs: delete match arm LogicNode::AndNode((l, r)) in tensed_body_hides_conditional
+nibli-reason/src/kb.rs: delete match arm LogicNode::ExistsNode((_, body)) in tensed_body_hides_conditional
+nibli-reason/src/kb.rs: delete match arm LogicNode::NotNode(n) | LogicNode::ExistsNode((_, n)) | LogicNode::ForAllNode((_, n)) | LogicNode::PastNode(n) | LogicNode::PresentNode(n) | LogicNode::FutureNode(n) | LogicNode::ObligatoryNode(n) | LogicNode::PermittedNode(n) in contains_count_node
+nibli-reason/src/kb.rs: delete match arm LogicNode::PastNode(n) | LogicNode::PresentNode(n) | LogicNode::FutureNode(n) | LogicNode::ObligatoryNode(n) | LogicNode::PermittedNode(n) in negation_body_purely_representable
+nibli-reason/src/kb.rs: delete match arm LogicNode::PastNode(n) | LogicNode::PresentNode(n) | LogicNode::FutureNode(n) | LogicNode::ObligatoryNode(n) | LogicNode::PermittedNode(n) in tensed_body_hides_conditional
+nibli-reason/src/kb.rs: replace == with != in asserted_numeric_comparison
+nibli-reason/src/kb.rs: replace GroundTerm::as_f64 -> Option<f64> with None
+nibli-reason/src/kb.rs: replace match guard !is_skdep(gt) with true in leading_skolemized_exists_over_forall
+nibli-reason/src/kb.rs: replace match guard peeled with true in leading_skolemized_exists_over_forall
+nibli-reason/src/kb.rs: replace match guard subs.contains_key(v.as_str()) with false in all_conjuncts_reduce_to_negation
+nibli-reason/src/kb.rs: replace match guard subs.contains_key(v.as_str()) with false in find_negation_body
+nibli-reason/src/kb.rs: replace match guard subs.contains_key(v.as_str()) with false in root_reduces_to_negation
+nibli-reason/src/kb.rs: replace match guard subs.contains_key(v.as_str()) with true in all_conjuncts_reduce_to_negation
+nibli-reason/src/kb.rs: replace match guard subs.contains_key(v.as_str()) with true in find_negation_body
+nibli-reason/src/kb.rs: replace match guard subs.contains_key(v.as_str()) with true in record_negative_conjuncts
+nibli-reason/src/kb.rs: replace match guard subs.contains_key(v.as_str()) with true in register_ground_material_conditional
+nibli-reason/src/kb.rs: replace match guard subs.contains_key(v.as_str()) with true in root_reduces_to_negation
+nibli-reason/src/kb.rs: replace || with && in contains_count_node
+nibli-reason/src/kb.rs: replace || with && in tensed_body_hides_conditional
+nibli-reason/src/reasoning.rs: delete ! in <impl Iterator for TypedMultiCartesian<'a>>::next
+nibli-reason/src/reasoning.rs: delete ! in check_formula_holds_core
+nibli-reason/src/reasoning.rs: replace && with || in <impl Iterator for TypedMultiCartesian<'a>>::next
+nibli-reason/src/reasoning.rs: replace == with != in check_formula_holds_core
+nibli-reason/src/rules.rs: delete match arm 1 in build_skolem_fn_term
+nibli-reason/src/rules.rs: delete match arm LogicNode::ExistsNode((v, body)) in build_stored_fact_from_node
+nibli-reason/src/rules.rs: delete match arm LogicNode::FutureNode(inner) in build_stored_fact_from_node
+nibli-reason/src/rules.rs: delete match arm LogicNode::ObligatoryNode(inner) in build_stored_fact_from_node
+nibli-reason/src/rules.rs: delete match arm LogicNode::ObligatoryNode(inner) | LogicNode::PermittedNode(inner) in build_rule_template_fact
+nibli-reason/src/rules.rs: delete match arm LogicNode::PastNode(inner) in build_stored_fact_from_node
+nibli-reason/src/rules.rs: delete match arm LogicNode::PermittedNode(inner) in build_stored_fact_from_node
+nibli-reason/src/rules.rs: delete match arm LogicNode::PresentNode(inner) in build_stored_fact_from_node
+nibli-reason/src/rules.rs: replace += with *= in collect_exists_for_skolem
+nibli-reason/src/rules.rs: replace += with -= in collect_exists_for_skolem
+nibli-reason/src/rules.rs: replace == with != in flatten_group_leaves
+nibli-reason/src/rules.rs: replace is_skdep -> bool with false
+nibli-reason/src/rules.rs: replace match guard condition_exists.contains(v.as_str()) with true in flatten_conjuncts_through_exists
+nibli-reason/src/rules.rs: replace match guard skolem_subs.contains_key(v.as_str()) with true in flatten_consequent
+nibli-reason/src/rules.rs: replace match guard v.as_str() == ev with false in flatten_group_leaves
+nibli-reason/src/rules.rs: replace match guard v.as_str() == ev with true in flatten_group_leaves
+nibli-reason/src/rules.rs: replace || with && in build_rule_template_fact
+nibli-reason/src/rules.rs: replace || with && in detect_negated_exists_group
+nibli-semantics/src/semantic/compile.rs: replace += with -= in SemanticCompiler::compile_proposition
+nibli-semantics/src/semantic/helpers.rs: replace && with || in SemanticCompiler::collect_unspecified_subject_slots
+nibli-semantics/src/semantic/helpers.rs: replace && with || in SemanticCompiler::inject_variable
+nibli-semantics/src/semantic/helpers.rs: replace += with *= in SemanticCompiler::collect_unspecified_subject_slots
+nibli-semantics/src/semantic/helpers.rs: replace += with -= in SemanticCompiler::collect_unspecified_subject_slots
+nibli-semantics/src/semantic/helpers.rs: replace == with != in SemanticCompiler::substitute_variable
+nibli-semantics/src/semantic/helpers.rs: replace >= with < in SemanticCompiler::collect_unspecified_subject_slots
+nibli-semantics/src/semantic/helpers.rs: replace >= with < in SemanticCompiler::inject_variable
+nibli-semantics/src/semantic/predicate.rs: delete ! in SemanticCompiler::apply_predicate
+nibli-semantics/src/semantic/predicate.rs: replace && with || in SemanticCompiler::apply_predicate
+nibli-semantics/src/semantic/predicate.rs: replace + with * in SemanticCompiler::apply_predicate
+nibli-semantics/src/semantic/predicate.rs: replace + with - in SemanticCompiler::apply_predicate
+nibli-semantics/src/semantic/predicate.rs: replace < with <= in SemanticCompiler::apply_predicate
+nibli-semantics/src/semantic/predicate.rs: replace < with == in SemanticCompiler::apply_predicate
+nibli-semantics/src/semantic/predicate.rs: replace < with > in SemanticCompiler::apply_predicate
+nibli-semantics/src/semantic/predicate.rs: replace > with >= in SemanticCompiler::apply_predicate
+nibli-semantics/src/semantic/predicate.rs: replace >= with < in SemanticCompiler::apply_predicate
+nibli-semantics/src/semantic/predicate.rs: replace match guard permuted.len() >= 2 with true in SemanticCompiler::apply_predicate
+nibli-semantics/src/semantic/predicate.rs: replace match guard permuted.len() >= 3 with true in SemanticCompiler::apply_predicate
+nibli-semantics/src/semantic/predicate.rs: replace match guard permuted.len() >= 4 with true in SemanticCompiler::apply_predicate
+nibli-semantics/src/semantic/predicate.rs: replace match guard permuted.len() >= 5 with true in SemanticCompiler::apply_predicate
+
