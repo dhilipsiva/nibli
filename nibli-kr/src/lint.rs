@@ -254,22 +254,34 @@ impl Walk<'_> {
         let at = p.span.start;
         self.seq_words(&p.seq, at);
         // L3 — two or more quantified arguments in one call: scope is
-        // written order, so reordering args flips the reading.
-        let quantified = p
+        // written order, so reordering args flips the reading. The
+        // parenthetical spells the ACTUAL reading (the leftmost binder is
+        // outermost), collected in argument order — never a fixed template.
+        let quants: Vec<String> = p
             .args
             .iter()
-            .filter(|a| matches!(&a.term, Term::Det { det, .. } if introduces(*det) || matches!(det, Det::EveryThe | Det::ExactlyThe(_))))
-            .count();
-        if quantified >= 2 {
+            .filter_map(|a| match &a.term {
+                Term::Det { det, .. } => match det {
+                    Det::Every | Det::EveryThe => Some("∀".to_string()),
+                    Det::Some => Some("∃".to_string()),
+                    Det::Exactly(n) | Det::ExactlyThe(n) => Some(format!("exactly-{n}")),
+                    Det::The => None,
+                },
+                _ => None,
+            })
+            .collect();
+        if quants.len() >= 2 {
+            let order = quants.join(" before ");
             push(
                 self.notes,
                 self.input,
                 at,
                 "L3",
                 format!(
-                    "{quantified} quantified arguments in one call — scope is written \
-                     order (∃ before ∀ here; reordering the arguments changes the \
-                     meaning)"
+                    "{} quantified arguments in one call — scope is written \
+                     order ({order} here; reordering the arguments changes the \
+                     meaning)",
+                    quants.len()
                 ),
             );
         }
@@ -522,6 +534,24 @@ mod tests {
     #[test]
     fn l3_quiet_on_one_quantified_arg() {
         assert!(!codes("eats(Adam, every cat).").contains(&"L3"));
+    }
+
+    #[test]
+    fn l3_note_reports_actual_scope_order() {
+        // ∀ first (the dependent-Skolem shape `likes(every dog, some cat).`):
+        // the note must read "∀ before ∃", never the old hardcoded "∃ before ∀".
+        let msg = messages_for("likes(every dog, some cat).", "L3")
+            .into_iter()
+            .next()
+            .expect("L3 fires");
+        assert!(msg.contains("∀ before ∃"), "{msg}");
+        assert!(!msg.contains("∃ before ∀"), "{msg}");
+        // ∃ first: the reading flips with the written order.
+        let msg = messages_for("eats(some dog, every cat).", "L3")
+            .into_iter()
+            .next()
+            .expect("L3 fires");
+        assert!(msg.contains("∃ before ∀"), "{msg}");
     }
 
     // ── L4 — converted-alias echo, first use per session ──
