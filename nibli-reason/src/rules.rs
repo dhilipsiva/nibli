@@ -1345,16 +1345,16 @@ pub(super) fn compile_forall_to_rule(
                 universals.push(v.clone());
                 current = *body;
             }
-            // FAIL CLOSED: a tense (pu/ca/ba) or deontic deontic (ei/e'e)
-            // wrapping a WHOLE universal/conditional rule (`pu ro lo gerku cu
-            // danlu` → Past(ForAll(...))) cannot be soundly represented as a
+            // FAIL CLOSED: a tense (past/now/future) or deontic (must/may)
+            // wrapping a WHOLE universal/conditional rule (`past animal(every
+            // dog).` → Past(ForAll(...))) cannot be soundly represented as a
             // timeless backward-chaining rule. Stripping it (the old behavior)
             // compiled the rule TIMELESS, so it fired on present/future/bare
             // facts the tensed input never licensed — an over-claim. The engine
             // has no interval/modal temporal semantics to thread whole-rule tense
             // or modality, so reject rather than register an over-general rule.
             //
-            // A tensed ANTECEDENT (`ro lo gerku poi pu citka cu xagji` →
+            // A tensed ANTECEDENT (`animal(every dog where past eats(it)).` →
             // ForAll(_, Or(Not(Past(...)), ...))) keeps its tense INSIDE the Or's
             // Not, off this spine; the loop breaks at the Or via the `_` arm
             // below, so the per-condition tense threading
