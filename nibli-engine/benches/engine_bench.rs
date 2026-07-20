@@ -153,46 +153,40 @@ fn bench_witness_extraction(c: &mut Criterion) {
     group.finish();
 }
 
-// ─── Benchmark: Equality workload ────────────────────────────────
+// ─── Benchmark: Equality resolution (union-find) ─────────────────
+//
+// Measures the cost of RESOLVING a query through an equality chain, not the
+// artifact the previous version timed (it asserted an unrelated relation and
+// never queried the chain). Build `E0 = E1 = … = E{n-1}` plus a base fact
+// `dog(E0)`, then repeatedly query the far end `dog(E{n-1})`, which must
+// resolve TRUE through the union-find equivalence class. With path
+// compression the resolved cost is effectively constant regardless of chain
+// length — that is the property the table should show. Surface KR (not the
+// direct-inject path) so the query is nameable and actually resolves — a
+// direct-injected constant is unnameable from query text and would silently
+// time a miss (the query_latency/rule_chain hit-guard lesson).
 
 fn bench_equality(c: &mut Criterion) {
-    let mut group = c.benchmark_group("equality_workload");
+    let mut group = c.benchmark_group("equality_resolution");
     for &n in &[5, 20, 50] {
         group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, &n| {
             let engine = fresh_engine();
-            // Chain: du(e0,e1), du(e1,e2), ..., du(e{n-2},e{n-1})
-            engine
-                .assert_fact_direct(
-                    "gerku".to_string(),
-                    vec![
-                        EngineLogicalTerm::Constant("e0".to_string()),
-                        EngineLogicalTerm::Unspecified,
-                    ],
-                )
-                .unwrap();
+            engine.assert_text("dog(E0).").unwrap();
             for i in 0..n - 1 {
                 engine
-                    .assert_fact_direct(
-                        "equals".to_string(),
-                        vec![
-                            EngineLogicalTerm::Constant(format!("e{}", i)),
-                            EngineLogicalTerm::Constant(format!("e{}", i + 1)),
-                        ],
-                    )
+                    .assert_text(&format!("E{} = E{}.", i, i + 1))
                     .unwrap();
             }
-            // Query gerku for the last entity in the chain.
-            let last = format!("e{}", n - 1);
+            let query = format!("dog(E{}).", n - 1);
+            // Guard: the far end must resolve TRUE through the equality chain,
+            // else we are timing a miss instead of union-find resolution.
+            assert!(
+                matches!(engine.query_holds(&query).unwrap(), EngineQueryResult::True),
+                "equality bench must resolve the chain (dog(E0) reaches E{}), not time a miss",
+                n - 1
+            );
             b.iter(|| {
-                engine
-                    .assert_fact_direct(
-                        "gerku_query".to_string(),
-                        vec![
-                            EngineLogicalTerm::Constant(last.clone()),
-                            EngineLogicalTerm::Unspecified,
-                        ],
-                    )
-                    .ok(); // Just measure assertion + equality lookup
+                engine.query_holds(&query).unwrap();
             });
         });
     }
@@ -200,13 +194,45 @@ fn bench_equality(c: &mut Criterion) {
 }
 
 // ─── Benchmark: Retraction ───────────────────────────────────────
+//
+// Two groups, one per retraction path. The COMMON case for any fact typed as
+// nibli KR is the FULL REBUILD: `dog(Ent0).` event-decomposes to `∃e. (…)`, so
+// its buffer carries an ExistsNode and `retract_fact_inner` takes the rebuild
+// branch (replay every surviving record). The INCREMENTAL path is the narrow
+// exception — flat direct-`:assert` ground facts with no ∃/rule/negation are
+// removed from the fact store in place. The book's Table quotes both so the
+// two-path story has honest numbers.
 
-fn bench_retraction(c: &mut Criterion) {
-    let mut group = c.benchmark_group("retraction");
+fn bench_retraction_rebuild(c: &mut Criterion) {
+    let mut group = c.benchmark_group("retraction_rebuild");
     for &n in &[10, 100, 500] {
         group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, &n| {
             b.iter_with_setup(
                 || {
+                    // Text-asserted facts (event-decomposed) → rebuild path.
+                    let engine = fresh_engine();
+                    for i in 0..n {
+                        engine.assert_text(&format!("dog(Ent{}).", i)).unwrap();
+                    }
+                    engine
+                },
+                |engine| {
+                    // Retract fact #0 → full rebuild replays the n-1 survivors.
+                    let _ = engine.retract_fact(0);
+                },
+            );
+        });
+    }
+    group.finish();
+}
+
+fn bench_retraction_incremental(c: &mut Criterion) {
+    let mut group = c.benchmark_group("retraction_incremental");
+    for &n in &[10, 100, 500] {
+        group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, &n| {
+            b.iter_with_setup(
+                || {
+                    // Flat direct-inject ground facts (no ∃/rule) → incremental path.
                     let engine = fresh_engine();
                     populate_kb(&engine, n);
                     engine
@@ -227,6 +253,7 @@ criterion_group!(
     bench_rule_chain,
     bench_witness_extraction,
     bench_equality,
-    bench_retraction,
+    bench_retraction_rebuild,
+    bench_retraction_incremental,
 );
 criterion_main!(benches);
