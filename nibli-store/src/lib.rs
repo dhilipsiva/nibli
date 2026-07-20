@@ -57,7 +57,7 @@ pub struct StoredFactRecord {
     /// nibli-engine: postcard-serialized `nibli_types::logic::LogicBuffer`.
     /// nibli-host: postcard-serialized `StoredAssertion`.
     pub payload: Vec<u8>,
-    /// Human-readable label (Lojban source or `:assert rel args`).
+    /// Human-readable label (nibli KR source or `:assert rel args`).
     pub label: String,
     /// Soft-delete (tombstone) flag.
     pub retracted: bool,
