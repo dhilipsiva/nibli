@@ -3,7 +3,7 @@
 //! Parses the flat display string produced by nibli-reason's `StoredFact::to_display_string()`
 //! — `relation(arg, arg)`, optionally wrapped in `Past(…)`/`Present(…)`/`Future(…)`/
 //! `Obligatory(…)`/`Permitted(…)`, with args that may be `sk_N(dep)` Skolem
-//! functions, `(a, b)` DepPairs, `le foo` descriptions, `_` (zo'e), numbers, or
+//! functions, `(a, b)` DepPairs, `the foo` descriptions, `_` (unspecified), numbers, or
 //! plain constants — and renders it readably: role predicates collapse
 //! (`gerku_x1` -> `dog.dog`), event Skolems are hidden, witness Skolems become
 //! `#N`.
@@ -142,7 +142,7 @@ fn parse_term_list(tokens: &[Tok], pos: &mut usize) -> Option<Vec<String>> {
 
 /// term := '(' termlist ')'            (DepPair)
 ///       | IDENT '(' termlist ')'      (SkolemFn, e.g. sk_1(adam))
-///       | IDENT                       (constant / sk_N / "le foo" / "_" / number / "?x")
+///       | IDENT                       (constant / sk_N / "the foo" / "_" / number / "?x")
 ///
 /// Returns the RAW reconstructed term string (Skolem humanization is applied
 /// later in `render_predicate`, after event-Skolem filtering on the raw form).
@@ -245,7 +245,7 @@ mod tests {
     #[test]
     fn unspecified_and_description_args() {
         assert_eq!(humanize_fact("goes(adam, _)"), "goes(adam, _)");
-        assert_eq!(humanize_fact("goes(le dog)"), "goes(le dog)");
+        assert_eq!(humanize_fact("goes(the dog)"), "goes(the dog)");
     }
 
     #[test]

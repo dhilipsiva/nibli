@@ -190,7 +190,9 @@ impl GroundTerm {
                     format!("{v}")
                 }
             }
-            GroundTerm::Description(s) => format!("le {s}"),
+            // Surface spelling of a description term — kept in lock-step with
+            // `LogicalTerm::Description`'s `trace_display` (nibli-types/src/logic.rs).
+            GroundTerm::Description(s) => format!("the {s}"),
             GroundTerm::Unspecified => "_".to_string(),
             GroundTerm::SkolemFn(name, dep) => {
                 format!("{name}({})", dep.to_display_string())

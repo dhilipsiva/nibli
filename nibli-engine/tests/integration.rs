@@ -160,6 +160,81 @@ fn not_equals_surface_contradiction() {
     );
 }
 
+// ─── Post-DROP invariant: no Lojban in reader-facing proof output ───
+
+/// Every reader-facing rendering of a trace, for one query.
+///
+/// `[Why]` (`summarize_proof`), the default collapsed proof view, and the
+/// `:proof-verbose` full trace — the three surfaces nibli-host prints and the
+/// UI mirrors. Returns them labelled so a failure names the leaking surface.
+fn rendered_proof_surfaces(engine: &NibliEngine, query: &str) -> Vec<(&'static str, String)> {
+    let (_r, trace) = engine.query_text_raw_proof(query).unwrap();
+    let mut out = vec![
+        (
+            "collapsed",
+            render_collapsed_text_with(&trace, Register::Spec, 2, true, None),
+        ),
+        (
+            "verbose",
+            nibli_render::render_proof_text(&trace, Register::Spec),
+        ),
+    ];
+    if let Some(why) = nibli_render::summarize_proof(&trace, Register::Spec) {
+        out.push(("why", why));
+    }
+    out
+}
+
+/// THE DROP invariant (CLAUDE.md): "proof traces and all user-facing output
+/// contain no Lojban". Two term renderers used to leak a gismu/cmavo spelling
+/// into the `[Why]` narrative and the rendered proof:
+///
+/// - `GroundTerm::Description` rendered as `le {s}` (nibli-reason `kb.rs`) —
+///   now `the {s}`, matching `LogicalTerm::Description`'s `trace_display`.
+/// - the equality-substitution note joined its pairs with `" du "`
+///   (nibli-reason `reasoning.rs`) — now `" = "`, the KR surface operator.
+///
+/// Both flow through `humanize_fact`/`equality_facts` into reader-facing text,
+/// so this asserts on the RENDERED strings, not on the internal identifiers
+/// (`DU_VARIANT_BOUND` and friends are a sanctioned residual).
+#[test]
+fn rendered_proofs_carry_no_lojban_description_or_identity_spelling() {
+    // Case 1: a description term in the goal — exercised the `le {s}` path.
+    let desc = engine_with_facts(&["dog(the cat)."]);
+    // Case 2: identity substitution — exercised the `" du "` note.
+    let ident = engine_with_facts(&["Adam = Bob.", "dog(Adam)."]);
+
+    let cases = [
+        ("description", &desc, "dog(the cat).", "the cat"),
+        ("identity", &ident, "dog(Bob).", "bob = adam"),
+    ];
+
+    for (case, engine, query, expected) in cases {
+        assert_true(
+            &engine.query_holds(query).unwrap(),
+            &format!("{case}: query must hold for the proof to be populated"),
+        );
+        let mut saw_expected = false;
+        for (surface, text) in rendered_proof_surfaces(engine, query) {
+            assert!(
+                !text.contains("le "),
+                "{case}/{surface}: Lojban description article leaked: {text}"
+            );
+            assert!(
+                !text.contains(" du "),
+                "{case}/{surface}: Lojban identity spelling leaked: {text}"
+            );
+            saw_expected |= text.contains(expected);
+        }
+        // Positive control: the replacement spelling really is what renders, so
+        // a renderer that silently stopped emitting the term cannot pass.
+        assert!(
+            saw_expected,
+            "{case}: expected {expected:?} in some rendered surface"
+        );
+    }
+}
+
 // ─── Cooperative cancellation ───────────────────────────────────────
 
 #[test]

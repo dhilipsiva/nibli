@@ -1538,16 +1538,18 @@ fn typed_fact_is_asserted_with_equivalence(
     None
 }
 
-/// Format the du-equality substitution note for a proof step: the argument pairs
-/// where `orig` and `variant` differ, rendered as `"a du b, x du y"`. Shared by
-/// the asserted-via-equivalence and rule-derived-via-equivalence trace paths.
+/// Format the equality substitution note for a proof step: the argument pairs
+/// where `orig` and `variant` differ, rendered as `"a = b, x = y"` — `=` is the
+/// nibli KR surface identity operator, and this note is reader-facing (it lands
+/// in the rendered proof trace). Shared by the asserted-via-equivalence and
+/// rule-derived-via-equivalence trace paths.
 fn equals_substitution_note(orig: &StoredFact, variant: &StoredFact) -> String {
     orig.inner()
         .args
         .iter()
         .zip(variant.inner().args.iter())
         .filter(|(o, v)| o != v)
-        .map(|(o, v)| format!("{} du {}", o.to_display_string(), v.to_display_string()))
+        .map(|(o, v)| format!("{} = {}", o.to_display_string(), v.to_display_string()))
         .collect::<Vec<_>>()
         .join(", ")
 }
