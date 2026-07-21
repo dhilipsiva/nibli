@@ -61,13 +61,13 @@ uses(Adam, Flukonazol).
 
 # ─── Mechanism step 1: concentration increase ─────────────────────
 # When fluconazole inhibits CYP2C9 AND a drug is metabolised by CYP2C9, that
-# drug's blood concentration rises. Expressed as a grounded conditional per
-# affected substrate. The fully general multi-variable rule
-# "for all inhibitor, substrate, enzyme ..." requires multi-variable join-rule
-# compilation, which is not yet available from the surface syntax, so this
-# step alone remains grounded per substrate (see Chapter 21, "Honest
-# Boundaries"). The toxicity step (step 2) is a general drug-level rule; the
-# alert step (step 3) is patient-gated on the regimen (see below).
+# drug's blood concentration rises. Expressed here as a grounded conditional
+# per affected substrate -- a legacy encoding choice, NOT a limitation: the
+# fully general join rule compiles and reasons correctly today, deriving both
+# substrates and correctly leaving increases(Apiksaban) FALSE --
+#   all $a, $b, $e: prevents($a,$e) & metabolized_by($b,$e) -> increases($b).
+# (prenex vars are COMMA-separated). The toxicity step (step 2) is a general
+# drug-level rule; the alert step (step 3) is patient-gated (see below).
 prevents(Flukonazol, Siptucin) & metabolized_by(Varfarin, Siptucin) -> increases(Varfarin).
 prevents(Flukonazol, Siptucin) & metabolized_by(Fenitoin, Siptucin) -> increases(Fenitoin).
 
