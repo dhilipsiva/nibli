@@ -1850,13 +1850,15 @@ pub(super) fn process_assertion(
             // cannot carry whole-rule tense soundly — reject with the same clear
             // message `compile_forall_to_rule` uses for `pu ro lo gerku cu danlu`,
             // rather than the ground path's misleading "bare disjunction" error.
-            return Err("cannot compile a tense (past/now/future) or deontic (must/may) \
+            return Err(
+                "cannot compile a tense (past/now/future) or deontic (must/may) \
                  wrapping a whole universal/conditional rule: a timeless \
                  backward-chaining rule cannot carry whole-rule tense or \
                  modality without over-claiming on untensed facts. Rejecting \
                  the assertion to preserve soundness; restate the \
                  temporal/deontic scope on the relevant predicate instead."
-                .to_string());
+                    .to_string(),
+            );
         } else {
             // ═══ GROUND FORMULA PATH ═══
 

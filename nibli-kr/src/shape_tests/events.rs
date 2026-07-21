@@ -75,12 +75,24 @@ fn three_unit_stack_keeps_every_modifier() {
     let dog_x1 = pred_args(&b, "dog_x1").unwrap();
     let big_x1 = pred_args(&b, "big_x1").unwrap();
     let fast_x1 = pred_args(&b, "fast_x1").unwrap();
-    assert_eq!(dog_x1[0], big_x1[0], "head and first modifier share the event var");
-    assert_eq!(dog_x1[0], fast_x1[0], "head and second modifier share the event var");
+    assert_eq!(
+        dog_x1[0], big_x1[0],
+        "head and first modifier share the event var"
+    );
+    assert_eq!(
+        dog_x1[0], fast_x1[0],
+        "head and second modifier share the event var"
+    );
     assert!(role_is_const(&b, "big_x1", "me"));
     assert!(role_is_const(&b, "fast_x1", "me"));
-    assert!(!has_pred(&b, "big"), "modifier must not emit a standalone type pred");
-    assert!(!has_pred(&b, "fast"), "modifier must not emit a standalone type pred");
+    assert!(
+        !has_pred(&b, "big"),
+        "modifier must not emit a standalone type pred"
+    );
+    assert!(
+        !has_pred(&b, "fast"),
+        "modifier must not emit a standalone type pred"
+    );
 }
 
 #[test]
@@ -92,7 +104,10 @@ fn bracketed_stack_compiles_like_unbracketed() {
     // `big` was silently dropped.
     let bracketed = lb("[big fast] dog(me).");
     let unbracketed = lb("big fast dog(me).");
-    assert_eq!(bracketed, unbracketed, "grouping must not drop or reorder units");
+    assert_eq!(
+        bracketed, unbracketed,
+        "grouping must not drop or reorder units"
+    );
     for r in ["dog", "dog_x1", "big_x1", "fast_x1"] {
         assert!(has_pred(&bracketed, r), "missing {r}");
     }
@@ -111,8 +126,14 @@ fn observative_with_modifier_compiles() {
     let b = lb("big rain().");
     assert!(has_pred(&b, "rain"));
     assert!(has_pred(&b, "rain_x1"));
-    assert!(has_pred(&b, "big_x1"), "modifier roles must emit on an observative");
-    assert!(!has_pred(&b, "big"), "modifier must not emit a standalone type pred");
+    assert!(
+        has_pred(&b, "big_x1"),
+        "modifier roles must emit on an observative"
+    );
+    assert!(
+        !has_pred(&b, "big"),
+        "modifier must not emit a standalone type pred"
+    );
     assert_eq!(role_filler(&b, "big_x1"), Some(LogicalTerm::Unspecified));
     assert_eq!(role_filler(&b, "rain_x1"), Some(LogicalTerm::Unspecified));
 }

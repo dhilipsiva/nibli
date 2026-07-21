@@ -1366,13 +1366,15 @@ pub(super) fn compile_forall_to_rule(
             | LogicNode::FutureNode(_)
             | LogicNode::ObligatoryNode(_)
             | LogicNode::PermittedNode(_) => {
-                return Err("cannot compile a tense (past/now/future) or deontic (must/may) \
+                return Err(
+                    "cannot compile a tense (past/now/future) or deontic (must/may) \
                      wrapping a whole universal/conditional rule: a timeless \
                      backward-chaining rule cannot carry whole-rule tense or \
                      modality without over-claiming on untensed facts. Rejecting \
                      the assertion to preserve soundness; restate the \
                      temporal/deontic scope on the relevant predicate instead."
-                    .to_string());
+                        .to_string(),
+                );
             }
             _ => break,
         }
