@@ -306,12 +306,12 @@ impl Walk<'_> {
                 if introduces(*det) {
                     self.restr_head_introduce(restr);
                 } else if *det == Det::The {
-                    // L1 — the-trap: `the X` is the opaque designator (le),
-                    // not a quantifier; warn when nothing introduced X.
+                    // L1 — the-trap: `the X` is the opaque designator, not a
+                    // quantifier; warn when nothing introduced X.
                     let head = restr_head(restr);
                     if !self.linter.introduced.contains(head) {
                         let msg = format!(
-                            "'the {head}' names an opaque individual (le) — NOT a \
+                            "'the {head}' names an opaque individual — NOT a \
                              quantifier, and no 'some/every {head}' statement \
                              introduced one; write 'some {head}' for \"a/some {head}\""
                         );
@@ -508,6 +508,61 @@ mod tests {
         // reset() forgets the introduction.
         linter.reset();
         assert!(linter.lint("big(the dog).").iter().any(|n| n.code == "L1"));
+    }
+
+    /// THE DROP invariant (CLAUDE.md): "proof traces and all user-facing output
+    /// contain no Lojban". Lint notes are user-facing on BOTH REPLs — nibli-host
+    /// echoes them as `[Note: …]` by default (only `NIBLI_QUIET=1` suppresses),
+    /// and nibli-ui renders them in the KB status bar — so no message may gloss a
+    /// construct with its old cmavo spelling. L1 used to read "an opaque
+    /// individual (le)"; the sibling renderer leaks (`le {s}` descriptions, the
+    /// `" du "` identity note) are pinned engine-side by
+    /// `rendered_proofs_carry_no_lojban_description_or_identity_spelling`
+    /// (nibli-engine `tests/integration.rs`).
+    ///
+    /// Swept over the whole catalog, not just L1, so a re-Lojbanized message in
+    /// ANY note trips this. Matching is WORD-BOUNDARY, not substring: plain
+    /// English text legitimately contains "le" inside "rule"/"single".
+    #[test]
+    fn lint_messages_carry_no_lojban_spelling() {
+        // The article/identity/unspecified spellings that historically leaked.
+        const LOJBAN: [&str; 4] = ["le", "lo", "du", "zo'e"];
+        // One input per code in the catalog (L1–L9), plus the shipped corpus.
+        let inputs = [
+            "big(the dog).",                                     // L1
+            "beautiful(every person where big fast).",           // L2
+            "eats(some dog, every cat).",                        // L3
+            "metabolized_by(Adam, Betis).",                      // L4 — converted
+            "computer+user(me).",                                // L4 — compound
+            "every dog $d: big($d) | fast($d).",                 // L5
+            "past ~eats(Adam).",                                 // L6
+            "must eats(Adam).\npermitted(Adam).",                // L7
+            "beautiful(every person where it = Boss also big).", // L8
+            "$x = 2 .5 = $y.",                                   // L9
+            include_str!("../tests/acceptance.nibli"),
+        ];
+
+        let mut saw_l1 = false;
+        for input in inputs {
+            for note in lint_once(input) {
+                saw_l1 |= note.code == "L1";
+                for word in note
+                    .message
+                    .split(|c: char| !c.is_ascii_alphanumeric() && c != '\'')
+                {
+                    assert!(
+                        !LOJBAN.contains(&word),
+                        "{}: Lojban spelling {word:?} leaked into a user-facing \
+                         lint note: {}",
+                        note.code,
+                        note.message
+                    );
+                }
+            }
+        }
+        // Positive control: the L1 message really is produced and inspected, so
+        // a lint that silently stopped firing cannot pass this vacuously.
+        assert!(saw_l1, "L1 must fire over these inputs");
     }
 
     // ── L2 — pair vs & in clause bodies ──
