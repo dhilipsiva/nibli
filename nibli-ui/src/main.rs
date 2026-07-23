@@ -129,11 +129,7 @@ fn ac_from_result(r: nibli_kr::complete::CompleteResult) -> AcMenu {
     }
 }
 
-fn apply_ac_item(
-    text: &str,
-    menu: &AcMenu,
-    idx: usize,
-) -> Option<(String, usize)> {
+fn apply_ac_item(text: &str, menu: &AcMenu, idx: usize) -> Option<(String, usize)> {
     let item = menu.items.get(idx)?;
     nibli_kr::complete::apply_replacement(text, menu.span_start, menu.span_end, &item.value)
 }

@@ -1339,8 +1339,7 @@ impl KnowledgeBase {
             };
             match self.query_entailment_inner(buf) {
                 Ok(r) if r.is_true() => {
-                    let facts: Vec<String> =
-                        group.iter().map(|f| f.to_display_string()).collect();
+                    let facts: Vec<String> = group.iter().map(|f| f.to_display_string()).collect();
                     let msg = format!(
                         "Negation contradiction: ¬({}) was asserted, but the positive \
                          counterpart is derivable",

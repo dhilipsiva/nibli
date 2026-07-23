@@ -132,7 +132,9 @@ pub fn complete(line: &str, cursor: usize, opts: CompleteOpts<'_>) -> CompleteRe
     let (span_start, span_end, prefix) = token_prefix(line, cursor);
 
     // Colon-command mode: line (or current token) starts with `:`
-    if opts.include_repl_commands && (prefix.starts_with(':') || line[..span_start].trim().is_empty() && line[span_start..].starts_with(':'))
+    if opts.include_repl_commands
+        && (prefix.starts_with(':')
+            || line[..span_start].trim().is_empty() && line[span_start..].starts_with(':'))
     {
         return complete_repl(prefix, span_start, span_end, opts.limit);
     }
@@ -265,11 +267,12 @@ pub fn apply_replacement(
 
 // ── internals ──────────────────────────────────────────────────────────────
 
-static PREDICATE_NAMES: LazyLock<Vec<&'static nibli_lexicon::PredicateEntry>> = LazyLock::new(|| {
-    corpus_entries().collect()
-});
+static PREDICATE_NAMES: LazyLock<Vec<&'static nibli_lexicon::PredicateEntry>> =
+    LazyLock::new(|| corpus_entries().collect());
 
-fn predicates_with_prefix(prefix_lower: &str) -> impl Iterator<Item = &'static nibli_lexicon::PredicateEntry> + '_ {
+fn predicates_with_prefix(
+    prefix_lower: &str,
+) -> impl Iterator<Item = &'static nibli_lexicon::PredicateEntry> + '_ {
     let slice = PREDICATE_NAMES.as_slice();
     // Sorted by name — find lower bound
     let start = slice.partition_point(|e| e.name < prefix_lower);
@@ -425,12 +428,18 @@ mod tests {
     #[test]
     fn completes_inside_call_places() {
         let line = "goes(des";
-        let r = complete(line, line.len(), CompleteOpts {
-            min_prefix: 0,
-            ..CompleteOpts::default()
-        });
+        let r = complete(
+            line,
+            line.len(),
+            CompleteOpts {
+                min_prefix: 0,
+                ..CompleteOpts::default()
+            },
+        );
         assert!(
-            vals(&r).iter().any(|v| v.starts_with("des") || *v == "destination"),
+            vals(&r)
+                .iter()
+                .any(|v| v.starts_with("des") || *v == "destination"),
             "places for goes: {:?}",
             vals(&r)
         );
@@ -454,7 +463,11 @@ mod tests {
     #[test]
     fn apply_replaces_prefix() {
         let r = complete("animal(ev", 9, CompleteOpts::default());
-        let every = r.items.iter().position(|c| c.value == "every").expect("every");
+        let every = r
+            .items
+            .iter()
+            .position(|c| c.value == "every")
+            .expect("every");
         let (new, cur) = r.apply("animal(ev", every).unwrap();
         assert_eq!(new, "animal(every");
         assert_eq!(cur, "animal(every".len());

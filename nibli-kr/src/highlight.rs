@@ -104,7 +104,10 @@ pub fn lex(src: &str) -> Vec<Token<'_>> {
             while i < bytes.len() && bytes[i].is_ascii_digit() {
                 i += 1;
             }
-            if i < bytes.len() && bytes[i] == b'.' && i + 1 < bytes.len() && bytes[i + 1].is_ascii_digit()
+            if i < bytes.len()
+                && bytes[i] == b'.'
+                && i + 1 < bytes.len()
+                && bytes[i + 1].is_ascii_digit()
             {
                 i += 1;
                 while i < bytes.len() && bytes[i].is_ascii_digit() {
@@ -129,16 +132,20 @@ pub fn lex(src: &str) -> Vec<Token<'_>> {
         }
 
         // Single-char operators
-        if matches!(b, b'&' | b'|' | b'~' | b'=' | b'+' | b'!' | b'^' | b'*' | b'/' | b'%' | b'<' | b'>')
-        {
+        if matches!(
+            b,
+            b'&' | b'|' | b'~' | b'=' | b'+' | b'!' | b'^' | b'*' | b'/' | b'%' | b'<' | b'>'
+        ) {
             i += 1;
             out.push((TokenKind::Operator, &src[start..i]));
             continue;
         }
 
         // Punctuation
-        if matches!(b, b'(' | b')' | b'{' | b'}' | b'[' | b']' | b',' | b'.' | b':' | b';' | b'@')
-        {
+        if matches!(
+            b,
+            b'(' | b')' | b'{' | b'}' | b'[' | b']' | b',' | b'.' | b':' | b';' | b'@'
+        ) {
             i += 1;
             out.push((TokenKind::Punctuation, &src[start..i]));
             continue;
@@ -252,11 +259,23 @@ mod tests {
     #[test]
     fn keywords_and_names() {
         let toks = lex("animal(every dog).");
-        assert!(toks.iter().any(|(k, t)| *k == TokenKind::Keyword && *t == "every"));
-        assert!(toks.iter().any(|(k, t)| *k == TokenKind::Predicate && *t == "animal"));
-        assert!(toks.iter().any(|(k, t)| *k == TokenKind::Predicate && *t == "dog"));
+        assert!(
+            toks.iter()
+                .any(|(k, t)| *k == TokenKind::Keyword && *t == "every")
+        );
+        assert!(
+            toks.iter()
+                .any(|(k, t)| *k == TokenKind::Predicate && *t == "animal")
+        );
+        assert!(
+            toks.iter()
+                .any(|(k, t)| *k == TokenKind::Predicate && *t == "dog")
+        );
         let toks = lex("dog(Ara).");
-        assert!(toks.iter().any(|(k, t)| *k == TokenKind::Name && *t == "Ara"));
+        assert!(
+            toks.iter()
+                .any(|(k, t)| *k == TokenKind::Name && *t == "Ara")
+        );
     }
 
     #[test]

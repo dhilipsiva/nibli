@@ -93,8 +93,8 @@ mod tests {
     fn utopia_floor_obligation_is_not_event_word_salad() {
         // obligated(every person, event { secure() }) must NOT read
         // "Y is event and Y is obligated to X".
-        let ast = nibli_kr::parse_checked("obligated(every person, event { secure() }).")
-            .expect("parse");
+        let ast =
+            nibli_kr::parse_checked("obligated(every person, event { secure() }).").expect("parse");
         let buf = nibli_semantics::compile_from_ast(ast).expect("compile");
         let out = render_logic_buffer(&buf, Register::Spec);
         assert!(
@@ -120,8 +120,7 @@ mod tests {
             "got: {lose}"
         );
         let bld = {
-            let ast =
-                nibli_kr::parse_checked("building(HighSec, Lalo).").unwrap();
+            let ast = nibli_kr::parse_checked("building(HighSec, Lalo).").unwrap();
             let buf = nibli_semantics::compile_from_ast(ast).unwrap();
             render_logic_buffer(&buf, Register::Spec)
         };

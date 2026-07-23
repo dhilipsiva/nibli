@@ -18,10 +18,7 @@ use crate::term::{role_base, role_index};
 /// Abstraction-type scaffolding predicates (event/fact/property/…) that only
 /// exist to host a nested duty content — never surface as "Y is event".
 fn is_abstraction_scaffold(rel: &str) -> bool {
-    matches!(
-        rel,
-        "event" | "fact" | "property" | "amount" | "concept"
-    )
+    matches!(rel, "event" | "fact" | "property" | "amount" | "concept")
 }
 
 /// Deontic head predicates whose x1 is the duty/content and x2 the obligated party.
@@ -335,7 +332,10 @@ fn build_frames(preds: &[(String, Vec<LogicalTerm>)], ctx: &mut Ctx) -> Vec<Stri
         }
     }
 
-    let accs: Vec<FrameAcc> = order.into_iter().filter_map(|key| map.remove(&key)).collect();
+    let accs: Vec<FrameAcc> = order
+        .into_iter()
+        .filter_map(|key| map.remove(&key))
+        .collect();
     let accs = collapse_deontic_event_duties(accs);
     accs.into_iter()
         .map(|acc| render_frame(&acc, ctx))
@@ -396,11 +396,7 @@ fn collapse_deontic_event_duties(accs: Vec<FrameAcc>) -> Vec<FrameAcc> {
         });
     }
     // Prefer the collapsed form; if we somehow found no deontic heads, fall back.
-    if out.is_empty() {
-        accs
-    } else {
-        out
-    }
+    if out.is_empty() { accs } else { out }
 }
 
 fn render_frame(acc: &FrameAcc, ctx: &mut Ctx) -> String {
@@ -414,7 +410,8 @@ fn render_frame(acc: &FrameAcc, ctx: &mut Ctx) -> String {
             // Content phrases we synthesized start with "be " / bare verb — use "to".
             if let Some(who) = render_term(who_term, ctx) {
                 if content.starts_with("be ")
-                    || !content.contains(" is ") && !content.chars().next().is_some_and(|c| c.is_uppercase())
+                    || !content.contains(" is ")
+                        && !content.chars().next().is_some_and(|c| c.is_uppercase())
                 {
                     return format!("{who} is obligated to {content}");
                 }
@@ -449,7 +446,9 @@ fn render_term(t: &LogicalTerm, ctx: &mut Ctx) -> Option<String> {
 fn display_constant(s: &str) -> String {
     let mut chars = s.chars();
     match chars.next() {
-        Some(c) if c.is_ascii_lowercase() && s.bytes().all(|b| b.is_ascii_lowercase() || b == b'_') => {
+        Some(c)
+            if c.is_ascii_lowercase() && s.bytes().all(|b| b.is_ascii_lowercase() || b == b'_') =>
+        {
             // highsec → Highsec; snake_case → first letter only (good enough).
             format!("{}{}", c.to_ascii_uppercase(), chars.as_str())
         }

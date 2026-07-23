@@ -313,7 +313,9 @@ fn utopia_asp_pins_agree_with_clingo() {
                 divergences.push(outcome.summary());
             }
             Outcome::SkipNonMappable { reason, .. }
-            | Outcome::SkipIndefinite { verdict: reason, .. }
+            | Outcome::SkipIndefinite {
+                verdict: reason, ..
+            }
             | Outcome::SkipOracle { status: reason, .. } => {
                 errors.push(format!("{name}: unexpectedly skipped ({reason})"));
             }
