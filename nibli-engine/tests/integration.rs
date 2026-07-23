@@ -3156,14 +3156,14 @@ fn gdpr_erasure_rule_is_per_subject() {
     );
 }
 
-/// PERF REGRESSION PIN (Ch 20 reproducibility): the chapter tells readers to
-/// load the FULL shipped gdpr.lojban and run `la .adam. cu se curmi`. Before
-/// the 2026-06 backward-chaining fixes in nibli-reason (lazy candidate build,
-/// index-decidable filter pruning, depth-horizon provability lookahead), this
-/// query did not return within 240 seconds in a debug build: at the depth
+/// PERF REGRESSION PIN (book Ch 19 GDPR reproducibility): the chapter tells
+/// readers to load the FULL shipped gdpr.nibli and check lawful basis for Adam.
+/// Before the 2026-06 backward-chaining fixes in nibli-reason (lazy candidate
+/// build, index-decidable filter pruning, depth-horizon provability lookahead),
+/// this query did not return within 240 seconds in a debug build: at the depth
 /// horizon every unbound-event-variable filter check returned ResourceExceeded
 /// and pessimistically kept the entire members^k candidate cartesian product
-/// alive. Post-fix the full Ch 20 sequence — lawful-basis query, consent
+/// alive. Post-fix the full Ch 19 sequence — lawful-basis query, consent
 /// withdrawal, and BOTH post-retraction verdicts (the worst case: a definitive
 /// False cannot short-circuit the search) — completes in seconds. The
 /// 120-second budget is deliberately generous so CI never flakes; its job is
@@ -3181,7 +3181,7 @@ fn gdpr_full_corpus_lawful_basis_query_completes() {
         }
         let id = engine.assert_text(trimmed).unwrap_or_else(|e| {
             panic!(
-                "gdpr.lojban line {} failed to assert: {:?}\n{}",
+                "gdpr.nibli line {} failed to assert: {:?}\n{}",
                 line_num + 1,
                 trimmed,
                 e
@@ -3193,7 +3193,7 @@ fn gdpr_full_corpus_lawful_basis_query_completes() {
         }
     }
 
-    // Ch 20's first lawful-basis query, against the FULL loaded corpus.
+    // Ch 19's first lawful-basis query, against the FULL loaded corpus.
     assert_true(
         &engine.query_holds("permitted(Adam).").unwrap(),
         "Against the full corpus, Adam's processing has a lawful basis (Art 6)",
@@ -3201,7 +3201,7 @@ fn gdpr_full_corpus_lawful_basis_query_completes() {
 
     // The consent-withdrawal belief-revision flip, also against the full corpus.
     engine
-        .retract_fact(consent_id.expect("consent line present in gdpr.lojban"))
+        .retract_fact(consent_id.expect("consent line present in gdpr.nibli"))
         .unwrap();
     assert_false(
         &engine.query_holds("permitted(Adam).").unwrap(),
@@ -3213,20 +3213,20 @@ fn gdpr_full_corpus_lawful_basis_query_completes() {
     );
     // (The Art 17 erasure RULE now lives in the shipped corpus; its belief-revision
     // flip is exercised end-to-end by `gdpr_erasure_rule_via_negated_consent_restrictor`
-    // on a small engine. Querying `se bilga lo nu se vimcu` against the FULL corpus
-    // is deliberately NOT done here — it fans out across every Art 5/9 obligation
-    // rule, which would dominate this timing pin without testing anything new.)
+    // on a small engine. Querying erasure against the FULL corpus is deliberately NOT
+    // done here — it fans out across every Art 5/9 obligation rule, which would
+    // dominate this timing pin without testing anything new.)
 
     let elapsed = start.elapsed();
     assert!(
         elapsed < std::time::Duration::from_secs(120),
-        "full-corpus Ch 20 sequence took {elapsed:?} (budget 120s) — the \
+        "full-corpus Ch 19 sequence took {elapsed:?} (budget 120s) — the \
          backward-chaining candidate search has regressed"
     );
 }
 
 // ════════════════════════════════════════════════════════════════════
-// Corpus transcript pins (book Ch 20 / Ch 21 reproducibility)
+// Corpus transcript pins (book Ch 19 GDPR / Ch 20 DDI reproducibility)
 // ════════════════════════════════════════════════════════════════════
 
 /// Load a corpus string exactly the way nibli-host's `:load` does: trim each line,
@@ -3273,13 +3273,13 @@ fn pinned_id(ids: &[(String, u64)], line: &str) -> u64 {
     hits[0]
 }
 
-/// TRANSCRIPT PIN (book Ch 20): the chapter's captured REPL sessions print
+/// TRANSCRIPT PIN (book Ch 19 GDPR): the chapter's captured REPL sessions print
 /// `[Load] Done: 24 asserted, 77 skipped, 0 errors`, retract the consent fact
-/// by id (#21), and — in the multi-basis walkthrough — assert `la .adam. cu
-/// nupre` right after the load and later retract it as #24. A corpus reorder,
+/// by id (#21), and — in the multi-basis walkthrough — assert `promise(Adam).`
+/// right after the load and later retract it as #24. A corpus reorder,
 /// insertion, or deletion silently invalidates those printed ids and counts;
-/// this pin breaks loudly instead. If it fails: gdpr.lojban changed — recapture
-/// the Ch 20 transcripts (book repo) together with these expected values.
+/// this pin breaks loudly instead. If it fails: gdpr.nibli changed — recapture
+/// the Ch 19 transcripts (book repo) together with these expected values.
 #[test]
 fn gdpr_corpus_transcript_pins() {
     let engine = fresh_engine();
@@ -3287,26 +3287,26 @@ fn gdpr_corpus_transcript_pins() {
     assert_eq!(
         (asserted, skipped),
         (24, 77),
-        "Ch 20 pins `[Load] Done: 24 asserted, 77 skipped, 0 errors`"
+        "Ch 19 pins `[Load] Done: 24 asserted, 77 skipped, 0 errors`"
     );
     assert_eq!(
         pinned_id(&ids, "approves(Adam)."),
         21,
-        "Ch 20 retracts the consent fact as id #21"
+        "Ch 19 retracts the consent fact as id #21"
     );
     // The multi-basis walkthrough asserts the contract fact immediately after
     // the corpus load and later retracts it as #24.
     let contract_id = engine.assert_text("promise(Adam).").unwrap()[0];
     assert_eq!(
         contract_id, 24,
-        "Ch 20 retracts the post-load contract fact as id #24"
+        "Ch 19 retracts the post-load contract fact as id #24"
     );
 }
 
-/// TRANSCRIPT PIN (book Ch 21): the chapter's captured REPL sessions print
+/// TRANSCRIPT PIN (book Ch 20 DDI): the chapter's captured REPL sessions print
 /// `[Load] Done: 16 asserted, 78 skipped, 0 errors` and retract two facts by
 /// id — the inhibition fact (#4, fluconazole discontinued) and the regimen
-/// fact (#10, warfarin stopped). Same contract as the Ch 20 pin above: a
+/// fact (#10, warfarin stopped). Same contract as the Ch 19 pin above: a
 /// corpus edit must break this test, not silently drift the book.
 #[test]
 fn ddi_corpus_transcript_pins() {
@@ -3316,17 +3316,17 @@ fn ddi_corpus_transcript_pins() {
     assert_eq!(
         (asserted, skipped),
         (16, 78),
-        "Ch 21 pins `[Load] Done: 16 asserted, 78 skipped, 0 errors`"
+        "Ch 20 pins `[Load] Done: 16 asserted, 78 skipped, 0 errors`"
     );
     assert_eq!(
         pinned_id(&ids, "prevents(Flukonazol, Siptucin)."),
         4,
-        "Ch 21 retracts the inhibition fact as id #4"
+        "Ch 20 retracts the inhibition fact as id #4"
     );
     assert_eq!(
         pinned_id(&ids, "uses(Adam, Varfarin)."),
         10,
-        "Ch 21 retracts the warfarin regimen fact as id #10"
+        "Ch 20 retracts the warfarin regimen fact as id #10"
     );
 }
 

@@ -1,14 +1,14 @@
 //! nibli-bench-book — release-profile timing pins for the book's quoted figures.
 //!
 //! The book quotes three latency figures (Ch 13 "1 MB vs a Hundred Million
-//! Dollars"; Ch 20 GDPR case study), all measured on the NATIVE in-process
+//! Dollars"; Ch 19 GDPR case study), all measured on the NATIVE in-process
 //! engine (`nibli-engine`) in a release build — the same path as the pinned
-//! `gdpr_full_corpus_lawful_basis_query_completes` test Ch 20 cites:
+//! `gdpr_full_corpus_lawful_basis_query_completes` test Ch 19 cites:
 //!
 //!   load    — assert every line of the shipped `gdpr.nibli` corpus
-//!   query   — the Ch-20 headline lawful-basis query `permitted(Adam).`
+//!   query   — the Ch-19 headline lawful-basis query `permitted(Adam).`
 //!             against the fully loaded corpus
-//!   full    — the whole Ch-20 sequence: load + lawful-basis query + consent
+//!   full    — the whole Ch-19 sequence: load + lawful-basis query + consent
 //!             retraction + post-withdrawal lawful-basis re-query (the worst
 //!             case: a definitive FALSE cannot short-circuit the search) +
 //!             erasure re-query
@@ -30,7 +30,7 @@ const CONSENT_LINE: &str = "approves(Adam).";
 const LAWFUL_BASIS_QUERY: &str = "permitted(Adam).";
 const ERASURE_QUERY: &str = "~permitted(Adam).";
 
-/// One full Ch-20 sequence on a fresh engine. Returns (load, query, full).
+/// One full Ch-19 GDPR sequence on a fresh engine. Returns (load, query, full).
 fn run_once() -> Result<(Duration, Duration, Duration), String> {
     let t_start = Instant::now();
 

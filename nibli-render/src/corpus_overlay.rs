@@ -1,7 +1,7 @@
 //! Domain-gloss overlays for the shipped curated corpora.
 //!
 //! These are the documented "reader's overlay" for each case-study corpus (the
-//! mapping disclosed in the corpus comments and the book's Ch 20/21 tables): the
+//! mapping disclosed in the corpus comments and the book's Ch 19/20 tables): the
 //! proxy gismu (`prevents`, `se permits`, …) and the opaque transliterated constants
 //! (`varfarin`, `siptucin`, …) rendered in real domain language. They are applied
 //! ONLY when the matching read-only example is loaded in the UI; Custom KBs and
@@ -14,7 +14,7 @@
 
 use crate::overlay::DomainGloss;
 
-/// Drug-interaction case study (`drug-interactions.lojban`, book Ch 21).
+/// Drug-interaction case study (`drug-interactions.nibli`, book Ch 20).
 ///
 /// `cuts` is keyed `se`-converted: the corpus uses `se cuts` ("is metabolized
 /// by"), whose IR stores the enzyme in x1 and the substrate in x2, so the
@@ -42,7 +42,7 @@ pub static DRUG_INTERACTIONS_OVERLAY: DomainGloss = DomainGloss {
     ],
 };
 
-/// GDPR compliance case study (`gdpr.lojban`, book Ch 20).
+/// GDPR compliance case study (`gdpr.nibli`, book Ch 19).
 ///
 /// `permits` is keyed `se`-converted: `se permits` ("has a lawful basis for
 /// processing") stores the data subject in x2, so the template reads off x2.

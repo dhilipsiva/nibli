@@ -97,7 +97,7 @@ Any drug at toxicity risk warrants a safety alert.";
 /// The preloaded examples, in dropdown order.
 pub const EXAMPLES: &[Example] = &[
     Example {
-        name: "Syllogism (Ch 19)",
+        name: "Syllogism (Ch 18)",
         source: SYLLOGISM_SOURCE,
         kb: SYLLOGISM_KB,
         queries: &[
@@ -117,7 +117,7 @@ pub const EXAMPLES: &[Example] = &[
         overlay: None,
     },
     Example {
-        name: "GDPR compliance (Ch 20)",
+        name: "GDPR compliance (Ch 19)",
         source: GDPR_SOURCE,
         kb: include_str!("../../gdpr.nibli"),
         queries: &[
@@ -205,7 +205,7 @@ pub const EXAMPLES: &[Example] = &[
         overlay: Some(&nibli_render::UTOPIA_OVERLAY),
     },
     Example {
-        name: "Drug interactions (Ch 21)",
+        name: "Drug interactions (Ch 20)",
         source: DRUG_SOURCE,
         kb: include_str!("../../drug-interactions.nibli"),
         queries: &[
