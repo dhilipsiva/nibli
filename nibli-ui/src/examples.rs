@@ -13,9 +13,9 @@
 //! the UI examples cannot drift from the tested corpora. The `shipped_examples_compile` guard test below
 //! pins every KB line + query through the nibli KR front-end.
 //!
-//! NOTE: Syllogism/GDPR/Drug `name` strings are quoted by the book — keep them
-//! byte-stable when possible. Legal domain (utopia) ships **alongside** GDPR
-//! for now (no book chapter merge yet).
+//! NOTE: Syllogism/GDPR/Drug/Constitutional-core `name` strings are quoted by
+//! the book — keep them byte-stable when possible. Constitutional core (utopia)
+//! ships **alongside** GDPR for now (no domain-umbrella merge yet).
 
 /// One preset query: an English note shown beside its nibli KR in the dropdown.
 pub struct ExampleQuery {
@@ -69,9 +69,9 @@ Adam is a data subject. AkmeCorp and Google are controllers.
 AkmeCorp holds Adam's health record and an ordinary record.
 Adam has given consent. AkmeCorp suffered a breach; Google did not.";
 
-// ── Legal domain (utopia) — English summary of `utopia.nibli` ──
+// ── Constitutional core (utopia) — English summary of `utopia.nibli` ──
 // Clinical Source-tab prose (the KR file's commentary may be manifesto). Ships
-// alongside GDPR until the book merges legal-domain framing.
+// alongside GDPR (book companion: Constitutional Floor and Due Process).
 const LEGAL_SOURCE: &str = "\
 Every person is owed a secure environment, food, shelter, health, learning, and expression — duties, not logistics.
 A prisoner is still a person, may still express, and free persons may travel.
@@ -141,7 +141,7 @@ pub const EXAMPLES: &[Example] = &[
         overlay: Some(&nibli_render::GDPR_OVERLAY),
     },
     Example {
-        name: "Legal domain (utopia)",
+        name: "Constitutional core (utopia)",
         source: LEGAL_SOURCE,
         kb: include_str!("../../utopia.nibli"),
         queries: &[
