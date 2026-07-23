@@ -19,14 +19,13 @@
 # of a generation that watched the Old World auction childhood to coaching
 # mafias, starve orphans of sleep for competitive entrance rank-lists (in
 # India: NEET and its coaching-centre economy), and crown patronage machines
-# — here personified as the Cockroach Janatha Party (CJP): a fictional stand-
-# in for any crony party that sells "recommendation letters," station-house
-# forgetfulness, and WhatsApp justice from a minister's nephew.
+# that sell "recommendation letters," station-house forgetfulness, and
+# WhatsApp justice from a minister's nephew.
 # Under Nibli, every duty is a formal derivation — not a slogan, not a bribe.
 #
 # Meet ARA — a highly capable kid. Both parents dead. In the Old World that
 # sentence alone would have been a life sentence: no fees for the "good"
-# coaching centre, no letter from a CJP (patronage-machine) fixer, no second
+# coaching centre, no letter from a patronage-machine fixer, no second
 # chance if one bad exam day buried the rank. The Old World called that
 # "merit." We call it engineered scarcity with a smile.
 #
@@ -59,8 +58,8 @@ all $anyone: prisoner($anyone) -> person($anyone).
 
 # ─── Article 2: Due-process suspension ────────────────────────────
 #
-# In the Old World, "due process" was a phrase the CJP used while the
-# police station forgot your name. Here, suspension of liberty is a
+# In the Old World, "due process" was a phrase the patronage machine used while
+# the police station forgot your name. Here, suspension of liberty is a
 # formal state — prisoner — and even then the tongue is not cut out:
 # a prisoner still expresses. Free persons travel. No travel-bond sold
 # by a party booth. No "special permission" for the connected.
@@ -79,7 +78,7 @@ all $anyone: person($anyone) & ~prisoner($anyone) -> travel($anyone).
 # could open the future. Teachers who truly taught starved; brokers thrived.
 #
 # Here, merit is minted at the point of contribution — teach a student,
-# work a task — and only if your standing is not voided. No CJP uncle can
+# work a task — and only if your standing is not voided. No patronage uncle can
 # mint reward with a phone call. No false teacher keeps the mint.
 #
 # ARA studies under teachers who are rewarded for teaching, not for
@@ -104,7 +103,7 @@ all $contributor: all $task: work($contributor, $task) & ~false($contributor) ->
 # and buried it. We surface it.
 #
 # Audit rate and clawback multipliers are parameters OUTSIDE the firewall.
-# The LOGIC of who may void whom is not for sale to the CJP.
+# The LOGIC of who may void whom is not for sale to any patronage machine.
 
 all $auditor: all $audited: judge($auditor, $audited) & capture($auditor, $audited) & ~deceive($auditor, $audited) -> false($audited).
 all $fraudster: false($fraudster) -> lose(Points, $fraudster).
@@ -114,9 +113,9 @@ all $auditor: all $audited: deceive($auditor, $audited) & judge(Review, $auditor
 
 # ─── Article 5: Family non-attestation ────────────────────────────
 #
-# Dynasty was the CJP's favorite algorithm: parent certifies child, child
-# certifies parent, the ledger of power never leaves the bloodline. NEET
-# "management quotas" were only the exam-hall face of the same rot.
+# Dynasty was the patronage machine's favorite algorithm: parent certifies
+# child, child certifies parent, the ledger of power never leaves the
+# bloodline. NEET "management quotas" were only the exam-hall face of the same rot.
 #
 # Here, if you judge your own child (parent relation), your standing voids.
 # Kinship attestation is not a free pass — it is a conflict that the logic
@@ -160,7 +159,7 @@ all $offender: prisoner($offender) & family($offender) & ~severe($offender) -> b
 # Bela's standing falls; points burn; Cira's points burn with the fraud.
 # Dev judged child Esa → family non-attestation voids Dev. Esa still teaches;
 # Esa still mints. Koa "captures" without adjudicator role → no void (gate holds).
-# Quin works the Census → reward without a CJP chit.
+# Quin works the Census → reward without a patronage chit.
 # Hano harmed Ivo; Court spoke; home confinement; dwell.
 # Jala harmed with no Court → free (no assertion of injury alone jails).
 # Lupo lied about Mira; Review voided Lupo; Mira still rewarded for teaching.
@@ -169,8 +168,8 @@ all $offender: prisoner($offender) & family($offender) & ~severe($offender) -> b
 #
 # ARA is not named in every line. ARA is the reason every line exists:
 # a capable orphan who would have been crushed by NEET queues, coaching
-# fees, and CJP queues — and who, under these rules, is owed security,
-# food, shelter, health, learning, and a future that no cockroach party
+# fees, and patronage queues — and who, under these rules, is owed security,
+# food, shelter, health, learning, and a future that no crony machine
 # can revoke with a phone call.
 #
 # Did you think we would fall?
