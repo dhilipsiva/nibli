@@ -1,0 +1,86 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Nibli KR",
+  "scopeName": "source.nibli",
+  "fileTypes": ["nibli"],
+  "uuid": "a7c3e9f1-2b4d-4e8a-9c1f-0d5e6a7b8c9d",
+  "patterns": [
+    { "include": "#block-comment" },
+    { "include": "#line-comment" },
+    { "include": "#string" },
+    { "include": "#variable" },
+    { "include": "#number" },
+    { "include": "#name" },
+    { "include": "#keyword" },
+    { "include": "#compound-predicate" },
+    { "include": "#predicate" },
+    { "include": "#operator" },
+    { "include": "#punctuation" }
+  ],
+  "repository": {
+    "block-comment": {
+      "name": "comment.block.nibli",
+      "begin": "/\\*",
+      "end": "\\*/"
+    },
+    "line-comment": {
+      "name": "comment.line.number-sign.nibli",
+      "match": "#.*$"
+    },
+    "string": {
+      "name": "string.quoted.double.nibli",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "name": "constant.character.escape.nibli",
+          "match": "\\\\[\"\\\\]"
+        }
+      ]
+    },
+    "variable": {
+      "name": "variable.other.nibli",
+      "match": "\\$[a-z][a-z0-9_]*"
+    },
+    "number": {
+      "name": "constant.numeric.nibli",
+      "match": "\\b[0-9]+(\\.[0-9]+)?\\b"
+    },
+    "name": {
+      "name": "constant.other.name.nibli",
+      "comment": "Capitalized constants (cmevla-style): Adam, Paris, Ara",
+      "match": "\\b[A-Z][A-Za-z0-9_]*\\b"
+    },
+    "keyword": {
+      "name": "keyword.control.nibli",
+      "comment": "NIBLI_KR §2 / nibli-lexicon::RESERVED_WORDS — keep in sync",
+      "match": "\\b(all|also|amount|concept|event|every|exactly|fact|future|it|it_a|it_e|it_i|it_o|it_u|may|me|must|no|now|past|property|slot|some|that|the|this|via|we|we_all|we_others|where|yonder|you|you_all)\\b"
+    },
+    "compound-predicate": {
+      "name": "entity.name.function.compound.nibli",
+      "comment": "Curated a+b compounds (computer+user) — adjacency required by pest",
+      "match": "\\b[a-z][a-z0-9_]*\\+[a-z][a-z0-9_]*\\b"
+    },
+    "predicate": {
+      "name": "entity.name.function.nibli",
+      "comment": "Lowercase predicate / place-label idents; not keywords (keyword rule first)",
+      "match": "\\b[a-z][a-z0-9_]*\\b"
+    },
+    "operator": {
+      "patterns": [
+        {
+          "name": "keyword.operator.logical.nibli",
+          "match": "<->|->|&|\\||\\^|~|="
+        },
+        {
+          "name": "keyword.operator.other.nibli",
+          "match": "\\?{1,2}|!"
+        }
+      ]
+    },
+    "punctuation": {
+      "name": "punctuation.nibli",
+      "match": "[()\\[\\]{},.:;]"
+    }
+  }
+}
