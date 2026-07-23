@@ -76,11 +76,12 @@ const LEGAL_SOURCE: &str = "\
 Every person is owed a secure environment, food, shelter, health, learning, and expression — duties, not logistics.
 A prisoner is still a person, may still express, and free persons may travel.
 Teachers and workers mint merit only when their standing is not voided.
-An auditor voids someone only with an adjudicator role, a recorded catch, and no established false accusation; false accusers are themselves voided.
+Voiding requires multi-sig: two independent Review-credentialed auditors (not kin, not the same person, not suspended), each with adjudicator role, a recorded catch, and no established false accusation; false accusers are themselves voided on Review.
 Judging your own child voids your standing (kinship conflict).
-Imprisonment requires adjudicated harm and no successful appeal; home confinement is for non-domestic cases; domestic offenses route to high- or low-security facilities by severity.
+Imprisonment requires adjudicated harm, no successful appeal, a non-suspended Court, and that the offender is not whistleblower-protected; home confinement is for non-domestic cases; domestic offenses route to high- or low-security facilities by severity.
+Article 7: suspended office (broken), multi-sig void, and whistleblower protection (show → defend) resist capture of Court/Review.
 
-Scenario cast: Adam is a prisoner. Bela taught Cira and was voided by Gia's honest capture. Dev judged child Esa and is voided. Mira teaches honestly; Lupo falsely accused her and is voided. Hano is home-confined; Jala harmed without court and stays free; Nia is freed on appeal. Lalo (severe domestic) and Nando (non-severe domestic) are placed by grade. Quin works the Census and is rewarded.";
+Scenario cast: Adam is a prisoner. Bela taught Cira and was voided by Gia and Hex dual-sign. Dev judged child Esa and is voided. Mira teaches honestly; Lupo falsely accused her and is voided. Hano is home-confined; Jala harmed without court and stays free; Nia is freed on appeal. Lalo (severe domestic) and Nando (non-severe domestic) are placed by grade. Quin works the Census and is rewarded. Boss fails to solo-void or imprison Rebel (whistleblower shield; Boss suspended by recall).";
 
 // ── Drug interactions — English rendering of `drug-interactions.nibli` ──
 const DRUG_SOURCE: &str = "\

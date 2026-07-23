@@ -291,6 +291,10 @@ fn utopia_asp_pins_agree_with_clingo() {
         ("lowsec_nando", "building(LowSec, Nando).", true),
         ("reward_quin", "reward(Quin).", true),
         ("no_reward_koa", "reward(Koa).", false),
+        // Article 7 capture-resistance pins (adversarial scenario)
+        ("art7_no_solo_void_rebel", "false(Rebel).", false),
+        ("art7_no_prisoner_rebel", "prisoner(Rebel).", false),
+        ("art7_defend_rebel", "defend(Rebel).", true),
     ];
 
     let mut checked = 0usize;

@@ -96,21 +96,25 @@ all $contributor: all $task: work($contributor, $task) & ~false($contributor) ->
 # vanished, "inquiries" that promoted the guilty. Fraud EV was priced for
 # the rich — mint while unaudited, pay a fine if caught, keep the empire.
 #
-# Here, voiding requires an ADJUDICATOR (judge) AND a capture AND no
-# established false accusation. Bare snitching is not power. A capture
-# without judge is evidence, not a guillotine — the accusation-bounty hole
-# is welded shut. Counter-audit: if you deceive and Review confirms it,
-# YOU are voided. Points clawed. Students of a voided teacher lose points
-# too — contamination is real; the Old World called it "reputation risk"
-# and buried it. We surface it.
+# Here, voiding is MULTI-SIG (Article 7): two independent Review-credentialed
+# auditors, each with adjudicator role + capture + no established false
+# accusation, neither suspended, neither kin, not the same person. Bare
+# snitching is not power. A capture without dual adjudicated sign-off is
+# evidence, not a guillotine — the accusation-bounty hole is welded shut.
+# Counter-audit: if you deceive and Review confirms it, YOU are voided
+# (single Review judgment — the anti-fraud path, not the capture path).
+# Points clawed. Students of a voided teacher lose points too —
+# contamination is real; the Old World called it "reputation risk" and
+# buried it. We surface it.
 #
 # Audit rate and clawback multipliers are parameters OUTSIDE the firewall.
 # The LOGIC of who may void whom is not for sale to any patronage machine.
 
-all $auditor: all $audited: judge($auditor, $audited) & capture($auditor, $audited) & ~deceive($auditor, $audited) -> false($audited).
+# Multi-sig void (Art 4 + Art 7 crypto separation). See Article 7 commentary.
+all $a: all $b: all $audited: permits(Review, $a) & permits(Review, $b) & judge($a, $audited) & capture($a, $audited) & ~deceive($a, $audited) & judge($b, $audited) & capture($b, $audited) & ~deceive($b, $audited) & ~($a = $b) & ~parent($a, $b) & ~parent($b, $a) & ~broken($a) & ~broken($b) -> false($audited).
 all $fraudster: false($fraudster) -> lose(Points, $fraudster).
 all $teacher: all $student: teaches($teacher, $student) & false($teacher) -> lose(Points, $student).
-all $auditor: all $audited: judge($auditor, $audited) & capture($auditor, $audited) & ~deceive($auditor, $audited) -> reward($auditor).
+all $auditor: all $audited: judge($auditor, $audited) & capture($auditor, $audited) & ~deceive($auditor, $audited) & ~broken($auditor) -> reward($auditor).
 all $auditor: all $audited: deceive($auditor, $audited) & judge(Review, $auditor) -> false($auditor).
 
 # ─── Article 5: Family non-attestation ────────────────────────────
@@ -136,7 +140,8 @@ all $auditor: all $audited: judge($auditor, $audited) & parent($auditor, $audite
 # flag was the right colour. Harm without court. Court without appeal.
 # Home as prison for the poor; farmhouses as "home confinement" for the rich.
 #
-# Here: injure + Court + no Appeals permit → prisoner. No mob. No minister.
+# Here: injure + Court + no Appeals permit + Court not suspended + offender
+# not whistleblower-protected → prisoner (Art 6 + Art 7). No mob. No minister.
 # Home confinement only when the offense is NOT domestic (unary family flag).
 # Domestic harm blocks the soft cage — severity routes HighSec / LowSec.
 # Facility placement is queryable; dwell for domestic cases derives from
@@ -148,17 +153,50 @@ all $auditor: all $audited: judge($auditor, $audited) & parent($auditor, $audite
 # call it politics. Expression is a floor right — and a boundary when it
 # becomes injury under adjudication. That is not silence. That is spine.
 
-all $offender: all $victim: injure($offender, $victim) & judge(Court, $offender) & ~permits(Appeals, $offender) -> prisoner($offender).
+all $offender: all $victim: injure($offender, $victim) & judge(Court, $offender) & ~permits(Appeals, $offender) & ~broken(Court) & ~defend($offender) -> prisoner($offender).
 all $offender: prisoner($offender) & home($offender) & ~family($offender) -> dwell($offender).
 all $offender: prisoner($offender) & family($offender) -> dwell($offender).
 all $offender: prisoner($offender) & family($offender) & severe($offender) -> building(HighSec, $offender).
 all $offender: prisoner($offender) & family($offender) & ~severe($offender) -> building(LowSec, $offender).
 
+# ─── Article 7: Defenses against Systemic Capture ─────────────────
+#
+# Threat model: an entrenched corrupt establishment captures Court or
+# Review credentials and weaponizes the formal core — solo-voiding
+# opponents, jailing whistleblowers, minting "justice" as patronage 2.0.
+# Three structural defenses. Selection of who holds Review/Court remains
+# outside the firewall; what the logic REFUSES once capture is attempted
+# is not for sale.
+#
+# (1) CRYPTOGRAPHIC SEPARATION / MULTI-SIG VOID (see Art 4 rule above)
+#     Two Review-permitted auditors, independent (not equal, not parent-kin),
+#     neither broken/suspended, each with judge+capture and no deceive.
+#     One captured auditor cannot void alone.
+#
+# (2) RAPID RECALL — suspended office as broken(X)
+#     PROXY: broken(X) means X's official capacity is suspended (citizen
+#     recall, legislative impeachment — asserted outside the firewall).
+#     Suspended auditors cannot complete multi-sig void or mint audit reward.
+#     Suspended Court cannot complete Art 6 imprisonment.
+#
+# (3) WHISTLEBLOWER IMMUNITY — show + defend
+#     PROXY: show(W, Official) = W exposes Official (whistleblower claim).
+#     PROXY: defend(W) = W holds protected status (derived).
+#     Art 6 imprisonment requires ~defend(offender): you cannot jail the
+#     person who is exposing you by framing an injure+Court package alone.
+#
+# Did you think capture was free? Query the adversarial scenario below.
+
+# Protected status from exposure of a state actor (whistleblower shield).
+# (No person(_) condition: person depends on prisoner via Art 1, and prisoner
+#  uses ~defend — that would form an unstratifiable negative cycle.)
+all $w: all $official: show($w, $official) -> defend($w).
+
 # ─── The world in facts: cast of a living proof ───────────────────
 #
 # Adam is prisoner — and STILL a person, STILL entitled to express.
-# Bela taught Cira while voidable; Gia judged and captured Bela honestly →
-# Bela's standing falls; points burn; Cira's points burn with the fraud.
+# Bela taught Cira while voidable; Gia AND Hex dual-sign an honest capture →
+# Bela's standing falls (multi-sig Art 7); points burn; Cira's points burn.
 # Dev judged child Esa → family non-attestation voids Dev. Esa still teaches;
 # Esa still mints. Koa "captures" without adjudicator role → no void (gate holds).
 # Quin works the Census → reward without a patronage chit.
@@ -187,8 +225,14 @@ parent(Dev, Esa).
 teaches(Esa, Fin).
 judge(Dev, Esa).
 person(Gia).
+person(Hex).
+# Multi-sig void of Bela: two independent Review-credentialed auditors.
+permits(Review, Gia).
+permits(Review, Hex).
 judge(Gia, Bela).
 capture(Gia, Bela).
+judge(Hex, Bela).
+capture(Hex, Bela).
 person(Koa).
 capture(Koa, Esa).
 person(Quin).
@@ -228,14 +272,38 @@ injure(Nando, Opal).
 judge(Court, Nando).
 family(Nando).
 
+# ─── Adversarial scenario: capture attempt (Article 7 pins) ────────
+#
+# Boss holds a Review credential and tries to solo-void Rebel, and
+# frames Rebel with injure + Court to imprison. Rebel exposes Boss
+# (whistleblower → defend). Citizens suspend Boss via recall
+# (broken(Boss)) so even a later co-signer cannot partner with the
+# boss. Court itself stays unsuspended so legitimate Art 6 cases (Hano)
+# still imprison. Expected under Art 7:
+#   ? false(Rebel).     → FALSE  (solo auditor; boss also broken)
+#   ? prisoner(Rebel).  → FALSE  (defend whistleblower shield)
+#   ? defend(Rebel).    → TRUE   (show → defend)
+#   ? prisoner(Hano).   → TRUE   (Court not broken; baseline control)
+
+person(Boss).
+person(Rebel).
+person(Scapegoat).
+permits(Review, Boss).
+judge(Boss, Rebel).
+capture(Boss, Rebel).
+injure(Rebel, Scapegoat).
+judge(Court, Rebel).
+show(Rebel, Boss).
+broken(Boss).
+
 # ─── Technical appendix (for readers, not just the author) ────────
 #
 # PROXY VOCABULARY (asserted inputs vs derived consequences)
-#   false(X)     — standing voided (attestor invalid). ASSERTED only via Art 4/5
+#   false(X)     — standing voided (attestor invalid). ASSERTED only via Art 4/5/7
 #                  rules' conclusions, or as a ground fact in tests. Not "logically
 #                  false" — a legal-status proxy.
 #   capture(A,X) — auditor A recorded a catch against X. ASSERTED input (evidence
-#                  of a catch), not authority to void without judge (Art 4 gate).
+#                  of a catch), not authority to void without dual multi-sig (Art 4/7).
 #   deceive(A,X) — false accusation by A against X, established by review process.
 #                  ASSERTED by that process; never derived from false (stratified).
 #   reward(X)    — X mints merit (derived when contribution rules fire).
@@ -244,8 +312,8 @@ family(Nando).
 #                  can sum. Read as "X loses merit tokens," not "X loses N points."
 #                  Amounts/rates are OUTSIDE the firewall (parameters).
 #   home(X)      — X is under home confinement (status flag; not "X is a house").
-#   parent(A,B)  — binary kinship (Art 5 non-attestation). ASSERTED registry input
-#                  (proof-of-kinship shares the audit regime with personhood).
+#   parent(A,B)  — binary kinship (Art 5 non-attestation + Art 7 multi-sig
+#                  independence). ASSERTED registry input.
 #   family(X)    — UNARY domestic-offense flag (Art 6 only). ASSERTED by adjudication
 #                  (court/social finding that the harm is household/domestic). Do NOT
 #                  confuse with parent/2: different arity, different meaning. A person
@@ -253,6 +321,12 @@ family(Nando).
 #                  because the court record marks the offense domestic.
 #   severe(X)    — offense grade severe (ASSERTED input alongside family for routing).
 #   building(F,X)— X is placed at facility F (derived for domestic prisoners).
+#   broken(X)    — Art 7 RAPID RECALL proxy: X's official capacity is SUSPENDED
+#                  (asserted by citizen recall / impeachment outside the firewall).
+#                  Blocks multi-sig void participation and Court imprisonment.
+#   show(W, O)   — Art 7 WHISTLEBLOWER proxy: W exposes official O (asserted claim).
+#   defend(W)    — Art 7 PROTECTED proxy: derived from show; blocks Art 6 prisoner.
+#   permits(Review, A) — Review credential on auditor A (multi-sig eligibility).
 #   prisoner(X), person(X), judge(A,X), teaches, work, injure, permits — as in KR.
 #
 # FIREWALL BOUNDARY (repeated because it is the point)
