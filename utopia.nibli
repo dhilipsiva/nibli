@@ -3,19 +3,30 @@
 # A weapon of absolute, machine-checked justice.
 # ═══════════════════════════════════════════════════════════════════
 #
-# நான ் வீழ்வேனென்று நினைத்தாயோ?
-# Did you think I would fall?
+# REGISTER (read this first): This file is a PERSONAL PROVOCATION, not a
+# clinical case study. The GDPR and drug-interaction corpora speak the book's
+# default voice — measured, institutional, evidence-first. THIS encoding is
+# righteous and fierce on purpose: a coda-shaped artifact for adversarial
+# formal reasoning about justice. The KR lines are still real nibli logic
+# (load them, query them, break them if you can). The commentary is manifesto.
+# If you want the calm register, read gdpr.nibli / drug-interactions.nibli.
+#
+# Epigraph (Mahakavi Bharathiyar):
+#   நான் வீழ்வேனென்று நினைத்தாயோ?
+#   "Did you think I would fall?"
 #
 # This is not a lullaby. This is not a polite whitepaper. This is the roar
 # of a generation that watched the Old World auction childhood to coaching
-# mafias, starve orphans of sleep for NEET rank-lists, and crown the
-# Cockroach Janatha Party (CJP) as the high priests of political cronyism.
-# Here, under Nibli, every duty is a formal derivation — not a slogan, not a
-# bribe, not a WhatsApp forward from a minister's nephew.
+# mafias, starve orphans of sleep for competitive entrance rank-lists (in
+# India: NEET and its coaching-centre economy), and crown patronage machines
+# — here personified as the Cockroach Janatha Party (CJP): a fictional stand-
+# in for any crony party that sells "recommendation letters," station-house
+# forgetfulness, and WhatsApp justice from a minister's nephew.
+# Under Nibli, every duty is a formal derivation — not a slogan, not a bribe.
 #
 # Meet ARA — a highly capable kid. Both parents dead. In the Old World that
 # sentence alone would have been a life sentence: no fees for the "good"
-# coaching centre, no "recommendation letter" from a CJP fixer, no second
+# coaching centre, no letter from a CJP (patronage-machine) fixer, no second
 # chance if one bad exam day buried the rank. The Old World called that
 # "merit." We call it engineered scarcity with a smile.
 #
@@ -113,8 +124,8 @@ all $auditor: all $audited: deceive($auditor, $audited) & judge(Review, $auditor
 # while a stranger's genius is erased. Capability is contribution and proof,
 # not pedigree.
 #
-# (Formal: parent/child places — binary kinship. Domestic-offense flags in
-# Art 6 use unary family as a separate proxy; do not overload one arity.)
+# (Formal: parent/2 = kinship registry input. Art 6's family/1 is a separate
+# domestic-offense flag asserted by adjudication — see Technical appendix.)
 
 all $auditor: all $audited: judge($auditor, $audited) & parent($auditor, $audited) -> false($auditor).
 
@@ -216,10 +227,54 @@ injure(Nando, Opal).
 judge(Court, Nando).
 family(Nando).
 
-# ─── Technical appendix (not narrative) ───────────────────────────
-# Proxies: false = standing voided; capture = auditor caught fraud in;
-# reward = mints merit; lose = clawback; home = home-confinement flag;
-# family (unary) = domestic-offense flag; severe = grade; building(F,x) =
-# facility placement. WASM fuel: release default 50e9; debug hungrier —
-# just profile=release run or NIBLI_FUEL. :contradictions = store + derived
-# ~P (not full closure; Vampire/clingo for fragments).
+# ─── Technical appendix (for readers, not just the author) ────────
+#
+# PROXY VOCABULARY (asserted inputs vs derived consequences)
+#   false(X)     — standing voided (attestor invalid). ASSERTED only via Art 4/5
+#                  rules' conclusions, or as a ground fact in tests. Not "logically
+#                  false" — a legal-status proxy.
+#   capture(A,X) — auditor A recorded a catch against X. ASSERTED input (evidence
+#                  of a catch), not authority to void without judge (Art 4 gate).
+#   deceive(A,X) — false accusation by A against X, established by review process.
+#                  ASSERTED by that process; never derived from false (stratified).
+#   reward(X)    — X mints merit (derived when contribution rules fire).
+#   lose(Points, X) — clawback against X. Points is an OPAQUE CONSTANT: a symbolic
+#                  merit-token sort, NOT a numeric quantity the engine arithmetic
+#                  can sum. Read as "X loses merit tokens," not "X loses N points."
+#                  Amounts/rates are OUTSIDE the firewall (parameters).
+#   home(X)      — X is under home confinement (status flag; not "X is a house").
+#   parent(A,B)  — binary kinship (Art 5 non-attestation). ASSERTED registry input
+#                  (proof-of-kinship shares the audit regime with personhood).
+#   family(X)    — UNARY domestic-offense flag (Art 6 only). ASSERTED by adjudication
+#                  (court/social finding that the harm is household/domestic). Do NOT
+#                  confuse with parent/2: different arity, different meaning. A person
+#                  can be parent(Dev,Esa) without family(Dev); Lalo is family(Lalo)
+#                  because the court record marks the offense domestic.
+#   severe(X)    — offense grade severe (ASSERTED input alongside family for routing).
+#   building(F,X)— X is placed at facility F (derived for domestic prisoners).
+#   prisoner(X), person(X), judge(A,X), teaches, work, injure, permits — as in KR.
+#
+# FIREWALL BOUNDARY (repeated because it is the point)
+#   Inside: which duties and sanctions DERIVE from which asserted facts + rules.
+#   Outside: logistics of food delivery, audit sampling rates, clawback multipliers,
+#   who sits on Court/Appeals/Review, how family/severe findings are produced in
+#   the real world. Selection of those constants is prose/governance; their EFFECT
+#   in the KB is logic.
+#
+# :contradictions (REPL / check_contradictions)
+#   Checks (1) integrity constraints, (2) arity clashes, (3) equality-expanded
+#   integrity, (4) asserted ~P whose positive is in the store OR is DERIVABLE
+#   (cheap middle: re-query after the store pass), (5) ~equals vs union-find,
+#   (6) disjunctive heads with store-only antecedents.
+#   "Full closure" would mean: every formula true in the least/perfect model is
+#   found, and every inconsistency among all derivable atoms is reported. Nibli
+#   does not claim that from :contradictions. For classical Horn fragments, the
+#   Vampire differential (TPTP) is the external oracle; for stratified NAF /
+#   closed-world fragments, clingo (ASP). "Fragments" = the mappable subset of
+#   programs those solvers can check — not every deontic/event shape.
+#
+# RUNTIME NOTES
+#   WASM fuel: host default 50e9 (release component). Debug WASM is hungrier —
+#   prefer `just profile=release run` or raise NIBLI_FUEL / `:fuel`.
+#   Load: `:load utopia.nibli` then `? <claim>.` / `:contradictions`.
+
