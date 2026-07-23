@@ -21,11 +21,16 @@
 //! engine's fail-closed text→AST seam.
 
 pub mod ast;
+pub mod complete;
 pub mod emit;
+pub mod highlight;
 pub mod lint;
 pub mod parser;
 pub mod render;
 pub mod resolve;
+
+#[cfg(feature = "reedline")]
+pub mod complete_reedline;
 
 #[cfg(test)]
 mod shape_tests;

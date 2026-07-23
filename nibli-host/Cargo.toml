@@ -7,8 +7,10 @@ edition = "2024"
 [dependencies]
 anyhow = "1.0.101"
 reedline = "0.45.0"
+nu-ansi-term = "0.50"
 wasmtime = { version = "41.0.3", features = ["component-model"] }
 wasmtime-wasi = "41.0.3"
+nibli-kr = { path = "../nibli-kr", features = ["reedline"] }
 nibli-protocol = { path = "../nibli-protocol", features = ["compute-client"] }
 nibli-render = { path = "../nibli-render" }
 nibli-store = { path = "../nibli-store" }

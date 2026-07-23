@@ -3,6 +3,12 @@ name = "nibli-kr"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+default = []
+# Console surfaces (nibli-host, nibli REPL): reedline Completer adapter over
+# the pure [`complete`] engine. UI / wasm leave this off.
+reedline = ["dep:reedline"]
+
 [dependencies]
 pest = "2"
 pest_derive = "2"
@@ -13,6 +19,7 @@ pest_derive = "2"
 nibli-lexicon = { path = "../nibli-lexicon" }
 # emit.rs targets nibli-types' AstBuffer; parse_checked returns NibliError.
 nibli-types = { path = "../nibli-types" }
+reedline = { version = "0.45.0", optional = true }
 
 [dev-dependencies]
 # Golden tests: every emitted buffer must be accepted by smuni, and nibli KR

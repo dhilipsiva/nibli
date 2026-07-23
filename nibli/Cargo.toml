@@ -5,11 +5,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-nibli-kr = { path = "../nibli-kr" }
+nibli-kr = { path = "../nibli-kr", features = ["reedline"] }
 nibli-engine = { path = "../nibli-engine" }
 nibli-import = { path = "../nibli-import" }
 nibli-render = { path = "../nibli-render" }
 reedline = "0.45.0"
+nu-ansi-term = "0.50"
 
 [[bin]]
 name = "nibli"

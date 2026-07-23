@@ -23,6 +23,8 @@ use nibli_protocol::compute_client::{BackendArg, BackendClient, BackendRequest};
 use nibli_protocol::{ProofRule as ProtoRule, ProofStep as ProtoStep, ProofTrace as ProtoTrace};
 use nibli_store::{NibliStore, StoredAssertion, StoredLogicalTerm as StoredTerm};
 use reedline::{DefaultPrompt, Reedline, Signal};
+mod kr_highlighter;
+use kr_highlighter::KrHighlighter;
 use std::fs::File;
 use std::io::{BufRead, BufReader, IsTerminal, Write};
 use std::path::Path;
@@ -1791,7 +1793,9 @@ fn main() -> Result<()> {
             }
         }
     } else {
-        let mut line_editor = Reedline::create();
+        let mut line_editor = nibli_kr::complete_reedline::with_completion(
+            Reedline::create().with_highlighter(Box::new(KrHighlighter)),
+        );
         let prompt = DefaultPrompt::default();
         loop {
             let sig = line_editor.read_line(&prompt);

@@ -330,11 +330,214 @@ body {
 .kb-toolbar { display: flex; align-items: center; gap: var(--s2); flex: none; }
 .kb-toolbar__sp { flex: 1; }
 
+/* ── KR syntax editor (highlight layer + transparent input) ───── */
+.kr-editor {
+  position: relative;
+  flex: 1;
+  min-height: 180px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.kr-editor--line {
+  flex: 1;
+  min-height: var(--control-h);
+  min-width: 0;
+  height: var(--control-h);
+}
+.kr-editor__highlight,
+.kr-editor__input.kb-input {
+  flex: 1;
+  min-height: 180px;
+  width: 100%;
+  margin: 0;
+  padding: var(--s3) var(--s4);
+  font-family: var(--font-mono);
+  font-size: var(--fs-code);
+  line-height: var(--lh-code);
+  tab-size: 2;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  border: var(--bw-hair) solid var(--border-subtle);
+  border-radius: var(--r-md);
+  box-sizing: border-box;
+}
+.kr-editor__highlight {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  pointer-events: none;
+  z-index: 0;
+  background: var(--surface-inset);
+  color: var(--text-body);
+  /* Hide the pre's own scrollbar; the textarea drives scroll. */
+  scrollbar-width: none;
+}
+.kr-editor__highlight::-webkit-scrollbar { display: none; }
+.kr-editor__highlight code {
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  white-space: inherit;
+}
+.kr-editor__input.kb-input {
+  position: relative;
+  z-index: 1;
+  resize: none;
+  color: transparent;
+  caret-color: var(--text-strong);
+  background: transparent;
+  transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
+}
+.kr-editor__input.kb-input::placeholder { color: var(--text-faint); }
+.kr-editor__input.kb-input::selection {
+  background: color-mix(in oklab, var(--accent) 35%, transparent);
+  color: transparent;
+}
+.kr-editor:hover .kr-editor__highlight,
+.kr-editor:hover .kr-editor__input.kb-input { border-color: var(--border-strong); }
+.kr-editor:focus-within .kr-editor__highlight,
+.kr-editor:focus-within .kr-editor__input.kb-input {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--ring-field);
+}
+.kr-editor__input.kb-input:focus { outline: none; border-color: var(--accent); box-shadow: var(--ring-field); }
+
+/* Single-line (query bar) variant — padding leaves room for the affix. */
+.kr-editor--line .kr-editor__highlight--line,
+.kr-editor--line .kr-editor__input.query-input {
+  min-height: var(--control-h);
+  height: var(--control-h);
+  flex: 1;
+  width: 100%;
+  margin: 0;
+  padding: 0 var(--s3) 0 calc(var(--s3) + 3ch);
+  font-family: var(--font-mono);
+  font-size: var(--fs-code);
+  line-height: var(--control-h);
+  white-space: pre;
+  overflow: hidden;
+  border: var(--bw-hair) solid var(--border-subtle);
+  border-radius: var(--r-md);
+  box-sizing: border-box;
+}
+.kr-editor--line .kr-editor__highlight--line {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+  background: var(--surface-inset);
+}
+.kr-editor--line .kr-editor__input.query-input {
+  position: relative;
+  z-index: 1;
+  color: transparent;
+  caret-color: var(--text-strong);
+  background: transparent;
+}
+.kr-editor--line .kr-editor__input.query-input::placeholder { color: var(--text-faint); }
+.kr-editor--line .kr-editor__input.query-input::selection {
+  background: color-mix(in oklab, var(--accent) 35%, transparent);
+  color: transparent;
+}
+.kr-editor--line:hover .kr-editor__highlight--line,
+.kr-editor--line:hover .kr-editor__input.query-input { border-color: var(--border-strong); }
+.kr-editor--line:focus-within .kr-editor__highlight--line,
+.kr-editor--line:focus-within .kr-editor__input.query-input {
+  border-color: var(--accent);
+  box-shadow: var(--ring-field);
+}
+
+/* Autocomplete menu (shared nibli_kr::complete engine). */
+.kr-ac-menu {
+  position: absolute;
+  left: var(--s3);
+  right: var(--s3);
+  bottom: 0;
+  transform: translateY(100%);
+  z-index: 20;
+  max-height: 220px;
+  overflow: auto;
+  margin-top: var(--s1);
+  padding: var(--s1);
+  background: var(--surface-card);
+  border: var(--bw-hair) solid var(--border-strong);
+  border-radius: var(--r-md);
+  box-shadow: 0 8px 24px color-mix(in oklab, var(--void-1000) 55%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.kr-editor--line .kr-ac-menu {
+  left: 0;
+  right: 0;
+}
+.kr-ac-item {
+  display: grid;
+  grid-template-columns: minmax(8ch, auto) 7ch 1fr;
+  gap: var(--s2);
+  align-items: baseline;
+  text-align: left;
+  width: 100%;
+  padding: var(--s2) var(--s3);
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-body);
+  font-family: var(--font-mono);
+  font-size: var(--fs-cap);
+  cursor: pointer;
+}
+.kr-ac-item:hover,
+.kr-ac-item--active {
+  background: color-mix(in oklab, var(--accent) 16%, var(--surface-hover));
+  color: var(--text-strong);
+}
+.kr-ac-item__value { font-weight: var(--w-medium); color: var(--quanta-300); }
+.kr-ac-item--active .kr-ac-item__value { color: var(--ember-300); }
+.kr-ac-item__kind {
+  font-size: var(--fs-micro);
+  text-transform: uppercase;
+  letter-spacing: var(--track-wide);
+  color: var(--text-faint);
+}
+.kr-ac-item__desc {
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.kr-ac-hint {
+  padding: var(--s2) var(--s3);
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  color: var(--text-faint);
+  border-top: var(--bw-hair) solid var(--border-subtle);
+  margin-top: var(--s1);
+}
+
+/* Token colors — role tokens from the design system (never raw hex here). */
+.tok-keyword   { color: var(--ember-300); font-weight: var(--w-semibold); }
+.tok-predicate { color: var(--quanta-300); }
+.tok-name      { color: var(--phosphor-300); }
+.tok-variable  { color: var(--sky-500); }
+.tok-number    { color: var(--amber-500); }
+.tok-comment   { color: var(--text-faint); font-style: italic; }
+.tok-operator  { color: var(--amber-500); }
+.tok-punct     { color: var(--text-muted); }
+.tok-other     { color: var(--text-body); }
+.tok-ws        { color: transparent; }
+
+/* Legacy class kept for any remaining bare textarea (e.g. readonly edge paths). */
 .kb-input {
   flex: 1; min-height: 180px; width: 100%; resize: none;
   padding: var(--s3) var(--s4);
   background: var(--surface-inset);
-  color: var(--quanta-300);               /* the KB renders in the symbolic violet */
+  color: var(--quanta-300);
   font-family: var(--font-mono); font-size: var(--fs-code); line-height: var(--lh-code);
   tab-size: 2;
   border: var(--bw-hair) solid var(--border-subtle);
@@ -821,7 +1024,12 @@ body {
 /* Query preset dropdown fills the query bar; pad-left clears the `xu` affix. */
 .query-select { flex: 1; min-width: 0; padding-left: calc(var(--s3) + 3ch); }
 /* Read-only KB fields in example mode: a muted, non-editable affordance. */
-.source-input[readonly], .kb-input[readonly] { cursor: default; background: var(--bg-sunken); }
+.source-input[readonly],
+.kb-input[readonly],
+.kr-editor__input.kb-input[readonly] { cursor: default; }
+.kr-editor:has(.kr-editor__input.kb-input[readonly]) .kr-editor__highlight {
+  background: var(--bg-sunken);
+}
 .gossip-btn {
   display: inline-flex; align-items: center; justify-content: center; gap: var(--s2);
   height: var(--control-h); padding: 0 var(--s4);

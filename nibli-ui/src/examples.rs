@@ -13,9 +13,9 @@
 //! the UI examples cannot drift from the tested corpora. The `shipped_examples_compile` guard test below
 //! pins every KB line + query through the nibli KR front-end.
 //!
-//! NOTE: the Syllogism/GDPR/Drug `name` and `label` strings are quoted VERBATIM
-//! by the book (Ch 19–21) — keep those three byte-stable (a book↔UI desync has
-//! no gate). Utopia is a coda-shaped provocation, not a chapter pin.
+//! NOTE: Syllogism/GDPR/Drug `name` strings are quoted by the book — keep them
+//! byte-stable when possible. Legal domain (utopia) ships **alongside** GDPR
+//! for now (no book chapter merge yet).
 
 /// One preset query: an English note shown beside its nibli KR in the dropdown.
 pub struct ExampleQuery {
@@ -41,7 +41,7 @@ pub struct Example {
     pub overlay: Option<&'static nibli_render::DomainGloss>,
 }
 
-// ── Syllogism (Chapter 19) — the minimal worked example, inlined ──
+// ── Syllogism — the minimal worked example, inlined ──
 const SYLLOGISM_SOURCE: &str = "\
 All dogs are animals.
 All animals eat.
@@ -56,7 +56,7 @@ eats(every animal).
 dog(Adam).
 ";
 
-// ── GDPR (Chapter 20) — English rendering of `gdpr.nibli` ──
+// ── GDPR — English rendering of `gdpr.nibli` ──
 const GDPR_SOURCE: &str = "\
 Names, addresses, and special-category data (health, religion, ethnicity) are personal data.
 Personal data must be accurate, kept secure, and limited to what is necessary (Art 5).
@@ -69,7 +69,20 @@ Adam is a data subject. AkmeCorp and Google are controllers.
 AkmeCorp holds Adam's health record and an ordinary record.
 Adam has given consent. AkmeCorp suffered a breach; Google did not.";
 
-// ── Drug interactions (Chapter 21) — English rendering of `drug-interactions.nibli` ──
+// ── Legal domain (utopia) — English summary of `utopia.nibli` ──
+// Clinical Source-tab prose (the KR file's commentary may be manifesto). Ships
+// alongside GDPR until the book merges legal-domain framing.
+const LEGAL_SOURCE: &str = "\
+Every person is owed a secure environment, food, shelter, health, learning, and expression — duties, not logistics.
+A prisoner is still a person, may still express, and free persons may travel.
+Teachers and workers mint merit only when their standing is not voided.
+An auditor voids someone only with an adjudicator role, a recorded catch, and no established false accusation; false accusers are themselves voided.
+Judging your own child voids your standing (kinship conflict).
+Imprisonment requires adjudicated harm and no successful appeal; home confinement is for non-domestic cases; domestic offenses route to high- or low-security facilities by severity.
+
+Scenario cast: Adam is a prisoner. Bela taught Cira and was voided by Gia's honest capture. Dev judged child Esa and is voided. Mira teaches honestly; Lupo falsely accused her and is voided. Hano is home-confined; Jala harmed without court and stays free; Nia is freed on appeal. Lalo (severe domestic) and Nando (non-severe domestic) are placed by grade. Quin works the Census and is rewarded.";
+
+// ── Drug interactions — English rendering of `drug-interactions.nibli` ──
 const DRUG_SOURCE: &str = "\
 Warfarin, fluconazole, apixaban, and phenytoin are drugs.
 Fluconazole inhibits the CYP2C9 enzyme.
@@ -79,23 +92,6 @@ Adam is co-prescribed warfarin and fluconazole.
 When an inhibited enzyme metabolizes a drug, that drug's blood concentration rises.
 A drug whose concentration rises and has a narrow therapeutic index is at toxicity risk.
 Any drug at toxicity risk warrants a safety alert.";
-
-// ── Utopia constitution (provocation) — English summary of `utopia.nibli` ──
-// Clinical Source-tab prose (the KR file's commentary is the manifesto). Every
-// person is owed a floor of security, food, shelter, health, learning, and
-// expression. Prisoners remain persons. Merit mints at honest teaching/work.
-// Voiding standing needs an adjudicator, a capture, and no false accusation;
-// kin may not audit kin. Imprisonment needs harm + court without a successful
-// appeal; home confinement vs facility grade depends on domestic severity.
-const UTOPIA_SOURCE: &str = "\
-Every person is owed a secure environment, food, shelter, health, learning, and expression — duties, not logistics.
-A prisoner is still a person, may still express, and free persons may travel.
-Teachers and workers mint merit only when their standing is not voided.
-An auditor voids someone only with an adjudicator role, a recorded catch, and no established false accusation; false accusers are themselves voided.
-Judging your own child voids your standing (kinship conflict).
-Imprisonment requires adjudicated harm and no successful appeal; home confinement is for non-domestic cases; domestic offenses route to high- or low-security facilities by severity.
-
-Scenario cast: Adam is a prisoner. Bela taught Cira and was voided by Gia's honest capture. Dev judged child Esa and is voided. Mira teaches honestly; Lupo falsely accused her and is voided. Hano is home-confined; Jala harmed without court and stays free; Nia is freed on appeal. Lalo (severe domestic) and Nando (non-severe domestic) are placed by grade. Quin works the Census and is rewarded.";
 
 /// The preloaded examples, in dropdown order.
 pub const EXAMPLES: &[Example] = &[
@@ -144,32 +140,8 @@ pub const EXAMPLES: &[Example] = &[
         overlay: Some(&nibli_render::GDPR_OVERLAY),
     },
     Example {
-        name: "Drug interactions (Ch 21)",
-        source: DRUG_SOURCE,
-        kb: include_str!("../../drug-interactions.nibli"),
-        queries: &[
-            ExampleQuery {
-                label: "concentration rising?",
-                query: "increases(Varfarin).",
-            },
-            ExampleQuery {
-                label: "toxicity risk?",
-                query: "dangerous(Varfarin).",
-            },
-            ExampleQuery {
-                label: "safety alert?—a 3-hop proof",
-                query: "warns(Varfarin).",
-            },
-            ExampleQuery {
-                label: "negative control—no alert",
-                query: "warns(Apiksaban).",
-            },
-        ],
-        overlay: Some(&nibli_render::DRUG_INTERACTIONS_OVERLAY),
-    },
-    Example {
-        name: "Utopia constitution (provocation)",
-        source: UTOPIA_SOURCE,
+        name: "Legal domain (utopia)",
+        source: LEGAL_SOURCE,
         kb: include_str!("../../utopia.nibli"),
         queries: &[
             ExampleQuery {
@@ -177,7 +149,7 @@ pub const EXAMPLES: &[Example] = &[
                 query: "obligated(Adam, event { eats() }).",
             },
             ExampleQuery {
-                label: "prisoner may express; free person may travel",
+                label: "prisoner may express",
                 query: "expresses(Adam).",
             },
             ExampleQuery {
@@ -230,6 +202,30 @@ pub const EXAMPLES: &[Example] = &[
             },
         ],
         overlay: Some(&nibli_render::UTOPIA_OVERLAY),
+    },
+    Example {
+        name: "Drug interactions (Ch 21)",
+        source: DRUG_SOURCE,
+        kb: include_str!("../../drug-interactions.nibli"),
+        queries: &[
+            ExampleQuery {
+                label: "concentration rising?",
+                query: "increases(Varfarin).",
+            },
+            ExampleQuery {
+                label: "toxicity risk?",
+                query: "dangerous(Varfarin).",
+            },
+            ExampleQuery {
+                label: "safety alert?—a 3-hop proof",
+                query: "warns(Varfarin).",
+            },
+            ExampleQuery {
+                label: "negative control—no alert",
+                query: "warns(Apiksaban).",
+            },
+        ],
+        overlay: Some(&nibli_render::DRUG_INTERACTIONS_OVERLAY),
     },
 ];
 

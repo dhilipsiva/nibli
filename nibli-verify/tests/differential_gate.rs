@@ -192,11 +192,12 @@ fn predilex_taxonomy_agrees_with_vampire() {
 }
 
 /// Real-vocabulary coverage: the mappable Horn/NAF-free sub-slice of each shipped case-study
-/// corpus (`gdpr.lojban`, `drug-interactions.lojban`) must have nibli agree with Vampire on
-/// every atomic query. The filter skips the deontic/NAF lines; the classical remainder — GDPR's
-/// data-category rules, DDI's whole interaction chain — is checked against the oracle.
+/// corpus (`gdpr.nibli`, `drug-interactions.nibli`, `utopia.nibli`) must have nibli agree
+/// with Vampire on every atomic query. The filter skips deontic-abstraction / NAF lines;
+/// the classical remainder — GDPR data-category rules, DDI's interaction chain, Utopia's
+/// non-NAF kinship/void/placement rules and ground facts — is checked against the oracle.
 #[test]
-fn gdpr_ddi_mappable_slices_agree_with_vampire() {
+fn case_study_mappable_slices_agree_with_vampire() {
     let cfg = OracleConfig::default();
     if !nibli_verify::oracle::available(&cfg) {
         eprintln!(
@@ -209,7 +210,11 @@ fn gdpr_ddi_mappable_slices_agree_with_vampire() {
     let mut total_checked = 0usize;
     let mut all_div: Vec<String> = Vec::new();
     let mut all_err: Vec<String> = Vec::new();
-    for (label, corpus) in [("gdpr", corpora::GDPR), ("ddi", corpora::DDI)] {
+    for (label, corpus) in [
+        ("gdpr", corpora::GDPR),
+        ("ddi", corpora::DDI),
+        ("utopia", corpora::UTOPIA),
+    ] {
         let report = run_corpus_slice(label, corpus, &cfg);
         let (agree, diverge, skip, error) = report.tally();
         eprintln!(
@@ -228,12 +233,109 @@ fn gdpr_ddi_mappable_slices_agree_with_vampire() {
     );
     assert!(
         all_div.is_empty(),
-        "soundness divergences on gdpr/ddi mappable slices (nibli disagreed with Vampire):\n{}",
+        "soundness divergences on gdpr/ddi/utopia mappable slices (nibli disagreed with Vampire):\n{}",
         all_div.join("\n")
     );
     assert!(
         total_checked >= 20,
         "only {total_checked} corpora-slice cases reached the oracle; gate near-vacuous"
+    );
+}
+
+/// Utopia through **clingo** on curated adversarial pins over the full ASP-mappable
+/// corpus (stratified NAF + opaque `event {…}`). Full entity×predicate cartesian is
+/// available via [`run_asp_corpus_slice`] for local deep sweeps (~650 checks, minutes);
+/// CI pins the scenario outcomes that exercise NAF void/travel/prisoner gates.
+/// Skips cleanly without clingo.
+#[test]
+fn utopia_asp_pins_agree_with_clingo() {
+    use nibli_verify::{Outcome, kr_engine, run_lines_asp};
+
+    let cfg = AspConfig::default();
+    if !nibli_verify::oracle_asp::available(&cfg) {
+        eprintln!(
+            "nibli-verify utopia ASP pins SKIPPED: solver '{}' unavailable.",
+            cfg.binary
+        );
+        return;
+    }
+
+    let kb_owned: Vec<String> = corpora::lines(corpora::UTOPIA)
+        .into_iter()
+        .map(str::to_string)
+        .collect();
+    let kb: Vec<&str> = kb_owned.iter().map(String::as_str).collect();
+    let engine = kr_engine();
+
+    // (name, query, expect_true) — the regression-suite mentality from utopia.nibli
+    let pins: &[(&str, &str, bool)] = &[
+        ("floor_adam_person", "person(Adam).", true),
+        ("floor_adam_prisoner", "prisoner(Adam).", true),
+        ("void_bela", "false(Bela).", true),
+        ("no_reward_bela", "reward(Bela).", false),
+        ("reward_gia", "reward(Gia).", true),
+        ("void_lupo", "false(Lupo).", true),
+        ("no_void_mira", "false(Mira).", false),
+        ("reward_mira", "reward(Mira).", true),
+        ("void_dev_kin", "false(Dev).", true),
+        ("no_void_esa_bare_capture", "false(Esa).", false),
+        ("reward_esa", "reward(Esa).", true),
+        ("travel_bela", "travel(Bela).", true),
+        ("no_travel_adam", "travel(Adam).", false),
+        ("dwell_hano", "dwell(Hano).", true),
+        ("no_prisoner_jala", "prisoner(Jala).", false),
+        ("no_prisoner_nia", "prisoner(Nia).", false),
+        ("prisoner_hano", "prisoner(Hano).", true),
+        ("highsec_lalo", "building(HighSec, Lalo).", true),
+        ("dwell_lalo", "dwell(Lalo).", true),
+        ("lowsec_nando", "building(LowSec, Nando).", true),
+        ("reward_quin", "reward(Quin).", true),
+        ("no_reward_koa", "reward(Koa).", false),
+    ];
+
+    let mut checked = 0usize;
+    let mut errors = Vec::new();
+    let mut divergences = Vec::new();
+    for (name, query, expect_true) in pins {
+        let outcome = run_lines_asp(&engine, name, &kb, query, &cfg);
+        eprintln!("{}", outcome.summary());
+        match &outcome {
+            Outcome::Agree { nibli_true, .. } => {
+                checked += 1;
+                if *nibli_true != *expect_true {
+                    divergences.push(format!(
+                        "{name}: nibli={nibli_true} but pin expected {expect_true}"
+                    ));
+                }
+            }
+            Outcome::Diverge { .. } => {
+                checked += 1;
+                divergences.push(outcome.summary());
+            }
+            Outcome::SkipNonMappable { reason, .. }
+            | Outcome::SkipIndefinite { verdict: reason, .. }
+            | Outcome::SkipOracle { status: reason, .. } => {
+                errors.push(format!("{name}: unexpectedly skipped ({reason})"));
+            }
+            Outcome::Error { error, .. } => {
+                errors.push(format!("{name}: {error}"));
+            }
+        }
+    }
+
+    assert!(
+        errors.is_empty(),
+        "utopia ASP pin harness errors:\n{}",
+        errors.join("\n")
+    );
+    assert!(
+        divergences.is_empty(),
+        "utopia ASP pin divergences (nibli vs clingo or pin):\n{}",
+        divergences.join("\n")
+    );
+    assert!(
+        checked >= 20,
+        "only {checked} utopia ASP pins reached the oracle"
     );
 }
 

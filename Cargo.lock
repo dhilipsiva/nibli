@@ -2655,6 +2655,7 @@ dependencies = [
  "nibli-import",
  "nibli-kr",
  "nibli-render",
+ "nu-ansi-term",
  "reedline",
 ]
 
@@ -2698,10 +2699,12 @@ name = "nibli-host"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "nibli-kr",
  "nibli-protocol",
  "nibli-render",
  "nibli-store",
  "nibli-types",
+ "nu-ansi-term",
  "postcard",
  "reedline",
  "wasmtime",
@@ -2725,6 +2728,7 @@ dependencies = [
  "nibli-types",
  "pest",
  "pest_derive",
+ "reedline",
 ]
 
 [[package]]

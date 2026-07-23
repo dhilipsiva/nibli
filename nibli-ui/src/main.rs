@@ -54,6 +54,480 @@ fn render_kb_line(line: &str) -> String {
     }
 }
 
+/// Autocomplete menu — items come only from [`nibli_kr::complete`] (same as REPL).
+#[derive(Clone, Default, PartialEq)]
+struct AcMenu {
+    open: bool,
+    items: Vec<nibli_kr::complete::Completion>,
+    selected: usize,
+    span_start: usize,
+    span_end: usize,
+}
+
+async fn dom_cursor(editor_id: &str) -> usize {
+    let id = serde_json::to_string(editor_id).unwrap_or_else(|_| "\"\"".into());
+    document::eval(&format!(
+        "return document.getElementById({id})?.selectionStart ?? 0;"
+    ))
+    .await
+    .ok()
+    .and_then(|v| v.as_f64())
+    .map(|n| n as usize)
+    .unwrap_or(0)
+}
+
+async fn dom_set_cursor(editor_id: &str, cursor: usize) {
+    let id = serde_json::to_string(editor_id).unwrap_or_else(|_| "\"\"".into());
+    let _ = document::eval(&format!(
+        r#"
+        const ta = document.getElementById({id});
+        if (ta) {{
+          ta.focus();
+          const c = Math.min({cursor}, (ta.value || '').length);
+          ta.setSelectionRange(c, c);
+        }}
+        return '';
+        "#
+    ))
+    .await;
+}
+
+fn run_complete(line: &str, cursor: usize, for_tab: bool) -> nibli_kr::complete::CompleteResult {
+    use nibli_kr::complete::{CompleteOpts, complete};
+    let opts = CompleteOpts {
+        include_repl_commands: false,
+        limit: 30,
+        min_prefix: if for_tab { 1 } else { 2 },
+        extra: &[],
+    };
+    let r = complete(line, cursor, opts);
+    if r.items.is_empty() && for_tab {
+        complete(
+            line,
+            cursor,
+            CompleteOpts {
+                min_prefix: 0,
+                ..opts
+            },
+        )
+    } else {
+        r
+    }
+}
+
+fn ac_from_result(r: nibli_kr::complete::CompleteResult) -> AcMenu {
+    if r.items.is_empty() {
+        AcMenu::default()
+    } else {
+        AcMenu {
+            open: true,
+            selected: 0,
+            span_start: r.span_start,
+            span_end: r.span_end,
+            items: r.items,
+        }
+    }
+}
+
+fn apply_ac_item(
+    text: &str,
+    menu: &AcMenu,
+    idx: usize,
+) -> Option<(String, usize)> {
+    let item = menu.items.get(idx)?;
+    nibli_kr::complete::apply_replacement(text, menu.span_start, menu.span_end, &item.value)
+}
+
+/// Multi-line nibli KR editor: highlight layer + shared autocomplete.
+#[component]
+fn KrMultilineEditor(
+    value: String,
+    readonly: bool,
+    placeholder: String,
+    on_change: EventHandler<String>,
+) -> Element {
+    let spans = nibli_kr::highlight::css_spans(&value);
+    let pad_key = spans.len();
+    let mut ac = use_signal(AcMenu::default);
+    let mut pending_cursor = use_signal(|| None::<usize>);
+    let editor_id = "kb-kr-editor";
+
+    use_effect(move || {
+        let pending = pending_cursor();
+        if let Some(c) = pending {
+            pending_cursor.set(None);
+            spawn(async move {
+                dom_set_cursor(editor_id, c).await;
+            });
+        }
+    });
+
+    let mut commit = move |new_line: String, cur: usize| {
+        pending_cursor.set(Some(cur));
+        ac.set(AcMenu::default());
+        on_change.call(new_line);
+    };
+
+    let value_for_pick = value.clone();
+
+    rsx! {
+        div { class: "kr-editor",
+            pre {
+                id: "kb-kr-highlight",
+                class: "kr-editor__highlight",
+                aria_hidden: "true",
+                code {
+                    for (i, (cls, text)) in spans.into_iter().enumerate() {
+                        span { key: "{i}", class: "{cls}", "{text}" }
+                    }
+                    if value.is_empty() || !value.ends_with('\n') {
+                        span { key: "{pad_key}", class: "tok-ws", "\n" }
+                    }
+                }
+            }
+            textarea {
+                id: "{editor_id}",
+                class: "kr-editor__input kb-input",
+                placeholder: "{placeholder}",
+                value: "{value}",
+                readonly: readonly,
+                spellcheck: false,
+                oninput: move |e| {
+                    let text = e.value();
+                    on_change.call(text.clone());
+                    if readonly { return; }
+                    let was_open = ac().open;
+                    spawn(async move {
+                        let pos = dom_cursor(editor_id).await;
+                        let r = run_complete(&text, pos, false);
+                        if was_open || !r.items.is_empty() {
+                            ac.set(ac_from_result(r));
+                        }
+                    });
+                },
+                onkeydown: move |e| {
+                    if readonly { return; }
+                    let menu = ac();
+                    let key = e.key();
+                    let text = value.clone();
+                    match key {
+                        Key::Escape if menu.open => {
+                            e.prevent_default();
+                            ac.set(AcMenu::default());
+                        }
+                        Key::ArrowDown if menu.open && !menu.items.is_empty() => {
+                            e.prevent_default();
+                            let mut m = menu;
+                            m.selected = (m.selected + 1) % m.items.len();
+                            ac.set(m);
+                        }
+                        Key::ArrowUp if menu.open && !menu.items.is_empty() => {
+                            e.prevent_default();
+                            let mut m = menu;
+                            m.selected = (m.selected + m.items.len() - 1) % m.items.len();
+                            ac.set(m);
+                        }
+                        Key::Enter if menu.open && !menu.items.is_empty() => {
+                            e.prevent_default();
+                            if let Some((n, c)) = apply_ac_item(&text, &menu, menu.selected) {
+                                commit(n, c);
+                            }
+                        }
+                        Key::Tab => {
+                            e.prevent_default();
+                            if menu.open && !menu.items.is_empty() {
+                                if let Some((n, c)) = apply_ac_item(&text, &menu, menu.selected) {
+                                    commit(n, c);
+                                }
+                            } else {
+                                let mut commit = commit;
+                                spawn(async move {
+                                    let pos = dom_cursor(editor_id).await;
+                                    let r = run_complete(&text, pos, true);
+                                    if r.items.len() == 1 {
+                                        if let Some((n, c)) = r.apply(&text, 0) {
+                                            commit(n, c);
+                                        }
+                                    } else {
+                                        ac.set(ac_from_result(r));
+                                    }
+                                });
+                            }
+                        }
+                        Key::Character(ref ch) if ch == " " && e.modifiers().ctrl() => {
+                            e.prevent_default();
+                            spawn(async move {
+                                let pos = dom_cursor(editor_id).await;
+                                ac.set(ac_from_result(run_complete(&text, pos, true)));
+                            });
+                        }
+                        _ => {}
+                    }
+                },
+                onscroll: move |_| {
+                    spawn(async move {
+                        let _ = document::eval(
+                            r#"
+                            const ta = document.getElementById('kb-kr-editor');
+                            const hl = document.getElementById('kb-kr-highlight');
+                            if (ta && hl) {
+                              hl.scrollTop = ta.scrollTop;
+                              hl.scrollLeft = ta.scrollLeft;
+                            }
+                            return '';
+                            "#,
+                        )
+                        .await;
+                    });
+                },
+                onblur: move |_| {
+                    spawn(async move {
+                        let _ = document::eval(
+                            "return await new Promise(r => setTimeout(() => r(''), 150));",
+                        )
+                        .await;
+                        ac.set(AcMenu::default());
+                    });
+                },
+            }
+            if ac().open && !ac().items.is_empty() {
+                KrAcDropdown {
+                    menu: ac(),
+                    on_pick: move |idx| {
+                        let menu = ac();
+                        if let Some((n, c)) = apply_ac_item(&value_for_pick, &menu, idx) {
+                            commit(n, c);
+                        }
+                    },
+                }
+            }
+        }
+    }
+}
+
+/// Single-line KR field (query bar): highlight + same autocomplete engine.
+#[component]
+fn KrLineEditor(
+    id: String,
+    value: String,
+    placeholder: String,
+    on_change: EventHandler<String>,
+    onkeydown: EventHandler<KeyboardEvent>,
+) -> Element {
+    let spans = nibli_kr::highlight::css_spans(&value);
+    let pad_key = spans.len();
+    let hl_id = format!("{id}-hl");
+    let mut ac = use_signal(AcMenu::default);
+    let mut pending_cursor = use_signal(|| None::<usize>);
+    let editor_id = id.clone();
+
+    use_effect({
+        let editor_id = editor_id.clone();
+        move || {
+            let pending = pending_cursor();
+            if let Some(c) = pending {
+                pending_cursor.set(None);
+                let eid = editor_id.clone();
+                spawn(async move {
+                    dom_set_cursor(&eid, c).await;
+                });
+            }
+        }
+    });
+
+    let commit = {
+        move |new_line: String, cur: usize| {
+            pending_cursor.set(Some(cur));
+            ac.set(AcMenu::default());
+            on_change.call(new_line);
+        }
+    };
+
+    rsx! {
+        div { class: "kr-editor kr-editor--line",
+            pre {
+                id: "{hl_id}",
+                class: "kr-editor__highlight kr-editor__highlight--line",
+                aria_hidden: "true",
+                code {
+                    for (i, (cls, text)) in spans.into_iter().enumerate() {
+                        span { key: "{i}", class: "{cls}", "{text}" }
+                    }
+                    if value.is_empty() {
+                        span { key: "{pad_key}", class: "tok-ws", " " }
+                    }
+                }
+            }
+            input {
+                id: "{id}",
+                class: "kr-editor__input query-input",
+                r#type: "text",
+                placeholder: "{placeholder}",
+                value: "{value}",
+                spellcheck: false,
+                autocomplete: "off",
+                oninput: {
+                    let editor_id = editor_id.clone();
+                    move |e| {
+                        let text = e.value();
+                        on_change.call(text.clone());
+                        let eid = editor_id.clone();
+                        let was_open = ac().open;
+                        spawn(async move {
+                            let pos = dom_cursor(&eid).await;
+                            let r = run_complete(&text, pos, false);
+                            if was_open || !r.items.is_empty() {
+                                ac.set(ac_from_result(r));
+                            }
+                        });
+                    }
+                },
+                onkeydown: {
+                    let editor_id = editor_id.clone();
+                    let value = value.clone();
+                    let mut commit = commit;
+                    move |e| {
+                        let menu = ac();
+                        let key = e.key();
+                        let text = value.clone();
+                        let eid = editor_id.clone();
+                        let handled = match key {
+                            Key::Escape if menu.open => {
+                                ac.set(AcMenu::default());
+                                true
+                            }
+                            Key::ArrowDown if menu.open && !menu.items.is_empty() => {
+                                let mut m = menu;
+                                m.selected = (m.selected + 1) % m.items.len();
+                                ac.set(m);
+                                true
+                            }
+                            Key::ArrowUp if menu.open && !menu.items.is_empty() => {
+                                let mut m = menu;
+                                m.selected = (m.selected + m.items.len() - 1) % m.items.len();
+                                ac.set(m);
+                                true
+                            }
+                            Key::Enter if menu.open && !menu.items.is_empty() => {
+                                if let Some((n, c)) = apply_ac_item(&text, &menu, menu.selected) {
+                                    commit(n, c);
+                                }
+                                true
+                            }
+                            Key::Tab => {
+                                if menu.open && !menu.items.is_empty() {
+                                    if let Some((n, c)) = apply_ac_item(&text, &menu, menu.selected) {
+                                        commit(n, c);
+                                    }
+                                } else {
+                                    let mut commit = commit;
+                                    spawn(async move {
+                                        let pos = dom_cursor(&eid).await;
+                                        let r = run_complete(&text, pos, true);
+                                        if r.items.len() == 1 {
+                                            if let Some((n, c)) = r.apply(&text, 0) {
+                                                commit(n, c);
+                                            }
+                                        } else {
+                                            ac.set(ac_from_result(r));
+                                        }
+                                    });
+                                }
+                                true
+                            }
+                            Key::Character(ref ch) if ch == " " && e.modifiers().ctrl() => {
+                                spawn(async move {
+                                    let pos = dom_cursor(&eid).await;
+                                    ac.set(ac_from_result(run_complete(&text, pos, true)));
+                                });
+                                true
+                            }
+                            _ => false,
+                        };
+                        if handled {
+                            e.prevent_default();
+                        } else {
+                            onkeydown.call(e);
+                        }
+                    }
+                },
+                onscroll: {
+                    let editor_id = editor_id.clone();
+                    let hl_id = hl_id.clone();
+                    move |_| {
+                        let id = editor_id.clone();
+                        let hl = hl_id.clone();
+                        spawn(async move {
+                            let _ = document::eval(&format!(
+                                r#"
+                                const ta = document.getElementById('{id}');
+                                const hl = document.getElementById('{hl}');
+                                if (ta && hl) {{ hl.scrollLeft = ta.scrollLeft; }}
+                                return '';
+                                "#
+                            ))
+                            .await;
+                        });
+                    }
+                },
+                onblur: move |_| {
+                    spawn(async move {
+                        let _ = document::eval(
+                            "return await new Promise(r => setTimeout(() => r(''), 150));",
+                        )
+                        .await;
+                        ac.set(AcMenu::default());
+                    });
+                },
+            }
+            if ac().open && !ac().items.is_empty() {
+                KrAcDropdown {
+                    menu: ac(),
+                    on_pick: {
+                        let value = value.clone();
+                        let mut commit = commit;
+                        move |idx| {
+                            let menu = ac();
+                            if let Some((n, c)) = apply_ac_item(&value, &menu, idx) {
+                                commit(n, c);
+                            }
+                        }
+                    },
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn KrAcDropdown(menu: AcMenu, on_pick: EventHandler<usize>) -> Element {
+    rsx! {
+        div {
+            class: "kr-ac-menu",
+            role: "listbox",
+            for (i, item) in menu.items.iter().enumerate() {
+                button {
+                    key: "{i}",
+                    r#type: "button",
+                    class: if i == menu.selected { "kr-ac-item kr-ac-item--active" } else { "kr-ac-item" },
+                    role: "option",
+                    // mousedown so we beat input blur
+                    onmousedown: move |e| {
+                        e.prevent_default();
+                        on_pick.call(i);
+                    },
+                    span { class: "kr-ac-item__value", "{item.value}" }
+                    span { class: "kr-ac-item__kind", "{item.kind.label()}" }
+                    if let Some(desc) = item.description.as_ref() {
+                        span { class: "kr-ac-item__desc", "{desc}" }
+                    }
+                }
+            }
+            div { class: "kr-ac-hint", "Tab / Enter accept · \u{2191}\u{2193} move · Esc dismiss · Ctrl+Space" }
+        }
+    }
+}
+
 const MAX_OUTPUT_ENTRIES: usize = 200;
 
 const DEFAULT_SOURCE: &str = "All dogs are animals.\nAll animals eat.\nAdam is a dog.";
@@ -867,13 +1341,11 @@ fn QueryTabs(
                                     title: "{affix_title}",
                                     "{affix}"
                                 }
-                                input {
-                                    id: "query-input",
-                                    class: "query-input",
-                                    r#type: "text",
-                                    placeholder: "State a proposition to check \u{2014} Ctrl+K focus",
-                                    value: "{query_text}",
-                                    oninput: move |e| query_text.set(e.value()),
+                                KrLineEditor {
+                                    id: "query-input".to_string(),
+                                    value: query_text.read().clone(),
+                                    placeholder: "State a proposition to check \u{2014} Ctrl+K focus".to_string(),
+                                    on_change: move |text: String| query_text.set(text),
                                     onkeydown: on_query_keydown,
                                 }
                                 button { class: "query-btn", onclick: submit_click, "Query" }
@@ -1242,14 +1714,13 @@ fn SourceTabs(
                             }
                         }
                         }
-                        textarea {
-                            class: "kb-input",
-                            placeholder: "Enter nibli KR facts and rules (one per line)...",
-                            value: "{active_kb}",
+                        KrMultilineEditor {
+                            value: active_kb.clone(),
                             readonly: is_example,
-                            oninput: move |e| {
+                            placeholder: "Enter nibli KR facts and rules (one per line)...".to_string(),
+                            on_change: move |text: String| {
                                 if example.read().is_none() {
-                                    kb_text.set(e.value());
+                                    kb_text.set(text);
                                 }
                             },
                         }

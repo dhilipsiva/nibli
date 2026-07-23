@@ -428,6 +428,79 @@ pub fn run_corpus_slice(label: &str, corpus: &str, cfg: &OracleConfig) -> Report
     Report { outcomes }
 }
 
+/// Run the **ASP-mappable sub-slice** of a case-study corpus through the clingo
+/// differential: keep every line the ASP filter accepts (stratified NAF + opaque
+/// abstractions OK; compute/deontic-modal/count still out), mine entities and
+/// type-predicates, and check every atomic `P(E)` query. Mirrors
+/// [`run_corpus_slice`] for the closed-world fragment the Vampire gate skips.
+pub fn run_asp_corpus_slice(label: &str, corpus: &str, cfg: &AspConfig) -> Report {
+    use nibli_types::logic::{LogicNode, LogicalTerm};
+    use std::collections::BTreeSet;
+
+    let engine = kr_engine();
+
+    let mut kb_lines: Vec<String> = Vec::new();
+    let mut entities: BTreeSet<String> = BTreeSet::new();
+    let mut preds: BTreeSet<String> = BTreeSet::new();
+    for line in corpora::lines(corpus) {
+        let buf = match engine.compile_debug(line) {
+            Ok(b) => b,
+            Err(_) => continue,
+        };
+        if filter::buffer_asp_mappable(&buf).is_some() {
+            continue;
+        }
+        kb_lines.push(line.to_string());
+        for node in &buf.nodes {
+            if let LogicNode::Predicate((rel, args)) = node {
+                if args.len() == 1
+                    && matches!(args[0], LogicalTerm::Variable(_))
+                    && !rel.contains("_x")
+                    && rel != "equals"
+                {
+                    preds.insert(rel.clone());
+                }
+                for a in args {
+                    if let LogicalTerm::Constant(c) = a {
+                        entities.insert(c.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    let queryable: Vec<String> = preds
+        .into_iter()
+        .filter(|p| {
+            let q = format!("{p}(Adam).");
+            engine
+                .compile_debug(&q)
+                .map(|b| filter::buffer_asp_mappable_query(&b).is_none())
+                .unwrap_or(false)
+        })
+        .collect();
+
+    let kb_refs: Vec<&str> = kb_lines.iter().map(String::as_str).collect();
+    let mut outcomes = Vec::new();
+    for e in &entities {
+        let Some(name) = kr_name(e) else { continue };
+        for p in &queryable {
+            let query = format!("{p}({name}).");
+            if engine.compile_debug(&query).is_err() {
+                continue;
+            }
+            outcomes.push(run_lines_asp(
+                &engine,
+                &format!("{label}:{e}:{p}"),
+                &kb_refs,
+                &query,
+                cfg,
+            ));
+        }
+    }
+    Report { outcomes }
+}
+
 /// Spell an IR constant as a KR Name (Capitalized head, spaces as `_`), or
 /// `None` when the constant is not KR-nameable (non-alphabetic head, exotic
 /// characters — e.g. Skolem-witness constants).

@@ -11,6 +11,9 @@ use nibli_engine::{EngineLogicalTerm, NibliEngine, display_query_result, display
 use nibli_kr::lint::Linter;
 use reedline::{DefaultPrompt, Reedline, Signal};
 
+mod kr_highlighter;
+use kr_highlighter::KrHighlighter;
+
 /// Print the nibli KR lint notes for `text` (NIBLI_KR §12 L1–L9) —
 /// non-blocking `[Note: …]` echoes, nibli KR mode only. The `Linter` is
 /// session-stateful (L1 introductions, L4 first-use dedup, L7 latch) and is
@@ -51,7 +54,9 @@ fn main() {
     // Interactive debug REPL: opt into the engine's [Rule]/[Skolem]/[Constraint]
     // diagnostics (off by default — nibli-engine is a silent library).
     engine.set_verbose(true);
-    let mut line_editor = Reedline::create();
+    let mut line_editor = nibli_kr::complete_reedline::with_completion(
+        Reedline::create().with_highlighter(Box::new(KrHighlighter)),
+    );
     let prompt = DefaultPrompt::default();
     // The KR lint session (NIBLI_KR §12): non-blocking [Note: …]
     // echoes on interactive inputs, reset together with the KB.

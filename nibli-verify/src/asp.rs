@@ -246,9 +246,28 @@ pub fn render_program(kb: &[LogicBuffer], query: &LogicBuffer) -> Result<String,
 
 /// Translate one KB root into 0+ `.lp` lines: a `ForAll` is a rule, an `Exists`/`Predicate`
 /// is a ground fact, an `And` is a conjunction of facts.
+///
+/// Nested prenex universals (`all $t: all $s: …` → `ForAll(t, ForAll(s, body))`) are
+/// flattened: every binder is registered in the VarMap before the rule body is peeled,
+/// so multi-var Horn/NAF rules (utopia's teaches/reward/void gates) map to safe
+/// clingo rules instead of failing at the inner ForAll as a "non-event group".
 fn translate_root(buf: &LogicBuffer, root: u32) -> Result<Vec<String>, String> {
     match node_at(buf, root)? {
-        LogicNode::ForAllNode((v, body)) => translate_rule(buf, v, *body),
+        LogicNode::ForAllNode((v, body)) => {
+            let mut binders: Vec<String> = vec![v.clone()];
+            let mut cur = *body;
+            loop {
+                match node_at(buf, cur)? {
+                    LogicNode::ForAllNode((v2, b2)) => {
+                        binders.push(v2.clone());
+                        cur = *b2;
+                    }
+                    _ => break,
+                }
+            }
+            let binder_refs: Vec<&str> = binders.iter().map(String::as_str).collect();
+            translate_rule(buf, &binder_refs, cur)
+        }
         LogicNode::ExistsNode(_) | LogicNode::Predicate(_) => {
             let mut vars = VarMap::new();
             let atom = regroup_event(buf, root, &mut vars)?;
@@ -278,12 +297,16 @@ fn fact_line(atom: SurfaceAtom) -> Result<String, String> {
     Ok(format!("{}.", atom.render()))
 }
 
-/// Translate a universal rule `ForAll(v, body)`, where `body` is a right-nested `Or` of
-/// `Not(...)` antecedent disjuncts terminating in the consequent matrix (verified against
-/// nibli-semantics `close_quantifier`). Peel the antecedent, regroup the head, emit `head :- body.`.
-fn translate_rule(buf: &LogicBuffer, v: &str, body: u32) -> Result<Vec<String>, String> {
+/// Translate a (possibly multi-binder) universal rule, where `body` is a right-nested
+/// `Or` of `Not(...)` antecedent disjuncts terminating in the consequent matrix
+/// (verified against nibli-semantics `close_quantifier`). `binders` is the outer-
+/// to-inner prenex list (single-var rules pass one name). Peel the antecedent,
+/// regroup the head, emit `head :- body.`.
+fn translate_rule(buf: &LogicBuffer, binders: &[&str], body: u32) -> Result<Vec<String>, String> {
     let mut vars = VarMap::new();
-    vars.bind(v); // the universal var → V0
+    for v in binders {
+        vars.bind(v); // outer → V0, next → V1, …
+    }
 
     let mut antecedent: Vec<BodyLit> = Vec::new();
     let mut cur = body;
@@ -742,6 +765,42 @@ mod tests {
         };
         let out = render_program(&[kb], &query).unwrap();
         assert!(out.contains("morsi(V0) :- prenu(V0)."), "{out}");
+    }
+
+    #[test]
+    fn nested_prenex_forall_flattens() {
+        // ForAll(t, ForAll(s, Or(Not(∃teaches(t,s)), ∃reward(t))))
+        //   → `reward(V0) :- teaches(V0, V1).`  (both binders bound)
+        let mut n = Vec::new();
+        // teaches(ev, t, s) as type + two roles
+        let t_type = pred(&mut n, "teaches", vec![var("_e0")]);
+        let t_x1 = pred(&mut n, "teaches_x1", vec![var("_e0"), var("_t")]);
+        let t_x2 = pred(&mut n, "teaches_x2", vec![var("_e0"), var("_s")]);
+        let a1 = and(&mut n, t_type, t_x1);
+        let a2 = and(&mut n, a1, t_x2);
+        let teaches = exists(&mut n, "_e0", a2);
+        let n_teaches = not(&mut n, teaches);
+        let r_type = pred(&mut n, "reward", vec![var("_e1")]);
+        let r_x1 = pred(&mut n, "reward_x1", vec![var("_e1"), var("_t")]);
+        let ra = and(&mut n, r_type, r_x1);
+        let reward = exists(&mut n, "_e1", ra);
+        let body = or(&mut n, n_teaches, reward);
+        let inner = forall(&mut n, "_s", body);
+        let root = forall(&mut n, "_t", inner);
+        let kb = buf(n, vec![root]);
+        let query = {
+            let mut m = Vec::new();
+            let r = event1(&mut m, "_e2", "reward", con("bela"));
+            buf(m, vec![r])
+        };
+        let out = render_program(&[kb], &query).unwrap();
+        assert!(
+            out.contains("reward(V0) :- teaches(V0, V1).")
+                || (out.contains("reward(V0)")
+                    && out.contains("teaches(V0, V1)")
+                    && out.contains(":-")),
+            "nested prenex must emit a two-var rule, got:\n{out}"
+        );
     }
 
     #[test]

@@ -9,7 +9,9 @@
 # righteous and fierce on purpose: a coda-shaped artifact for adversarial
 # formal reasoning about justice. The KR lines are still real nibli logic
 # (load them, query them, break them if you can). The commentary is manifesto.
-# If you want the calm register, read gdpr.nibli / drug-interactions.nibli.
+# If you want the calm clinical legal register, read gdpr.nibli (compliance case
+# study). For a second domain, read drug-interactions.nibli. This file is the
+# constitutional/utopia legal encoding — ships alongside GDPR, not a replacement.
 #
 # Epigraph (Mahakavi Bharathiyar):
 #   நான் வீழ்வேனென்று நினைத்தாயோ?
@@ -267,10 +269,17 @@ family(Nando).
 #   (6) disjunctive heads with store-only antecedents.
 #   "Full closure" would mean: every formula true in the least/perfect model is
 #   found, and every inconsistency among all derivable atoms is reported. Nibli
-#   does not claim that from :contradictions. For classical Horn fragments, the
-#   Vampire differential (TPTP) is the external oracle; for stratified NAF /
-#   closed-world fragments, clingo (ASP). "Fragments" = the mappable subset of
-#   programs those solvers can check — not every deontic/event shape.
+#   does not claim that from :contradictions alone.
+#
+# DIFFERENTIAL ORACLES (just verify-soundness / nibli-verify differential_gate)
+#   Vampire (case_study_mappable_slices_agree_with_vampire): classical Horn /
+#   NAF-free sub-slice — ~450 atomic queries over non-NAF, non-abstraction lines
+#   (kinship/void/placement rules + ground facts). Floor event {…} duties skip.
+#   clingo (utopia_asp_pins_agree_with_clingo): full KB with stratified NAF;
+#   22 adversarial scenario pins (void/travel/prisoner/facility/reward). Multi-
+#   var prenex is flattened in the ASP translator. Deep entity×pred sweeps via
+#   run_asp_corpus_slice("utopia", …) (~650 checks, minutes) for local use.
+#   "Fragments" = what each solver can soundly check — not every IR shape.
 #
 # RUNTIME NOTES
 #   WASM fuel: host default 50e9 (release component). Debug WASM is hungrier —
