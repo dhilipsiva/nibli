@@ -27,7 +27,7 @@ pub use collapse::{
     collapse_proof, collapse_proof_with, render_collapsed_text, render_collapsed_text_with,
     render_node_text,
 };
-pub use corpus_overlay::{DRUG_INTERACTIONS_OVERLAY, GDPR_OVERLAY};
+pub use corpus_overlay::{DRUG_INTERACTIONS_OVERLAY, GDPR_OVERLAY, UTOPIA_OVERLAY};
 pub use fact::humanize_fact;
 pub use logic::{render_logic_buffer, render_logic_tree};
 pub use overlay::DomainGloss;

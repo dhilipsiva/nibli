@@ -8,13 +8,14 @@
 //! front-end.
 //!
 //! The KB corpora are the SAME committed `.nibli` files the engine's
-//! regression tests pin (`gdpr_*` / `ddi_*` in
+//! regression tests pin (`gdpr_*` / `ddi_*` / `utopia_*` in
 //! `nibli-engine/tests/integration.rs`), pulled in via `include_str!` so
 //! the UI examples cannot drift from the tested corpora. The `shipped_examples_compile` guard test below
 //! pins every KB line + query through the nibli KR front-end.
 //!
-//! NOTE: the `name` and `label` strings are quoted VERBATIM by the book
-//! (Ch 19) — keep them byte-stable (a book↔UI desync has no gate).
+//! NOTE: the Syllogism/GDPR/Drug `name` and `label` strings are quoted VERBATIM
+//! by the book (Ch 19–21) — keep those three byte-stable (a book↔UI desync has
+//! no gate). Utopia is a coda-shaped provocation, not a chapter pin.
 
 /// One preset query: an English note shown beside its nibli KR in the dropdown.
 pub struct ExampleQuery {
@@ -78,6 +79,23 @@ Adam is co-prescribed warfarin and fluconazole.
 When an inhibited enzyme metabolizes a drug, that drug's blood concentration rises.
 A drug whose concentration rises and has a narrow therapeutic index is at toxicity risk.
 Any drug at toxicity risk warrants a safety alert.";
+
+// ── Utopia constitution (provocation) — English summary of `utopia.nibli` ──
+// Clinical Source-tab prose (the KR file's commentary is the manifesto). Every
+// person is owed a floor of security, food, shelter, health, learning, and
+// expression. Prisoners remain persons. Merit mints at honest teaching/work.
+// Voiding standing needs an adjudicator, a capture, and no false accusation;
+// kin may not audit kin. Imprisonment needs harm + court without a successful
+// appeal; home confinement vs facility grade depends on domestic severity.
+const UTOPIA_SOURCE: &str = "\
+Every person is owed a secure environment, food, shelter, health, learning, and expression — duties, not logistics.
+A prisoner is still a person, may still express, and free persons may travel.
+Teachers and workers mint merit only when their standing is not voided.
+An auditor voids someone only with an adjudicator role, a recorded catch, and no established false accusation; false accusers are themselves voided.
+Judging your own child voids your standing (kinship conflict).
+Imprisonment requires adjudicated harm and no successful appeal; home confinement is for non-domestic cases; domestic offenses route to high- or low-security facilities by severity.
+
+Scenario cast: Adam is a prisoner. Bela taught Cira and was voided by Gia's honest capture. Dev judged child Esa and is voided. Mira teaches honestly; Lupo falsely accused her and is voided. Hano is home-confined; Jala harmed without court and stays free; Nia is freed on appeal. Lalo (severe domestic) and Nando (non-severe domestic) are placed by grade. Quin works the Census and is rewarded.";
 
 /// The preloaded examples, in dropdown order.
 pub const EXAMPLES: &[Example] = &[
@@ -148,6 +166,70 @@ pub const EXAMPLES: &[Example] = &[
             },
         ],
         overlay: Some(&nibli_render::DRUG_INTERACTIONS_OVERLAY),
+    },
+    Example {
+        name: "Utopia constitution (provocation)",
+        source: UTOPIA_SOURCE,
+        kb: include_str!("../../utopia.nibli"),
+        queries: &[
+            ExampleQuery {
+                label: "floor duty—Adam is owed food",
+                query: "obligated(Adam, event { eats() }).",
+            },
+            ExampleQuery {
+                label: "prisoner may express; free person may travel",
+                query: "expresses(Adam).",
+            },
+            ExampleQuery {
+                label: "free person travels (Bela)",
+                query: "travel(Bela).",
+            },
+            ExampleQuery {
+                label: "voided teacher—Bela standing voided",
+                query: "false(Bela).",
+            },
+            ExampleQuery {
+                label: "honest auditor rewarded (Gia)",
+                query: "reward(Gia).",
+            },
+            ExampleQuery {
+                label: "false accuser voided (Lupo)",
+                query: "false(Lupo).",
+            },
+            ExampleQuery {
+                label: "honest teacher still rewarded (Mira)",
+                query: "reward(Mira).",
+            },
+            ExampleQuery {
+                label: "kin-judge voided (Dev judged child Esa)",
+                query: "false(Dev).",
+            },
+            ExampleQuery {
+                label: "capture without adjudicator does not void (Esa)",
+                query: "false(Esa).",
+            },
+            ExampleQuery {
+                label: "home confinement dwells (Hano)",
+                query: "dwell(Hano).",
+            },
+            ExampleQuery {
+                label: "harm without court—still free (Jala)",
+                query: "prisoner(Jala).",
+            },
+            ExampleQuery {
+                label: "appeal frees (Nia not prisoner)",
+                query: "prisoner(Nia).",
+            },
+            ExampleQuery {
+                label: "severe domestic → HighSec (Lalo)",
+                query: "building(HighSec, Lalo).",
+            },
+            ExampleQuery {
+                label: "contributor mints (Quin)",
+                query: "reward(Quin).",
+            },
+        ],
+        overlay: Some(&nibli_render::UTOPIA_OVERLAY),
     },
 ];
 

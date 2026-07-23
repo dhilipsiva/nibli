@@ -73,6 +73,45 @@ pub static GDPR_OVERLAY: DomainGloss = DomainGloss {
     ],
 };
 
+/// Utopia constitutional provocation (`utopia.nibli`).
+///
+/// Proof-path overlay only (never the back-translation tab). Maps legal-status
+/// proxies and facility constants into domain English; the KR and back-
+/// translation stay on the engine's literal / global template path.
+pub static UTOPIA_OVERLAY: DomainGloss = DomainGloss {
+    templates: &[
+        ("false", "{x1}'s standing is voided"),
+        ("home", "{x1} is under home confinement"),
+        ("family", "{x1} has a domestic offense"),
+        ("severe", "{x1}'s offense is severe"),
+        ("reward", "{x1} is rewarded"),
+        ("prisoner", "{x1} is a prisoner"),
+        ("travel", "{x1} may travel"),
+        ("dwell", "{x1} has shelter"),
+        ("expresses", "{x1} may express"),
+        ("lose", "{x2} loses {x1}"),
+        ("building", "{x2} is placed at {x1}"),
+        ("capture", "{x1} captures fraud by {x2}"),
+        ("deceive", "{x1} falsely accuses {x2}"),
+        ("judge", "{x1} judges {x2}"),
+        ("parent", "{x1} is a parent of {x2}"),
+        ("injure", "{x1} injures {x2}"),
+        ("work", "{x1} works on {x2}"),
+        ("teaches", "{x1} teaches {x2}"),
+        ("permits", "{x1} permits {x2}"),
+    ],
+    glosses: &[],
+    names: &[
+        ("points", "merit tokens"),
+        ("highsec", "High Security"),
+        ("lowsec", "Low Security"),
+        ("court", "the Court"),
+        ("appeals", "Appeals"),
+        ("review", "Review"),
+        ("census", "the Census"),
+    ],
+};
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -94,6 +133,16 @@ mod tests {
         );
         assert_eq!(DRUG_INTERACTIONS_OVERLAY.name("varfarin"), Some("warfarin"));
         assert_eq!(DRUG_INTERACTIONS_OVERLAY.name("siptucin"), Some("CYP2C9"));
+    }
+
+    #[test]
+    fn utopia_overlay_key_mappings() {
+        assert_eq!(
+            UTOPIA_OVERLAY.template("false"),
+            Some("{x1}'s standing is voided")
+        );
+        assert_eq!(UTOPIA_OVERLAY.name("highsec"), Some("High Security"));
+        assert_eq!(UTOPIA_OVERLAY.name("points"), Some("merit tokens"));
     }
 
     #[test]
