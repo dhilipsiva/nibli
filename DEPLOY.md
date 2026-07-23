@@ -63,7 +63,7 @@ Hosted **Formalize works end-to-end**:
   that tab's memory only), click **Formalize** on the Source tab — the draft is
   validated by the local nibli-kr+nibli-semantics+round-trip gates and the self-correction
   trace shows the attempts; a valid result fills the nibli KR tab.
-- The example dropdown's GDPR/Constitutional-core/Drug KBs assert without "unknown predicate" errors —
+- The example dropdown's GDPR/Drug (and any other preloaded) KBs assert without "unknown predicate" errors —
   guaranteed by construction since the committed corpus (one build mode; the old
   built-with-the-dictionary check is moot).
 

@@ -20,7 +20,7 @@ The documentation is split into two primary guides to serve distinct audiences: 
   - *Goal:* Build a WASM-powered interactive widget on `dhilipsiva.dev` showing Nibli KR input, the English back-translation, and the resulting proof trace side-by-side.
 - [ ] **Domain Engineering:** 
   - Case Study Walkthrough: The GDPR Compliance Engine (`gdpr.nibli`).
-  - Case Study Walkthrough: Constitutional Floor and Due Process (`utopia.nibli`).
+  - Case Study Walkthrough: GDPR compliance (`gdpr.nibli`) — book Ch 19.
   - Handling Belief Revision and incremental retractions.
 - [ ] **Host Integration:** 
   - Instantiating the WASM engine in Python or JavaScript.
