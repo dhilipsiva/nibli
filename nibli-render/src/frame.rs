@@ -287,7 +287,7 @@ pub(crate) fn deontic_content_phrase(relation: &str) -> String {
         // Strip trailing -s from 3sg glosses for a rough infinitive.
         let g = gloss_for(relation);
         if g.ends_with('s') && g.len() > 1 {
-            format!("{}", &g[..g.len() - 1])
+            g[..g.len() - 1].to_string()
         } else {
             g
         }

@@ -403,21 +403,19 @@ fn render_frame(acc: &FrameAcc, ctx: &mut Ctx) -> String {
     // Deontic collapse stores the content phrase as place-1 constant and the
     // obligated party as place-2 — render with a dedicated template so we get
     // "X is obligated to be secure" not "X is obligated that be secure".
-    if is_deontic_duty_rel(&acc.base) {
-        if let (Some(LogicalTerm::Constant(content)), Some(who_term)) =
+    if is_deontic_duty_rel(&acc.base)
+        && let (Some(LogicalTerm::Constant(content)), Some(who_term)) =
             (acc.places.get(&1), acc.places.get(&2))
+        && let Some(who) = render_term(who_term, ctx)
+    {
+        // Content phrases we synthesized start with "be " / bare verb — use "to".
+        if content.starts_with("be ")
+            || !content.contains(" is ")
+                && !content.chars().next().is_some_and(|c| c.is_uppercase())
         {
-            // Content phrases we synthesized start with "be " / bare verb — use "to".
-            if let Some(who) = render_term(who_term, ctx) {
-                if content.starts_with("be ")
-                    || !content.contains(" is ")
-                        && !content.chars().next().is_some_and(|c| c.is_uppercase())
-                {
-                    return format!("{who} is obligated to {content}");
-                }
-                return format!("{who} is obligated that {content}");
-            }
+            return format!("{who} is obligated to {content}");
         }
+        return format!("{who} is obligated that {content}");
     }
     let places: Vec<Option<String>> = if acc.has_roles {
         let max_idx = acc.places.keys().copied().max().unwrap_or(0);
