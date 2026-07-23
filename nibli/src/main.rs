@@ -119,7 +119,14 @@ fn main() {
                     ":contradictions" => {
                         let violations = engine.check_contradictions();
                         if violations.is_empty() {
-                            println!("[Contradictions] No contradictions found.");
+                            // §4 negation now includes derived positives (cheap middle);
+                            // integrity/disjunctive legs stay store-bound — see
+                            // KnowledgeBase::check_contradictions docs.
+                            println!(
+                                "[Contradictions] No contradictions found \
+                                 (asserted store + derived positives for ~P; \
+                                 not a full closure proof)."
+                            );
                         } else {
                             println!("[Contradictions] {} issue(s) found:", violations.len());
                             for (i, v) in violations.iter().enumerate() {
@@ -138,7 +145,10 @@ fn main() {
                         println!("  :assert <rel> <args..> Assert a ground fact directly");
                         println!("  :retract <id>       Retract a fact by ID (rebuilds KB)");
                         println!("  :facts              List all active facts in the KB");
-                        println!("  :contradictions     Scan KB for contradictions");
+                        println!(
+                            "  :contradictions     Scan for contradictions (store + \
+                             derived ~P positives; not full closure)"
+                        );
                         println!("  :trace <pred>       Enable tracing for a predicate");
                         println!("  :untrace <pred>     Disable tracing for a predicate");
                         println!("  :traces             List traced predicates");

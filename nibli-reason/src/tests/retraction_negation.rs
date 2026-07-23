@@ -179,6 +179,49 @@ fn test_negated_ground_fact_contradicts_contrary_positive() {
 }
 
 #[test]
+fn test_negated_contradicts_derived_positive_cheap_middle() {
+    // Category-4 cheap middle: positive is only DERIVED (not stored). The store
+    // membership leg misses; the query-after-borrow leg must flag.
+    // Shape (Kilo / Art-2 style): free persons travel; Kilo is free; ~travel(Kilo)
+    // contradicts the derived travel(Kilo).
+    let kb = new_kb();
+    assert_buf(
+        &kb,
+        compile_surface("travel(every person where ~prisoner)."),
+    );
+    assert_buf(&kb, compile_surface("person(Kilo)."));
+    assert_buf(&kb, compile_surface("~travel(Kilo)."));
+    assert!(
+        query(&kb, compile_surface("travel(Kilo).")),
+        "travel(Kilo) must be derivable so the cheap middle has something to find"
+    );
+    let violations = kb.check_contradictions();
+    assert!(
+        violations.iter().any(|v| {
+            v.contains("Negation contradiction")
+                && (v.contains("derivable") || v.contains("asserted"))
+        }),
+        "derived travel(Kilo) must contradict asserted ~travel(Kilo): {violations:?}"
+    );
+}
+
+#[test]
+fn test_negated_derived_positive_control_still_clean_without_negation() {
+    // Same rules without the negation: no contradiction.
+    let kb = new_kb();
+    assert_buf(
+        &kb,
+        compile_surface("travel(every person where ~prisoner)."),
+    );
+    assert_buf(&kb, compile_surface("person(Kilo)."));
+    assert!(
+        kb.check_contradictions().is_empty(),
+        "no asserted negation → clean: {:?}",
+        kb.check_contradictions()
+    );
+}
+
+#[test]
 fn test_negated_ground_fact_alone_is_not_a_contradiction() {
     // A bare negative premise (no contrary positive) must not be flagged, and
     // NAF query semantics are unchanged: the positive is simply not derivable.

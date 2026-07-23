@@ -1,0 +1,10 @@
+:load utopia.nibli
+:proof-verbose false(Bela).
+:proof-verbose false(Esa).
+:proof-verbose reward(Dev).
+:proof-verbose false(Mira).
+:proof-verbose false(Lupo).
+:proof-verbose prisoner(Ivo).
+:proof-verbose prisoner(Hano).
+:proof-verbose prisoner(Nia).
+:proof-verbose prisoner(Jala).

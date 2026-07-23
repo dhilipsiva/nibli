@@ -237,3 +237,10 @@ nibli-kr added to the per-mutant set, 33 new kill-tests, one latent raw-FOL
 unsoundness repaired) all LANDED; the ontology-row import (externally blocked) and
 the demo-site migration (cross-repo session) were removed as stale by the user.
 New engine work starts a fresh list here.
+
+- **`check_contradictions` category-4 cheap middle (derived positives): LANDED.**
+  After the store-membership leg, unmatched asserted `~P` groups are re-checked
+  via `query_entailment` (`negative_group_to_query_buffer`); Kilo-shaped pin in
+  `test_negated_contradicts_derived_positive_cheap_middle` + engine
+  `utopia_style_derived_negation_contradiction_flagged`. §6 disjunctive
+  antecedents remain store-bound (conservative miss pin unchanged).

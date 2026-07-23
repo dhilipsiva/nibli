@@ -1,0 +1,154 @@
+# Utopia Reimagined — Constitutional Core (nibli KR, v0.1 compat profile)
+# Canonical corpus (formerly also constitution.nibli — merged here).
+# Proxy conventions: deserve = "is entitled to", closed = "attestation invalidated",
+# false = "standing voided" (jitfa: x1 is false by standard x2 — here: false-as-
+# attestor by the audit standard; replaces the earlier ganlo "closed" proxy),
+# capture = "auditor caught fraud in", reward = "mints merit", lose = "clawback",
+# expresses = "communicates" (cusku: speaker/statement/audience/MEDIUM — medium-
+# general, so it covers internet and any channel, unlike speech-only talks).
+# home(X) = "X is under home confinement" (proxy flag; lexicon nest/resident
+# inverted — treated as an opaque status predicate here).
+# family(X) = "offense is domestic / household-related" (blocks home arrest).
+# severe(X) = "offense grade is severe" (HighSec vs LowSec facility).
+# building(Facility, X) = "X is placed at Facility" (purpose place = resident).
+#
+# WASM fuel (host sandbox): this corpus is heavier than gdpr/ddi — nested NAF,
+# multi-place rules, and six deontic floor universals. Proof-traced scenario
+# queries need ~25e9 Wasmtime fuel on a *release* nibli.wasm (hardest pin:
+# obligated(Adam, event { eats() })); the host default is 50e9. Debug WASM is
+# ~6× hungrier (~150e9 for that pin) — prefer `just profile=release run`, or
+# raise with NIBLI_FUEL / `:fuel` (e.g. NIBLI_FUEL=200000000000). Native
+# (nibli-engine / nibli-session) has no fuel meter and finishes sub-second.
+#
+# :contradictions is store + derived-negation (category 4 cheap middle). It is
+# not a full closure consistency proof — use Vampire/clingo on mappable
+# fragments for that. Student clawback (Art 4) is intentional policy: when a
+# teacher is voided, students lose points (contamination); no restore path in v0.1.
+
+# ─── Article 1: the unconditional floor ───────────────────────────
+# Rights decomposed via nu-abstraction (event {}), not opaque constants:
+# "the system is obligated that, for every person, <content> holds".
+# Environment first: the physical precondition the other five depend on.
+# Deliberately NOT encoded as a logical dependency — an environmental failure
+# must never void anyone's food/shelter/health rights (no conditional floor).
+# Obligations are duty claims, not logistics of provision (OUTSIDE firewall).
+obligated(every person, event { secure() }).     # green/safe environment
+obligated(every person, event { eats() }).       # food
+obligated(every person, event { dwell() }).      # shelter
+obligated(every person, event { healthy() }).    # healthcare
+obligated(every person, event { learn() }).      # education
+obligated(every person, event { expresses() }).  # communication (bounded by Art 6)
+all $anyone: prisoner($anyone) -> person($anyone).
+
+# ─── Article 2: due-process suspension ────────────────────────────
+all $prisoner: prisoner($prisoner) -> expresses($prisoner).
+all $anyone: person($anyone) & ~prisoner($anyone) -> travel($anyone).
+
+# ─── Article 3: minting at contribution ───────────────────────────
+all $teacher: all $student: teaches($teacher, $student) & ~false($teacher) -> reward($teacher).
+all $contributor: all $task: work($contributor, $task) & ~false($contributor) -> reward($contributor).
+
+# ─── Article 4: audit, invalidation, clawback ─────────────────────
+# Residual (priced, not eliminated): fraud EV = mint*P(unaudited) - clawback*P(caught).
+# Audit rate + clawback multiplier are OUTSIDE the firewall (parameters, not rules).
+# Registry facts (person/parent/prisoner) are attested inputs: proof-of-personhood
+# covers person; kinship attestation shares this audit regime. Rule amendments
+# themselves require supermajority + on-ledger diff (governance, prose-level).
+# Voiding requires an adjudicator role (judge): bare capture is evidence of a
+# catch, not authority to invalidate standing. Without this gate any agent could
+# mint a capture fact and void anyone — a softer accusation-bounty hole.
+# Counter-audit (closes the remaining bounty hole): even a judged capture voids
+# its target ONLY if the accusation is not itself established as false.
+# deceive (tcica) = "false accusation established by review". Stratified:
+# deceive is asserted (by the review process), never derived from false.
+# Minting (reward) keeps the same three-conjunct gate as voiding so the two
+# outcomes stay aligned: same facts either both fire or neither does (modulo
+# who is rewarded vs who is voided).
+all $auditor: all $audited: judge($auditor, $audited) & capture($auditor, $audited) & ~deceive($auditor, $audited) -> false($audited).
+all $fraudster: false($fraudster) -> lose(Points, $fraudster).
+all $teacher: all $student: teaches($teacher, $student) & false($teacher) -> lose(Points, $student).
+all $auditor: all $audited: judge($auditor, $audited) & capture($auditor, $audited) & ~deceive($auditor, $audited) -> reward($auditor).
+# False accusers are themselves voided (and lose points via the clawback rule).
+all $auditor: all $audited: deceive($auditor, $audited) & judge(Review, $auditor) -> false($auditor).
+
+# ─── Article 5: family non-attestation ────────────────────────────
+all $auditor: all $audited: judge($auditor, $audited) & parent($auditor, $audited) -> false($auditor).
+
+# ─── Article 6: expression bounded by others' rights (due process) ─
+# injure (xrani: subject/victim) proxies "infringes another's rights".
+# Imprisonment requires BOTH the harm and an adjudication (judge) of it:
+# no assertion of harm alone can imprison anyone.
+# Confinement is graded; home confinement is the primary/default grade when the
+# offense is NOT domestic. Domestic infringement blocks home arrest and routes
+# to a facility by severity. dwell is derived from (home ∧ ~family) OR family
+# (facility placement is a separate queryable fact — not joined via open
+# location, which fails demand-driven BC on constant-headed building rules).
+# Appeal (Art 6a): conviction is defeasible — permits(Appeals, x) blocks
+# imprisonment. Court/Appeals/Review are opaque constants in v0.1.
+all $offender: all $victim: injure($offender, $victim) & judge(Court, $offender) & ~permits(Appeals, $offender) -> prisoner($offender).
+all $offender: prisoner($offender) & home($offender) & ~family($offender) -> dwell($offender).
+all $offender: prisoner($offender) & family($offender) -> dwell($offender).
+all $offender: prisoner($offender) & family($offender) & severe($offender) -> building(HighSec, $offender).
+all $offender: prisoner($offender) & family($offender) & ~severe($offender) -> building(LowSec, $offender).
+
+# ─── Scenario (all articles) ──────────────────────────────────────
+# Art 2/4 baseline cast
+prisoner(Adam).
+person(Bela).
+person(Cira).
+teaches(Bela, Cira).
+person(Dev).
+person(Esa).
+parent(Dev, Esa).
+teaches(Esa, Fin).
+judge(Dev, Esa).
+person(Gia).
+judge(Gia, Bela).
+capture(Gia, Bela).
+# Negative control (Art 4 adjudicator gate): bare capture without judge must NOT
+# void. Koa "catches" Esa but has no adjudicator role → Esa stays valid.
+person(Koa).
+capture(Koa, Esa).
+# Art 3 work-mint pin (contributor path)
+person(Quin).
+work(Quin, Census).
+
+# Art 6: Hano injures Ivo; Court adjudicates -> home confinement.
+person(Hano).
+person(Ivo).
+injure(Hano, Ivo).
+judge(Court, Hano).
+home(Hano).
+# Jala injured someone but NO adjudication -> must remain free.
+person(Jala).
+injure(Jala, Ivo).
+
+# Art 4a: Lupo falsely accuses honest teacher Mira; Review upholds Mira.
+person(Lupo).
+person(Mira).
+teaches(Mira, Cira).
+judge(Lupo, Mira).
+capture(Lupo, Mira).
+deceive(Lupo, Mira).
+judge(Review, Lupo).
+# Art 6a: Nia convicted but freed on appeal.
+person(Nia).
+injure(Nia, Ivo).
+judge(Court, Nia).
+permits(Appeals, Nia).
+
+# Art 6b: Lalo commits severe domestic infringement.
+person(Lalo).
+person(Mina).
+injure(Lalo, Mina).
+judge(Court, Lalo).
+home(Lalo).
+family(Lalo).
+severe(Lalo).
+
+# Art 6c: Nando commits non-severe domestic infringement.
+person(Nando).
+person(Opal).
+injure(Nando, Opal).
+judge(Court, Nando).
+family(Nando).

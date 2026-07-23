@@ -1076,18 +1076,33 @@ impl KnowledgeBase {
             .collect()
     }
 
-    /// Scan the KB for contradictions. Returns a list of human-readable
-    /// contradiction descriptions. An empty list means no contradictions found.
+    /// Scan the KB for contradictions. Returns human-readable descriptions.
+    ///
+    /// **Category 4 (negation)** uses a two-tier check: (a) store membership of
+    /// the positive counterpart (asserted facts), then (b) a *cheap middle* —
+    /// after dropping the inner borrow, each unmatched asserted `~P` is re-run
+    /// as a positive entailment query, so a **rule-derived** positive also
+    /// flags (e.g. `travel(every person where ~prisoner)` + `person(Kilo)` +
+    /// `~travel(Kilo)`). This is not full closure consistency (integrity §1/§6
+    /// and disjunctive antecedents stay store-bound by design — re-entrancy /
+    /// false-flag conservatism; see
+    /// `test_mixed_conclusion_conservative_p_check_misses_derived_antecedent`).
+    /// Vampire/clingo remain the fragment-level closure oracles.
     ///
     /// Checks:
-    /// 1. Integrity constraint violations (conjuncts that all hold simultaneously)
-    /// 2. Predicate arity inconsistencies (same predicate with different arities)
-    /// 3. Equality contradictions (du(a,b) where a and b have conflicting properties
-    ///    under registered integrity constraints)
-    /// 4. Negation contradictions (an explicitly asserted `na <predicate>` whose
-    ///    positive counterpart is also asserted, matched modulo event Skolems)
+    /// 1. Integrity constraint violations (conjuncts that all hold in the store)
+    /// 2. Predicate arity inconsistencies across asserted facts
+    /// 3. Equality-expanded integrity violations (`equals` / du union-find)
+    /// 4. Negation contradictions — asserted `~P` whose positive holds in the
+    ///    store **or** is derivable via backward chaining
+    /// 5. Inequality contradictions (`~equals(X,Y)` vs union-find equivalence)
+    /// 6. Disjunctive-conclusion constraints — antecedent P by store membership
+    ///    only (conservative miss on derived P)
     pub fn check_contradictions(&self) -> Vec<String> {
         let mut violations = Vec::new();
+        // Negative groups that fail the store-membership leg of §4 — re-checked
+        // via query after the borrow ends (cheap middle for derived positives).
+        let mut derived_negation_candidates: Vec<Vec<StoredFact>> = Vec::new();
 
         let inner = self.inner.borrow();
 
@@ -1218,18 +1233,16 @@ impl KnowledgeBase {
         }
 
         // 4. Explicitly asserted negative facts (`na <predicate>`) whose positive
-        //    counterpart is asserted. Each negation is stored as a template group
-        //    with event arguments generalized to pattern variables (see
-        //    `record_negative_ground_fact`); it is violated when one consistent
-        //    binding satisfies EVERY template against the asserted fact store —
-        //    the whole-group requirement prevents false positives from unrelated
-        //    events sharing a predicate. Scope: directly asserted positives only
-        //    (no derived facts), same tense only. Query semantics (NAF/CWA) are
-        //    unaffected — negatives never enter the positive store.
-        // A negative group that is a single flat 2-arg `du(X, Y)` is an asserted
-        // INEQUALITY; it is handled by section 5 (union-find aware) rather than
-        // the store-membership check here, because equality can hold
-        // transitively (`du(X,Z) ∧ du(Z,Y)`) without `du(X,Y)` ever being stored.
+        //    counterpart holds. Each negation is a template group with event
+        //    arguments generalized to pattern variables (see
+        //    `record_negative_ground_fact`). Leg (a): one consistent binding
+        //    satisfies EVERY template against the **asserted** fact store
+        //    (whole-group requirement prevents false positives from unrelated
+        //    events sharing a predicate). Leg (b): after this borrow ends, groups
+        //    that miss the store are re-checked via `query_entailment` so a
+        //    **derived** positive also flags. Flat `du` inequalities go to §5.
+        //    Query semantics (NAF/CWA) are unaffected — negatives never enter
+        //    the positive store.
         fn flat_equals_pair(group: &[StoredFact]) -> Option<(&GroundTerm, &GroundTerm)> {
             if group.len() == 1 {
                 if let StoredFact::Bare(gf) = &group[0] {
@@ -1255,6 +1268,9 @@ impl KnowledgeBase {
                 if !violations.contains(&msg) {
                     violations.push(msg);
                 }
+            } else {
+                // Cheap middle: try derivation after the borrow drops.
+                derived_negation_candidates.push(group.clone());
             }
         }
 
@@ -1313,6 +1329,31 @@ impl KnowledgeBase {
             }
         }
 
+        // Drop `inner` before re-entering the query engine (borrow / re-entrancy).
+        drop(inner);
+
+        // 4b. Cheap middle: asserted `~P` vs *derivable* positive.
+        for group in derived_negation_candidates {
+            let Some(buf) = negative_group_to_query_buffer(&group) else {
+                continue;
+            };
+            match self.query_entailment_inner(buf) {
+                Ok(r) if r.is_true() => {
+                    let facts: Vec<String> =
+                        group.iter().map(|f| f.to_display_string()).collect();
+                    let msg = format!(
+                        "Negation contradiction: ¬({}) was asserted, but the positive \
+                         counterpart is derivable",
+                        facts.join(" ∧ ")
+                    );
+                    if !violations.contains(&msg) {
+                        violations.push(msg);
+                    }
+                }
+                _ => {}
+            }
+        }
+
         // Determinism: §2 (arity) iterates `all_facts()` and §4/§5 iterate the
         // `negative_facts` HashSet, so the violation order is otherwise
         // hasher-seed dependent. A single global sort fixes the order of every
@@ -1320,6 +1361,93 @@ impl KnowledgeBase {
         violations.sort();
         violations
     }
+}
+
+/// Convert a negative-fact template group into a positive entailment query.
+/// Pattern variables (generalized event Skolems) become existentially quantified
+/// logic variables so a later contrary (or derived) positive with a different
+/// event Skolem still matches — same intent as `negative_group_holds` over the store.
+fn negative_group_to_query_buffer(group: &[StoredFact]) -> Option<LogicBuffer> {
+    if group.is_empty() {
+        return None;
+    }
+    fn ground_term_to_logical(t: &GroundTerm) -> LogicalTerm {
+        match t {
+            GroundTerm::Constant(s) => LogicalTerm::Constant(s.clone()),
+            GroundTerm::Number(bits) => LogicalTerm::Number(f64::from_bits(*bits)),
+            GroundTerm::Description(s) => LogicalTerm::Description(s.clone()),
+            GroundTerm::Unspecified => LogicalTerm::Unspecified,
+            GroundTerm::PatternVar(s) => LogicalTerm::Variable(s.clone()),
+            // Dependent Skolems rarely appear in negative templates; treat as opaque constants.
+            GroundTerm::SkolemFn(name, _) => LogicalTerm::Constant(name.clone()),
+            GroundTerm::DepPair(_, _) => LogicalTerm::Unspecified,
+        }
+    }
+
+    let mut nodes: Vec<LogicNode> = Vec::new();
+    let mut pattern_vars: Vec<String> = Vec::new();
+    let mut leaf_ids: Vec<u32> = Vec::new();
+
+    for fact in group {
+        let gf = fact.inner();
+        for arg in &gf.args {
+            if let GroundTerm::PatternVar(s) = arg {
+                if !pattern_vars.iter().any(|v| v == s) {
+                    pattern_vars.push(s.clone());
+                }
+            }
+        }
+        let args: Vec<LogicalTerm> = gf.args.iter().map(ground_term_to_logical).collect();
+        let pred_id = nodes.len() as u32;
+        nodes.push(LogicNode::Predicate((gf.relation.clone(), args)));
+        let wrapped = match fact {
+            StoredFact::Bare(_) => pred_id,
+            StoredFact::Past(_) => {
+                let id = nodes.len() as u32;
+                nodes.push(LogicNode::PastNode(pred_id));
+                id
+            }
+            StoredFact::Present(_) => {
+                let id = nodes.len() as u32;
+                nodes.push(LogicNode::PresentNode(pred_id));
+                id
+            }
+            StoredFact::Future(_) => {
+                let id = nodes.len() as u32;
+                nodes.push(LogicNode::FutureNode(pred_id));
+                id
+            }
+            StoredFact::Obligatory(_) => {
+                let id = nodes.len() as u32;
+                nodes.push(LogicNode::ObligatoryNode(pred_id));
+                id
+            }
+            StoredFact::Permitted(_) => {
+                let id = nodes.len() as u32;
+                nodes.push(LogicNode::PermittedNode(pred_id));
+                id
+            }
+        };
+        leaf_ids.push(wrapped);
+    }
+
+    let mut root = leaf_ids[0];
+    for &id in &leaf_ids[1..] {
+        let and_id = nodes.len() as u32;
+        nodes.push(LogicNode::AndNode((root, id)));
+        root = and_id;
+    }
+    // Outermost ∃ for each pattern var (event slots) so free variables are bound.
+    for pvar in pattern_vars.into_iter().rev() {
+        let ex_id = nodes.len() as u32;
+        nodes.push(LogicNode::ExistsNode((pvar, root)));
+        root = ex_id;
+    }
+
+    Some(LogicBuffer {
+        nodes,
+        roots: vec![root],
+    })
 }
 
 #[cfg(test)]

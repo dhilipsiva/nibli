@@ -2800,6 +2800,97 @@ fn gdpr_file_loads_clean() {
     }
 }
 
+/// Utopia constitutional corpus: every non-comment line asserts, scenario pins
+/// hold, store+derived-negation scan is clean on the shipped scenario.
+#[test]
+fn utopia_file_loads_and_pins() {
+    let corpus = include_str!("../../utopia.nibli");
+    let engine = fresh_engine();
+    let mut n = 0u32;
+    for (line_num, line) in corpus.lines().enumerate() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        engine.assert_text(trimmed).unwrap_or_else(|e| {
+            panic!(
+                "utopia.nibli line {} failed to assert: {:?}\n{}",
+                line_num + 1,
+                trimmed,
+                e
+            )
+        });
+        n += 1;
+    }
+    assert!(n >= 60, "expected a full utopia corpus, got {n} statements");
+
+    let pins: &[(&str, bool)] = &[
+        ("person(Adam).", true),
+        ("expresses(Adam).", true),
+        ("travel(Adam).", false),
+        ("travel(Bela).", true),
+        ("false(Bela).", true),
+        ("reward(Bela).", false),
+        ("lose(Points, Bela).", true),
+        ("lose(Points, Cira).", true),
+        ("false(Dev).", true),
+        ("reward(Gia).", true),
+        ("false(Lupo).", true),
+        ("false(Mira).", false),
+        ("reward(Mira).", true),
+        ("false(Esa).", false),
+        ("reward(Esa).", true),
+        ("reward(Quin).", true), // Art 3 work path
+        ("reward(Koa).", false),
+        ("prisoner(Hano).", true),
+        ("dwell(Hano).", true),
+        ("prisoner(Jala).", false),
+        ("prisoner(Nia).", false),
+        ("prisoner(Lalo).", true),
+        ("building(HighSec, Lalo).", true),
+        ("dwell(Lalo).", true),
+        ("prisoner(Nando).", true),
+        ("building(LowSec, Nando).", true),
+        ("dwell(Nando).", true),
+        ("obligated(Adam, event { eats() }).", true),
+    ];
+    for (q, want_true) in pins {
+        let r = engine
+            .query_holds(q)
+            .unwrap_or_else(|e| panic!("query {q}: {e}"));
+        if *want_true {
+            assert_true(&r, q);
+        } else {
+            assert_false(&r, q);
+        }
+    }
+
+    assert!(
+        engine.check_contradictions().is_empty(),
+        "shipped utopia scenario must be store+derived-negation clean: {:?}",
+        engine.check_contradictions()
+    );
+}
+
+/// Category-4 cheap middle through the full engine: derived travel vs ~travel.
+#[test]
+fn utopia_style_derived_negation_contradiction_flagged() {
+    let engine = engine_with_facts(&[
+        "travel(every person where ~prisoner).",
+        "person(Kilo).",
+        "~travel(Kilo).",
+    ]);
+    assert_true(
+        &engine.query_holds("travel(Kilo).").unwrap(),
+        "travel(Kilo) derived",
+    );
+    let v = engine.check_contradictions();
+    assert!(
+        v.iter().any(|m| m.contains("Negation contradiction")),
+        "derived positive must flag against asserted negation: {v:?}"
+    );
+}
+
 /// The GDPR overlay reads the lawful-basis proof in legal-domain terms — the
 /// `se curmi` conclusion as "has a lawful basis for processing", with the data
 /// subject named — instantiated and `X`-free. The dictionary fallback stays

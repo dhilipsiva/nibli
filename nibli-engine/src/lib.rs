@@ -400,7 +400,9 @@ impl NibliEngine {
         Ok(())
     }
 
-    /// Scan the KB for contradictions. Returns human-readable descriptions.
+    /// Scan for contradictions (asserted store + derived positives for `~P`;
+    /// not a full closure proof — see
+    /// [`nibli_reason::KnowledgeBase::check_contradictions`]).
     pub fn check_contradictions(&self) -> Vec<String> {
         self.core.kb().check_contradictions()
     }

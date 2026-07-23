@@ -1,0 +1,8 @@
+:load utopia.nibli
+:proof-verbose prisoner(Lalo).
+:proof-verbose building(HighSec, Lalo).
+:proof-verbose dwell(Lalo).
+:proof-verbose prisoner(Nando).
+:proof-verbose building(LowSec, Nando).
+:proof-verbose dwell(Nando).
+:proof-verbose dwell(Hano).

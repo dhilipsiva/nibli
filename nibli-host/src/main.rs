@@ -1643,10 +1643,15 @@ fn main() -> Result<()> {
         println!("Compute backend: built-in only (set NIBLI_COMPUTE_ADDR=host:port for external)");
     }
 
+    // Default 50e9: enough for proof-traced queries over heavier demo corpora
+    // (e.g. utopia.nibli floor/NAF chains) on a *release* WASI component.
+    // Debug WASM is ~6× hungrier — use `just profile=release run` or raise
+    // NIBLI_FUEL (≈1.5e11 covers utopia on debug). Override anytime with
+    // NIBLI_FUEL / `:fuel`.
     let fuel_budget: u64 = std::env::var("NIBLI_FUEL")
         .ok()
         .and_then(|s| s.parse().ok())
-        .unwrap_or(10_000_000_000);
+        .unwrap_or(50_000_000_000);
     println!("Fuel budget: {} per command", fuel_budget);
 
     let memory_limit_mb: usize = std::env::var("NIBLI_MEMORY_MB")
