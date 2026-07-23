@@ -90,6 +90,52 @@ mod tests {
     }
 
     #[test]
+    fn utopia_floor_obligation_is_not_event_word_salad() {
+        // obligated(every person, event { secure() }) must NOT read
+        // "Y is event and Y is obligated to X".
+        let ast = nibli_kr::parse_checked("obligated(every person, event { secure() }).")
+            .expect("parse");
+        let buf = nibli_semantics::compile_from_ast(ast).expect("compile");
+        let out = render_logic_buffer(&buf, Register::Spec);
+        assert!(
+            out.to_lowercase().contains("obligated to be secure")
+                || out.to_lowercase().contains("obligated to be safe"),
+            "expected deontic+content collapse, got: {out}"
+        );
+        assert!(
+            !out.to_lowercase().contains("is event"),
+            "scaffolding 'event' leaked: {out}"
+        );
+    }
+
+    #[test]
+    fn lose_and_building_place_order_read_naturally() {
+        let lose = {
+            let ast = nibli_kr::parse_checked("lose(Points, Bela).").unwrap();
+            let buf = nibli_semantics::compile_from_ast(ast).unwrap();
+            render_logic_buffer(&buf, Register::Spec)
+        };
+        assert!(
+            lose.to_lowercase().contains("bela loses points"),
+            "got: {lose}"
+        );
+        let bld = {
+            let ast =
+                nibli_kr::parse_checked("building(HighSec, Lalo).").unwrap();
+            let buf = nibli_semantics::compile_from_ast(ast).unwrap();
+            render_logic_buffer(&buf, Register::Spec)
+        };
+        assert!(
+            bld.to_lowercase().contains("lalo") && bld.to_lowercase().contains("highsec"),
+            "got: {bld}"
+        );
+        assert!(
+            bld.to_lowercase().contains("placed") || bld.to_lowercase().contains("housed"),
+            "got: {bld}"
+        );
+    }
+
+    #[test]
     fn back_translation_exposes_scope() {
         let out = render_logic_buffer(&syllogism_buffer(), Register::Spec);
         assert!(

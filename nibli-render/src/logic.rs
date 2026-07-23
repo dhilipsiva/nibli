@@ -11,9 +11,23 @@ use std::collections::HashMap;
 use nibli_lexicon::get_gloss;
 use nibli_types::logic::{LogicBuffer, LogicNode, LogicalTerm};
 
-use crate::frame::{fill_template, frame_template};
+use crate::frame::{deontic_content_phrase, fill_template, frame_template};
 use crate::register::Register;
 use crate::term::{role_base, role_index};
+
+/// Abstraction-type scaffolding predicates (event/fact/property/…) that only
+/// exist to host a nested duty content — never surface as "Y is event".
+fn is_abstraction_scaffold(rel: &str) -> bool {
+    matches!(
+        rel,
+        "event" | "fact" | "property" | "amount" | "concept"
+    )
+}
+
+/// Deontic head predicates whose x1 is the duty/content and x2 the obligated party.
+fn is_deontic_duty_rel(rel: &str) -> bool {
+    matches!(rel, "obligated" | "obliged")
+}
 
 /// Render a compiled `LogicBuffer` as readable English.
 ///
@@ -321,15 +335,93 @@ fn build_frames(preds: &[(String, Vec<LogicalTerm>)], ctx: &mut Ctx) -> Vec<Stri
         }
     }
 
-    order
-        .into_iter()
-        .filter_map(|key| map.remove(&key))
+    let accs: Vec<FrameAcc> = order.into_iter().filter_map(|key| map.remove(&key)).collect();
+    let accs = collapse_deontic_event_duties(accs);
+    accs.into_iter()
         .map(|acc| render_frame(&acc, ctx))
         .filter(|s| !s.is_empty())
         .collect()
 }
 
+/// Collapse `obligated(person, event { P() })` packaging:
+///   event(Y) ∧ P(…) ∧ obliged(Y, X)  →  "X is obligated to be P"
+/// without the word-salad "Y is event and Y is obligated to X".
+fn collapse_deontic_event_duties(accs: Vec<FrameAcc>) -> Vec<FrameAcc> {
+    let has_scaffold = accs.iter().any(|a| is_abstraction_scaffold(&a.base));
+    let has_deontic = accs.iter().any(|a| is_deontic_duty_rel(&a.base));
+    if !has_scaffold || !has_deontic {
+        return accs;
+    }
+
+    let content: Vec<String> = accs
+        .iter()
+        .filter(|a| !is_deontic_duty_rel(&a.base) && !is_abstraction_scaffold(&a.base))
+        .map(|a| deontic_content_phrase(&a.base))
+        .collect();
+    if content.is_empty() {
+        return accs;
+    }
+    let content_joined = match content.len() {
+        1 => content[0].clone(),
+        2 => format!("{} and {}", content[0], content[1]),
+        _ => {
+            let head = &content[..content.len() - 1];
+            format!("{}, and {}", head.join(", "), content[content.len() - 1])
+        }
+    };
+
+    // One rewritten deontic frame per original deontic (usually one), carrying the
+    // obligated party in place 2; place 1 becomes the English content phrase via
+    // a synthetic constant so fill_template still works.
+    let mut out = Vec::new();
+    for acc in &accs {
+        if !is_deontic_duty_rel(&acc.base) {
+            continue;
+        }
+        let who = acc
+            .places
+            .get(&2)
+            .cloned()
+            .or_else(|| acc.flat_args.get(1).cloned());
+        let mut places = HashMap::new();
+        places.insert(1, LogicalTerm::Constant(content_joined.clone()));
+        if let Some(w) = who {
+            places.insert(2, w);
+        }
+        out.push(FrameAcc {
+            base: "obligated".into(),
+            places,
+            flat_args: Vec::new(),
+            has_roles: true,
+        });
+    }
+    // Prefer the collapsed form; if we somehow found no deontic heads, fall back.
+    if out.is_empty() {
+        accs
+    } else {
+        out
+    }
+}
+
 fn render_frame(acc: &FrameAcc, ctx: &mut Ctx) -> String {
+    // Deontic collapse stores the content phrase as place-1 constant and the
+    // obligated party as place-2 — render with a dedicated template so we get
+    // "X is obligated to be secure" not "X is obligated that be secure".
+    if is_deontic_duty_rel(&acc.base) {
+        if let (Some(LogicalTerm::Constant(content)), Some(who_term)) =
+            (acc.places.get(&1), acc.places.get(&2))
+        {
+            // Content phrases we synthesized start with "be " / bare verb — use "to".
+            if let Some(who) = render_term(who_term, ctx) {
+                if content.starts_with("be ")
+                    || !content.contains(" is ") && !content.chars().next().is_some_and(|c| c.is_uppercase())
+                {
+                    return format!("{who} is obligated to {content}");
+                }
+                return format!("{who} is obligated that {content}");
+            }
+        }
+    }
     let places: Vec<Option<String>> = if acc.has_roles {
         let max_idx = acc.places.keys().copied().max().unwrap_or(0);
         (1..=max_idx)
@@ -344,11 +436,25 @@ fn render_frame(acc: &FrameAcc, ctx: &mut Ctx) -> String {
 /// Render a term as an English noun phrase, or `None` for an unspecified place.
 fn render_term(t: &LogicalTerm, ctx: &mut Ctx) -> Option<String> {
     match t {
-        LogicalTerm::Constant(s) => Some(s.clone()),
+        LogicalTerm::Constant(s) => Some(display_constant(s)),
         LogicalTerm::Description(s) => Some(format!("the {}", get_gloss(s).unwrap_or(s.as_str()))),
         LogicalTerm::Variable(n) => Some(ctx.var_name(n)),
         LogicalTerm::Number(n) => Some(format_number(*n)),
         LogicalTerm::Unspecified => None,
+    }
+}
+
+/// Constants arrive lowercased from the IR (`bela`, `highsec`). Title-case the
+/// first letter for readable English; leave mixed/upper inputs alone.
+fn display_constant(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(c) if c.is_ascii_lowercase() && s.bytes().all(|b| b.is_ascii_lowercase() || b == b'_') => {
+            // highsec → Highsec; snake_case → first letter only (good enough).
+            format!("{}{}", c.to_ascii_uppercase(), chars.as_str())
+        }
+        Some(c) => format!("{c}{}", chars.as_str()),
+        None => String::new(),
     }
 }
 

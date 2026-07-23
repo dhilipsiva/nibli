@@ -2776,8 +2776,10 @@ dependencies = [
 name = "nibli-render"
 version = "0.1.0"
 dependencies = [
+ "nibli-kr",
  "nibli-lexicon",
  "nibli-protocol",
+ "nibli-semantics",
  "nibli-types",
 ]
 

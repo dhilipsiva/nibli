@@ -9,15 +9,56 @@ use nibli_lexicon::{get_arity, get_gloss, get_template};
 
 use crate::overlay;
 
+/// Template overrides where the lexicon English is inverted, truncated, or
+/// systematically misleading for the IR's place-filling patterns. Applied
+/// before corpus templates so the back-translation stays readable without
+/// waiting on a full corpus prose pass.
+const TEMPLATE_OVERRIDES: &[(&str, &str)] = &[
+    // bilga/curmi: IR x1 = duty/content, x2 = obligated party — not "duty is obligated to person".
+    ("obligated", "{x2} is obligated that {x1}"),
+    ("obliged", "{x2} is obligated that {x1}"),
+    // cirko: x1 = loss, x2 = person who loses.
+    ("lose", "{x2} loses {x1}"),
+    // dinju used as facility placement: x1 = facility, x2 = resident.
+    ("building", "{x2} is placed at {x1}"),
+    // zdani as confinement status (constitutional corpora), not "X is a house".
+    ("home", "{x1} is under home confinement"),
+    // Status / boolean-ish 1-place readings.
+    ("false", "{x1} is voided"),
+    ("prisoner", "{x1} is a prisoner"),
+    ("family", "{x1} has a domestic offense"),
+    ("severe", "{x1}'s offense is severe"),
+    ("reward", "{x1} is rewarded"),
+    ("travel", "{x1} may travel"),
+    ("dwell", "{x1} has shelter"),
+    ("expresses", "{x1} may express"),
+    ("work", "{x1} works on {x2}"),
+    ("judge", "{x1} judges {x2}"),
+    ("capture", "{x1} captures fraud by {x2}"),
+    ("parent", "{x1} is a parent of {x2}"),
+    ("injure", "{x1} injures {x2}"),
+    ("deceive", "{x1} falsely accuses {x2}"),
+    ("teaches", "{x1} teaches {x2}"),
+    ("permits", "{x1} permits {x2}"),
+    ("secure", "{x1} is secure"),
+    ("healthy", "{x1} is healthy"),
+    ("learn", "{x1} learns"),
+    ("eats", "{x1} eats"),
+];
+
 /// Resolve a fill-template (a string with `{x1}`..`{xN}` placeholders) for a
 /// relation — everything is ENGLISH-keyed since the committed corpus (the old
 /// English→gismu `frame_key` un-mapping died with gismu input). DRY resolution
-/// chain: the active domain overlay (if any) wins, then the corpus template,
-/// then a generic gloss+arity frame. The overlay is just the first tier —
-/// Custom KBs and non-UI surfaces fall straight through to the corpus.
+/// chain: the active domain overlay (if any) wins, then a small set of
+/// place-order / readability overrides, then the corpus template, then a
+/// generic gloss+arity frame. The overlay is just the first tier —
+/// Custom KBs and non-UI surfaces fall straight through past it.
 pub(crate) fn frame_template(relation: &str) -> String {
     if let Some(t) = overlay::active().and_then(|o| o.template(relation)) {
         return t.to_string();
+    }
+    if let Some((_, t)) = TEMPLATE_OVERRIDES.iter().find(|(r, _)| *r == relation) {
+        return (*t).to_string();
     }
     if let Some(t) = get_template(relation) {
         return t.to_string();
@@ -58,18 +99,92 @@ pub(crate) fn template_max_place(template: &str) -> usize {
     max
 }
 
-/// Generic frame when no curated template exists. Imperfect but honest: a 1-place
-/// predicate reads "X is <gloss>", an n-place reads "X <gloss> Y Z …".
-fn generic_template(gloss: &str, arity: usize) -> String {
-    let mut t = if arity <= 1 {
-        format!("{{x1}} is {gloss}")
-    } else {
-        format!("{{x1}} {gloss}")
-    };
-    for i in 2..=arity {
-        t.push_str(&format!(" {{x{i}}}"));
+/// Adjectival / status glosses that take "is {gloss}" rather than "is a {gloss}".
+fn is_adjectival_gloss(gloss: &str) -> bool {
+    matches!(
+        gloss,
+        "false"
+            | "true"
+            | "severe"
+            | "secure"
+            | "healthy"
+            | "correct"
+            | "necessary"
+            | "exact"
+            | "thin"
+            | "dangerous"
+            | "big"
+            | "small"
+            | "good"
+            | "bad"
+            | "alive"
+            | "dead"
+            | "free"
+    ) || gloss.ends_with("ous")
+        || gloss.ends_with("ful")
+        || gloss.ends_with("less")
+        || gloss.ends_with("ive")
+        || gloss.ends_with("able")
+        || gloss.ends_with("ible")
+}
+
+fn indefinite_article(gloss: &str) -> &'static str {
+    let first = gloss.chars().next().map(|c| c.to_ascii_lowercase());
+    match first {
+        Some('a' | 'e' | 'i' | 'o' | 'u') => "an ",
+        _ => "a ",
     }
-    t
+}
+
+/// Third-person singular present for bare gloss verbs used in multi-place frames.
+fn third_person_s(gloss: &str) -> String {
+    if gloss.is_empty() {
+        return gloss.to_string();
+    }
+    // Already looks conjugated or is multi-word — leave alone.
+    if gloss.contains(' ') || gloss.ends_with('s') {
+        return gloss.to_string();
+    }
+    let lower = gloss.to_ascii_lowercase();
+    if lower.ends_with("ss")
+        || lower.ends_with("sh")
+        || lower.ends_with("ch")
+        || lower.ends_with('x')
+        || lower.ends_with('z')
+        || lower.ends_with('o')
+    {
+        format!("{gloss}es")
+    } else if lower.ends_with('y')
+        && !matches!(
+            lower.chars().rev().nth(1),
+            Some('a' | 'e' | 'i' | 'o' | 'u')
+        )
+    {
+        format!("{}ies", &gloss[..gloss.len() - 1])
+    } else {
+        format!("{gloss}s")
+    }
+}
+
+/// Generic frame when no curated template exists. Imperfect but honest:
+/// - 1-place adjective → "X is false"
+/// - 1-place noun → "X is a dog"
+/// - n-place → "X judges Y" (3sg verb)
+fn generic_template(gloss: &str, arity: usize) -> String {
+    if arity <= 1 {
+        if is_adjectival_gloss(gloss) {
+            format!("{{x1}} is {gloss}")
+        } else {
+            format!("{{x1}} is {}{gloss}", indefinite_article(gloss))
+        }
+    } else {
+        let verb = third_person_s(gloss);
+        let mut t = format!("{{x1}} {verb}");
+        for i in 2..=arity {
+            t.push_str(&format!(" {{x{i}}}"));
+        }
+        t
+    }
 }
 
 /// English particles that, in a frame template, exist only to introduce a place
@@ -146,6 +261,39 @@ pub(crate) fn fill_template(template: &str, places: &[Option<String>]) -> String
     out.trim().to_string()
 }
 
+/// Infinitive content phrase for a deontic duty's embedded event predicate.
+pub(crate) fn deontic_content_phrase(relation: &str) -> String {
+    let gloss = gloss_for(relation);
+    if is_adjectival_gloss(&gloss) || matches!(relation, "secure" | "healthy" | "correct" | "exact")
+    {
+        format!("be {gloss}")
+    } else if matches!(relation, "eats" | "eat") {
+        "eat".into()
+    } else if matches!(relation, "dwell") {
+        "have shelter".into()
+    } else if matches!(relation, "learn") {
+        "learn".into()
+    } else if matches!(relation, "expresses" | "express") {
+        "express".into()
+    } else if matches!(relation, "removes" | "remove") {
+        "be erased".into()
+    } else if matches!(relation, "message") {
+        "notify".into()
+    } else if matches!(relation, "shelter") {
+        "be kept secure".into()
+    } else if matches!(relation, "necessary") {
+        "be necessary".into()
+    } else {
+        // Strip trailing -s from 3sg glosses for a rough infinitive.
+        let g = gloss_for(relation);
+        if g.ends_with('s') && g.len() > 1 {
+            format!("{}", &g[..g.len() - 1])
+        } else {
+            g
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -158,10 +306,25 @@ mod tests {
     }
 
     #[test]
+    fn overrides_beat_corpus_for_inverted_places() {
+        assert_eq!(frame_template("obligated"), "{x2} is obligated that {x1}");
+        assert_eq!(frame_template("lose"), "{x2} loses {x1}");
+        assert_eq!(frame_template("building"), "{x2} is placed at {x1}");
+        assert_eq!(frame_template("prisoner"), "{x1} is a prisoner");
+    }
+
+    #[test]
     fn generic_fallback_for_uncurated() {
         // An invented predicate falls back to a generic frame.
         let t = frame_template("frobnicatezzzz");
         assert!(t.starts_with("{x1}"), "got: {t}");
+        assert!(t.contains("is a ") || t.contains("is an "), "got: {t}");
+    }
+
+    #[test]
+    fn generic_multi_place_uses_3sg_verb() {
+        let t = generic_template("judge", 2);
+        assert_eq!(t, "{x1} judges {x2}");
     }
 
     #[test]
@@ -282,5 +445,16 @@ mod tests {
         assert_eq!(template_max_place("no placeholders here"), 0);
         // Out-of-order placeholders return the max, not the count.
         assert_eq!(template_max_place("{x2} loves {x1}"), 2);
+    }
+
+    #[test]
+    fn lose_template_person_first() {
+        assert_eq!(
+            fill_template(
+                &frame_template("lose"),
+                &[Some("Points".into()), Some("Bela".into())]
+            ),
+            "Bela loses Points"
+        );
     }
 }
