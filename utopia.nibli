@@ -1,98 +1,170 @@
-# Utopia Reimagined — Constitutional Core (nibli KR, v0.1 compat profile)
-# Canonical corpus (formerly also constitution.nibli — merged here).
-# Proxy conventions: deserve = "is entitled to", closed = "attestation invalidated",
-# false = "standing voided" (jitfa: x1 is false by standard x2 — here: false-as-
-# attestor by the audit standard; replaces the earlier ganlo "closed" proxy),
-# capture = "auditor caught fraud in", reward = "mints merit", lose = "clawback",
-# expresses = "communicates" (cusku: speaker/statement/audience/MEDIUM — medium-
-# general, so it covers internet and any channel, unlike speech-only talks).
-# home(X) = "X is under home confinement" (proxy flag; lexicon nest/resident
-# inverted — treated as an opaque status predicate here).
-# family(X) = "offense is domestic / household-related" (blocks home arrest).
-# severe(X) = "offense grade is severe" (HighSec vs LowSec facility).
-# building(Facility, X) = "X is placed at Facility" (purpose place = resident).
+# ═══════════════════════════════════════════════════════════════════
+# UTOPIA REIMAGINED — Constitutional Core (nibli KR)
+# A weapon of absolute, machine-checked justice.
+# ═══════════════════════════════════════════════════════════════════
 #
-# WASM fuel (host sandbox): this corpus is heavier than gdpr/ddi — nested NAF,
-# multi-place rules, and six deontic floor universals. Proof-traced scenario
-# queries need ~25e9 Wasmtime fuel on a *release* nibli.wasm (hardest pin:
-# obligated(Adam, event { eats() })); the host default is 50e9. Debug WASM is
-# ~6× hungrier (~150e9 for that pin) — prefer `just profile=release run`, or
-# raise with NIBLI_FUEL / `:fuel` (e.g. NIBLI_FUEL=200000000000). Native
-# (nibli-engine / nibli-session) has no fuel meter and finishes sub-second.
+# நான ் வீழ்வேனென்று நினைத்தாயோ?
+# Did you think I would fall?
 #
-# :contradictions is store + derived-negation (category 4 cheap middle). It is
-# not a full closure consistency proof — use Vampire/clingo on mappable
-# fragments for that. Student clawback (Art 4) is intentional policy: when a
-# teacher is voided, students lose points (contamination); no restore path in v0.1.
+# This is not a lullaby. This is not a polite whitepaper. This is the roar
+# of a generation that watched the Old World auction childhood to coaching
+# mafias, starve orphans of sleep for NEET rank-lists, and crown the
+# Cockroach Janatha Party (CJP) as the high priests of political cronyism.
+# Here, under Nibli, every duty is a formal derivation — not a slogan, not a
+# bribe, not a WhatsApp forward from a minister's nephew.
+#
+# Meet ARA — a highly capable kid. Both parents dead. In the Old World that
+# sentence alone would have been a life sentence: no fees for the "good"
+# coaching centre, no "recommendation letter" from a CJP fixer, no second
+# chance if one bad exam day buried the rank. The Old World called that
+# "merit." We call it engineered scarcity with a smile.
+#
+# In Utopia, ARA does not beg. The system is obligated — mathematically,
+# fail-closed, queryable — to hold the floor under every person. Watch.
 
-# ─── Article 1: the unconditional floor ───────────────────────────
-# Rights decomposed via nu-abstraction (event {}), not opaque constants:
-# "the system is obligated that, for every person, <content> holds".
-# Environment first: the physical precondition the other five depend on.
-# Deliberately NOT encoded as a logical dependency — an environmental failure
-# must never void anyone's food/shelter/health rights (no conditional floor).
-# Obligations are duty claims, not logistics of provision (OUTSIDE firewall).
-obligated(every person, event { secure() }).     # green/safe environment
-obligated(every person, event { eats() }).       # food
-obligated(every person, event { dwell() }).      # shelter
-obligated(every person, event { healthy() }).    # healthcare
-obligated(every person, event { learn() }).      # education
-obligated(every person, event { expresses() }).  # communication (bounded by Art 6)
+# ─── Article 1: The Unconditional Floor ───────────────────────────
+#
+# The Old World sold oxygen as a package deal. Want to learn? Pay the
+# coaching cartel. Want to eat while you learn? Hope a relative still
+# breathes. Want a roof? Inherit one — or inherit the street.
+#
+# ARA walks into Utopia with nothing but a mind on fire. The floor does
+# NOT wait for charity. It does not ask which party card the dead parents
+# held. Secure environment. Food. Shelter. Health. Learning. Every person.
+# No conditional floor: an environmental failure must NEVER cancel food
+# or shelter. These are duty-claims under closed-world logic — not
+# logistics slogans. Logistics are outside the firewall. The DUTY is not.
+#
+# Prisoners remain persons. The Old World loved to un-person the inconvenient.
+# We refuse.
+
+obligated(every person, event { secure() }).
+obligated(every person, event { eats() }).
+obligated(every person, event { dwell() }).
+obligated(every person, event { healthy() }).
+obligated(every person, event { learn() }).
+obligated(every person, event { expresses() }).
 all $anyone: prisoner($anyone) -> person($anyone).
 
-# ─── Article 2: due-process suspension ────────────────────────────
+# ─── Article 2: Due-process suspension ────────────────────────────
+#
+# In the Old World, "due process" was a phrase the CJP used while the
+# police station forgot your name. Here, suspension of liberty is a
+# formal state — prisoner — and even then the tongue is not cut out:
+# a prisoner still expresses. Free persons travel. No travel-bond sold
+# by a party booth. No "special permission" for the connected.
+#
+# ARA is free. ARA travels. The rule does not care that ARA is an orphan.
+# The rule cares that ARA is not a prisoner. That is enough. That is
+# everything the Old World denied.
+
 all $prisoner: prisoner($prisoner) -> expresses($prisoner).
 all $anyone: person($anyone) & ~prisoner($anyone) -> travel($anyone).
 
-# ─── Article 3: minting at contribution ───────────────────────────
+# ─── Article 3: Minting at contribution ───────────────────────────
+#
+# The coaching mafia minted nothing but fear. They sold seats in hallways,
+# sold "doubt-clearing" by the hour, sold the lie that only their notes
+# could open the future. Teachers who truly taught starved; brokers thrived.
+#
+# Here, merit is minted at the point of contribution — teach a student,
+# work a task — and only if your standing is not voided. No CJP uncle can
+# mint reward with a phone call. No false teacher keeps the mint.
+#
+# ARA studies under teachers who are rewarded for teaching, not for
+# selling panic. Contributors who work are rewarded for work. The mint
+# is a derivation. Query it. Break it if you can. You cannot bribe a proof.
+
 all $teacher: all $student: teaches($teacher, $student) & ~false($teacher) -> reward($teacher).
 all $contributor: all $task: work($contributor, $task) & ~false($contributor) -> reward($contributor).
 
-# ─── Article 4: audit, invalidation, clawback ─────────────────────
-# Residual (priced, not eliminated): fraud EV = mint*P(unaudited) - clawback*P(caught).
-# Audit rate + clawback multiplier are OUTSIDE the firewall (parameters, not rules).
-# Registry facts (person/parent/prisoner) are attested inputs: proof-of-personhood
-# covers person; kinship attestation shares this audit regime. Rule amendments
-# themselves require supermajority + on-ledger diff (governance, prose-level).
-# Voiding requires an adjudicator role (judge): bare capture is evidence of a
-# catch, not authority to invalidate standing. Without this gate any agent could
-# mint a capture fact and void anyone — a softer accusation-bounty hole.
-# Counter-audit (closes the remaining bounty hole): even a judged capture voids
-# its target ONLY if the accusation is not itself established as false.
-# deceive (tcica) = "false accusation established by review". Stratified:
-# deceive is asserted (by the review process), never derived from false.
-# Minting (reward) keeps the same three-conjunct gate as voiding so the two
-# outcomes stay aligned: same facts either both fire or neither does (modulo
-# who is rewarded vs who is voided).
+# ─── Article 4: Audit, invalidation, clawback ─────────────────────
+#
+# The Old World's audit was theatre: committees that never met, files that
+# vanished, "inquiries" that promoted the guilty. Fraud EV was priced for
+# the rich — mint while unaudited, pay a fine if caught, keep the empire.
+#
+# Here, voiding requires an ADJUDICATOR (judge) AND a capture AND no
+# established false accusation. Bare snitching is not power. A capture
+# without judge is evidence, not a guillotine — the accusation-bounty hole
+# is welded shut. Counter-audit: if you deceive and Review confirms it,
+# YOU are voided. Points clawed. Students of a voided teacher lose points
+# too — contamination is real; the Old World called it "reputation risk"
+# and buried it. We surface it.
+#
+# Audit rate and clawback multipliers are parameters OUTSIDE the firewall.
+# The LOGIC of who may void whom is not for sale to the CJP.
+
 all $auditor: all $audited: judge($auditor, $audited) & capture($auditor, $audited) & ~deceive($auditor, $audited) -> false($audited).
 all $fraudster: false($fraudster) -> lose(Points, $fraudster).
 all $teacher: all $student: teaches($teacher, $student) & false($teacher) -> lose(Points, $student).
 all $auditor: all $audited: judge($auditor, $audited) & capture($auditor, $audited) & ~deceive($auditor, $audited) -> reward($auditor).
-# False accusers are themselves voided (and lose points via the clawback rule).
 all $auditor: all $audited: deceive($auditor, $audited) & judge(Review, $auditor) -> false($auditor).
 
-# ─── Article 5: family non-attestation ────────────────────────────
+# ─── Article 5: Family non-attestation ────────────────────────────
+#
+# Dynasty was the CJP's favorite algorithm: parent certifies child, child
+# certifies parent, the ledger of power never leaves the bloodline. NEET
+# "management quotas" were only the exam-hall face of the same rot.
+#
+# Here, if you judge your own child (parent relation), your standing voids.
+# Kinship attestation is not a free pass — it is a conflict that the logic
+# refuses. ARA will never be "certified capable" by a relative's signature
+# while a stranger's genius is erased. Capability is contribution and proof,
+# not pedigree.
+#
+# (Formal: parent/child places — binary kinship. Domestic-offense flags in
+# Art 6 use unary family as a separate proxy; do not overload one arity.)
+
 all $auditor: all $audited: judge($auditor, $audited) & parent($auditor, $audited) -> false($auditor).
 
-# ─── Article 6: expression bounded by others' rights (due process) ─
-# injure (xrani: subject/victim) proxies "infringes another's rights".
-# Imprisonment requires BOTH the harm and an adjudication (judge) of it:
-# no assertion of harm alone can imprison anyone.
-# Confinement is graded; home confinement is the primary/default grade when the
-# offense is NOT domestic. Domestic infringement blocks home arrest and routes
-# to a facility by severity. dwell is derived from (home ∧ ~family) OR family
-# (facility placement is a separate queryable fact — not joined via open
-# location, which fails demand-driven BC on constant-headed building rules).
-# Appeal (Art 6a): conviction is defeasible — permits(Appeals, x) blocks
-# imprisonment. Court/Appeals/Review are opaque constants in v0.1.
+# ─── Article 6: Expression bounded by others' rights ──────────────
+#
+# The Old World jailed for slogans and freed for slaughter if the party
+# flag was the right colour. Harm without court. Court without appeal.
+# Home as prison for the poor; farmhouses as "home confinement" for the rich.
+#
+# Here: injure + Court + no Appeals permit → prisoner. No mob. No minister.
+# Home confinement only when the offense is NOT domestic (unary family flag).
+# Domestic harm blocks the soft cage — severity routes HighSec / LowSec.
+# Facility placement is queryable; dwell for domestic cases derives from
+# family status without an open-location join (demand-driven BC requires it).
+# Appeals can free. The constants Court / Appeals / Review are governance
+# outside deduction in v0.1 — their selection is prose; their EFFECT is logic.
+#
+# ARA grows in a world where the strong cannot casually break the weak and
+# call it politics. Expression is a floor right — and a boundary when it
+# becomes injury under adjudication. That is not silence. That is spine.
+
 all $offender: all $victim: injure($offender, $victim) & judge(Court, $offender) & ~permits(Appeals, $offender) -> prisoner($offender).
 all $offender: prisoner($offender) & home($offender) & ~family($offender) -> dwell($offender).
 all $offender: prisoner($offender) & family($offender) -> dwell($offender).
 all $offender: prisoner($offender) & family($offender) & severe($offender) -> building(HighSec, $offender).
 all $offender: prisoner($offender) & family($offender) & ~severe($offender) -> building(LowSec, $offender).
 
-# ─── Scenario (all articles) ──────────────────────────────────────
-# Art 2/4 baseline cast
+# ─── The world in facts: cast of a living proof ───────────────────
+#
+# Adam is prisoner — and STILL a person, STILL entitled to express.
+# Bela taught Cira while voidable; Gia judged and captured Bela honestly →
+# Bela's standing falls; points burn; Cira's points burn with the fraud.
+# Dev judged child Esa → family non-attestation voids Dev. Esa still teaches;
+# Esa still mints. Koa "captures" without adjudicator role → no void (gate holds).
+# Quin works the Census → reward without a CJP chit.
+# Hano harmed Ivo; Court spoke; home confinement; dwell.
+# Jala harmed with no Court → free (no assertion of injury alone jails).
+# Lupo lied about Mira; Review voided Lupo; Mira still rewarded for teaching.
+# Nia convicted, Appeals permitted → not prisoner.
+# Lalo severe domestic → HighSec + dwell. Nando non-severe domestic → LowSec + dwell.
+#
+# ARA is not named in every line. ARA is the reason every line exists:
+# a capable orphan who would have been crushed by NEET queues, coaching
+# fees, and CJP queues — and who, under these rules, is owed security,
+# food, shelter, health, learning, and a future that no cockroach party
+# can revoke with a phone call.
+#
+# Did you think we would fall?
+# Query the KB. The proof does not blink.
+
 prisoner(Adam).
 person(Bela).
 person(Cira).
@@ -105,25 +177,19 @@ judge(Dev, Esa).
 person(Gia).
 judge(Gia, Bela).
 capture(Gia, Bela).
-# Negative control (Art 4 adjudicator gate): bare capture without judge must NOT
-# void. Koa "catches" Esa but has no adjudicator role → Esa stays valid.
 person(Koa).
 capture(Koa, Esa).
-# Art 3 work-mint pin (contributor path)
 person(Quin).
 work(Quin, Census).
 
-# Art 6: Hano injures Ivo; Court adjudicates -> home confinement.
 person(Hano).
 person(Ivo).
 injure(Hano, Ivo).
 judge(Court, Hano).
 home(Hano).
-# Jala injured someone but NO adjudication -> must remain free.
 person(Jala).
 injure(Jala, Ivo).
 
-# Art 4a: Lupo falsely accuses honest teacher Mira; Review upholds Mira.
 person(Lupo).
 person(Mira).
 teaches(Mira, Cira).
@@ -131,13 +197,11 @@ judge(Lupo, Mira).
 capture(Lupo, Mira).
 deceive(Lupo, Mira).
 judge(Review, Lupo).
-# Art 6a: Nia convicted but freed on appeal.
 person(Nia).
 injure(Nia, Ivo).
 judge(Court, Nia).
 permits(Appeals, Nia).
 
-# Art 6b: Lalo commits severe domestic infringement.
 person(Lalo).
 person(Mina).
 injure(Lalo, Mina).
@@ -146,9 +210,16 @@ home(Lalo).
 family(Lalo).
 severe(Lalo).
 
-# Art 6c: Nando commits non-severe domestic infringement.
 person(Nando).
 person(Opal).
 injure(Nando, Opal).
 judge(Court, Nando).
 family(Nando).
+
+# ─── Technical appendix (not narrative) ───────────────────────────
+# Proxies: false = standing voided; capture = auditor caught fraud in;
+# reward = mints merit; lose = clawback; home = home-confinement flag;
+# family (unary) = domestic-offense flag; severe = grade; building(F,x) =
+# facility placement. WASM fuel: release default 50e9; debug hungrier —
+# just profile=release run or NIBLI_FUEL. :contradictions = store + derived
+# ~P (not full closure; Vampire/clingo for fragments).
