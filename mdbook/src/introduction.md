@@ -9,12 +9,14 @@ It is **not** the Orange AVA book manuscript. Book rights are reserved by the pu
 | Surface | URL / command |
 |---------|----------------|
 | **Interactive playground** | [dhilipsiva.dev/nibli-playground](https://dhilipsiva.dev/nibli-playground/) |
-| **This docs site (primary, when deployed)** | [dhilipsiva.dev/docs/nibli/](https://dhilipsiva.dev/docs/nibli/) |
-| **Docs mirror (GitHub Pages, when deployed)** | [dhilipsiva.github.io/nibli/](https://dhilipsiva.github.io/nibli/) |
+| **Docs (GitHub Pages mirror)** | [dhilipsiva.github.io/nibli](https://dhilipsiva.github.io/nibli/) |
+| **Docs (primary, when site ships)** | [dhilipsiva.dev/docs/nibli/](https://dhilipsiva.dev/docs/nibli/) |
 | **Local build** | `just docs` / `just docs-serve` (inside `nix develop`) |
 | **Rust API** | `cargo doc -p <crate> --open` (docs.rs when crates are published) |
 
-Primary and mirror hosts share one mdBook artifact under different base paths (`/docs/nibli/` vs `/nibli/`). Prefer relative links inside chapters so both remain valid.
+Primary host path is `/docs/nibli/`; the GitHub Pages project site uses base path `/nibli/`. CI builds the mirror with `site-url=/nibli/`. Prefer relative links inside chapters so both bases work.
+
+<p><a href="https://dhilipsiva.dev/nibli-playground/"><strong>Open the playground →</strong></a></p>
 
 ## Source layout
 
@@ -26,3 +28,10 @@ Primary and mirror hosts share one mdBook artifact under different base paths (`
 | `book/` | Private manuscript checkout — **never** imported into this tree |
 
 The live docs roadmap is [`DOCS_TODO.md`](https://github.com/dhilipsiva/nibli/blob/main/DOCS_TODO.md) at the repository root.
+
+## Start here
+
+1. [What Nibli guarantees](user/guarantees.md) — the four-valued contract and scope.
+2. [Quickstart](user/quickstart.md) — Nix + `just run`.
+3. [nibli KR cookbook](user/kr-cookbook.md) — surface syntax cheat sheet.
+4. [Playground](user/playground.md) — browser triad without installing anything.

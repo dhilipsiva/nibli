@@ -711,10 +711,21 @@ count-tests:
 
 # Build the code-derived docs site (mdBook → mdbook/book/). Source is mdbook/;
 # never import the private manuscript at book/.
-docs:
+# Default site-url is book.toml (/docs/nibli/). Override for GitHub Pages:
+#   just docs /nibli/
+docs site_url="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -n "{{site_url}}" ]; then
+      export MDBOOK_OUTPUT__HTML__SITE_URL="{{site_url}}"
+    fi
     mdbook build mdbook
 
-# Serve docs locally (http://127.0.0.1:3000)
+# Same as `just docs /nibli/` (GitHub Pages project base path)
+docs-pages-build:
+    just docs /nibli/
+
+# Serve docs locally (http://127.0.0.1:3000) — default primary site-url
 docs-serve:
     mdbook serve mdbook -p 3000 -n 127.0.0.1
 

@@ -107,9 +107,10 @@ Code-derived human docs live in **`mdbook/`** (mdBook). They are **not** the Ora
 
 | Surface | How |
 |---------|-----|
-| Local | `just docs` (build) / `just docs-serve` (http://127.0.0.1:3000) inside `nix develop` |
-| Primary (when deployed) | https://dhilipsiva.dev/docs/nibli/ |
-| Mirror (when deployed) | https://dhilipsiva.github.io/nibli/ |
+| **Live mirror** | https://dhilipsiva.github.io/nibli/ |
+| Local | `just docs` / `just docs-serve` (http://127.0.0.1:3000) inside `nix develop` |
+| Primary (site integration) | https://dhilipsiva.dev/docs/nibli/ — see [`DEPLOY.md`](DEPLOY.md) |
+| Playground | https://dhilipsiva.dev/nibli-playground/ |
 | Rust API | `cargo doc -p <crate> --open` — [docs.rs](https://docs.rs) when crates are published |
 | Roadmap | [`DOCS_TODO.md`](DOCS_TODO.md) |
 

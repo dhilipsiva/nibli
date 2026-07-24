@@ -1,0 +1,58 @@
+name: Docs (GitHub Pages)
+
+# Deploy the mdBook site to https://dhilipsiva.github.io/nibli/
+# Built with site-url=/nibli/ (project Pages base path).
+# Primary host dhilipsiva.dev/docs/nibli/ is a separate site-repo step (DEPLOY.md).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "mdbook/**"
+      - "Justfile"
+      - "flake.nix"
+      - "flake.lock"
+      - ".github/workflows/docs-pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Configure Nix cache
+        uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Build mdBook (site-url=/nibli/)
+        run: nix develop --extra-experimental-features 'nix-command flakes' --command just docs /nibli/
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: mdbook/book
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

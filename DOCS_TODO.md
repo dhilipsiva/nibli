@@ -126,10 +126,11 @@ Two guides in one book (parts), shared glossary/appendix of links to root specs.
 
 ### Phase 1 — MVP user guide (ship primary + GH Pages mirror)
 
-- [ ] What Nibli guarantees, quickstart, KR cookbook stubs linking root specs.
-- [ ] Playground CTA (no custom widget required).
-- [ ] Deploy pipeline: artifact → `dhilipsiva.dev/docs/nibli/` + `dhilipsiva.github.io/nibli/`.
-- [ ] Optional: fence lint via `nibli-validate` on ````nibli-kr` blocks in `mdbook/src`.
+**Landed (nibli repo):** user pages (guarantees, quickstart, KR cookbook, playground CTA); `just docs [site_url]` / `docs-pages-build`; GitHub Pages workflow → `https://dhilipsiva.github.io/nibli/`; primary path documented in DEPLOY.md for the site repo.
+
+**Still site-repo:** wire `dhilipsiva.dev/docs/nibli/` copy on `nibli-updated` (DEPLOY §2b). Do not claim primary live until that ships.
+
+**Deferred:** fence lint via `nibli-validate` on ````nibli-kr` blocks (keep docs CI light).
 
 ### Phase 2 — Corpora + embed
 

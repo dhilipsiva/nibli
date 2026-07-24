@@ -5,6 +5,10 @@
 # User guide
 
 - [Overview](user/overview.md)
+- [What Nibli guarantees](user/guarantees.md)
+- [Quickstart](user/quickstart.md)
+- [nibli KR cookbook](user/kr-cookbook.md)
+- [Playground](user/playground.md)
 
 # Developer guide
 

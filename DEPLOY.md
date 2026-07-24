@@ -10,7 +10,8 @@ There are two distinct deployables (don't conflate them):
 |-----|-------|-----------|
 | `dhilipsiva.dev/nibli-playground` | `nibli-ui` (Dioxus app) | The Transparency Triad playground (nibli KR-first), incl. the **Formalize** feature (`nibli-formalize`) |
 | `dhilipsiva.dev/nibli` | `nibli-wasm` (wasm-bindgen lib) | The live demo embedded on the site (KR-only since THE DROP — its Lojban-era JS/KB breaks until the site-repo migration lands; `set_language` remains a no-op shim) |
-| `dhilipsiva.dev/docs/nibli/` | mdBook (`mdbook/` in this repo) | Code-derived human docs (Phase 0: build via `just docs`; **deploy is Phase 1**). Mirror planned at `dhilipsiva.github.io/nibli/`. Not the Orange AVA book. |
+| `dhilipsiva.dev/docs/nibli/` | mdBook (`mdbook/` in this repo) | Code-derived human docs (default `just docs`, `site-url=/docs/nibli/`). **Site-repo must copy the build** — see §4. Not the Orange AVA book. |
+| `dhilipsiva.github.io/nibli/` | same mdBook | **Live mirror** via [`.github/workflows/docs-pages.yml`](.github/workflows/docs-pages.yml) (`just docs site_url=/nibli/`) |
 
 ## 1. Ship the frontend (the playground + Formalize)
 
@@ -47,7 +48,37 @@ just build-ui        # dx build --release
 # output: target/dx/nibli-ui/release/web/public/  — serve it with any static server
 ```
 
-## 2. The retired jbotci proxy (hand-over note)
+## 2. Docs site (mdBook)
+
+### 2a. GitHub Pages mirror (this repo)
+
+Workflow: [`.github/workflows/docs-pages.yml`](.github/workflows/docs-pages.yml).
+
+1. **One-time:** Repo **Settings → Pages → Build and deployment → Source: GitHub Actions**.
+2. On push to `main` (paths under `mdbook/`, `Justfile`, flake, or the workflow) or `workflow_dispatch`, CI builds with `site-url=/nibli/` and deploys to **https://dhilipsiva.github.io/nibli/**.
+3. Local check: `just docs /nibli/` (or `just docs-pages-build`).
+
+### 2b. Primary host `dhilipsiva.dev/docs/nibli/` (site repo)
+
+The product site lives in **`dhilipsiva/dhilipsiva.dev`**, not here. This repo already fires `repository_dispatch` `nibli-updated` on push to `main` (see §1). Extend that rebuild to publish docs:
+
+```sh
+# On the site builder, after checking out nibli at the dispatch SHA:
+cd /path/to/nibli
+nix develop --extra-experimental-features 'nix-command flakes' --command just docs
+# Default site-url is /docs/nibli/ (book.toml)
+rsync -a --delete mdbook/book/ /path/to/site/public/docs/nibli/
+```
+
+Requirements:
+
+- Serve static files under **`/docs/nibli/`** (trailing directory index).
+- Do **not** use the Pages `/nibli/` build for the primary host without rebuilding with default `site-url`.
+- Content policy: engine-only mdBook — never the private manuscript at `book/`.
+
+Until the site copies that tree, the **canonical public docs URL is the GitHub Pages mirror**.
+
+## 3. The retired jbotci proxy (hand-over note)
 
 The `fanva-proxy/` Cloudflare Worker (the legacy Lojban mode's jbotci CORS
 relay) retired from this repo at THE DROP, together with the Lojban front-end
@@ -56,7 +87,7 @@ and the jbotci tool-use it served. The DEPLOYED worker at
 donation repo (github.com/dhilipsiva/fanva), which carries the worker source,
 deploy docs, and `ALLOWED_ORIGINS` configuration from here on.
 
-## 3. Acceptance ("done when")
+## 4. Acceptance ("done when")
 
 Hosted **Formalize works end-to-end**:
 

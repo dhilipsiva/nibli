@@ -22,6 +22,6 @@ Rust crate APIs: `cargo doc -p <crate> --open` (for example `nibli-types`, `nibl
 
 | Host | Base path | Status |
 |------|-----------|--------|
-| Primary | `https://dhilipsiva.dev/docs/nibli/` | Phase 1 deploy |
-| GH Pages mirror | `https://dhilipsiva.github.io/nibli/` | Phase 1 deploy |
+| GH Pages mirror | `https://dhilipsiva.github.io/nibli/` | CI workflow `docs-pages.yml` (`site-url=/nibli/`) |
+| Primary | `https://dhilipsiva.dev/docs/nibli/` | Site-repo integration (see DEPLOY.md) — default `just docs` build |
 | Local | `just docs-serve` → `http://127.0.0.1:3000` | Available now |

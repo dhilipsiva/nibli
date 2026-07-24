@@ -49,7 +49,8 @@ All commands must run inside the Nix dev shell. Use `just` as the primary task r
 | `just bench-book` | Timing pins for the book's quoted figures (Ch 13 latency numbers, Ch 19 GDPR sequence): release-profile native bench over `gdpr.nibli` — corpus load / lawful-basis query / full Ch-19 sequence (load + query + consent retraction + 2 re-queries), min/median/max over `NIBLI_BENCH_RUNS` runs (default 10), every verdict asserted every run. The source for any latency figure the book quotes — never hand-write timings |
 | `just verify-book-refs` | Book-reference conformance gate (detection only): every WIT name, REPL command (`nibli-host` + `nibli` debug REPL), Rust struct field, and notation form the book quotes must match the repo (`book/tools/verify_book_refs.py`, per-claim report). EXPECTED red until the book reconciliation pass; wiring into `ci` is a book-repo decision after that. Skips when `book/` is absent |
 | `just count-tests` | Derive the current test-suite counts (unit + native integration/bin targets). The source for any doc that needs a figure — never hand-write test counts (pre-commit checklist) |
-| `just docs` | Build the code-derived mdBook site (`mdbook/` → `mdbook/book/`). Not the Orange AVA manuscript. CI job `docs` runs this. |
+| `just docs [site_url]` | Build the code-derived mdBook site (`mdbook/` → `mdbook/book/`). Default `site-url` from `book.toml` (`/docs/nibli/`); pass e.g. `/nibli/` for GitHub Pages. Not the Orange AVA manuscript. CI `docs` job builds default; `docs-pages.yml` deploys the mirror. |
+| `just docs-pages-build` | `just docs /nibli/` — Pages base path |
 | `just docs-serve` | Serve mdBook locally at http://127.0.0.1:3000 |
 | `just clean` | `cargo clean` |
 | `just fuzz-assert [SECS]` | Fuzz nibli-engine assert_text (full pipeline) |
