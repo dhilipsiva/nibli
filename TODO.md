@@ -12,133 +12,141 @@ stable WIT + thin Python/Rust framework adapters — with **low runtime overhead
 **unchanged** zero-hallucination / CWA / CDA guarantees. Not an external Python package;
 not Extism-primary (optional future PDK note only).
 
-**Consumers (same policy, idiomatic wrappers):** FastAPI, DRF + django-spectacular,
-Strawberry, Graphene, OpenAPI helpers; axum, tower, async-graphql, juniper; more later.
+**Consumers:** FastAPI, DRF + django-spectacular, Strawberry, Graphene, OpenAPI helpers;
+axum, tower, async-graphql, juniper (same KR policy).
 
-**Efficiency (non-negotiable):** long-lived engine; policy loaded once; ephemeral facts
-per decision only; aggressive decision cache (key: policy version + relevant facts);
-proofs **opt-in** (hot path = cheap `can` / `allowed-fields`).
+**Efficiency:** long-lived engine; policy once; ephemeral context facts only; decision
+cache (`policy_version` + agent/action/resource + context hash); proofs **opt-in**.
 
-**Constraints:** compose with existing engine (no forked reasoner); keep Auth WIT small
-and versioned; fail-closed vocabulary; document every public surface; Nix/Just/tests
-house style; no book manuscript content.
+### A0 — Design (landed)
 
-### Decisions of record (locked for this track)
+Inspected: `wit/world.wit` (`nibli:engine@0.5.0`, world exports `engine` only),
+`nibli-session` / `nibli-engine` (assert/query/retract), lexicon collisions, `python/`
+(compute backend only — no engine binding).
+
+### Decisions of record (locked — A0)
 
 | Decision | Choice |
 |----------|--------|
-| **Primary ABI** | WIT Component Model — e.g. package **`nibli:auth@0.1.0`** (or engine-world methods carefully versioned); Extism is **not** the primary path |
-| **Policy home** | Committed **nibli KR** corpus (`include_str!` / shipped `.nibli`), versioned; load by default or one-shot enable |
-| **Ontology (minimal target)** | Roles for subject / action / resource / field; relations `can(S,A,R)`, `visible_field(S,R,F)` (KR spellings TBD vs corpus `ident` rules — prefer snake_case if hyphens illegal) |
-| **Standard rules** | Small built-in set: ownership, roles, tenants, basic temporal patterns — user rules compose on top |
-| **Decision payload** | `allowed` (bool), engine `verdict` (TRUE/FALSE/UNKNOWN/…), optional proof, optional fields, reason |
-| **Session model** | One warm engine; assert/retract only ephemeral context facts; never spawn engine per request |
-| **Adapters** | Thin, idiomatic; **one Authorizer API** for object-, row-, and field-level checks |
-| **Proofs** | Available via `explain` (or `can` flag); never paid on hot path by default |
+| **Primary ABI** | Package **`nibli:auth@0.1.0`** (`wit/auth.wit`); same WASM world **exports** `authorizer` alongside `engine`. Fallback if multi-package WIT is painful: `interface authorizer` inside `nibli:engine@0.6.0`. Extism **not** primary. |
+| **Policy home** | `nibli-auth/policy/auth-0.1.0.nibli` via `include_str!`; `POLICY_VERSION = "0.1.0"` |
+| **API decision head** | **`authorized(agent, action, resource)`** — **not** `can` (**`can` is tin/can `lante` in corpus**) |
+| **Field-level head** | **`visible_attr(agent, resource, attr)`** — **not** `field` / `visible_field` (**`field` is agricultural `foldi`**) |
+| **Principal sort** | Prefer **`agent`** (FREE); do **not** reuse corpus **`principal`** (`ralju`) |
+| **Ownership** | Reuse existing **`owns(owner, owned, basis)`** |
+| **Roles / tenants** | NEW: `has_role(agent, role)`, `in_tenant(agent, tenant)`; optional `resource_tenant` |
+| **Action / attr tokens** | KR **quoted strings** (`"update"`, `"title"`) → `Constant` |
+| **Roles/tenants style** | Prefer **quoted strings** (parity with actions) |
+| **UNKNOWN on hot path** | **Deny** (`allowed=false`, verdict=unknown); only engine TRUE ⇒ allow |
+| **Decision payload** | `allowed`, `verdict` (true/false/unknown/resource-exceeded), optional `reason`, `fields` list; proof only on `explain` |
+| **Context** | Multi-line **context KR** string: assert → query → **retract** fact ids |
+| **Session** | One warm `Authorizer` wrapping engine/session; never per-request spawn; never `reset()` between requests (drops policy) |
+| **Python bridge** | **PyO3** primary (`nibli_auth`); no subprocess hot path |
+| **Deontic corpus** | Do **not** overload `permits`/`permitted` as HTTP auth |
 
-### Sketch targets (refine in A0 before large code)
+**Forbidden names for auth heads:** `can`, `field`, `principal` (corpus collisions).
 
-**WIT (illustrative — finalize in A0):**
+### Locked file layout
+
+| Path | Role |
+|------|------|
+| `nibli-auth/policy/auth-0.1.0.nibli` | Built-in policy |
+| `nibli-auth/src/{lib,policy,cache}.rs` | Authorizer, Decision, cache |
+| `nibli-lexicon/.../predicates.rs` | NEW rows: `authorized`, `visible_attr`, `has_role`, `in_tenant`, optional `agent`/`resource`/`resource_tenant` |
+| `wit/auth.wit` | `nibli:auth@0.1.0` |
+| `wit/world.wit` | Export `authorizer` (A2) |
+| `python/nibli_auth/` | Client + FastAPI/DRF/Strawberry/Graphene/spectacular |
+| `examples/auth-axum/`, `examples/auth-fastapi/` | **Same policy** E2E |
+| `mdbook/src/user/authorization.md` | A5 / DOCS_TODO Phase 2b |
+
+### WIT sketch (locked shape — land in A2)
 
 ```wit
 package nibli:auth@0.1.0;
 
-interface authorizer {
+interface types {
+  enum verdict { true_, false_, unknown, resource-exceeded }
   record decision {
     allowed: bool,
-    verdict: string,           // TRUE | FALSE | UNKNOWN | …
+    verdict: verdict,
     reason: option<string>,
-    fields: option<list<string>>,
-    // proof omitted on hot path; present only for explain
+    fields: list<string>,
   }
-  can: func(subject: string, action: string, resource: string,
-            context-facts: list<string>) -> result<decision, string>;
-  allowed-fields: func(subject: string, action: string, resource: string,
-                       context-facts: list<string>) -> result<list<string>, string>;
-  explain: func(subject: string, action: string, resource: string,
-                context-facts: list<string>) -> result<decision, string>;
-  // optional later: batch-can, filter-resources
+  record explained {
+    decision: decision,
+    proof-json: option<string>,
+  }
+}
+
+interface authorizer {
+  use types.{decision, explained};
+  resource session {
+    constructor();
+    load-policy: func(extra-kr: option<string>) -> result<string, string>;
+    assert-facts: func(kr: string) -> result<list<u64>, string>;
+    retract: func(id: u64) -> result<_, string>;
+    can: func(agent: string, action: string, resource: string,
+              context-kr: string) -> result<decision, string>;
+    allowed-fields: func(agent: string, action: string, resource: string,
+                         context-kr: string) -> result<list<string>, string>;
+    explain: func(agent: string, action: string, resource: string,
+                  context-kr: string) -> result<explained, string>;
+    policy-version: func() -> string;
+    clear-ephemeral: func() -> result<_, string>;
+  }
 }
 ```
 
-**KR ontology (illustrative — must compile fail-closed against lexicon):**
+API method names stay `can` / `allowed-fields` / `explain` (host language); KR uses **`authorized`**.
+
+### Policy sketch (compile-clean form preferred in A1)
 
 ```nibli-kr
-# Class / sort scaffolding + decision heads (exact names = corpus or auth-local predicates)
-# can(subject, action, resource).
-# visible_field(subject, resource, field).
-# plus ownership / role / tenant rules in shipped auth.nibli
+# Prefer prenex if description-universals are awkward:
+# all $a, $r: owns($a, $r) -> authorized($a, "read", $r).
+# all $a, $r: has_role($a, "admin") -> authorized($a, "update", $r).
 ```
-
-**Layout (proposal — confirm in A0):**
-
-| Path | Role |
-|------|------|
-| `auth/auth.nibli` or `nibli-auth/policy/*.nibli` | Built-in policy KB (version pin) |
-| `wit/auth.wit` (+ world wiring) | Auth package / export |
-| `nibli-auth/` (lib) | Session: load policy once, ephemeral facts, cache, Decision type |
-| `nibli-engine` / `nibli-pipeline` / `nibli-host` | Expose Auth surface native + WASM |
-| `python/nibli_auth/` (+ framework extras) | Client + FastAPI / DRF / Strawberry / Graphene / spectacular |
-| `nibli-auth-axum` / features or examples | axum, tower, async-graphql, juniper |
-| `examples/auth-fastapi/` + `examples/auth-axum/` | **Same policy** E2E in both stacks |
-| `mdbook/src/user/authorization.md` | Ontology, policies, APIs, caching, versioning (→ DOCS_TODO) |
 
 ### Phased delivery
 
-#### A0 — Inspect & design (no large code)
+#### A0 — Inspect & design
 
-- Inspect `wit/world.wit`, `nibli-engine`, `nibli-session`, `nibli-lexicon`, host, `python/`.
-- Decide: **new WIT package** vs methods on `nibli:engine@…` (prefer small dedicated `nibli:auth@0.1.0` if it keeps engine world stable).
-- Map ontology names to **lexicon reality** (new `PredicateEntry` rows vs existing; no silent arity invent).
-- File layout + WIT sketch PR-ready; success criteria checklist.
+**Landed:** collisions, ontology, WIT package choice, layout, PyO3, efficiency/deny defaults (this section).
 
 #### A1 — Built-in policy KB + engine core
 
-- Committed KR corpus + version string; standard ownership/role/tenant/temporal rules.
-- Lexicon entries for all policy predicates (fail-closed).
-- `nibli-auth` (or session helpers): load policy once; ephemeral assert/retract; `can` / `allowed-fields` / `explain`; decision cache key design.
-- Tests: policy verdicts; **proofs only on explain**; CWA/CDA preserved; no per-call engine spawn.
+- Lexicon rows + `auth-0.1.0.nibli` that **compiles** (seam/validate).
+- Crate `nibli-auth`: load policy once; ephemeral assert/retract; `can`/`allowed_fields`/`explain`; cache.
+- Tests: allow/deny goldens; proofs only on explain; no per-call engine spawn.
 
-#### A2 — WIT + pipeline / host wiring
+#### A2 — WIT + pipeline / host
 
-- Land `nibli:auth@0.1.0` (or agreed surface); regenerate bindings as needed.
-- Native (`nibli-engine`) + WASM component path both expose Auth.
-- Host/REPL smoke optional (`:auth` or example binary).
+- Land `wit/auth.wit`; export from pipeline world; bindings.
+- Native + WASM paths; optional host smoke.
 
 #### A3 — Rust adapters + example
 
-- Ergonomic wrappers; axum/tower middleware or extractors; async-graphql + juniper guards.
-- `examples/auth-axum` (or under `examples/`) using the built-in policy.
+- axum/tower + async-graphql + juniper; `examples/auth-axum`.
 
 #### A4 — Python adapters + example
 
-- Core client (WIT/native bridge — document how: component host, pyo3, or subprocess only if unavoidable; prefer in-process if available).
-- FastAPI dependency/decorator (`require("update", Document)` style).
-- DRF: permission classes, object permissions, FilterBackend, serializer field masking.
-- django-spectacular / OpenAPI helpers; Strawberry + Graphene object/field guards.
-- `examples/auth-fastapi` — **same `.nibli` policy** as axum example.
+- PyO3 + FastAPI/DRF/Strawberry/Graphene/spectacular; `examples/auth-fastapi` (same policy file).
 
-#### A5 — Docs, efficiency write-up, CI
+#### A5 — Docs, CI
 
-- mdBook (or README) chapter: ontology, writing policies, Python/Rust APIs, warm-engine + cache model, WIT versioning/migration (track under DOCS_TODO).
-- Just/CI tests for auth core + at least one adapter smoke.
-- Note optional future Extism PDK — not implemented.
-- CHANGELOG / release note when public.
+- mdBook authorization chapter (DOCS_TODO Phase 2b); Just/CI; Extism future-note only; CHANGELOG when public.
 
 ### Success criteria (delete track when all true)
 
-- Load built-in auth KB; assert ownership/role facts; `can` / `allowed-fields` from **Python and Rust** with warm engine + cache.
-- **One KR policy** drives FastAPI, DRF, Strawberry, Graphene, axum, async-graphql (and documented juniper).
-- Field- and row-level permissions share the same Decision type.
-- Proofs on demand only; hot path stays cheap.
-- Reviewable merge into main nibli; zero-hallucination invariants green in CI.
+- Warm `Authorizer`; ownership/role facts; `can` / `allowed-fields` from **Python and Rust**.
+- One KR policy across listed frameworks.
+- Field- and row-level share `Decision`; proofs opt-in only.
+- CI green; zero-hallucination invariants intact.
 
 ### Explicit non-goals
 
-- Extism as primary runtime.
-- Per-request engine process spawn.
-- Weakening CWA/CDA or inventing vocabulary outside fail-closed corpus.
-- Framework-specific policy languages (policy stays nibli KR).
+- Extism as primary runtime; per-request engine spawn; CWA/CDA weakening;
+  inventing vocabulary outside fail-closed corpus; framework-specific policy languages.
 
 ---
 
