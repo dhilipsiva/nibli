@@ -63,11 +63,19 @@ tag vX.Y.Z ──▶ GitHub Release (+ optional .wasm / host bins)
 - Belief revision / `:retract` (host) and playground edit-and-re-query.
 - Deep-link or preset hooks for Syllogism / GDPR / Drug UI labels (byte-stable names).
 
+### Phase 2b — Authorization guide *(engine TODO A5)*
+
+When the auth track lands (`TODO.md` § Authorization):
+
+- mdBook chapter: ontology, writing policies, `can` / `allowed-fields` / `explain`, warm-engine + cache model.
+- Python (FastAPI/DRF/…) and Rust (axum/…) adapter usage; same-policy E2E pointers.
+- WIT `nibli:auth@…` versioning / migration notes (code-derived only).
+
 ### Phase 3 — Developer guide
 
 - Crate map (Mermaid), pipeline + IR (from `LOGIC_IR.md`), WASM/host/compute (code + DEPLOY).
 - Soundness/CI index (`just verify-*`, GUARANTEES, Lean `proofs/`).
-- WIT surface page from `wit/world.wit`.
+- WIT surface page from `wit/world.wit` (+ auth WIT when present).
 
 ### Phase 4 — docs.rs links *(after Release R2)*
 
