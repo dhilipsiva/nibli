@@ -125,7 +125,7 @@ API method names stay `can` / `allowed-fields` / `explain` (host language); KR u
 
 #### A3 — Rust adapters + example
 
-- axum/tower + async-graphql + juniper; `examples/auth-axum`.
+**Landed:** `nibli_auth::tls` (thread-local warm policy); features `axum` / `async-graphql` / `juniper` guards; `examples/auth-axum` (context_kr from app DB; `X-Agent` header). `just test-auth`, `just check-auth-axum`, `just run-auth-axum`.
 
 #### A4 — Python adapters + example
 

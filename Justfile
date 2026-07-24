@@ -709,9 +709,18 @@ count-tests:
     echo "nibli-verify test targets:   $v"; \
     echo "total: $((u + e + g + v))  (a few lib tests appear in both the unit and per-crate figures)"
 
-# Auth core tests (nibli-auth: policy load, can, allowed_fields, explain)
+# Auth core tests (nibli-auth: policy load, can, allowed_fields, explain, tls)
 test-auth:
     cargo test -p nibli-auth
+    cargo test -p nibli-auth --features axum,async-graphql,juniper
+
+# Check the axum auth example compiles
+check-auth-axum:
+    cargo check -p auth-axum
+
+# Run the axum auth demo (http://127.0.0.1:3001)
+run-auth-axum:
+    cargo run -p auth-axum
 
 # Build the code-derived docs site (mdBook → mdbook/book/). Source is mdbook/;
 # never import the private manuscript at book/.

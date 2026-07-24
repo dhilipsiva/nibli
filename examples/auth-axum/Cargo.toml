@@ -1,0 +1,20 @@
+[package]
+name = "auth-axum"
+description = "Example axum app using nibli-auth (same builtin policy as A1)"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[[bin]]
+name = "auth-axum"
+path = "src/main.rs"
+
+[dependencies]
+nibli-auth = { path = "../../nibli-auth", features = ["axum"] }
+axum = { version = "0.8", features = ["json"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tower-http = { version = "0.6", features = ["trace"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

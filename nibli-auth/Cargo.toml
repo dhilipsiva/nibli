@@ -6,7 +6,18 @@ edition = "2024"
 publish = false
 license = "MIT OR Apache-2.0"
 
+[features]
+default = []
+axum = ["dep:axum", "dep:serde", "dep:serde_json"]
+async-graphql = ["dep:async-graphql"]
+juniper = ["dep:juniper"]
+
 [dependencies]
 nibli-session = { path = "../nibli-session" }
 nibli-types = { path = "../nibli-types", features = ["serde"] }
 nibli-protocol = { path = "../nibli-protocol" }
+axum = { version = "0.8", optional = true, default-features = false, features = ["json", "tokio"] }
+serde = { version = "1", optional = true, features = ["derive"] }
+serde_json = { version = "1", optional = true }
+async-graphql = { version = "7", optional = true, default-features = false }
+juniper = { version = "0.16", optional = true, default-features = false }

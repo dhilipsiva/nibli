@@ -3,13 +3,27 @@
 //! - Policy is loaded once (`load_policy`).
 //! - Per-call context KR is asserted, queried, then retracted (ephemeral).
 //! - Hot path (`can`, `allowed_fields`) never builds proofs; use `explain`.
-//! - Session KB is `!Send`; hold one [`Authorizer`] per thread / serial path.
+//! - Session KB is `!Send`; hold one [`Authorizer`] per thread / serial path
+//!   (see [`tls`] for multi-threaded async servers).
 //! - Depends on `nibli-session` (not `nibli-engine`) so the WASM pipeline can
 //!   link without `redb` / host-only store.
+//!
+//! Optional framework adapters (Cargo features): `axum`, `async-graphql`, `juniper`.
 
 mod cache;
 mod decision;
 mod kr;
+
+pub mod tls;
+
+#[cfg(feature = "axum")]
+pub mod axum_ext;
+
+#[cfg(feature = "async-graphql")]
+pub mod async_graphql_ext;
+
+#[cfg(feature = "juniper")]
+pub mod juniper_ext;
 
 pub use decision::{Decision, Explained, Verdict};
 
