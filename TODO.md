@@ -115,9 +115,9 @@ API method names stay `can` / `allowed-fields` / `explain` (host language); KR u
 
 #### A1 — Built-in policy KB + engine core
 
-- Lexicon rows + `auth-0.1.0.nibli` that **compiles** (seam/validate).
-- Crate `nibli-auth`: load policy once; ephemeral assert/retract; `can`/`allowed_fields`/`explain`; cache.
-- Tests: allow/deny goldens; proofs only on explain; no per-call engine spawn.
+**Landed:** lexicon (`authorized`, `visible_attr`, `has_role`, `in_tenant`, `agent`, `resource`, `resource_tenant`); `nibli-auth` crate + `policy/auth-0.1.0.nibli`; warm `Authorizer` (load once, ephemeral context, decision cache); `can` / `allowed_fields(candidates)` / `explain`; tests via `just test-auth`.
+
+**Policy note:** conclusion vars must appear in a positive body condition (admin rules use `resource($r)`). v0.1 field masking = all candidates if row `can(..., "read"|action)` allows.
 
 #### A2 — WIT + pipeline / host
 

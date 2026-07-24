@@ -1,0 +1,17 @@
+# nibli-auth-policy: 0.1.0
+# Built-in authorization rules (engine-native; not book content).
+#
+# Note: every variable in a rule conclusion must be constrained by a positive
+# body condition (or bound by the ground query). Free conclusion-only vars do
+# not fire under backward chaining here.
+
+# Owner may read and update owned resources.
+all $a, $r: owns($a, $r) -> authorized($a, "read", $r).
+all $a, $r: owns($a, $r) -> authorized($a, "update", $r).
+
+# Admin role: read/update any declared resource.
+all $a, $r: has_role($a, "admin") & resource($r) -> authorized($a, "read", $r).
+all $a, $r: has_role($a, "admin") & resource($r) -> authorized($a, "update", $r).
+
+# Same-tenant read (resource must declare its tenant).
+all $a, $r, $t: in_tenant($a, $t) & resource_tenant($r, $t) -> authorized($a, "read", $r).

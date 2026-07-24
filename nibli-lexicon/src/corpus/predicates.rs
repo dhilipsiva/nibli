@@ -53,6 +53,8 @@ pub(crate) static PREDICATES: &[PredicateEntry] = &[
     PredicateEntry { name: "affix_compound", source_gismu: "lujvo", swap: None, places: &["subject", "meaning", "arguments", "metaphor"], gloss: "affix compound", template: None, tier: CorpusTier::Generic },
     // TODO(corpus): guessed places [x1:generic, x2:prose] — lensisku: "$x_{1}$ reflects African culture/nationality/geography in aspect $x_{2}$…"
     PredicateEntry { name: "african", source_gismu: "friko", swap: None, places: &["subject", "aspect"], gloss: "African", template: None, tier: CorpusTier::Generic },
+    // Auth sort (nibli-auth): security principal — not corpus "principal" (ralju).
+    PredicateEntry { name: "agent", source_gismu: "zzauth1", swap: None, places: &["agent"], gloss: "auth agent", template: Some("{x1} is an auth agent"), tier: CorpusTier::Curated },
     // TODO(corpus): guessed places [x1:generic, x2:generic, x3:generic, x4:prose] — lensisku: "$x_{1}$ [person] agrees with person(s)/position/side $x_{2}$ that $x_{3}…"
     PredicateEntry { name: "agree", source_gismu: "tugni", swap: None, places: &["subject", "object", "place3", "matter"], gloss: "agree", template: None, tier: CorpusTier::Generic },
     // TODO(corpus): guessed places [x1:gloss, x2:prose, x3:prose] — lensisku: "$x_{1}$ is a quantity of air/normally-gaseous atmosphere of planet $x_{2…"
@@ -162,6 +164,8 @@ pub(crate) static PREDICATES: &[PredicateEntry] = &[
     PredicateEntry { name: "australian", source_gismu: "sralo", swap: None, places: &["subject", "aspect"], gloss: "Australian", template: None, tier: CorpusTier::Generic },
     // TODO(corpus): guessed places [x2:prose, x3:prose] — lensisku: "$x_{1}$ has authority/is an official in/on/over matter/sphere/persons $x…"
     PredicateEntry { name: "authority", source_gismu: "catni", swap: None, places: &["officer", "matter", "basis"], gloss: "authority", template: None, tier: CorpusTier::Prose },
+    // Auth decision head (nibli-auth) — not "can" (lante tin).
+    PredicateEntry { name: "authorized", source_gismu: "zzauth2", swap: None, places: &["agent", "action", "resource"], gloss: "authorized", template: Some("{x1} is authorized to {x2} on {x3}"), tier: CorpusTier::Curated },
     // TODO(corpus): guessed places [x1:gloss, x2:prose, x3:prose] — lensisku: "$x_{1}$ is automatic in function $x_{2}$ under conditions $x_{3}$."
     PredicateEntry { name: "automatic", source_gismu: "zmiku", swap: None, places: &["automatic", "function", "conditions"], gloss: "automatic", template: None, tier: CorpusTier::GlossDerived },
     // TODO(corpus): guessed places [x1:gloss, x2:prose, x3:generic] — lensisku: "$x_{1}$ is a car/automobile/truck/van [a wheeled motor vehicle] for carr…"
@@ -1081,6 +1085,8 @@ pub(crate) static PREDICATES: &[PredicateEntry] = &[
     PredicateEntry { name: "harmonious", source_gismu: "sarxe", swap: None, places: &["harmonious", "object", "place3"], gloss: "harmonious", template: None, tier: CorpusTier::Generic },
     // TODO(corpus): guessed places [x1:generic, x2:prose, x3:prose] — lensisku: "$x_{1}$ (agent) harvests/reaps/gathers crop/product/objects $x_{2}$ from…"
     PredicateEntry { name: "harvest", source_gismu: "crepu", swap: None, places: &["subject", "crop", "source"], gloss: "harvest", template: None, tier: CorpusTier::Generic },
+    // Auth role assignment (nibli-auth).
+    PredicateEntry { name: "has_role", source_gismu: "zzauth3", swap: None, places: &["agent", "role"], gloss: "has role", template: Some("{x1} has role {x2}"), tier: CorpusTier::Curated },
     // TODO(corpus): guessed places [x1:generic, x2:prose] — lensisku: "$x_{1}$ hates/despises $x_{2}$ (object/abstraction); $x_{1}$ is full of …"
     PredicateEntry { name: "hate", source_gismu: "xebni", swap: None, places: &["subject", "hates"], gloss: "hate", template: None, tier: CorpusTier::Generic },
     // TODO(corpus): guessed places [x1:gloss, x2:generic] — lensisku: "$x_{1}$ is a/the head [body-part] of $x_{2}$; [metaphor: uppermost porti…"
@@ -1167,6 +1173,8 @@ pub(crate) static PREDICATES: &[PredicateEntry] = &[
     PredicateEntry { name: "important", source_gismu: "vajni", swap: None, places: &["subject", "object", "reason"], gloss: "important", template: None, tier: CorpusTier::Generic },
     // TODO(corpus): guessed places [x1:generic, x2:generic] — lensisku: "$x_{1}$ is in/inside/within $x_{2}$; $x_{1}$ is on the inside/interior o…"
     PredicateEntry { name: "in", source_gismu: "nenri", swap: None, places: &["subject", "object"], gloss: "in", template: None, tier: CorpusTier::Generic },
+    // Auth tenancy (nibli-auth).
+    PredicateEntry { name: "in_tenant", source_gismu: "zzauth4", swap: None, places: &["agent", "tenant"], gloss: "in tenant", template: Some("{x1} is in tenant {x2}"), tier: CorpusTier::Curated },
     // TODO(corpus): guessed places [x1:generic] — lensisku: "$x_{1}$ (experiencer) increases/is incremented/augmented in property/qua…"
     PredicateEntry { name: "increases", source_gismu: "zenba", swap: None, places: &["subject", "quality", "extent"], gloss: "increase", template: Some("{x1} increases"), tier: CorpusTier::Generic },
     // TODO(corpus): guessed places [x1:generic, x2:prose] — lensisku: "$x_{1}$ reflects Indonesian culture/nationality/language in aspect $x_{2…"
@@ -1932,6 +1940,9 @@ pub(crate) static PREDICATES: &[PredicateEntry] = &[
     PredicateEntry { name: "represent", source_gismu: "krati", swap: None, places: &["representative", "object", "place3"], gloss: "represent", template: None, tier: CorpusTier::Generic },
     // TODO(corpus): guessed places [x1:gloss, x2:prose] — lensisku: "$x_{1}$ is a reptile of species/breed $x_{2}$."
     PredicateEntry { name: "reptile", source_gismu: "respa", swap: None, places: &["reptile", "species"], gloss: "reptile", template: None, tier: CorpusTier::GlossDerived },
+    // Auth resource sort (nibli-auth).
+    PredicateEntry { name: "resource", source_gismu: "zzauth5", swap: None, places: &["resource"], gloss: "resource", template: Some("{x1} is a protected resource"), tier: CorpusTier::Curated },
+    PredicateEntry { name: "resource_tenant", source_gismu: "zzauth6", swap: None, places: &["resource", "tenant"], gloss: "resource tenant", template: Some("{x1} belongs to tenant {x2}"), tier: CorpusTier::Curated },
     // TODO(corpus): guessed places [x1:gloss, x2:generic, x3:prose] — lensisku: "$x_{1}$ is responsible/accountable for $x_{2}$ (action/resulting state) …"
     PredicateEntry { name: "responsible", source_gismu: "fuzme", swap: None, places: &["responsible", "object", "judge"], gloss: "responsible", template: None, tier: CorpusTier::Generic },
     // TODO(corpus): guessed places [x1:gloss, x2:prose, x3:prose] — lensisku: "$x_{1}$ is a restaurant/cafe/diner serving type-of-food $x_{2}$ to audie…"
@@ -2517,6 +2528,8 @@ pub(crate) static PREDICATES: &[PredicateEntry] = &[
     PredicateEntry { name: "virus", source_gismu: "vidru", swap: None, places: &["virus", "object", "place3"], gloss: "virus", template: None, tier: CorpusTier::Generic },
     // TODO(corpus): guessed places [x1:gloss, x2:prose] — lensisku: "$x_{1}$ is thick/viscous under conditions $x_{2}$."
     PredicateEntry { name: "viscous", source_gismu: "viknu", swap: None, places: &["thick", "conditions"], gloss: "viscous", template: None, tier: CorpusTier::GlossDerived },
+    // Auth field-level access (nibli-auth) — not agricultural "field" (foldi).
+    PredicateEntry { name: "visible_attr", source_gismu: "zzauth7", swap: None, places: &["agent", "resource", "attr"], gloss: "visible attr", template: Some("{x1} may access attribute {x3} of {x2}"), tier: CorpusTier::Curated },
     // TODO(corpus): guessed places [x1:gloss, x2:prose] — lensisku: "$x_{1}$ is a voice/speech sound of individual $x_{2}$."
     PredicateEntry { name: "voice", source_gismu: "voksa", swap: None, places: &["voice", "individual"], gloss: "voice", template: None, tier: CorpusTier::GlossDerived },
     // TODO(corpus): guessed places [x1:generic, x2:prose] — lensisku: "$x_{1}$ vomits/regurgitates $x_{2}$; $x_{1}$ throws $x_{2}$ up; [violent…"

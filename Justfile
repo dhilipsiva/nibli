@@ -709,6 +709,10 @@ count-tests:
     echo "nibli-verify test targets:   $v"; \
     echo "total: $((u + e + g + v))  (a few lib tests appear in both the unit and per-crate figures)"
 
+# Auth core tests (nibli-auth: policy load, can, allowed_fields, explain)
+test-auth:
+    cargo test -p nibli-auth
+
 # Build the code-derived docs site (mdBook → mdbook/book/). Source is mdbook/;
 # never import the private manuscript at book/.
 # Default site-url is book.toml (/docs/nibli/). Override for GitHub Pages:
