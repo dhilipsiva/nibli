@@ -2663,7 +2663,8 @@ dependencies = [
 name = "nibli-auth"
 version = "0.1.0"
 dependencies = [
- "nibli-engine",
+ "nibli-protocol",
+ "nibli-session",
  "nibli-types",
 ]
 
@@ -2756,6 +2757,7 @@ dependencies = [
 name = "nibli-pipeline"
 version = "0.1.0"
 dependencies = [
+ "nibli-auth",
  "nibli-kr",
  "nibli-reason",
  "nibli-semantics",

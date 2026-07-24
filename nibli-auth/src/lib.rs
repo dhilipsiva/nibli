@@ -1,9 +1,11 @@
-//! Built-in authorization over a long-lived nibli engine.
+//! Built-in authorization over a long-lived nibli session core.
 //!
 //! - Policy is loaded once (`load_policy`).
 //! - Per-call context KR is asserted, queried, then retracted (ephemeral).
 //! - Hot path (`can`, `allowed_fields`) never builds proofs; use `explain`.
-//! - Engine KB is `!Send`; hold one [`Authorizer`] per thread / serial path.
+//! - Session KB is `!Send`; hold one [`Authorizer`] per thread / serial path.
+//! - Depends on `nibli-session` (not `nibli-engine`) so the WASM pipeline can
+//!   link without `redb` / host-only store.
 
 mod cache;
 mod decision;
@@ -12,7 +14,8 @@ mod kr;
 pub use decision::{Decision, Explained, Verdict};
 
 use cache::{hash_context, CacheKey, DecisionCache};
-use nibli_engine::{EngineError, NibliEngine};
+use nibli_session::CoreSession;
+use nibli_types::error::NibliError;
 
 /// Builtin policy version string (also embedded in the policy file header).
 pub const POLICY_VERSION: &str = "0.1.0";
@@ -20,7 +23,7 @@ pub const POLICY_VERSION: &str = "0.1.0";
 /// Builtin authorization rules (`policy/auth-0.1.0.nibli`).
 pub const BUILTIN_POLICY: &str = include_str!("../policy/auth-0.1.0.nibli");
 
-/// Auth-layer error (wraps engine errors + local state errors).
+/// Auth-layer error (wraps session errors + local state errors).
 #[derive(Debug)]
 pub struct AuthError {
     pub message: String,
@@ -34,8 +37,8 @@ impl std::fmt::Display for AuthError {
 
 impl std::error::Error for AuthError {}
 
-impl From<EngineError> for AuthError {
-    fn from(e: EngineError) -> Self {
+impl From<NibliError> for AuthError {
+    fn from(e: NibliError) -> Self {
         Self {
             message: e.to_string(),
         }
@@ -50,9 +53,9 @@ impl AuthError {
     }
 }
 
-/// Long-lived authorizer: one engine, policy once, ephemeral context, decision cache.
+/// Long-lived authorizer: one session core, policy once, ephemeral context, decision cache.
 pub struct Authorizer {
-    engine: NibliEngine,
+    core: CoreSession,
     policy_version: String,
     policy_loaded: bool,
     cache: DecisionCache,
@@ -68,10 +71,10 @@ impl Default for Authorizer {
 
 impl Authorizer {
     pub fn new() -> Self {
-        let engine = NibliEngine::new();
-        engine.set_verbose(false);
+        let core = CoreSession::new();
+        core.set_verbose(false);
         Self {
-            engine,
+            core,
             policy_version: POLICY_VERSION.to_string(),
             policy_loaded: false,
             cache: DecisionCache::default(),
@@ -84,13 +87,13 @@ impl Authorizer {
     pub fn load_policy(&mut self, extra_kr: Option<&str>) -> Result<String, AuthError> {
         self.clear_ephemeral_inner();
         self.cache.clear();
-        // Fresh engine so reloads do not stack duplicate rules.
-        self.engine = NibliEngine::new();
-        self.engine.set_verbose(false);
-        self.engine.assert_text(BUILTIN_POLICY)?;
+        // Fresh core so reloads do not stack duplicate rules.
+        self.core = CoreSession::new();
+        self.core.set_verbose(false);
+        self.assert_text_ids(BUILTIN_POLICY)?;
         if let Some(extra) = extra_kr {
             if !extra.trim().is_empty() {
-                self.engine.assert_text(extra)?;
+                self.assert_text_ids(extra)?;
             }
         }
         self.policy_loaded = true;
@@ -110,12 +113,12 @@ impl Authorizer {
     pub fn assert_facts(&mut self, kr: &str) -> Result<Vec<u64>, AuthError> {
         self.ensure_policy()?;
         self.cache.clear();
-        Ok(self.engine.assert_text(kr)?)
+        self.assert_text_ids(kr)
     }
 
     pub fn retract(&mut self, id: u64) -> Result<(), AuthError> {
         self.cache.clear();
-        self.engine.retract_fact(id)?;
+        self.core.retract_fact(id)?;
         Ok(())
     }
 
@@ -135,7 +138,7 @@ impl Authorizer {
         }
         let decision = self.with_context(context_kr, |auth| {
             let q = kr::authorized_query(agent, action, resource);
-            let result = auth.engine.query_holds(&q)?;
+            let result = auth.core.query_text(&q)?;
             Ok(Decision::from_query(
                 &result,
                 Some(result.status_label().to_string()),
@@ -148,11 +151,7 @@ impl Authorizer {
     /// Field-level allow list for serializer masking.
     ///
     /// v0.1: if `authorized(agent, action, resource)` is TRUE, return all
-    /// `candidates` (owner/admin/tenant read paths already gate row access).
-    /// Per-attribute `visible_attr` rules can refine this in a later policy
-    /// version once attr domain facts are standardized.
-    ///
-    /// Default `action` for masking is typically `"read"`.
+    /// `candidates`. Default `action` for masking is typically `"read"`.
     pub fn allowed_fields(
         &mut self,
         agent: &str,
@@ -169,7 +168,7 @@ impl Authorizer {
         }
     }
 
-    /// Like `can`, but includes a proof JSON string when the engine provides one.
+    /// Like `can`, but includes a proof JSON string when available.
     pub fn explain(
         &mut self,
         agent: &str,
@@ -180,11 +179,12 @@ impl Authorizer {
         self.ensure_policy()?;
         self.with_context(context_kr, |auth| {
             let q = kr::authorized_query(agent, action, resource);
-            let (result, _formatted, json) = auth.engine.query_text_with_proof(&q)?;
+            let (result, trace) = auth.core.query_text_with_proof(&q)?;
             let decision = Decision::from_query(&result, Some(result.status_label().to_string()));
+            let proof_json = Some(nibli_protocol::proof_trace_to_json(&trace));
             Ok(Explained {
                 decision,
-                proof_json: Some(json),
+                proof_json,
             })
         })
     }
@@ -193,6 +193,11 @@ impl Authorizer {
     pub fn clear_ephemeral(&mut self) -> Result<(), AuthError> {
         self.clear_ephemeral_inner();
         Ok(())
+    }
+
+    fn assert_text_ids(&self, kr: &str) -> Result<Vec<u64>, AuthError> {
+        let pairs = self.core.assert_text(kr)?;
+        Ok(pairs.into_iter().map(|(id, _)| id).collect())
     }
 
     fn ensure_policy(&self) -> Result<(), AuthError> {
@@ -223,7 +228,7 @@ impl Authorizer {
 
     fn clear_ephemeral_inner(&mut self) {
         for id in self.ephemeral_ids.drain(..) {
-            let _ = self.engine.retract_fact(id);
+            let _ = self.core.retract_fact(id);
         }
     }
 
@@ -235,9 +240,9 @@ impl Authorizer {
     ) -> Result<T, AuthError> {
         self.clear_ephemeral_inner();
         if !context_kr.trim().is_empty() {
-            match self.engine.assert_text(context_kr) {
+            match self.assert_text_ids(context_kr) {
                 Ok(ids) => self.ephemeral_ids = ids,
-                Err(e) => return Err(e.into()),
+                Err(e) => return Err(e),
             }
         }
         let result = f(self);

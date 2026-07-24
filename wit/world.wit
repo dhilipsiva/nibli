@@ -11,7 +11,7 @@
 ///
 /// Data crossing the host↔component boundary uses flat index-based arrays
 /// (`u32` indices into parallel lists) — no heap pointers cross the WASM boundary.
-package nibli:engine@0.5.0;
+package nibli:engine@0.6.0;
 
 /// Structured error types shared across all Nibli components.
 interface error-types {
@@ -382,10 +382,57 @@ interface engine {
     }
 }
 
+/// Built-in authorization surface (logical auth v0.1).
+///
+/// Rides package `nibli:engine@0.6.0` for shipping tooling simplicity (single
+/// WIT package / world). A future split to `nibli:auth@0.1.0` may re-home this
+/// interface without changing method shapes. Wraps the same policy as the
+/// native `nibli-auth` crate (`authorized` KR head, not corpus `can`).
+interface authorizer {
+    /// Hot-path decision: `allowed` is true only when entailment is TRUE.
+    record decision {
+        allowed: bool,
+        /// Engine status label: "TRUE" | "FALSE" | "UNKNOWN" | "RESOURCE_EXCEEDED"
+        verdict: string,
+        reason: option<string>,
+        /// Populated by allowed-fields; empty on bare can.
+        fields: list<string>,
+    }
+
+    record explained {
+        decision: decision,
+        proof-json: option<string>,
+    }
+
+    /// Long-lived authorizer: load policy once; ephemeral context-kr per call.
+    resource session {
+        constructor();
+        /// Load builtin policy (+ optional extra KR). Returns policy-version.
+        load-policy: func(extra-kr: option<string>) -> result<string, string>;
+        /// Durable KR facts (not auto-retracted). Returns fact ids.
+        assert-facts: func(kr: string) -> result<list<u64>, string>;
+        retract: func(id: u64) -> result<_, string>;
+        /// Hot path — no proof.
+        /// (`object` = protected resource id; WIT reserves the keyword `resource`.)
+        can: func(agent: string, action: string, object: string,
+                  context-kr: string) -> result<decision, string>;
+        /// Field mask candidates (v0.1: all candidates if row can allows).
+        allowed-fields: func(agent: string, action: string, object: string,
+                             context-kr: string,
+                             candidates: list<string>) -> result<list<string>, string>;
+        /// Opt-in proof JSON.
+        explain: func(agent: string, action: string, object: string,
+                      context-kr: string) -> result<explained, string>;
+        policy-version: func() -> string;
+        clear-ephemeral: func() -> result<_, string>;
+    }
+}
+
 /// The single Nibli WASM component: nibli-kr/nibli-semantics/nibli-reason are
 /// internal Rust crate deps. Imports compute-backend (host-provided), exports the
-/// engine session API.
+/// engine session API and the authorizer API.
 world nibli-pipeline {
     import compute-backend;
     export engine;
+    export authorizer;
 }

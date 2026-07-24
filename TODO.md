@@ -28,7 +28,7 @@ Inspected: `wit/world.wit` (`nibli:engine@0.5.0`, world exports `engine` only),
 
 | Decision | Choice |
 |----------|--------|
-| **Primary ABI** | Package **`nibli:auth@0.1.0`** (`wit/auth.wit`); same WASM world **exports** `authorizer` alongside `engine`. Fallback if multi-package WIT is painful: `interface authorizer` inside `nibli:engine@0.6.0`. Extism **not** primary. |
+| **Primary ABI** | **`interface authorizer` inside `nibli:engine@0.6.0`** (single-package shipping; logical auth v0.1). World exports `engine` + `authorizer`. Split `nibli:auth@0.1.0` package deferred. Extism **not** primary. |
 | **Policy home** | `nibli-auth/policy/auth-0.1.0.nibli` via `include_str!`; `POLICY_VERSION = "0.1.0"` |
 | **API decision head** | **`authorized(agent, action, resource)`** — **not** `can` (**`can` is tin/can `lante` in corpus**) |
 | **Field-level head** | **`visible_attr(agent, resource, attr)`** — **not** `field` / `visible_field` (**`field` is agricultural `foldi`**) |
@@ -121,8 +121,7 @@ API method names stay `can` / `allowed-fields` / `explain` (host language); KR u
 
 #### A2 — WIT + pipeline / host
 
-- Land `wit/auth.wit`; export from pipeline world; bindings.
-- Native + WASM paths; optional host smoke.
+**Landed:** `authorizer` interface on `nibli:engine@0.6.0`; world `export authorizer`; pipeline `AuthSession` wraps `nibli_auth::Authorizer`; `nibli-auth` uses `nibli-session` (wasm-safe, no redb); host rebuilds against 0.6.0. WIT param `object` = resource id (`resource` is a WIT keyword).
 
 #### A3 — Rust adapters + example
 

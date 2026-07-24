@@ -1,7 +1,7 @@
 //! Core authorization scenarios (A1).
 
 use nibli_auth::{Authorizer, BUILTIN_POLICY, POLICY_VERSION, Verdict};
-use nibli_engine::NibliEngine;
+use nibli_session::CoreSession;
 
 fn loaded() -> Authorizer {
     let mut a = Authorizer::new();
@@ -11,8 +11,8 @@ fn loaded() -> Authorizer {
 
 #[test]
 fn builtin_policy_compiles() {
-    let e = NibliEngine::new();
-    e.assert_text(BUILTIN_POLICY)
+    let s = CoreSession::new();
+    s.assert_text(BUILTIN_POLICY)
         .expect("builtin policy must assert");
 }
 

@@ -13,6 +13,9 @@ mod bindings;
 // the types that could NOT be remapped: `proof-rule`/`proof-step`/`proof-trace`
 // (proof-rule is named-field in Rust but wit-bindgen emits only tuple/newtype
 // variants). Those three keep the hand `convert_proof_*` bridge below.
+use bindings::exports::nibli::engine::authorizer::{
+    self as auth_export, Guest as AuthGuest, GuestSession as AuthGuestSession,
+};
 use bindings::exports::nibli::engine::engine::{Guest, GuestSession};
 use bindings::nibli::engine::compute_backend as cb;
 use bindings::nibli::engine::logic_types as export_logic;
@@ -27,6 +30,11 @@ use std::cell::RefCell;
 
 /// WIT component implementation for the `nibli-pipeline` interface.
 struct NibliPipeline;
+
+/// Authorizer session (separate engine from [`Session`]; logical auth v0.1).
+pub struct AuthSession {
+    inner: RefCell<nibli_auth::Authorizer>,
+}
 
 /// A user-facing session wrapping the full nibli-kr → nibli-semantics → nibli-reason pipeline.
 pub struct Session {
@@ -199,6 +207,107 @@ fn batch_eval_via_host(requests: &[nibli_reason::ComputeRequest]) -> Vec<Result<
 
 impl Guest for NibliPipeline {
     type Session = Session;
+}
+
+impl AuthGuest for NibliPipeline {
+    type Session = AuthSession;
+}
+
+fn map_auth_decision(d: nibli_auth::Decision) -> auth_export::Decision {
+    auth_export::Decision {
+        allowed: d.allowed,
+        verdict: match d.verdict {
+            nibli_auth::Verdict::True => "TRUE".to_string(),
+            nibli_auth::Verdict::False => "FALSE".to_string(),
+            nibli_auth::Verdict::Unknown => "UNKNOWN".to_string(),
+            nibli_auth::Verdict::ResourceExceeded => "RESOURCE_EXCEEDED".to_string(),
+        },
+        reason: d.reason,
+        fields: d.fields,
+    }
+}
+
+impl AuthGuestSession for AuthSession {
+    fn new() -> Self {
+        AuthSession {
+            inner: RefCell::new(nibli_auth::Authorizer::new()),
+        }
+    }
+
+    fn load_policy(&self, extra_kr: Option<String>) -> Result<String, String> {
+        self.inner
+            .borrow_mut()
+            .load_policy(extra_kr.as_deref())
+            .map_err(|e| e.message)
+    }
+
+    fn assert_facts(&self, kr: String) -> Result<Vec<u64>, String> {
+        self.inner
+            .borrow_mut()
+            .assert_facts(&kr)
+            .map_err(|e| e.message)
+    }
+
+    fn retract(&self, id: u64) -> Result<(), String> {
+        self.inner.borrow_mut().retract(id).map_err(|e| e.message)
+    }
+
+    fn can(
+        &self,
+        agent: String,
+        action: String,
+        object: String,
+        context_kr: String,
+    ) -> Result<auth_export::Decision, String> {
+        self.inner
+            .borrow_mut()
+            .can(&agent, &action, &object, &context_kr)
+            .map(map_auth_decision)
+            .map_err(|e| e.message)
+    }
+
+    fn allowed_fields(
+        &self,
+        agent: String,
+        action: String,
+        object: String,
+        context_kr: String,
+        candidates: Vec<String>,
+    ) -> Result<Vec<String>, String> {
+        let refs: Vec<&str> = candidates.iter().map(String::as_str).collect();
+        self.inner
+            .borrow_mut()
+            .allowed_fields(&agent, &action, &object, &context_kr, &refs)
+            .map_err(|e| e.message)
+    }
+
+    fn explain(
+        &self,
+        agent: String,
+        action: String,
+        object: String,
+        context_kr: String,
+    ) -> Result<auth_export::Explained, String> {
+        self.inner
+            .borrow_mut()
+            .explain(&agent, &action, &object, &context_kr)
+            .map(|ex| auth_export::Explained {
+                decision: map_auth_decision(ex.decision),
+                proof_json: ex.proof_json,
+            })
+            .map_err(|e| e.message)
+    }
+
+    fn policy_version(&self) -> String {
+        self.inner.borrow().policy_version().to_string()
+    }
+
+    fn clear_ephemeral(&self) -> Result<(), String> {
+        self.inner
+            .borrow_mut()
+            .clear_ephemeral()
+            .map_err(|e| e.message)
+    }
 }
 
 impl Session {

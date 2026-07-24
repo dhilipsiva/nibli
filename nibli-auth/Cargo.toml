@@ -1,13 +1,12 @@
 [package]
 name = "nibli-auth"
-description = "Built-in authorization: warm Authorizer over nibli-engine (policy once, ephemeral context, decision cache)"
+description = "Built-in authorization: warm Authorizer over nibli-session (policy once, ephemeral context, decision cache)"
 version = "0.1.0"
 edition = "2024"
 publish = false
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-nibli-engine = { path = "../nibli-engine" }
-nibli-types = { path = "../nibli-types" }
-
-[dev-dependencies]
+nibli-session = { path = "../nibli-session" }
+nibli-types = { path = "../nibli-types", features = ["serde"] }
+nibli-protocol = { path = "../nibli-protocol" }
