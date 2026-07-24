@@ -33,3 +33,7 @@ mutants.out*
 
 # mdBook generated HTML (hand-authored source is mdbook/src/ — not this tree)
 mdbook/book/
+
+# Python auth demo venv (maturin develop)
+.venv-auth/
+

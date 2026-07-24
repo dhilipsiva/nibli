@@ -1,0 +1,17 @@
+[build-system]
+requires = ["maturin>=1.4,<2"]
+build-backend = "maturin"
+
+[project]
+name = "nibli-auth-native"
+version = "0.1.0"
+description = "Native PyO3 extension for nibli-auth (thread-local warm Authorizer)"
+requires-python = ">=3.10"
+classifiers = [
+  "Programming Language :: Rust",
+  "Programming Language :: Python :: Implementation :: CPython",
+]
+
+[tool.maturin]
+manifest-path = "Cargo.toml"
+module-name = "nibli_auth_native"

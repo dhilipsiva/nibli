@@ -94,6 +94,9 @@
 
             # Code-derived docs site (`just docs` / `just docs-serve` → mdbook/)
             mdbook
+
+            # PyO3 extension for nibli-auth (`just build-auth-py`)
+            maturin
           ];
 
           # The pinned nightly toolchain's bin dir for cargo-fuzz (see above).

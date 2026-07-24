@@ -722,6 +722,40 @@ check-auth-axum:
 run-auth-axum:
     cargo run -p auth-axum
 
+# Repo-local venv for maturin / FastAPI demos (gitignored via .venv)
+_auth_venv := ".venv-auth"
+
+# Create .venv-auth if missing
+auth-py-venv:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ ! -d {{_auth_venv}} ]; then
+      python3 -m venv {{_auth_venv}}
+      {{_auth_venv}}/bin/pip install -U pip
+    fi
+
+# Build Python nibli_auth_native (PyO3) into .venv-auth
+build-auth-py: auth-py-venv
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source {{_auth_venv}}/bin/activate
+    cd nibli-auth-py && maturin develop --release
+
+# Python auth unit tests (requires build-auth-py)
+test-auth-py: build-auth-py
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source {{_auth_venv}}/bin/activate
+    PYTHONPATH=python python3 -m unittest discover -s python/nibli_auth/tests -v
+
+# FastAPI auth demo (http://127.0.0.1:3002)
+run-auth-fastapi: build-auth-py
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source {{_auth_venv}}/bin/activate
+    pip install -q -r examples/auth-fastapi/requirements.txt
+    PYTHONPATH=python python3 -m uvicorn main:app --app-dir examples/auth-fastapi --host 127.0.0.1 --port 3002
+
 # Build the code-derived docs site (mdBook → mdbook/book/). Source is mdbook/;
 # never import the private manuscript at book/.
 # Default site-url is book.toml (/docs/nibli/). Override for GitHub Pages:

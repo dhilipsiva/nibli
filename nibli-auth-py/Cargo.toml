@@ -1,0 +1,15 @@
+[package]
+name = "nibli-auth-py"
+description = "PyO3 bindings for nibli-auth (module: nibli_auth_native)"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "MIT OR Apache-2.0"
+
+[lib]
+name = "nibli_auth_native"
+crate-type = ["cdylib"]
+
+[dependencies]
+nibli-auth = { path = "../nibli-auth" }
+pyo3 = { version = "0.24", features = ["extension-module"] }

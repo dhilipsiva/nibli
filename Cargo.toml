@@ -20,6 +20,7 @@ members = [
     "nibli-render",
     "nibli-verify",
     "nibli-auth",
+    "nibli-auth-py",
     "examples/auth-axum",
 ]
 exclude = ["fuzz"]

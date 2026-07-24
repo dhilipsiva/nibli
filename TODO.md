@@ -129,7 +129,7 @@ API method names stay `can` / `allowed-fields` / `explain` (host language); KR u
 
 #### A4 — Python adapters + example
 
-- PyO3 + FastAPI/DRF/Strawberry/Graphene/spectacular; `examples/auth-fastapi` (same policy file).
+**Landed:** `nibli-auth-py` (PyO3 → `nibli_auth_native` via maturin); `python/nibli_auth` (FastAPI helpers + optional DRF/Strawberry/Graphene/spectacular); `examples/auth-fastapi`. `just build-auth-py` / `test-auth-py` / `run-auth-fastapi`. Same tls + policy as auth-axum.
 
 #### A5 — Docs, CI
 
