@@ -91,6 +91,9 @@
             # wasm-opt for `dx build --release` (`just build-ui`): dx runs it as the
             # release optimization pass, and fails the build if it's missing.
             binaryen
+
+            # Code-derived docs site (`just docs` / `just docs-serve` → mdbook/)
+            mdbook
           ];
 
           # The pinned nightly toolchain's bin dir for cargo-fuzz (see above).

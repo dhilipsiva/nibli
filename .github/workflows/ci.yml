@@ -30,6 +30,25 @@ jobs:
       - name: Runtime CI gates (native + WASM)
         run: nix develop --extra-experimental-features 'nix-command flakes' --command just ci-all
 
+  # Code-derived mdBook site (`mdbook/`). Parallel to runtime-ci so a docs
+  # failure does not wait on the full engine gate. No deploy in this job.
+  docs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Configure Nix cache
+        uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Build mdBook (just docs)
+        run: nix develop --extra-experimental-features 'nix-command flakes' --command just docs
+
   # Time-boxed libFuzzer sweep (3 targets × 120 s), parallel to runtime-ci so it
   # never extends the main gate's critical path. Corpora are seeded from the
   # shipped .nibli files (+ the nibli KR acceptance corpus); any crash/OOM fails

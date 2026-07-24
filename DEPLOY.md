@@ -10,6 +10,7 @@ There are two distinct deployables (don't conflate them):
 |-----|-------|-----------|
 | `dhilipsiva.dev/nibli-playground` | `nibli-ui` (Dioxus app) | The Transparency Triad playground (nibli KR-first), incl. the **Formalize** feature (`nibli-formalize`) |
 | `dhilipsiva.dev/nibli` | `nibli-wasm` (wasm-bindgen lib) | The live demo embedded on the site (KR-only since THE DROP — its Lojban-era JS/KB breaks until the site-repo migration lands; `set_language` remains a no-op shim) |
+| `dhilipsiva.dev/docs/nibli/` | mdBook (`mdbook/` in this repo) | Code-derived human docs (Phase 0: build via `just docs`; **deploy is Phase 1**). Mirror planned at `dhilipsiva.github.io/nibli/`. Not the Orange AVA book. |
 
 ## 1. Ship the frontend (the playground + Formalize)
 

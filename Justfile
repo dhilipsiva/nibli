@@ -709,6 +709,15 @@ count-tests:
     echo "nibli-verify test targets:   $v"; \
     echo "total: $((u + e + g + v))  (a few lib tests appear in both the unit and per-crate figures)"
 
+# Build the code-derived docs site (mdBook → mdbook/book/). Source is mdbook/;
+# never import the private manuscript at book/.
+docs:
+    mdbook build mdbook
+
+# Serve docs locally (http://127.0.0.1:3000)
+docs-serve:
+    mdbook serve mdbook -p 3000 -n 127.0.0.1
+
 # Wipes all compilation artifacts
 clean:
     cargo clean

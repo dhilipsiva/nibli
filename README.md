@@ -101,6 +101,20 @@ Every surface speaks nibli KR — the single front-end since THE DROP.
 
 ---
 
+## Documentation
+
+Code-derived human docs live in **`mdbook/`** (mdBook). They are **not** the Orange AVA book manuscript (`book/` is a separate, private checkout).
+
+| Surface | How |
+|---------|-----|
+| Local | `just docs` (build) / `just docs-serve` (http://127.0.0.1:3000) inside `nix develop` |
+| Primary (when deployed) | https://dhilipsiva.dev/docs/nibli/ |
+| Mirror (when deployed) | https://dhilipsiva.github.io/nibli/ |
+| Rust API | `cargo doc -p <crate> --open` — [docs.rs](https://docs.rs) when crates are published |
+| Roadmap | [`DOCS_TODO.md`](DOCS_TODO.md) |
+
+Root specs remain canonical: [`NIBLI_KR.md`](NIBLI_KR.md), [`LOGIC_IR.md`](LOGIC_IR.md), [`GUARANTEES.md`](GUARANTEES.md).
+
 ## Getting Started
 
 ### Prerequisites

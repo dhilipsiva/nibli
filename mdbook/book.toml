@@ -1,0 +1,20 @@
+[book]
+title = "Nibli"
+description = "Code-derived documentation for the Nibli engine (not the Orange AVA book)"
+authors = ["dhilipsiva"]
+language = "en"
+src = "src"
+
+[build]
+build-dir = "book"
+create-missing = false
+
+[output.html]
+# Relative chapter/asset links so one artifact can later ship under both:
+#   primary:  https://dhilipsiva.dev/docs/nibli/
+#   mirror:   https://dhilipsiva.github.io/nibli/
+# Phase 1 may override site-url per deploy; do not hard-code a host that
+# breaks the other base path.
+git-repository-url = "https://github.com/dhilipsiva/nibli"
+edit-url-template = "https://github.com/dhilipsiva/nibli/edit/main/mdbook/{path}"
+site-url = "/docs/nibli/"

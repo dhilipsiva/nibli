@@ -30,3 +30,6 @@ models/
 mutants.out*
 # Local cargo-install root (wasm-pack etc., created inside the nix shell)
 .cargo-local/
+
+# mdBook generated HTML (hand-authored source is mdbook/src/ — not this tree)
+mdbook/book/
