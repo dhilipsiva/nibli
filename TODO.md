@@ -1,3 +1,10 @@
+# Engine TODO
+
+Plain bullets — delete when fully landed. Docs & release track: **`DOCS_TODO.md`**.
+Book manuscript: separate `book/` repo (`book/TODO.md`).
+
+---
+
 ## Editor / Linguist / LSP (syntax tooling)
 
 Policy: book and gates keep fence tags **`nibli` / `nibli-kr`** (never a foreign
@@ -21,7 +28,7 @@ here changes. Keywords must stay equal to `nibli_lexicon::RESERVED_WORDS`.
   Helix, Zed. Does **not** replace Linguist/TextMate for github.com.
 - **`nibli-lsp` (thin LSP):** workspace bin on `tower-lsp` (or `lsp-server`) using
   `nibli_kr::parse_checked` diagnostics, lexicon hover/completion (gloss,
-  places, compounds), optional format via `nibli_kr::render`, optional semantic
+  places, templates), optional format via `nibli_kr::render`, optional semantic
   tokens from `nibli_kr::highlight::lex`. Single-file first; multi-file KB
   projects later.
 - **Conformance guard (optional ratchet):** test or script that TextMate keyword
@@ -31,9 +38,12 @@ here changes. Keywords must stay equal to `nibli_lexicon::RESERVED_WORDS`.
   `nibli` only, retarget `verify_book.py` + capture harness + injection regex in
   one PR; keep `nibli-kr` as Linguist/VS Code alias forever.
 
-- **`check_contradictions` category-4 cheap middle (derived positives): LANDED.**
-  After the store-membership leg, unmatched asserted `~P` groups are re-checked
-  via `query_entailment` (`negative_group_to_query_buffer`); Kilo-shaped pin in
-  `test_negated_contradicts_derived_positive_cheap_middle` + engine
-  `utopia_style_derived_negation_contradiction_flagged`. §6 disjunctive
-  antecedents remain store-bound (conservative miss pin unchanged).
+---
+
+## Pointers
+
+| Tracker | Scope |
+|---------|--------|
+| **`DOCS_TODO.md`** | mdBook docs, GH Pages / site primary, crates.io + GitHub Releases (R0–R3) |
+| **`book/TODO.md`** | Manuscript only (private checkout; Orange AVA) |
+| **This file** | Engine runtime, editors, in-repo product work |
