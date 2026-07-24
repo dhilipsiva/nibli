@@ -9,6 +9,7 @@
 - [Quickstart](user/quickstart.md)
 - [nibli KR cookbook](user/kr-cookbook.md)
 - [Playground](user/playground.md)
+- [Authorization](user/authorization.md)
 
 # Developer guide
 

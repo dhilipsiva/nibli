@@ -30,6 +30,25 @@ jobs:
       - name: Runtime CI gates (native + WASM)
         run: nix develop --extra-experimental-features 'nix-command flakes' --command just ci-all
 
+  # Built-in authorization (nibli-auth + axum example compile). Parallel to
+  # runtime-ci. Python/maturin tests stay local (`just test-auth-py`).
+  auth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Configure Nix cache
+        uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Auth tests + axum example check
+        run: nix develop --extra-experimental-features 'nix-command flakes' --command bash -c 'just test-auth && just check-auth-axum'
+
   # Code-derived mdBook site (`mdbook/`). Parallel to runtime-ci so a docs
   # failure does not wait on the full engine gate. No deploy in this job.
   docs:

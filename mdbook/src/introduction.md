@@ -35,3 +35,4 @@ The live docs roadmap is [`DOCS_TODO.md`](https://github.com/dhilipsiva/nibli/bl
 2. [Quickstart](user/quickstart.md) — Nix + `just run`.
 3. [nibli KR cookbook](user/kr-cookbook.md) — surface syntax cheat sheet.
 4. [Playground](user/playground.md) — browser triad without installing anything.
+5. [Authorization](user/authorization.md) — builtin policy and multi-language `can` / field masks.

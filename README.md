@@ -116,6 +116,21 @@ Code-derived human docs live in **`mdbook/`** (mdBook). They are **not** the Ora
 
 Root specs remain canonical: [`NIBLI_KR.md`](NIBLI_KR.md), [`LOGIC_IR.md`](LOGIC_IR.md), [`GUARANTEES.md`](GUARANTEES.md).
 
+### Authorization
+
+Built-in, zero-hallucination **authorization** (entailment of `authorized(...)` under a versioned KR policy):
+
+| Piece | Location |
+|-------|----------|
+| Guide | [mdBook: Authorization](https://dhilipsiva.github.io/nibli/user/authorization.html) (or `just docs-serve`) |
+| Rust crate | `nibli-auth` — `Authorizer`, `tls` (thread-local for async servers) |
+| WIT | `nibli:engine@0.6.0` export `authorizer` |
+| Python | `just build-auth-py` → `nibli_auth` / `nibli_auth_native` |
+| Examples | `examples/auth-axum`, `examples/auth-fastapi` (same policy) |
+| Tests | `just test-auth`; Python: `just test-auth-py` (local, maturin) |
+
+Policy file: `nibli-auth/policy/auth-0.1.0.nibli`. Extism is **not** the primary interface (optional future PDK only).
+
 ## Getting Started
 
 ### Prerequisites

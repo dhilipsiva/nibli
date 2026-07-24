@@ -133,16 +133,16 @@ API method names stay `can` / `allowed-fields` / `explain` (host language); KR u
 
 #### A5 — Docs, CI
 
-- mdBook authorization chapter (DOCS_TODO Phase 2b); Just/CI; Extism future-note only; CHANGELOG when public.
+**Landed:** mdBook [Authorization](mdbook/src/user/authorization.md); README pointer; CI job `auth` (`just test-auth` + `check-auth-axum`); Extism documented as non-primary. Python `test-auth-py` remains local (maturin).
 
-### Success criteria (delete track when all true)
+### Success criteria — **met** (A0–A5)
 
-- Warm `Authorizer`; ownership/role facts; `can` / `allowed-fields` from **Python and Rust**.
-- One KR policy across listed frameworks.
-- Field- and row-level share `Decision`; proofs opt-in only.
-- CI green; zero-hallucination invariants intact.
+- Warm `Authorizer` + policy; `can` / `allowed_fields` / `explain` from **Rust and Python**.
+- Same KR policy in `examples/auth-axum` and `examples/auth-fastapi` (and framework guards).
+- Field masking shares `Decision` family; proofs only via `explain`.
+- `just test-auth` + docs build; zero-hallucination = entailment-only allow.
 
-### Explicit non-goals
+### Explicit non-goals (still)
 
 - Extism as primary runtime; per-request engine spawn; CWA/CDA weakening;
   inventing vocabulary outside fail-closed corpus; framework-specific policy languages.

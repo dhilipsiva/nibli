@@ -12,7 +12,8 @@ This part will cover the crate map, pipeline/IR, WASM host, and soundness workfl
 | Architecture / crate roles | [CLAUDE.md](https://github.com/dhilipsiva/nibli/blob/main/CLAUDE.md) (engine map) |
 | Native CI gate | `just ci` (and `just ci-wasm` / `just ci-all`) |
 | Deploy / playground ship | [DEPLOY.md](https://github.com/dhilipsiva/nibli/blob/main/DEPLOY.md) |
-| WIT boundary | `wit/world.wit` |
+| WIT boundary | `wit/world.wit` (`nibli:engine@0.6.0` — `engine` + `authorizer`) |
+| Authorization | [User guide: Authorization](../user/authorization.md); crate `nibli-auth`; policy `nibli-auth/policy/auth-0.1.0.nibli` |
 
 Do not use the private `book/` manuscript as a contributor reference for shipped behavior — prefer tests, gates, and the files above.
 

@@ -8,6 +8,7 @@
 | [Quickstart](quickstart.md) | Nix dev shell, `just run`, first claims |
 | [nibli KR cookbook](kr-cookbook.md) | Surface syntax stubs + link to the full spec |
 | [Playground](playground.md) | Hosted triad UI and Formalize |
+| [Authorization](authorization.md) | Builtin policy, `can` / fields / explain, Rust + Python adapters |
 
 ## Deeper sources (repo root)
 
