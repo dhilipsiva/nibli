@@ -74,7 +74,7 @@ smoke-host-trap-recovery: build-wasm build-host
         | NIBLI_WASM_PATH={{wasm_dir}}/nibli.wasm ./target/{{profile}}/nibli-host 2>&1); \
         echo "$out"; \
         echo "$out" | grep -qF '[Query] RESOURCE_EXCEEDED (fuel)' || { echo 'FAIL: query fuel trap not translated into a RESOURCE_EXCEEDED (fuel) verdict'; exit 1; }; \
-        echo "$out" | grep -qF '[Session] Wasm trap poisoned the component instance; rebuilding and replaying 1 command(s)...' || { echo 'FAIL: missing rebuild message'; exit 1; }; \
+        echo "$out" | grep -qF '[Session] Rebuilding and replaying 4 command(s)...' || { echo 'FAIL: missing rebuild message'; exit 1; }; \
         echo "$out" | grep -qF '[Query] TRUE' || { echo 'FAIL: post-recovery query did not answer TRUE'; exit 1; }; \
         echo "$out" | grep -qF '#0: dog(Adam).' || { echo 'FAIL: replayed fact #0 missing from :facts'; exit 1; }; \
         if echo "$out" | grep -qF 'cannot enter component instance'; then echo 'FAIL: session still bricked after trap'; exit 1; fi; \
@@ -328,7 +328,7 @@ smoke-host-compute-registration-order: build-wasm build-host
         [ "$(echo "$out" | grep -cF '[Query] UNKNOWN (backend-unavailable)')" -eq 1 ] || { echo 'FAIL: unknown/over-arity text reached dispatch instead of failing compilation'; exit 1; }; \
         echo "$out" | grep -qF 'too many arguments for "person" (arity 1)' || { echo 'FAIL: registered corpus over-arity did not fail before dispatch'; exit 1; }; \
         if echo "$out" | grep -qF '[Query] TRUE'; then echo 'FAIL: a retracted fact answered a registered compute query'; exit 1; fi; \
-        echo "$out" | grep -qF 'rebuilding and replaying' || { echo 'FAIL: the fuel trap did not trigger a session rebuild'; exit 1; }; \
+        echo "$out" | grep -qF '[Session] Rebuilding and replaying' || { echo 'FAIL: the fuel trap did not trigger a session rebuild'; exit 1; }; \
         echo "$out" | grep -qF 'compute formulas are query-only' || { echo 'FAIL: registration lost across :reset + trap rebuild — the journal must retain RegisterCompute entries'; exit 1; }; \
         echo 'PASS: text registration is corpus-scoped and arity-safe; live references block it; accepted routing survives :reset + trap rebuild'
 
@@ -551,7 +551,7 @@ ci: fmt-check release-check clippy-runtime test test-engine test-host test-valid
 # them all: fuel exhaustion + post-trap recovery + journal replay
 # (trap-recovery), plus the script transcript, persist-replay, NAF-note,
 # :debug round-trip, and the determinism corpus.
-ci-wasm: smoke-component-imports smoke-host-certify smoke-host-script smoke-host-trap-recovery smoke-host-persist-replay smoke-host-split smoke-host-count-query-only smoke-host-schema-v3-migration smoke-host-naf smoke-host-cwa-false smoke-host-debug smoke-host-collapse smoke-host-backend-unavailable smoke-host-compute-query-only smoke-host-compute-registration-order smoke-host-quiet smoke-host-strict smoke-host-existential-import smoke-host-materialize smoke-host-determinism verify-wasm-node
+ci-wasm: smoke-component-imports smoke-host-state-controls smoke-host-certify smoke-host-script smoke-host-trap-recovery smoke-host-persist-replay smoke-host-split smoke-host-count-query-only smoke-host-schema-v3-migration smoke-host-naf smoke-host-cwa-false smoke-host-debug smoke-host-collapse smoke-host-backend-unavailable smoke-host-compute-query-only smoke-host-compute-registration-order smoke-host-quiet smoke-host-strict smoke-host-existential-import smoke-host-materialize smoke-host-determinism verify-wasm-node
 
 # Envelope smoke: `:certify` binds verdict + trace + host-tracked profile +
 # the lockstep workspace version into one JSON ProofEnvelope — document on
@@ -560,8 +560,9 @@ smoke-host-certify: build-wasm build-host
     @echo "Smoke-testing gasnu :certify (JSON proof envelope)..."
     @out=$(printf 'dog(Adam).\n:certify dog(Adam).\n' \
         | NIBLI_WASM_PATH={{wasm_dir}}/nibli.wasm NIBLI_QUIET=1 ./target/{{profile}}/nibli-host 2>&1); \
-        echo "$out" | grep -qF '"schema":1' || { echo 'FAIL: envelope JSON missing the schema stamp'; exit 1; }; \
+        echo "$out" | grep -qF '"schema":2' || { echo 'FAIL: envelope JSON missing the schema stamp'; exit 1; }; \
         echo "$out" | grep -qF '"result":"True"' || { echo 'FAIL: envelope missing the bound verdict'; exit 1; }; \
+        echo "$out" | grep -qF '"max_chain_depth":10' || { echo 'FAIL: envelope missing effective reasoning depth'; exit 1; }; \
         echo "$out" | grep -qF '"engine_version"' || { echo 'FAIL: envelope missing the lockstep version stamp'; exit 1; }; \
         echo "$out" | grep -qF '[Certify] envelope coherent' || { echo 'FAIL: independent validator did not confirm the envelope'; exit 1; }; \
         echo 'PASS: :certify binds verdict+trace+profile+version into a coherent JSON envelope'
@@ -1509,3 +1510,9 @@ release-prep VERSION DATE="": release-check
 # Wipes all compilation artifacts
 clean:
     cargo clean
+
+# Transaction/recovery controls use the real built component, including fault
+# injection at the host/store boundary and two-process retained-record replay.
+smoke-host-state-controls: build-wasm build-host
+    NIBLI_WASM_PATH={{wasm_dir}}/nibli.wasm cargo test -p nibli-host recovery_tests -- --ignored --test-threads=1
+    python3 nibli-host/tests/smoke_state_controls.py target/{{profile}}/nibli-host {{wasm_dir}}/nibli.wasm

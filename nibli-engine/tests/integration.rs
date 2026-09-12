@@ -2624,7 +2624,7 @@ fn reset_clears_knowledge_base() {
     let (holds, _trace, _json) = engine.query_text_with_proof("big(some dog).").unwrap();
     assert_true(&holds, "Fact should hold before reset");
 
-    engine.reset();
+    engine.reset().unwrap();
 
     let (holds, _trace, _json) = engine.query_text_with_proof("big(some dog).").unwrap();
     assert_false(&holds, "Fact should not hold after reset");
@@ -3093,7 +3093,7 @@ fn reset_then_reassert_replaces_previous_kb_contents() {
             .is_true()
     );
 
-    engine.reset();
+    engine.reset().unwrap();
     engine
         .assert_text("cat(Elis).")
         .expect("New fact should assert after reset");
@@ -3314,7 +3314,7 @@ fn persistent_direct_and_text_assertions_share_source_ids_and_replay() {
 }
 
 #[test]
-fn rejected_persistent_assertion_is_deleted_before_reopen() {
+fn rejected_persistent_assertion_never_commits_or_consumes_an_id() {
     let path = temp_db_path("persistent_assertion_rollback");
     cleanup(&path);
 
@@ -3338,22 +3338,21 @@ fn rejected_persistent_assertion_is_deleted_before_reopen() {
             .expect_err("direct assertion of a derived-only relation must fail");
         assert!(error.to_string().contains("derived-only"), "{error}");
 
-        // The live allocator advanced while attempting id 1; the next success
-        // must not reuse that semantic source even though durable rollback
-        // removed the rejected row.
+        // Candidate allocation is discarded together with its rejected fact.
+        // Neither a durable record nor a live source was ever published.
         assert_eq!(
             engine
                 .assert_text("person(Adam).")
                 .expect("a later assertion should remain usable"),
-            vec![2]
+            vec![1]
         );
     }
 
     {
         let store = NibliStore::open(&path, "local".into()).expect("store should reopen");
         assert!(
-            store.get_fact(1).unwrap().is_none(),
-            "the rejected row must be physically rolled back"
+            store.get_fact(2).unwrap().is_none(),
+            "a rejected assertion must leave no extra durable row"
         );
     }
 
@@ -4613,7 +4612,7 @@ fn derived_only_survives_retraction_and_replay() {
 fn derived_only_is_cleared_by_reset() {
     let engine = engine_with_facts(CREDENTIAL_KB);
     assert!(engine.assert_text("permits(Review, Sock).").is_err());
-    engine.reset();
+    engine.reset().unwrap();
     engine
         .assert_text("permits(Review, Sock).")
         .expect("a reset KB has no closures");
@@ -6558,7 +6557,7 @@ fn unresolvable_query_after_reset_errors() {
     // is now just an unresolvable word. Pin that a reset engine fails such a
     // query CLOSED (a compile error, never a fabricated verdict).
     let engine = engine_with_facts(&["dog(Adam)."]);
-    engine.reset();
+    engine.reset().unwrap();
     assert!(
         engine.query_holds("go'i").is_err(),
         "an unresolvable spelling must error, not answer"
@@ -6847,7 +6846,7 @@ fn retraction_replay_does_not_reopen_the_vocabulary() {
 fn reset_reopens_the_vocabulary() {
     let engine = engine_with_facts(&["admits(\"person\").", "person(Adam)."]);
     assert!(engine.kb().vocabulary_is_closed());
-    engine.reset();
+    engine.reset().unwrap();
     assert!(!engine.kb().vocabulary_is_closed());
     assert!(engine.assert_text("rich(Adam).").is_ok());
 }

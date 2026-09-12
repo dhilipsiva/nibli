@@ -54,7 +54,7 @@ fn main() -> ExitCode {
 /// Validate parse + compile + assertability in a fresh KB. `reset()` clears all
 /// mutable state, so per-line reuse is equivalent to a fresh engine.
 fn validate_statement(engine: &NibliEngine, statement: &str) -> Result<(), String> {
-    engine.reset();
+    engine.reset().map_err(|error| error.to_string())?;
     engine
         .assert_text(statement)
         .map(|_| ())

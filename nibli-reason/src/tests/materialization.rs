@@ -11,6 +11,225 @@
 
 use super::*;
 
+#[test]
+fn warming_rule_plan_performs_no_query_and_shares_only_immutable_planning() {
+    let run = |warm: bool| {
+        let kb = new_kb();
+        assert_buf(&kb, compile_surface("person(Ara)."));
+        assert_buf(
+            &kb,
+            compile_surface("all $x: person($x) & ~rotten($x) -> fit($x)."),
+        );
+        let before = {
+            let inner = kb.inner.borrow();
+            (
+                inner.fact_counter,
+                inner.fact_registry.len(),
+                inner
+                    .fact_store
+                    .all_facts()
+                    .cloned()
+                    .collect::<HashSet<_>>(),
+            )
+        };
+        if warm {
+            kb.prepare_materialization_plan().unwrap();
+            let plan = kb
+                .inner
+                .borrow()
+                .materialization_plan
+                .borrow()
+                .clone()
+                .unwrap();
+            kb.prepare_materialization_plan().unwrap();
+            let inner = kb.inner.borrow();
+            assert!(Arc::ptr_eq(
+                &plan,
+                inner.materialization_plan.borrow().as_ref().unwrap()
+            ));
+            assert!(inner.materialized.borrow().is_none());
+            assert!(inner.pred_cache.borrow().is_empty());
+            assert_eq!(
+                before,
+                (
+                    inner.fact_counter,
+                    inner.fact_registry.len(),
+                    inner
+                        .fact_store
+                        .all_facts()
+                        .cloned()
+                        .collect::<HashSet<_>>()
+                )
+            );
+        }
+        let mut results = Vec::new();
+        kb.with_assumptions(&[], |snapshot| {
+            if warm {
+                assert!(Arc::ptr_eq(
+                    kb.inner
+                        .borrow()
+                        .materialization_plan
+                        .borrow()
+                        .as_ref()
+                        .unwrap(),
+                    snapshot
+                        .inner
+                        .borrow()
+                        .materialization_plan
+                        .borrow()
+                        .as_ref()
+                        .unwrap()
+                ));
+                assert!(snapshot.inner.borrow().materialized.borrow().is_none());
+            }
+            results.push(query_result(snapshot, compile_surface("fit(Ara).")));
+            assert_buf(snapshot, compile_surface("rotten(Ara)."));
+            results.push(query_result(snapshot, compile_surface("fit(Ara).")));
+        })
+        .unwrap();
+        results.push(query_result(&kb, compile_surface("fit(Ara).")));
+        results
+    };
+    let cold = run(false);
+    assert_eq!(
+        cold,
+        vec![QueryResult::True, QueryResult::False, QueryResult::True]
+    );
+    assert_eq!(run(true), cold);
+}
+
+#[test]
+fn shared_join_indexes_do_not_confuse_full_delta_or_later_rounds() {
+    let kb = new_kb();
+    for line in [
+        "parent(Ara, Bel).",
+        "parent(Bel, Cyd).",
+        "parent(Cyd, Dana).",
+        "all $x: all $y: parent($x, $y) -> earlier($x, $y).",
+        "all $x: all $y: all $z: earlier($x, $y) & earlier($y, $z) -> earlier($x, $z).",
+    ] {
+        assert_buf(&kb, compile_surface(line));
+    }
+    let names = ["Ara", "Bel", "Cyd", "Dana", "Eve"];
+    for length in [4, 5] {
+        if length == 5 {
+            assert_buf(&kb, compile_surface("parent(Dana, Eve)."));
+        }
+        // Force complete materialization instead of exercising the independent
+        // positive-query/backward-chaining selection policy.
+        assert_eq!(
+            query_result(&kb, compile_surface("~earlier(Eve, Ara).")),
+            QueryResult::True
+        );
+        for (from, from_name) in names.iter().enumerate() {
+            for (to, to_name) in names.iter().enumerate() {
+                let query = format!("earlier({from_name}, {to_name}).");
+                let expected = if from < to && to < length {
+                    QueryResult::True
+                } else {
+                    QueryResult::False
+                };
+                assert_eq!(
+                    query_result(&kb, compile_surface(&query)),
+                    expected,
+                    "{query}, chain length {length}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn reusable_rule_plan_tracks_mutations_and_keeps_snapshot_isolation() {
+    let kb = new_kb();
+    assert_buf(&kb, compile_surface("person(Ara)."));
+    assert_buf(
+        &kb,
+        compile_surface("all $x: person($x) & ~rotten($x) -> fit($x)."),
+    );
+    assert_eq!(
+        query_result(&kb, compile_surface("fit(Ara).")),
+        QueryResult::True
+    );
+    let plan = kb
+        .inner
+        .borrow()
+        .materialization_plan
+        .borrow()
+        .clone()
+        .unwrap();
+    assert_buf(&kb, compile_surface("person(Bel)."));
+    assert_eq!(
+        query_result(&kb, compile_surface("fit(Bel).")),
+        QueryResult::True
+    );
+    assert!(Arc::ptr_eq(
+        &plan,
+        kb.inner
+            .borrow()
+            .materialization_plan
+            .borrow()
+            .as_ref()
+            .unwrap()
+    ));
+    kb.with_assumptions(&[compile_surface("rotten(Ara).")], |snapshot| {
+        assert_eq!(
+            query_result(snapshot, compile_surface("fit(Ara).")),
+            QueryResult::False
+        );
+        assert!(Arc::ptr_eq(
+            &plan,
+            snapshot
+                .inner
+                .borrow()
+                .materialization_plan
+                .borrow()
+                .as_ref()
+                .unwrap()
+        ));
+    })
+    .unwrap();
+    assert_eq!(
+        query_result(&kb, compile_surface("fit(Ara).")),
+        QueryResult::True
+    );
+    let rule = assert_id(
+        &kb,
+        compile_surface("all $x: person($x) -> rotten($x)."),
+        "new rule",
+    );
+    assert_eq!(
+        query_result(&kb, compile_surface("fit(Ara).")),
+        QueryResult::False
+    );
+    assert!(!Arc::ptr_eq(
+        &plan,
+        kb.inner
+            .borrow()
+            .materialization_plan
+            .borrow()
+            .as_ref()
+            .unwrap()
+    ));
+    kb.retract_fact(rule).unwrap();
+    assert_eq!(
+        query_result(&kb, compile_surface("fit(Ara).")),
+        QueryResult::True
+    );
+    assert_buf(&kb, compile_surface("rotten(Bel)."));
+    assert_buf(&kb, compile_surface("Ara = Bel."));
+    assert_eq!(
+        query_result(&kb, compile_surface("fit(Ara).")),
+        QueryResult::False
+    );
+    kb.reset().unwrap();
+    assert_buf(&kb, compile_surface("person(Ara)."));
+    assert_eq!(
+        query_result(&kb, compile_surface("fit(Ara).")),
+        QueryResult::False
+    );
+}
+
 /// Both engines, same KB, same queries. Returns `(with_materialisation, without)`.
 fn both_ways(kb_lines: &[&str], queries: &[&str]) -> (Vec<QueryResult>, Vec<QueryResult>) {
     let run = |on: bool| -> Vec<QueryResult> {
@@ -101,7 +320,7 @@ fn naf_over_a_chain_past_the_depth_bound_becomes_definitive() {
         let kb = new_kb();
         kb.set_materialization(on);
         // A bound too small for the 3-hop chain the NAF has to refute.
-        kb.set_max_chain_depth(1);
+        kb.set_max_chain_depth(1).unwrap();
         for l in kb_lines {
             assert_buf(&kb, compile_surface(l));
         }
@@ -217,7 +436,7 @@ fn a_flavoured_relation_is_refused_and_still_answers_correctly() {
         assert_buf(&kb, compile_surface(l));
     }
     let _ = query_result(&kb, compile_surface("fit(Ara)."));
-    let (complete, _) = kb.materialization_report();
+    let (complete, _) = kb.materialization_report().unwrap();
     assert!(
         !complete.iter().any(|r| r == "rotten"),
         "a relation with a Past fact must not be reported complete: {complete:?}"
@@ -250,7 +469,7 @@ fn explicit_temporal_rule_falls_back_without_changing_the_verdict() {
     let _ = kb
         .query_find_inner(compile_surface("past animal(Ara)."))
         .unwrap();
-    let (complete, refused) = kb.materialization_report();
+    let (complete, refused) = kb.materialization_report().unwrap();
     assert!(
         !complete.iter().any(|relation| relation == "animal"),
         "a flavored rule head must not be reported complete: {complete:?}"
@@ -303,7 +522,7 @@ fn equality_classes_refuse_the_whole_kb() {
         assert_buf(&kb, compile_surface(l));
     }
     let _ = query_result(&kb, compile_surface("fit(Ara)."));
-    let (complete, _) = kb.materialization_report();
+    let (complete, _) = kb.materialization_report().unwrap();
     assert!(
         complete.is_empty(),
         "no relation may be saturated while equivalence classes exist: {complete:?}"
@@ -319,7 +538,7 @@ fn the_report_names_what_was_saturated() {
         assert_buf(&kb, compile_surface(l));
     }
     let _ = query_result(&kb, compile_surface("reward(Ara)."));
-    let (complete, refused) = kb.materialization_report();
+    let (complete, refused) = kb.materialization_report().unwrap();
     assert!(
         complete.iter().any(|r| r == "false"),
         "`false` is read under `~` and is projectable — expected it saturated: \
@@ -339,7 +558,7 @@ fn a_shallow_positive_proof_stays_unsaturated() {
         assert_buf(&kb, compile_surface(l));
     }
     assert!(query(&kb, compile_surface("animal(Rex).")));
-    let (complete, refused) = kb.materialization_report();
+    let (complete, refused) = kb.materialization_report().unwrap();
     assert!(
         !complete.iter().any(|r| r == "animal"),
         "a definitive shallow proof must not eagerly saturate `animal`: \
@@ -363,7 +582,7 @@ fn positive_goal_past_the_depth_bound_becomes_definitive() {
     let verdict = |on: bool| {
         let kb = new_kb();
         kb.set_materialization(on);
-        kb.set_max_chain_depth(1);
+        kb.set_max_chain_depth(1).unwrap();
         for l in kb_lines {
             assert_buf(&kb, compile_surface(l));
         }
@@ -498,7 +717,7 @@ fn toggling_materialization_off_drops_the_saturation() {
 fn the_materialization_mode_survives_reset() {
     let kb = new_kb();
     kb.set_materialization(false);
-    let _ = kb.reset();
+    kb.reset().unwrap();
     assert!(
         !kb.is_materialization(),
         "the mode is session configuration, not KB content"
@@ -540,7 +759,7 @@ fn a_relation_whose_negated_dependency_is_unseedable_is_refused_not_completed() 
         assert_buf(&kb, compile_surface(l));
     }
     let _ = query_result(&kb, compile_surface("fit(Ara)."));
-    let (complete, refused) = kb.materialization_report();
+    let (complete, refused) = kb.materialization_report().unwrap();
     assert!(
         !complete.iter().any(|r| r == "fit"),
         "`fit` reads an unseedable relation under `~` — it must NOT be complete: \
@@ -614,7 +833,7 @@ fn an_entitlement_is_materialised_without_fabricating_the_actuality() {
         assert_buf(&kb, compile_surface(l));
     }
     let _ = kb.query_find_inner(compile_surface("eats(Adam).")).unwrap();
-    let (complete, refused) = kb.materialization_report();
+    let (complete, refused) = kb.materialization_report().unwrap();
     assert!(
         complete.iter().any(|r| r == "eats"),
         "`eats` should be saturable now: complete={complete:?} refused={refused:?}"
@@ -691,7 +910,7 @@ fn an_opaque_query_does_no_work_for_an_unrelated_binary_transitive_relation() {
     );
 
     assert_eq!(query_result(&kb, opaque_query), QueryResult::True);
-    let (complete, refused) = kb.materialization_report();
+    let (complete, refused) = kb.materialization_report().unwrap();
     let unrelated_attempts = kb.materialization_tuple_bind_attempts("earlier");
     assert!(
         !complete.iter().any(|r| r == "entitled"),
@@ -726,12 +945,12 @@ fn an_opaque_query_does_no_work_for_an_unrelated_binary_transitive_relation() {
     // than treating the first query's empty saturation as globally complete. Force the
     // ordinary proof past its one-level horizon so this also exercises lazy positive
     // materialisation rather than merely backward-chaining the short fixture.
-    kb.set_max_chain_depth(1);
+    kb.set_max_chain_depth(1).unwrap();
     assert_eq!(
         query_result(&kb, compile_surface("earlier(NodeA, NodeI).")),
         QueryResult::True
     );
-    let (complete, refused) = kb.materialization_report();
+    let (complete, refused) = kb.materialization_report().unwrap();
     assert!(
         complete.iter().any(|r| r == "earlier"),
         "the newly requested path relation must now be complete: complete={complete:?} refused={refused:?}"
@@ -759,7 +978,7 @@ fn an_opaque_query_does_no_work_for_an_unrelated_binary_transitive_relation() {
         query_result(&kb, compile_surface("later(MomentA, MomentD).")),
         QueryResult::True
     );
-    let (complete, _) = kb.materialization_report();
+    let (complete, _) = kb.materialization_report().unwrap();
     assert!(complete.iter().any(|r| r == "earlier"));
     assert!(complete.iter().any(|r| r == "later"));
     {
@@ -777,7 +996,7 @@ fn an_opaque_query_does_no_work_for_an_unrelated_binary_transitive_relation() {
         query_result(&kb, compile_surface("earlier(NodeA, NodeI).")),
         QueryResult::True
     );
-    let (complete, _) = kb.materialization_report();
+    let (complete, _) = kb.materialization_report().unwrap();
     assert!(complete.iter().any(|r| r == "earlier"));
     // `later` may now STAY complete across the mutation — an in-cone insert is
     // folded in incrementally (`resume_with_delta`) instead of dropping the
@@ -895,7 +1114,7 @@ fn an_opaque_projection_joins_a_derived_subject_chain_before_cartesian_expansion
 #[test]
 fn an_opaque_projection_materializes_only_its_depth_bound_subject_cone() {
     let kb = new_kb();
-    kb.set_max_chain_depth(1);
+    kb.set_max_chain_depth(1).unwrap();
     for line in [
         "derived_only(\"fit\").",
         "derived_only(\"believe\").",
@@ -918,7 +1137,7 @@ fn an_opaque_projection_materializes_only_its_depth_bound_subject_cone() {
         QueryResult::True,
         "one process must complete the depth-bound standing proof and use it in the opaque projection"
     );
-    let (complete, refused) = kb.materialization_report();
+    let (complete, refused) = kb.materialization_report().unwrap();
     assert!(
         complete.iter().any(|relation| relation == "fit"),
         "the exact positive antecedent must be completed: complete={complete:?} refused={refused:?}"
@@ -1173,7 +1392,7 @@ fn a_materialised_relation_flips_across_an_assertion() {
         query_result(&kb, compile_surface("fit(Ara).")),
         QueryResult::True
     );
-    let (before, _) = kb.materialization_report();
+    let (before, _) = kb.materialization_report().unwrap();
     assert!(
         before.iter().any(|r| r == "fit"),
         "`fit` must be materialised for this to test anything: {before:?}"
@@ -1185,7 +1404,7 @@ fn a_materialised_relation_flips_across_an_assertion() {
         QueryResult::False,
         "the new fact must block the NAF — a surviving extension would still say TRUE"
     );
-    let (after, _) = kb.materialization_report();
+    let (after, _) = kb.materialization_report().unwrap();
     assert!(
         after.iter().any(|r| r == "fit"),
         "and it must be re-saturated, not silently demoted to fallback: {after:?}"
@@ -1261,12 +1480,12 @@ fn strata_surface_projection_is_lossless() {
 #[test]
 fn stratification_report_is_stable_and_well_formed() {
     let kb = kb_from_corpus(include_str!("../../../utopia.nibli"));
-    let rows = kb.stratification_report();
+    let rows = kb.stratification_report().unwrap();
     assert!(!rows.is_empty(), "utopia must produce a non-empty report");
 
     // Deterministic: same KB, same bytes. `pred_dep_graph` is a HashMap, so this is the
     // property a consumer diffing across runs actually depends on.
-    let again = kb.stratification_report();
+    let again = kb.stratification_report().unwrap();
     assert_eq!(rows, again, "two reports off one KB must be identical");
 
     // Sorted by predicate, edges sorted and deduplicated.
@@ -1327,7 +1546,7 @@ fn a_negative_edge_raises_the_stratum_it_reads_from() {
     ] {
         assert_buf(&kb, compile_surface(line));
     }
-    let rows = kb.stratification_report();
+    let rows = kb.stratification_report().unwrap();
     let get = |p: &str| {
         rows.iter()
             .find(|r| r.predicate == p)
@@ -1695,7 +1914,11 @@ fn kb_with_live_saturation() -> KnowledgeBase {
         QueryResult::True
     );
     assert!(
-        kb.materialization_report().0.iter().any(|r| r == "animal"),
+        kb.materialization_report()
+            .unwrap()
+            .0
+            .iter()
+            .any(|r| r == "animal"),
         "fixture must leave a live saturation of the animal cone"
     );
     kb
@@ -1713,7 +1936,11 @@ fn a_refused_assertion_preserves_the_saturation() {
     kb.assert_fact_inner(compile_surface("fit(Rex)."), String::new())
         .expect_err("a derived_only relation must refuse direct assertion");
     assert!(
-        kb.materialization_report().0.iter().any(|r| r == "animal"),
+        kb.materialization_report()
+            .unwrap()
+            .0
+            .iter()
+            .any(|r| r == "animal"),
         "a non-mutating rollback must leave the saturation intact"
     );
 
@@ -1800,7 +2027,11 @@ fn a_refused_assertion_still_clears_and_disables_the_predicate_cache() {
     );
     drop(inner);
     assert!(
-        kb.materialization_report().0.iter().any(|r| r == "animal"),
+        kb.materialization_report()
+            .unwrap()
+            .0
+            .iter()
+            .any(|r| r == "animal"),
         "…while the saturation still survives"
     );
 }
@@ -1845,7 +2076,11 @@ fn an_out_of_cone_insert_preserves_the_saturation() {
 
     assert_buf(&kb, compile_surface("cat(Bel)."));
     assert!(
-        kb.materialization_report().0.iter().any(|r| r == "animal"),
+        kb.materialization_report()
+            .unwrap()
+            .0
+            .iter()
+            .any(|r| r == "animal"),
         "an insert about an unrelated relation must leave the saturation standing"
     );
 
@@ -1880,14 +2115,14 @@ fn an_insert_under_a_negation_invalidates_and_the_verdict_follows() {
         "the NAF query saturates the fit cone"
     );
     assert!(
-        !kb.materialization_report().0.is_empty(),
+        !kb.materialization_report().unwrap().0.is_empty(),
         "fixture must leave a live saturation"
     );
 
     // `cat` is read under `~`, so it is IN the cone: this must invalidate.
     assert_buf(&kb, compile_surface("cat(Rex)."));
     assert!(
-        kb.materialization_report().0.is_empty(),
+        kb.materialization_report().unwrap().0.is_empty(),
         "a fact read under negation must invalidate — its growth SHRINKS the model"
     );
     assert_eq!(
@@ -1931,13 +2166,13 @@ fn an_equality_merge_invalidates_even_though_it_is_out_of_cone() {
         QueryResult::True
     );
     assert!(
-        !kb.materialization_report().0.is_empty(),
+        !kb.materialization_report().unwrap().0.is_empty(),
         "fixture must leave a live saturation"
     );
 
     assert_buf(&kb, compile_surface("Bel = Rex."));
     assert!(
-        kb.materialization_report().0.is_empty(),
+        kb.materialization_report().unwrap().0.is_empty(),
         "an equality merge must invalidate: the equality guard runs at BUILD time, \
          so a saturation built before it would never see the class"
     );
@@ -1970,6 +2205,7 @@ fn a_delta_propagates_up_every_stratum() {
     );
     assert!(
         kb.materialization_report()
+            .unwrap()
             .0
             .iter()
             .any(|r| r == "beautiful"),

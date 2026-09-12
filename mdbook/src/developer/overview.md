@@ -19,7 +19,7 @@ gate. The chapters:
 - **[Soundness & CI index](soundness-ci.md)** — every gate: the two-oracle
   differential track, the six Lean proofs and their conformance bridges, the
   umbrella recipes, fuzzing and mutation testing.
-- **[WIT surface](wit-surface.md)** — `nibli:engine@0.11.0`: every interface
+- **[WIT surface](wit-surface.md)** — `nibli:engine@0.12.0`: every interface
   and session method, the bindings remap, and the version history.
 
 ## Quick reference
@@ -31,7 +31,7 @@ gate. The chapters:
 | Soundness contracts | [GUARANTEES.md](https://github.com/dhilipsiva/nibli/blob/main/GUARANTEES.md) |
 | Native CI gate | `just ci` (and `just ci-wasm` / `just ci-all`) |
 | Deploy / playground ship | [DEPLOY.md](https://github.com/dhilipsiva/nibli/blob/main/DEPLOY.md) |
-| WIT boundary | `wit/world.wit` (`nibli:engine@0.11.0` — `engine` + `authorizer`) |
+| WIT boundary | `wit/world.wit` (`nibli:engine@0.12.0` — `engine` + `authorizer`) |
 | Authorization | [User guide: Authorization](../user/authorization.md); crate `nibli-auth`; policy `nibli-auth/policy/auth-0.1.0.nibli` |
 
 Do not use the private `book/` manuscript as a contributor reference for

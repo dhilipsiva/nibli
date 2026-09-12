@@ -2,7 +2,7 @@
 
 The component boundary, as declared in
 [`wit/world.wit`](https://github.com/dhilipsiva/nibli/blob/main/wit/world.wit)
-— package **`nibli:engine@0.11.0`**, world **`nibli-pipeline`**:
+— package **`nibli:engine@0.12.0`**, world **`nibli-pipeline`**:
 
 ```wit
 world nibli-pipeline {
@@ -99,12 +99,14 @@ its policy metadata is outside the current proof schema.
 | `compile-debug(input)` | Compile-only: enforces corpus vocabulary/arity, but does not assert or check assertion admission; the host renders the buffer |
 | `assert-fact(relation, args)` / `assert-fact-with-id(…)` | Ground fact, bypassing text parsing; the `-with-id` form takes a caller-chosen id for restart replay. A relation already registered for compute is rejected as query-only rather than stored as a shadow fact; the reference external names are rejected even when unregistered |
 | `assert-buffer-with-id(buffer, label, id)` | **The** recompile-free replay primitive (the legacy `assert-text-with-id` was removed at 0.5.0 with store schema v3). Legacy count or executable-compute assertion rows fail closed rather than regenerating witnesses or premises; the buffer is re-marked against the live compute registry, so an out-of-order replay of a registered name fails closed too |
-| `retract-fact(id)` / `list-facts()` / `reset-kb()` | KB management |
+| `retract-fact(id)` / `list-facts()` / `reset-kb()` | Fallible KB management; `list-facts` remains active-only |
+| `list-assertion-records()` / `restore-withdrawn-assertion(id, label)` | Retained active/withdrawn identities; trusted metadata replay reserves withdrawn IDs without decoding old payloads |
+| `set-max-chain-depth(u32)` / `max-chain-depth()` | Checked positive reasoning/witness depth, default 10; zero is rejected |
 | `register-compute-predicate(name)` | Post-compile routing for an existing corpus spelling or canonical relation; aliases/committed compounds normalize to the canonical IR name. It declares no vocabulary or arity, so an unknown name is refused. Also refused while live stored facts or rules reference the canonical relation (blocking ids in the message; retract first). The reference external names are query-only at assertion ingress regardless |
 | `compute-predicates()` | Sorted canonical compiled-relation registry snapshot, built-ins included — the bare `:compute` report's source |
 | `set-strict(bool)` | Off = permissive warn-and-insert; on = arity/integrity violations reject atomically |
 | `set-existential-import(bool)` / `existential-import-enabled()` | Default OFF = clean-core classical ∃. Explicit ON enables legacy xorlo witnesses, which participate in ∃/∀/find/count/aggregate. The setter returns `result` because it transactionally rebuilds the active KB; the getter reports the effective profile |
-| `set-materialization(bool)` / `materialization-report()` | Query-cone materialisation toggle + its cumulative-since-mutation report — added in 0.7.0 because the optimisation is invisible when it fails: without the report, a KB whose `~p(x)` stays slow has no way to learn which requested relation fell out of the materialisable fragment, or why. Purely positive entailment stays lazy unless exact reasoning remains non-definitive; find/count request complete positive cones. A definitive TRUE/FALSE can never flip (the `materialize_diff` gate enforces it); a non-definitive OFF verdict may become definitive under ON — the deliberate completeness gain |
+| `set-materialization(bool)` / `materialization-report()` | Query-cone materialisation toggle + its fallible cumulative-since-mutation report — added in 0.7.0 because the optimisation is invisible when it fails: without the report, a KB whose `~p(x)` stays slow has no way to learn which requested relation fell out of the materialisable fragment, or why. Purely positive entailment stays lazy unless exact reasoning remains non-definitive; find/count request complete positive cones. A definitive TRUE/FALSE can never flip (the `materialize_diff` gate enforces it); a non-definitive OFF verdict may become definitive under ON — the deliberate completeness gain |
 
 ### `authorizer` (export)
 
@@ -127,7 +129,7 @@ it on every run).
 `[package.metadata.component.bindings.with]` remaps the **eleven** ABI-matching
 boundary types onto the canonical `nibli_types` definitions —
 `logical-term`, `logic-node`, `logic-buffer`, `query-result`,
-`unknown-reason`, `resource-kind`, `witness-origin`, `witness-binding`, `fact-summary` from
+`unknown-reason`, `resource-kind`, `witness-origin`, `witness-binding`, `fact-summary`, `assertion-status`, `assertion-record-summary` from
 `logic-types`, plus `nibli-error` and `syntax-detail` from `error-types` — so
 the guest passes the canonical types straight through instead of maintaining a
 mirror-conversion layer.
@@ -138,14 +140,15 @@ hand-written `convert_proof_rule` bridge in `nibli-pipeline/src/lib.rs`
 (`proof-step`/`proof-trace` reference it and stay generated too).
 
 **Version-bump checklist:** the remap keys pin the interface version
-(`nibli:engine/logic-types@0.11.0/…`). Any WIT version change must bump **all
-eleven keys** — a missed key silently stops remapping and resurrects the mirror
+(`nibli:engine/logic-types@0.12.0/…`). Any WIT version change must bump **all
+thirteen keys** — a missed key silently stops remapping and resurrects the mirror
 types.
 
 ## Version history
 
 | WIT | Change |
 |-----|--------|
+| 0.12.0 | Checked depth controls, retained active/withdrawn assertion records, trusted metadata replay, and fallible materialization reports |
 | 0.11.0 | Fallible `register-compute-predicate` (refused over live references, ids named) + the `compute-predicates` getter; reference external compute names refused at assertion ingress regardless of registration |
 | 0.10.0 | Added stable assertion/rule citations to proof facts and a distinct `presupposed` case; eager rule conclusions and imported witnesses can no longer cross the component boundary as user-given facts |
 | 0.9.0 | Added `generated-witness` origin and changed universal proof payloads from bare terms to origin-bearing witness bindings, separating reasoner-minted witnesses from user constants at every public result/proof surface |

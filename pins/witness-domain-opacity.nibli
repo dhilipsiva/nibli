@@ -1,0 +1,18 @@
+# Mechanism pin: quoted abstraction bodies affect dependency checks but do not
+# supply actual individuals or executable conclusions during witness activation.
+:expect-pins 6
+person(Adam).
+entitled(every person, event { eats(some cat) }).
+? entitled(Adam, event { eats(some cat) }).
+# => TRUE
+? cat(some cat).
+# => FALSE
+? eats(some cat).
+# => FALSE
+? cat(exactly 0 cat).
+# => TRUE
+cat(Bela).
+? cat(some cat).
+# => TRUE
+? eats(some cat).
+# => FALSE

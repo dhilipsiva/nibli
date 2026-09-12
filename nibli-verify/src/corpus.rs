@@ -206,6 +206,30 @@ pub const CASES: &[Case] = &[
         expect: Expect::True,
     },
     Case {
+        name: "du_ground_rule_chain_alternative_true",
+        // The named ground heads do not unify with Bel directly. Equality
+        // alternatives must retain depth exhaustion until this chain resolves.
+        kb: &[
+            "dog(Adam).",
+            "dog(Adam) -> cat(Adam).",
+            "cat(Adam) -> animal(Adam).",
+            "Adam = Bel.",
+        ],
+        query: "animal(Bel).",
+        expect: Expect::True,
+    },
+    Case {
+        name: "du_ground_rule_chain_reversed_alias_true",
+        kb: &[
+            "Bel = Adam.",
+            "dog(Adam).",
+            "dog(Adam) -> cat(Adam).",
+            "cat(Adam) -> animal(Adam).",
+        ],
+        query: "animal(Bel).",
+        expect: Expect::True,
+    },
+    Case {
         name: "du_transitive_substitutivity_through_rule_true",
         // Three-entity class + a rule: the full mix (chain, substitutivity, firing).
         kb: &[

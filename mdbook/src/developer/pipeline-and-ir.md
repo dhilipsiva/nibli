@@ -174,7 +174,7 @@ concrete index values, the compiler's tree IR (`IrForm`), stored-fact forms,
 on-disk mirrors.
 
 The buffer has no version field — the WIT package version
-(`nibli:engine@0.11.0`) and nibli-store's fail-closed schema versions are the
+(`nibli:engine@0.12.0`) and nibli-store's fail-closed schema versions are the
 only version markers. Treat the format as pre-1.0: pin a commit if you build
 against it.
 

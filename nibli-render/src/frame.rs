@@ -14,11 +14,6 @@ use crate::overlay;
 /// before corpus templates so the back-translation stays readable without
 /// waiting on a full corpus prose pass.
 const TEMPLATE_OVERRIDES: &[(&str, &str)] = &[
-    // `obligated_by` here is NOT the corpus alias — it is the marker
-    // `collapse_deontic_event_duties` puts on its synthetic frame, whose places are
-    // x1 = content phrase, x2 = obligated party. Reached only when that collapse
-    // produced no place-2 party; the normal path renders in `render_frame`.
-    //
     // `obliged` deliberately has NO override: its corpus template
     // ("{x1} is obligated to {x2}") already matches the corpus places
     // `[bound, duty, standard]`. The override that used to sit here was written in
@@ -26,11 +21,13 @@ const TEMPLATE_OVERRIDES: &[(&str, &str)] = &[
     // not swap — and at arity 1 it rendered `obliged(Adam).` as the EMPTY string,
     // because `fill_template`'s trailing-elision cut fires on the leading `{x2}` and
     // drops the whole line.
-    ("obligated_by", "{x2} is obligated that {x1}"),
     // cirko: x1 = loss, x2 = person who loses.
     ("lose", "{x2} loses {x1}"),
     // dinju used as facility placement: x1 = facility, x2 = resident.
     ("building", "{x2} is placed at {x1}"),
+    // vimcu: x1 is the remover; the removed item is x2. The corpus's passive
+    // x1-only template loses a named `removed:` witness and reverses its role.
+    ("removes", "{x1} removes {x2} from {x3} leaving {x4}"),
     // zdani as confinement status (constitutional corpora), not "X is a house".
     ("home", "{x1} is under home confinement"),
     // Status / boolean-ish 1-place readings.
@@ -317,10 +314,9 @@ mod tests {
 
     #[test]
     fn overrides_beat_corpus_for_inverted_places() {
-        assert_eq!(
-            frame_template("obligated_by"),
-            "{x2} is obligated that {x1}"
-        );
+        // The converse alias now uses its corpus template too: inline duties no
+        // longer manufacture an inverted synthetic frame under this real name.
+        assert_eq!(frame_template("obligated_by"), "{x2} is obligated to {x1}");
         // `obliged` must take the CORPUS template, in the corpus place order: it is
         // the base both spellings compile to, and its x1 is the bound party. An
         // override in the converted order here inverts every plain-spelled duty.

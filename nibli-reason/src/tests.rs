@@ -1,3 +1,5 @@
+mod guarded_witnesses;
+mod lifecycle;
 use super::*;
 use nibli_types::logic::{LogicBuffer, LogicNode, LogicalTerm, ProofRule, ProofTrace};
 
@@ -252,6 +254,7 @@ mod assertions;
 mod compute_ingest;
 mod compute_trace;
 mod conditionals_deontic;
+mod contradiction_reports;
 mod descriptions_events;
 mod disjunctive;
 mod existential;
@@ -269,6 +272,7 @@ mod strict;
 mod tense;
 mod traces;
 mod unify_equality;
+mod witness_closure;
 mod witness_completeness;
 mod witnesses;
 mod zoo;

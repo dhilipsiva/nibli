@@ -15,7 +15,7 @@ Normative and operational specs live at the **repository root** (and in-tree sou
 | Roadmap | [`TODO.md`](https://github.com/dhilipsiva/nibli/blob/main/TODO.md) | Open engine, tooling and docs work |
 | Lexicon | `nibli-lexicon/src/corpus/` | Committed English predicate corpus |
 | Authorization | [`nibli-auth`](https://github.com/dhilipsiva/nibli/tree/main/nibli-auth), policy `auth-0.1.0.nibli` | Builtin auth; guide: [Authorization](user/authorization.md) |
-| WIT package | `nibli:engine@0.11.0` | Exports `engine` + `authorizer` (`object` = resource id) |
+| WIT package | `nibli:engine@0.12.0` | Exports `engine` + `authorizer` (`object` = resource id) |
 
 ## API documentation
 

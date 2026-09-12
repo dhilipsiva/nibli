@@ -45,12 +45,40 @@ fn parse_assert_args(input: &str) -> Result<(String, Vec<EngineLogicalTerm>), St
     Ok((relation, args))
 }
 
+fn parse_depth(value: &str) -> Result<u32, String> {
+    if value.is_empty() || !value.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err("depth must be a positive u32 integer".into());
+    }
+    value
+        .parse::<u32>()
+        .ok()
+        .filter(|depth| *depth > 0)
+        .ok_or_else(|| "depth must be an integer from 1 through 4294967295".into())
+}
+
 fn main() {
     println!("==================================================");
     println!(" Nibli Native REPL - Direct Rust (no WASM)        ");
     println!("==================================================");
 
     let mut engine = NibliEngine::new();
+    match std::env::var("NIBLI_MAX_CHAIN_DEPTH") {
+        Ok(value) => {
+            if let Err(error) = parse_depth(&value).and_then(|depth| {
+                engine
+                    .set_max_chain_depth(depth)
+                    .map_err(|error| error.to_string())
+            }) {
+                eprintln!("NIBLI_MAX_CHAIN_DEPTH: {error}");
+                std::process::exit(2);
+            }
+        }
+        Err(std::env::VarError::NotPresent) => {}
+        Err(error) => {
+            eprintln!("NIBLI_MAX_CHAIN_DEPTH: {error}");
+            std::process::exit(2);
+        }
+    }
     // Interactive debug REPL: opt into the engine's [Rule]/[Skolem]/[Constraint]
     // diagnostics (off by default — nibli-engine is a silent library).
     engine.set_verbose(true);
@@ -63,7 +91,7 @@ fn main() {
     let mut linter = Linter::new();
 
     println!(
-        "Commands: :quit :reset :load <file> :facts :retract <id> :debug <text> :compute [name] :assert <rel> <args..> :help"
+        "Commands: :quit :reset :load <file> :facts [--all] :depth [N] :retract <id> :debug <text> :compute [name] :assert <rel> <args..> :help"
     );
     println!(
         "Prefix '?' for queries with proof trace, '??' for find, plain text for assertions.\n"
@@ -80,9 +108,13 @@ fn main() {
                 match input {
                     ":quit" | ":q" => break,
                     ":reset" | ":r" => {
-                        engine.reset();
-                        linter.reset();
-                        println!("[Reset] Knowledge base cleared.");
+                        match engine.reset() {
+                            Ok(()) => {
+                                linter.reset();
+                                println!("[Reset] Knowledge base cleared.");
+                            }
+                            Err(error) => println!("{error}"),
+                        }
                         continue;
                     }
                     ":compute" => {
@@ -98,6 +130,41 @@ fn main() {
                             "[Compute] Registration routes existing KR vocabulary; it does not \
                              declare names or infer arity."
                         );
+                        continue;
+                    }
+                    ":depth" => {
+                        println!("[Depth] {}", engine.max_chain_depth());
+                        continue;
+                    }
+                    value if value.starts_with(":depth ") => {
+                        match parse_depth(value.trim_start_matches(":depth ").trim()).and_then(
+                            |depth| {
+                                engine
+                                    .set_max_chain_depth(depth)
+                                    .map_err(|error| error.to_string())
+                            },
+                        ) {
+                            Ok(()) => println!("[Depth] {}", engine.max_chain_depth()),
+                            Err(error) => println!("[Depth] {error}"),
+                        }
+                        continue;
+                    }
+                    ":facts --all" => {
+                        match engine.list_assertion_records() {
+                            Ok(records) => {
+                                println!("[Facts] {} retained assertion record(s):", records.len());
+                                for record in records {
+                                    let status = match record.status {
+                                        nibli_engine::EngineAssertionStatus::Active => "active",
+                                        nibli_engine::EngineAssertionStatus::Withdrawn => {
+                                            "withdrawn"
+                                        }
+                                    };
+                                    println!("  #{} [{status}]: {}", record.id, record.label);
+                                }
+                            }
+                            Err(error) => println!("{error}"),
+                        }
                         continue;
                     }
                     ":facts" => {
@@ -137,20 +204,23 @@ fn main() {
                         continue;
                     }
                     ":contradictions" => {
-                        let violations = engine.check_contradictions();
-                        if violations.is_empty() {
-                            // §4 negation now includes derived positives (cheap middle);
-                            // integrity/disjunctive legs stay store-bound — see
-                            // KnowledgeBase::check_contradictions docs.
+                        let report = engine.check_contradictions_report();
+                        if report.is_clean() {
                             println!(
-                                "[Contradictions] No contradictions found \
-                                 (asserted store + derived positives for ~P; \
-                                 not a full closure proof)."
+                                "[Contradictions] Scan complete: no contradictions found \
+                                 in represented constraints (not a full closure proof)."
                             );
                         } else {
-                            println!("[Contradictions] {} issue(s) found:", violations.len());
-                            for (i, v) in violations.iter().enumerate() {
+                            println!(
+                                "[Contradictions] {} finding(s), {} unresolved check(s):",
+                                report.violations.len(),
+                                report.unresolved.len()
+                            );
+                            for (i, v) in report.violations.iter().enumerate() {
                                 println!("  {}: {}", i + 1, v);
+                            }
+                            for gap in &report.unresolved {
+                                println!("  UNRESOLVED: {gap}");
                             }
                         }
                         continue;
@@ -170,13 +240,17 @@ fn main() {
                         println!("  :retract <id>       Retract a fact by ID (rebuilds KB)");
                         println!("  :facts              List all active facts in the KB");
                         println!(
-                            "  :contradictions     Scan for contradictions (store + \
-                             derived ~P positives; not full closure)"
+                            "  :contradictions     Scan represented constraints; report \
+                             findings and unresolved checks"
                         );
                         println!("  :trace <pred>       Enable tracing for a predicate");
                         println!("  :untrace <pred>     Disable tracing for a predicate");
                         println!("  :traces             List traced predicates");
                         println!("  :reset              Clear all facts (fresh KB)");
+                        println!("  :depth [N]          Show or set the positive reasoning depth");
+                        println!(
+                            "  :facts --all        List active and withdrawn assertion records"
+                        );
                         println!("  :quit               Exit");
                         continue;
                     }

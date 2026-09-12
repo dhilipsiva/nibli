@@ -75,7 +75,8 @@ pub fn envelope_to_json(envelope: &ProofEnvelope) -> String {
 
 /// Deserialize a proof envelope from its wire JSON string.
 pub fn envelope_from_json(s: &str) -> Option<ProofEnvelope> {
-    serde_json::from_str(s).ok()
+    let envelope: ProofEnvelope = serde_json::from_str(s).ok()?;
+    (envelope.schema == PROOF_ENVELOPE_SCHEMA).then_some(envelope)
 }
 
 // Term display (`LogicalTerm::display` / `trace_display`) now lives as inherent
@@ -264,6 +265,7 @@ mod tests {
                     strict: false,
                     existential_import: false,
                     materialization: true,
+                    max_chain_depth: 10,
                 },
             );
             validate_envelope(&envelope)
@@ -275,5 +277,34 @@ mod tests {
                 "{result:?}: JSON round trip must be the identity"
             );
         }
+    }
+    #[test]
+    fn legacy_envelopes_require_regeneration_and_depth_is_required() {
+        let envelope = ProofEnvelope::bind(
+            "dog(Adam).",
+            QueryResult::True,
+            one_step(ProofRule::Asserted {
+                fact: "dog(adam)".into(),
+                sources: vec![],
+            }),
+            EngineProfile {
+                strict: false,
+                existential_import: false,
+                materialization: true,
+                max_chain_depth: 17,
+            },
+        );
+        let mut json: serde_json::Value =
+            serde_json::from_str(&envelope_to_json(&envelope)).unwrap();
+        assert_eq!(json["profile"]["max_chain_depth"], 17);
+        assert_eq!(envelope_from_json(&json.to_string()), Some(envelope));
+        json["schema"] = 1.into();
+        assert!(envelope_from_json(&json.to_string()).is_none());
+        json["schema"] = PROOF_ENVELOPE_SCHEMA.into();
+        json["profile"]
+            .as_object_mut()
+            .unwrap()
+            .remove("max_chain_depth");
+        assert!(envelope_from_json(&json.to_string()).is_none());
     }
 }

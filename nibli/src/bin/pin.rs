@@ -609,7 +609,13 @@ fn strata_dump(kbs: &[KbFile]) -> (String, Vec<String>) {
         return (String::new(), harness);
     }
 
-    let rows = engine.kb().stratification_report();
+    let rows = match engine.kb().stratification_report() {
+        Ok(rows) => rows,
+        Err(error) => {
+            harness.push(format!("stratification report failed: {error}"));
+            return (String::new(), harness);
+        }
+    };
     let max_stratum = rows.iter().map(|r| r.stratum).max().unwrap_or(0);
     let base = rows.iter().filter(|r| r.base).count();
 

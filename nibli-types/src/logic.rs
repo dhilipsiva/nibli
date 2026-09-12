@@ -127,11 +127,12 @@ impl LogicBuffer {
 }
 
 /// Where an enumerated witness came from.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 pub enum WitnessOrigin {
     /// A non-generated term supplied by asserted data or a rule template.
+    #[default]
     KnowledgeBase,
     /// An opaque witness minted by the reasoner for an existential.
     GeneratedWitness,
@@ -146,12 +147,6 @@ impl WitnessOrigin {
             Self::GeneratedWitness => "generated-witness",
             Self::ExistentialImport => "existential-import",
         }
-    }
-}
-
-impl Default for WitnessOrigin {
-    fn default() -> Self {
-        Self::KnowledgeBase
     }
 }
 
@@ -410,7 +405,7 @@ impl ProofTrace {
 
 /// Schema version of [`ProofEnvelope`] — bump on any breaking shape change.
 /// [`validate_envelope`] fails closed on versions it does not know.
-pub const PROOF_ENVELOPE_SCHEMA: u32 = 1;
+pub const PROOF_ENVELOPE_SCHEMA: u32 = 2;
 
 /// The session profile a certificate was produced under. The same KB answers
 /// differently across these switches (strict ingress, legacy existential
@@ -422,6 +417,8 @@ pub struct EngineProfile {
     pub strict: bool,
     pub existential_import: bool,
     pub materialization: bool,
+    /// Positive depth bound used for reasoning and generated witness dependencies.
+    pub max_chain_depth: u32,
 }
 
 /// A verdict BOUND to its certificate: the root [`QueryResult`] (UNKNOWN
@@ -485,6 +482,9 @@ pub fn validate_envelope(envelope: &ProofEnvelope) -> Result<(), Vec<String>> {
              to interpret the remaining fields",
             envelope.schema
         )]);
+    }
+    if envelope.profile.max_chain_depth == 0 {
+        errs.push("profile max_chain_depth must be positive".into());
     }
     let steps = &envelope.trace.steps;
     let n = steps.len();
@@ -564,6 +564,23 @@ pub struct FactSummary {
     pub id: FactId,
     pub label: String,
     pub root_count: u32,
+}
+
+/// Current state of a retained assertion record, not an audit chronology.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum AssertionStatus {
+    Active,
+    Withdrawn,
+}
+
+/// An assertion's stable identity and display label, including withdrawn records.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct AssertionRecordSummary {
+    pub id: FactId,
+    pub label: String,
+    pub status: AssertionStatus,
 }
 
 /// Compile-time exhaustiveness anchor for the cross-crate conversion lattices.
@@ -780,6 +797,7 @@ mod envelope_tests {
                 strict: false,
                 existential_import: false,
                 materialization: true,
+                max_chain_depth: 10,
             },
         )
     }
@@ -799,6 +817,10 @@ mod envelope_tests {
         e.schema = 999;
         let errs = validate_envelope(&e).unwrap_err();
         assert!(errs[0].contains("unknown envelope schema"), "{errs:?}");
+
+        let mut e = valid_true_envelope();
+        e.profile.max_chain_depth = 0;
+        assert!(validate_envelope(&e).unwrap_err()[0].contains("max_chain_depth"));
 
         // Root out of bounds.
         let mut e = valid_true_envelope();

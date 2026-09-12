@@ -54,6 +54,155 @@ mod tests {
     use super::*;
     use nibli_types::logic::{LogicBuffer, LogicNode, LogicalTerm};
 
+    fn compile_kr(text: &str) -> LogicBuffer {
+        nibli_semantics::compile_from_ast(nibli_kr::parse_checked(text).expect("KR parse"))
+            .expect("KR compile")
+    }
+
+    #[test]
+    fn existential_scope_is_visible_in_both_registers() {
+        let shared = compile_kr("likes($y, every dog).");
+        let dependent = compile_kr("all $x: dog($x) -> likes($y, $x).");
+        // Independent IR checks: this is a real scope distinction at the public
+        // KR seam, not two hand-made trees assigned different expected prose.
+        assert!(
+            matches!(&shared.nodes[shared.roots[0] as usize], LogicNode::ExistsNode((_, body)) if matches!(shared.nodes[*body as usize], LogicNode::ForAllNode(_)))
+        );
+        assert!(matches!(
+            &dependent.nodes[dependent.roots[0] as usize],
+            LogicNode::ForAllNode(_)
+        ));
+        let renamed = compile_kr("likes($companion, every dog).");
+        for register in [Register::Spec, Register::Fluent] {
+            let one = render_logic_buffer(&shared, register);
+            let per_dog = render_logic_buffer(&dependent, register);
+            assert_eq!(
+                one,
+                "There exists X such that (for every Y, if Y is a dog, then X likes Y)."
+            );
+            assert_eq!(
+                per_dog,
+                "For every X, if X is a dog, then there exists Y such that (Y likes X)."
+            );
+            assert_ne!(one, per_dog);
+            assert_eq!(one, render_logic_buffer(&renamed, register));
+        }
+    }
+
+    #[test]
+    fn existential_restriction_stays_outside_its_duty_description() {
+        let buf = compile_kr("obliged(some person, event { message() }).");
+        let tree = render_logic_tree(&buf, Register::Spec);
+        assert!(tree.contains("person_x1("), "{tree}");
+        assert!(
+            tree.contains("__abs_"),
+            "compiler must retain opaque packaging: {tree}"
+        );
+        for register in [Register::Spec, Register::Fluent] {
+            let out = render_logic_buffer(&buf, register);
+            assert_eq!(
+                out,
+                "There exists X such that (X is a person and (X is obligated to notify))."
+            );
+            assert!(!out.contains("obligated to person"));
+        }
+    }
+
+    #[test]
+    fn opaque_duty_bodies_keep_arguments_negation_and_local_binders() {
+        for (text, content) in [
+            ("obliged(Alis, event { message(Bob) }).", "Bob"),
+            (
+                "obliged(Alis, event { ~message() }).",
+                "it is not the case that",
+            ),
+            (
+                "obliged(Alis, event { message(some person) }).",
+                "there exists",
+            ),
+            (
+                "obliged(Alis, event { message(every person) }).",
+                "for every",
+            ),
+        ] {
+            let buf = compile_kr(text);
+            for register in [Register::Spec, Register::Fluent] {
+                let out = render_logic_buffer(&buf, register);
+                assert!(
+                    out.starts_with("Alis is obligated to an event described by ("),
+                    "{text}: {out}"
+                );
+                assert!(
+                    out.contains(content),
+                    "duty content disappeared for {text}: {out}"
+                );
+                assert!(!out.contains("__abs_"), "internal marker leaked: {out}");
+            }
+        }
+    }
+
+    #[test]
+    fn negation_keeps_its_existential_scope() {
+        let buf = compile_kr("~likes(some person, every dog).");
+        let tree = render_logic_tree(&buf, Register::Spec);
+        assert!(
+            matches!(&buf.nodes[buf.roots[0] as usize], LogicNode::NotNode(body) if matches!(buf.nodes[*body as usize], LogicNode::ExistsNode(_)))
+        );
+        for register in [Register::Spec, Register::Fluent] {
+            let out = render_logic_buffer(&buf, register);
+            assert!(
+                out.contains("there exists") || out.contains("There exists"),
+                "{tree}\n{out}"
+            );
+            assert!(out.contains("for every"), "{tree}\n{out}");
+            assert!(
+                out.to_lowercase().contains("it is not the case that ("),
+                "{tree}\n{out}"
+            );
+        }
+    }
+
+    #[test]
+    fn non_duty_abstractions_never_assert_the_quoted_body() {
+        let buf = compile_kr("entitled(some person, event { message(Bob) }).");
+        let out = render_logic_buffer(&buf, Register::Spec);
+        assert!(out.contains("is a person"), "{out}");
+        assert!(out.contains("is entitled to"), "{out}");
+        assert!(out.contains("is an event described by (Bob"), "{out}");
+        assert!(!out.contains("__abs_"), "{out}");
+    }
+
+    #[test]
+    fn neighboring_duties_do_not_merge_their_quoted_content() {
+        let buf =
+            compile_kr("obliged(Alis, event { message() }) & obliged(Bob, event { secure() }).");
+        let out = render_logic_buffer(&buf, Register::Spec);
+        assert!(out.contains("Alis is obligated to notify"), "{out}");
+        assert!(out.contains("Bob is obligated to be secure"), "{out}");
+        assert!(!out.contains("notify and be secure"), "{out}");
+    }
+
+    #[test]
+    fn duty_keeps_the_removed_witness_in_the_removed_place() {
+        let buf = compile_kr("obliged(every permitted, event { removes(removed: some data) }).");
+        // The compiled x2 must share the data witness, regardless of the
+        // unrelated event variables and the surrounding duty-holder binder.
+        let removed = buf
+            .nodes
+            .iter()
+            .find_map(|node| match node {
+                LogicNode::Predicate((rel, args)) if rel == "removes_x2" => args.get(1),
+                _ => None,
+            })
+            .unwrap();
+        assert!(buf.nodes.iter().any(|node| matches!(node, LogicNode::Predicate((rel, args)) if rel == "data_x1" && args.get(1) == Some(removed))));
+        let out = render_logic_buffer(&buf, Register::Spec);
+        assert_eq!(
+            out,
+            "For every X, if something permits X, then X is obligated to an event described by (there exists Y such that (Y is data and something removes Y))."
+        );
+    }
+
     /// Hand-build the compiled IR for `ro lo dog cu animal` ("every dog is an
     /// animal"): `∀v0. (∃ev0. dog(ev0) ∧ gerku_x1(ev0,v0) ∧ gerku_x2(ev0,zo'e))
     /// → (∃ev1. animal(ev1) ∧ danlu_x1(ev1,v0) ∧ danlu_x2(ev1,zo'e))`.
@@ -149,14 +298,9 @@ mod tests {
             !floor.contains("entitles"),
             "the floor must not invert into an entitle-the-party reading: {floor}"
         );
-        // KNOWN LIMITATION (pre-existing, not specific to `entitled`): the
-        // abstraction-scaffold collapse in logic.rs (`collapse_deontic_event_duties`
-        // / `is_deontic_duty_rel`) only covers "obligated_by"/"obliged", so every other
-        // event-taking predicate still renders the "Y is an event and …" scaffold —
-        // including the shipped GDPR Art 15 right `permitted(every person,
-        // event { data discovers() })`. Generalizing that collapse to be
-        // template-driven would let this read "X is entitled to eat"; it is
-        // deliberately NOT asserted here so the fix does not have to fight a test.
+        // Non-duty abstractions retain an explicit referent and quoted body;
+        // they must never render the body as a separate assertion of actuality.
+        assert!(floor.contains("is an event described by ("), "{floor}");
     }
 
     /// THE OBLIGATED PARTY IS x1, in every spelling and at every arity.
@@ -211,7 +355,12 @@ mod tests {
         let duty = render("obliged(every data governs, event { message() }).");
         assert_eq!(
             duty,
-            "For every X, if X governs and X is data, then X is obligated to notify."
+            "For every X, if X governs and X is data, then X is obligated to notify.",
+            "{}",
+            render_logic_tree(
+                &compile_kr("obliged(every data governs, event { message() })."),
+                Register::Spec
+            )
         );
     }
 

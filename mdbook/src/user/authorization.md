@@ -2,7 +2,7 @@
 
 Nibli ships a **built-in authorization** surface: a versioned KR policy, fail-closed vocabulary, and a warm `Authorizer` that answers with ordinary entailment. Allow means the engine returned **TRUE** for `authorized(...)` — not a learned score, not an LLM.
 
-Code lives in **`nibli-auth`** (native), **`nibli:engine@0.11.0` `authorizer`** (WASM component export), optional Rust features (`axum`, `async-graphql`, `juniper`), and **`nibli-auth-py`** / **`python/nibli_auth`** (PyO3).
+Code lives in **`nibli-auth`** (native), **`nibli:engine@0.12.0` `authorizer`** (WASM component export), optional Rust features (`axum`, `async-graphql`, `juniper`), and **`nibli-auth-py`** / **`python/nibli_auth`** (PyO3).
 
 This page is **code-derived** (crates, policy file, examples). It is not the Orange AVA book manuscript.
 
@@ -116,7 +116,7 @@ Optional Cargo features on `nibli-auth`: `axum` (`Agent` header extractor, `requ
 
 ## WIT (WASM component)
 
-Package **`nibli:engine@0.11.0`** exports **`authorizer`** alongside `engine` (logical auth surface v0.1 in the single shipping package).
+Package **`nibli:engine@0.12.0`** exports **`authorizer`** alongside `engine` (logical auth surface v0.1 in the single shipping package).
 
 | WIT | Notes |
 |-----|--------|
@@ -164,7 +164,7 @@ Extism is **not** the primary interface. A future PDK could wrap the same `can` 
 | Layer | Version |
 |-------|---------|
 | Policy file / `POLICY_VERSION` | `0.1.0` |
-| WIT package | `nibli:engine@0.11.0` (authorizer export) |
+| WIT package | `nibli:engine@0.12.0` (authorizer export) |
 | Crate `nibli-auth` | workspace `0.1.0` (unpublished) |
 
 Do not invent predicates outside the fail-closed lexicon. Bump the policy version string when shipping incompatible rule changes.

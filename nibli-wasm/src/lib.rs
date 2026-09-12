@@ -161,9 +161,49 @@ impl Session {
     }
 
     /// Clear all facts and rules.
-    pub fn reset(&self) {
-        self.core.reset().ok();
+    pub fn reset(&self) -> Result<(), JsError> {
+        self.core.reset().map_err(|error| js_err(error.to_string()))
     }
+
+    /// Validate the JavaScript number before any integer coercion.
+    pub fn set_max_chain_depth(&self, depth: f64) -> Result<(), JsError> {
+        let depth = validate_depth(depth).map_err(js_err)?;
+        self.core
+            .set_max_chain_depth(depth)
+            .map_err(|error| js_err(error.to_string()))
+    }
+
+    pub fn max_chain_depth(&self) -> u32 {
+        self.core.max_chain_depth()
+    }
+
+    /// Retained assertion metadata. Decimal string IDs preserve all 64 bits in JSON.
+    pub fn list_assertion_records(&self) -> Result<String, JsError> {
+        let records = self
+            .core
+            .list_assertion_records()
+            .map_err(|error| js_err(error.to_string()))?;
+        let rows: Vec<_> = records
+            .iter()
+            .map(|record| {
+                serde_json::json!({
+                    "id": record.id.to_string(), "label": record.label,
+                    "status": match record.status {
+                        nibli_types::logic::AssertionStatus::Active => "active",
+                        nibli_types::logic::AssertionStatus::Withdrawn => "withdrawn",
+                    }
+                })
+            })
+            .collect();
+        Ok(serde_json::Value::Array(rows).to_string())
+    }
+}
+
+fn validate_depth(depth: f64) -> Result<u32, &'static str> {
+    if !depth.is_finite() || depth.fract() != 0.0 || depth < 1.0 || depth > u32::MAX as f64 {
+        return Err("reasoning depth must be an integer from 1 through 4294967295");
+    }
+    Ok(depth as u32)
 }
 
 fn js_err(msg: impl std::fmt::Display) -> JsError {
@@ -472,7 +512,7 @@ mod tests {
         // assertion; `every` reads as a universal "For every X, if … then …" rule.
         assert_eq!(
             super::back_translate_ir("obliged(some data governs, event { message() })."),
-            "X is obligated to govern, data, and notify."
+            "There exists X such that (X governs, X is data, and (X is obligated to notify))."
         );
         assert_eq!(
             super::back_translate_ir("obliged(every data governs, event { message() })."),
@@ -484,14 +524,14 @@ mod tests {
             super::back_translate_ir(
                 "obliged(every permitted, event { removes(removed: some data) })."
             ),
-            "For every X, if something permits X, then X is obligated to data and be erased."
+            "For every X, if something permits X, then X is obligated to an event described by (there exists Y such that (Y is data and something removes Y))."
         );
         assert_eq!(
             super::back_translate_ir(
                 "obliged(every ~permitted, event { removes(removed: some data) })."
             ),
-            "For every X, if it is not the case that something permits X, then X is \
-             obligated to data and be erased."
+            "For every X, if it is not the case that (something permits X), then X is \
+             obligated to an event described by (there exists Y such that (Y is data and something removes Y))."
         );
         // The corrected negated-restrictor rule compiles and enters the KB — the
         // "engine refuses to compile it" claim C19 used to make is stale.
@@ -502,5 +542,45 @@ mod tests {
                 .is_ok(),
             "negated-restrictor universal rule should assert, not be rejected"
         );
+    }
+}
+
+#[cfg(test)]
+mod lifecycle_api_tests {
+    use super::*;
+
+    #[test]
+    fn depth_validation_rejects_javascript_coercion_traps() {
+        for depth in [
+            0.0,
+            -1.0,
+            1.5,
+            f64::NAN,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            4294967296.0,
+        ] {
+            assert!(validate_depth(depth).is_err(), "{depth}");
+        }
+        assert_eq!(validate_depth(1.0), Ok(1));
+        assert_eq!(validate_depth(u32::MAX as f64), Ok(u32::MAX));
+    }
+
+    #[test]
+    fn history_json_keeps_large_ids_and_reset_keeps_depth() {
+        let session = Session::new();
+        session.set_max_chain_depth(17.0).unwrap();
+        session
+            .core
+            .restore_withdrawn_assertion(9007199254740993, "obsolete payload".into())
+            .unwrap();
+        let records: serde_json::Value =
+            serde_json::from_str(&session.list_assertion_records().unwrap()).unwrap();
+        assert_eq!(records[0]["id"], "9007199254740993");
+        assert_eq!(records[0]["status"], "withdrawn");
+        assert_eq!(session.list_facts().unwrap(), "[]");
+        session.reset().unwrap();
+        assert_eq!(session.max_chain_depth(), 17);
+        assert_eq!(session.list_assertion_records().unwrap(), "[]");
     }
 }

@@ -331,7 +331,10 @@ fn run_side(case: &MatCase, on: bool) -> Result<Vec<String>, String> {
     //   often, which is exactly the "OFF non-definitive → ON definitive" arm — the
     //   deliberate completeness gain this differential is supposed to exercise, not
     //   merely tolerate.
-    engine.kb().set_max_chain_depth(DIFF_CHAIN_DEPTH);
+    engine
+        .kb()
+        .set_max_chain_depth(DIFF_CHAIN_DEPTH.try_into().expect("depth fits u32"))
+        .expect("positive depth");
     for line in &case.kb {
         // An assert-time rejection (e.g. an arity clash the generator stumbled into) is
         // fine as long as BOTH sides reject it identically — materialisation is a

@@ -187,6 +187,15 @@ Use these assumptions when selecting entrypoints:
 
 ## Code Conventions
 
+Native contradiction gates use `check_contradictions_report()` and require both
+`violations` and `unresolved` to be empty (`is_clean()`). The older
+`check_contradictions()` exposes findings only and cannot prove scan completion.
+The report includes derived positive counterparts and integrity/disjunctive
+antecedents through the ordinary evaluator; it preserves generated witness
+identity internally and reports undecided or unsupported checks. This scans
+represented constraints, not unrestricted FOL consistency. Explicit negations
+preserve temporal/deontic flavor; opaque abstraction bodies remain quoted.
+
 - Semantic-compiler tests use `compile_one(predicates, arguments, proposition)` helper returning `(IrForm, SemanticCompiler)`
 - `resolve(&compiler, &spur)` helper to get string from interner in tests
 - The `Connective` enum (`And`/`Or`/`Iff`/`Xor`) is used only at the sentence level (`SentenceConnective::Afterthought`) — the argument/predicate connective variants were removed (dead capacity no emitter produced)

@@ -499,6 +499,8 @@ pub(super) struct ProjectedRule {
     pub(super) label: String,
     /// Positive body atoms, joined left to right.
     pub(super) positive: Vec<Atom>,
+    /// Constant/previously-bound positions, computed once with the rule plan.
+    bound_positions: Vec<Vec<usize>>,
     /// Negated body atoms, checked by lookup once the positives have bound everything.
     pub(super) negative: Vec<Atom>,
     /// Flat built-in conditions we know how to decide, with their negation flag.
@@ -629,6 +631,7 @@ pub(super) fn project_rule(rule: &UniversalRuleRecord) -> Result<ProjectedRule, 
 
     Ok(ProjectedRule {
         label,
+        bound_positions: bound_positions(&positive),
         positive,
         negative,
         builtins,
@@ -664,6 +667,28 @@ pub(super) struct Eligibility {
     pub(super) refused: HashMap<String, Ineligible>,
     /// The projected form of every rule that survived, keyed by head relation.
     pub(super) rules: HashMap<String, Vec<std::sync::Arc<ProjectedRule>>>,
+}
+
+/// Rule-only planning survives ordinary fact insertions and can be shared by
+/// independent snapshots. Stored-fact shape checks still run in `seed_edb` on
+/// every new or resumed materialization.
+pub(super) struct MaterializationPlan {
+    eligibility: Eligibility,
+    strata: Strata,
+}
+
+pub(super) fn materialization_plan(
+    inner: &KnowledgeBaseInner,
+) -> std::sync::Arc<MaterializationPlan> {
+    if let Some(plan) = inner.materialization_plan.borrow().as_ref() {
+        return std::sync::Arc::clone(plan);
+    }
+    let plan = std::sync::Arc::new(MaterializationPlan {
+        eligibility: eligible_relations(inner),
+        strata: compute_strata(&inner.pred_dep_graph),
+    });
+    *inner.materialization_plan.borrow_mut() = Some(std::sync::Arc::clone(&plan));
+    plan
 }
 
 /// Decide which surface relations can be saturated bottom-up.
@@ -788,7 +813,7 @@ pub(super) type Extensions = HashMap<String, HashSet<Vec<GroundTerm>>>;
 /// Test-only accounting for the combinatorial work performed while joining projected
 /// rule bodies. The release build keeps this as a zero-sized type, so profiling hooks
 /// cannot become part of the runtime cost or public API.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(super) struct MaterializationWork {
     #[cfg(test)]
     tuple_bind_attempts: HashMap<String, usize>,
@@ -843,10 +868,11 @@ impl MaterializationWork {
 /// stop-loss, not a correctness device: exceeding it abandons the stratum and leaves
 /// its relations INCOMPLETE, which means every NAF over them falls back to today's
 /// path. Deliberately generous — the shipped corpora derive in the hundreds.
-const MAX_MATERIALIZED_TUPLES: usize = 2_000_000;
+const MAX_MATERIALIZED_TUPLES: usize = crate::domain::MAX_INFERENCE_RECORDS;
 
 /// The result of a saturation: which relations were completed, their extensions, and
 /// why each of the others was not.
+#[derive(Clone)]
 pub(super) struct Materialized {
     pub(super) ext: Extensions,
     pub(super) complete: HashSet<String>,
@@ -1096,37 +1122,45 @@ fn builtin_holds(fact: &StoredFact, bindings: &HashMap<String, GroundTerm>) -> O
 /// reject (a different value at a bound position, or an arity too short to carry
 /// one) — soundness never depends on the bound-position analysis, only the
 /// speedup does, and an unexpectedly unbound "bound" variable falls open to the
-/// full scan. Rebuilt per [`eval_rule`] call, because `ext`/`delta` grow between
-/// rounds and `delta_pos` changes which source a level reads. Level 0 is never
+/// full scan. Maps are shared across levels and rules in one immutable round;
+/// full and delta extensions have separate keys. Level 0 is never
 /// indexed (it is visited exactly once, so a build costs what one scan costs).
 struct LevelIndex<'e> {
     bound_positions: Vec<usize>,
-    map: Option<HashMap<Vec<GroundTerm>, Vec<&'e Vec<GroundTerm>>>>,
+    map: Option<std::sync::Arc<TupleIndex<'e>>>,
 }
+
+type TupleIndex<'e> = HashMap<Vec<GroundTerm>, Vec<&'e Vec<GroundTerm>>>;
+type RoundIndexes<'e> = HashMap<(String, Vec<usize>, bool), std::sync::Arc<TupleIndex<'e>>>;
 
 /// The positions of `positive[i]`'s template bound when the walk reaches level
 /// `i`: constants always, and pattern variables that occur in an earlier
 /// positive atom. (A variable repeated within atom `i` itself binds DURING
 /// `bind_tuple`, not on entry — correctly excluded.)
-fn bound_positions_at(pr: &ProjectedRule, i: usize) -> Vec<usize> {
+fn bound_positions(positive: &[Atom]) -> Vec<Vec<usize>> {
     let mut earlier_vars: HashSet<&str> = HashSet::new();
-    for atom in &pr.positive[..i] {
+    let mut result = Vec::with_capacity(positive.len());
+    for (i, atom) in positive.iter().enumerate() {
+        result.push(if i == 0 {
+            Vec::new()
+        } else {
+            atom.values
+                .iter()
+                .enumerate()
+                .filter(|(_, v)| match v {
+                    GroundTerm::PatternVar(n) => earlier_vars.contains(n.as_str()),
+                    _ => true,
+                })
+                .map(|(position, _)| position)
+                .collect()
+        });
         for v in &atom.values {
             if let GroundTerm::PatternVar(n) = v {
                 earlier_vars.insert(n.as_str());
             }
         }
     }
-    pr.positive[i]
-        .values
-        .iter()
-        .enumerate()
-        .filter(|(_, v)| match v {
-            GroundTerm::PatternVar(n) => earlier_vars.contains(n.as_str()),
-            _ => true,
-        })
-        .map(|(p, _)| p)
-        .collect()
+    result
 }
 
 /// Evaluate one projected rule, appending every head tuple it derives.
@@ -1139,13 +1173,14 @@ fn bound_positions_at(pr: &ProjectedRule, i: usize) -> Vec<usize> {
 /// Join levels beyond the first are INDEXED on their statically bound positions
 /// (see [`LevelIndex`]): a transitive-closure shape that scanned O(|R|²) tuples
 /// per round now touches O(|R| · fanout).
-fn eval_rule(
+fn eval_rule<'e>(
     pr: &ProjectedRule,
-    ext: &Extensions,
-    delta: &Extensions,
+    ext: &'e Extensions,
+    delta: &'e Extensions,
     delta_pos: Option<usize>,
     out: &mut Vec<(String, Vec<GroundTerm>)>,
     work: &mut MaterializationWork,
+    shared_indexes: &mut RoundIndexes<'e>,
 ) {
     // ONE binding map for the whole walk, extended and unwound in place.
     //
@@ -1172,6 +1207,7 @@ fn eval_rule(
         out: &mut Vec<(String, Vec<GroundTerm>)>,
         work: &mut MaterializationWork,
         indexes: &mut [LevelIndex<'e>],
+        shared_indexes: &mut RoundIndexes<'e>,
     ) {
         if i == pr.positive.len() {
             // Built-ins first: they are the cheapest and often the most selective
@@ -1224,27 +1260,43 @@ fn eval_rule(
             if let Some(key) = key {
                 if indexes[i].map.is_none() {
                     let positions = indexes[i].bound_positions.clone();
-                    let mut map: HashMap<Vec<GroundTerm>, Vec<&'e Vec<GroundTerm>>> =
-                        HashMap::new();
-                    for tuple in tuples {
-                        // A tuple too short to carry a bound position can never
-                        // pass bind_tuple's arity check — soundly excluded.
-                        if let Some(k) = positions
-                            .iter()
-                            .map(|&p| tuple.get(p).cloned())
-                            .collect::<Option<Vec<_>>>()
-                        {
-                            map.entry(k).or_default().push(tuple);
+                    let index_key = (
+                        atom.relation.clone(),
+                        positions.clone(),
+                        delta_pos == Some(i),
+                    );
+                    let map = shared_indexes.entry(index_key).or_insert_with(|| {
+                        let mut map: TupleIndex<'e> = HashMap::new();
+                        for tuple in tuples {
+                            // Short tuples could never pass bind_tuple's arity check.
+                            if let Some(k) = positions
+                                .iter()
+                                .map(|&p| tuple.get(p).cloned())
+                                .collect::<Option<Vec<_>>>()
+                            {
+                                map.entry(k).or_default().push(tuple);
+                            }
                         }
-                    }
-                    indexes[i].map = Some(map);
+                        std::sync::Arc::new(map)
+                    });
+                    indexes[i].map = Some(std::sync::Arc::clone(map));
                 }
                 let map = indexes[i].map.take().expect("index map was just built");
                 if let Some(bucket) = map.get(&key) {
                     for tuple in bucket {
                         try_tuple(
-                            pr, ext, delta, delta_pos, i, tuple, bindings, trail, out, work,
+                            pr,
+                            ext,
+                            delta,
+                            delta_pos,
+                            i,
+                            tuple,
+                            bindings,
+                            trail,
+                            out,
+                            work,
                             indexes,
+                            shared_indexes,
                         );
                     }
                 }
@@ -1257,7 +1309,18 @@ fn eval_rule(
         }
         for tuple in tuples {
             try_tuple(
-                pr, ext, delta, delta_pos, i, tuple, bindings, trail, out, work, indexes,
+                pr,
+                ext,
+                delta,
+                delta_pos,
+                i,
+                tuple,
+                bindings,
+                trail,
+                out,
+                work,
+                indexes,
+                shared_indexes,
             );
         }
     }
@@ -1280,6 +1343,7 @@ fn eval_rule(
         out: &mut Vec<(String, Vec<GroundTerm>)>,
         work: &mut MaterializationWork,
         indexes: &mut [LevelIndex<'e>],
+        shared_indexes: &mut RoundIndexes<'e>,
     ) {
         let atom = &pr.positive[i];
         work.note_tuple_bind_attempt(pr);
@@ -1300,6 +1364,7 @@ fn eval_rule(
                 out,
                 work,
                 indexes,
+                shared_indexes,
             );
         }
         // UNCONDITIONAL, and outside the `if` on purpose: `bind_tuple` binds as it
@@ -1318,14 +1383,11 @@ fn eval_rule(
     }
     let mut bindings: HashMap<String, GroundTerm> = HashMap::new();
     let mut trail: Vec<&str> = Vec::new();
-    let mut indexes: Vec<LevelIndex> = (0..pr.positive.len())
-        .map(|i| LevelIndex {
-            // Level 0 is visited once — building would cost what one scan costs.
-            bound_positions: if i == 0 {
-                Vec::new()
-            } else {
-                bound_positions_at(pr, i)
-            },
+    let mut indexes: Vec<LevelIndex> = pr
+        .bound_positions
+        .iter()
+        .map(|positions| LevelIndex {
+            bound_positions: positions.clone(),
             map: None,
         })
         .collect();
@@ -1340,6 +1402,7 @@ fn eval_rule(
         out,
         work,
         &mut indexes,
+        shared_indexes,
     );
     debug_assert!(
         bindings.is_empty() && trail.is_empty(),
@@ -1382,9 +1445,20 @@ fn semi_naive_stratum(
     let mut all_derived: Extensions = Extensions::new();
     loop {
         let mut produced: Vec<(String, Vec<GroundTerm>)> = Vec::new();
+        // These maps borrow exactly this round's immutable full/delta tuples.
+        // Drop them before installing newly produced tuples below.
+        let mut shared_indexes = RoundIndexes::new();
         for pr in stratum_rules {
             if round == 0 {
-                eval_rule(pr, ext, &delta, None, &mut produced, work);
+                eval_rule(
+                    pr,
+                    ext,
+                    &delta,
+                    None,
+                    &mut produced,
+                    work,
+                    &mut shared_indexes,
+                );
             } else {
                 for pos in 0..pr.positive.len() {
                     // Skip positions whose relation gained nothing last round —
@@ -1395,10 +1469,19 @@ fn semi_naive_stratum(
                     {
                         continue;
                     }
-                    eval_rule(pr, ext, &delta, Some(pos), &mut produced, work);
+                    eval_rule(
+                        pr,
+                        ext,
+                        &delta,
+                        Some(pos),
+                        &mut produced,
+                        work,
+                        &mut shared_indexes,
+                    );
                 }
             }
         }
+        drop(shared_indexes);
         let mut next: Extensions = Extensions::new();
         let mut overflowed = false;
         for (rel, tuple) in produced {
@@ -2045,14 +2128,13 @@ pub(super) fn ensure_materialized_targets(
         .as_ref()
         .is_some_and(|m| !m.grew.is_empty());
     if dirty {
-        let eligibility = eligible_relations(inner);
-        let strata = compute_strata(&inner.pred_dep_graph);
+        let plan = materialization_plan(inner);
         // Taken OUT for the duration: `resume_with_delta`'s debug verification
         // recomputes through `saturate`, and nothing may read a half-folded cache.
         let mut taken = inner.materialized.borrow_mut().take();
         let resumed = taken
             .as_mut()
-            .is_some_and(|m| resume_with_delta(inner, &eligibility, &strata, m));
+            .is_some_and(|m| resume_with_delta(inner, &plan.eligibility, &plan.strata, m));
         if resumed {
             *inner.materialized.borrow_mut() = taken;
         }
@@ -2079,9 +2161,8 @@ pub(super) fn ensure_materialized_targets(
 
     let mut cumulative = targets.clone();
     cumulative.extend(previous_targets);
-    let eligibility = eligible_relations(inner);
-    let strata = compute_strata(&inner.pred_dep_graph);
-    let materialized = saturate(inner, &eligibility, &strata, &cumulative);
+    let plan = materialization_plan(inner);
+    let materialized = saturate(inner, &plan.eligibility, &plan.strata, &cumulative);
     *inner.materialized.borrow_mut() = Some(materialized);
     true
 }

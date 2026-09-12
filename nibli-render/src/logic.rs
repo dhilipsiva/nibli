@@ -21,15 +21,6 @@ fn is_abstraction_scaffold(rel: &str) -> bool {
     matches!(rel, "event" | "fact" | "property" | "amount" | "concept")
 }
 
-/// Deontic duty heads. The compiled base is always `obliged`, whose corpus places are
-/// `[bound, duty, standard]` — so the OBLIGATED PARTY IS x1. `obligated_by` is the
-/// converted alias: it never survives compilation (nibli-kr lowers it to `obliged` with
-/// the places swapped), so a `FrameAcc` carrying that base can only be the synthetic
-/// frame [`collapse_deontic_event_duties`] builds below.
-fn is_deontic_duty_rel(rel: &str) -> bool {
-    matches!(rel, "obligated_by" | "obliged")
-}
-
 /// Render a compiled `LogicBuffer` as readable English.
 ///
 /// Each root becomes one sentence (capitalized, terminated with `.`).
@@ -48,7 +39,7 @@ pub fn render_logic_buffer(buf: &LogicBuffer, register: Register) -> String {
 /// tree with functional term notation — the `[Logic]` half of `:debug`.
 ///
 /// Unlike [`render_logic_buffer`] (which regroups Neo-Davidsonian role predicates
-/// into event place-frames and flattens And/Exists for readable English), this
+/// into event place-frames and elides their private event binders), this
 /// shows every node verbatim, so the reader sees the exact compiled FOL shape.
 /// The tree is always structural; `_register` is accepted only for signature
 /// symmetry with [`render_logic_buffer`] and is ignored. No LISP S-expression is
@@ -149,6 +140,9 @@ struct Ctx {
     #[allow(dead_code)]
     register: Register,
     var_names: HashMap<String, String>,
+    /// Only a locally bound abstraction used exclusively as an obligation's duty
+    /// can be inlined. The key is its referent, never a nearby predicate's name.
+    duty_contents: HashMap<String, String>,
 }
 
 impl Ctx {
@@ -156,6 +150,7 @@ impl Ctx {
         Ctx {
             register,
             var_names: HashMap::new(),
+            duty_contents: HashMap::new(),
         }
     }
 
@@ -181,23 +176,27 @@ fn render_node(buf: &LogicBuffer, id: u32, ctx: &mut Ctx) -> String {
     };
     match node {
         LogicNode::ForAllNode((var, body)) => render_forall(buf, var, *body, ctx),
+        LogicNode::ExistsNode((var, body)) => render_exists(buf, var, *body, ctx),
         LogicNode::CountNode((var, count, body)) => {
-            let _ = ctx.var_name(var);
+            let x = ctx.var_name(var);
             format!(
-                "exactly {} things are such that {}",
+                "exactly {} values of {x} satisfy ({})",
                 count,
                 render_node(buf, *body, ctx)
             )
         }
         LogicNode::OrNode((l, r)) => {
             format!(
-                "either {} or {}",
+                "either ({}) or ({})",
                 render_node(buf, *l, ctx),
                 render_node(buf, *r, ctx)
             )
         }
         LogicNode::NotNode(inner) => {
-            format!("it is not the case that {}", render_node(buf, *inner, ctx))
+            format!(
+                "it is not the case that ({})",
+                render_node(buf, *inner, ctx)
+            )
         }
         LogicNode::PastNode(inner) => format!("in the past, {}", render_node(buf, *inner, ctx)),
         LogicNode::PresentNode(inner) => format!("currently, {}", render_node(buf, *inner, ctx)),
@@ -208,13 +207,250 @@ fn render_node(buf: &LogicBuffer, id: u32, ctx: &mut Ctx) -> String {
         LogicNode::PermittedNode(inner) => {
             format!("it is permitted that {}", render_node(buf, *inner, ctx))
         }
-        // Conjunctions, existentials, and bare predicates all flatten into a set
-        // of event frames rendered together.
-        LogicNode::AndNode(_)
-        | LogicNode::ExistsNode(_)
-        | LogicNode::Predicate(_)
-        | LogicNode::ComputeNode(_) => render_conjunction(buf, id, ctx),
+        // Only conjunctions and private event binders flatten into frames.
+        LogicNode::AndNode(_) | LogicNode::Predicate(_) | LogicNode::ComputeNode(_) => {
+            render_conjunction(buf, id, ctx)
+        }
     }
+}
+
+fn render_exists(buf: &LogicBuffer, var: &str, body: u32, ctx: &mut Ctx) -> String {
+    if is_private_event(buf, var, body) {
+        return render_node(buf, body, ctx);
+    }
+    if let Some(abstraction) = inline_duty_abstraction(buf, var, body) {
+        let content = render_duty_content(buf, &abstraction, ctx);
+        let previous = ctx.duty_contents.insert(var.to_owned(), content);
+        let rendered = render_node(buf, body, ctx);
+        if let Some(previous) = previous {
+            ctx.duty_contents.insert(var.to_owned(), previous);
+        } else {
+            ctx.duty_contents.remove(var);
+        }
+        return rendered;
+    }
+    let x = ctx.var_name(var);
+    format!(
+        "there exists {x} such that ({})",
+        render_node(buf, body, ctx)
+    )
+}
+
+/// An event binder is implicit only for Neo-Davidsonian frame bookkeeping. Merely
+/// having an `_ev`-shaped name is insufficient: a term used in a filled place
+/// must retain its visible binder. Compound predicates can share bookkeeping.
+fn is_private_event(buf: &LogicBuffer, var: &str, body: u32) -> bool {
+    fn collect<'a>(
+        buf: &'a LogicBuffer,
+        id: u32,
+        out: &mut Vec<(&'a str, &'a [LogicalTerm])>,
+    ) -> bool {
+        match buf.nodes.get(id as usize) {
+            Some(LogicNode::AndNode((l, r))) => collect(buf, *l, out) && collect(buf, *r, out),
+            Some(LogicNode::Predicate((rel, args)) | LogicNode::ComputeNode((rel, args))) => {
+                out.push((rel, args));
+                true
+            }
+            _ => false,
+        }
+    }
+    let mut preds = Vec::new();
+    if !collect(buf, body, &mut preds) {
+        return false;
+    }
+    let bases: Vec<_> = preds
+        .iter()
+        .filter_map(|(rel, args)| {
+            (role_base(rel).is_none() && matches!(args, [LogicalTerm::Variable(v)] if v == var))
+                .then_some(*rel)
+        })
+        .collect();
+    !bases.is_empty()
+        && bases.iter().all(|base| preds.iter().any(|(rel, _)| role_base(rel) == Some(*base)))
+        && preds.iter().all(|(rel, args)| {
+            if bases.contains(rel) {
+                return matches!(args, [LogicalTerm::Variable(v)] if v == var);
+            }
+            role_base(rel).is_some()
+                && matches!(args, [LogicalTerm::Variable(v), filler] if v == var && !matches!(filler, LogicalTerm::Variable(v) if v == var))
+        })
+}
+
+struct Abstraction<'a> {
+    kind: &'a str,
+    referent: &'a LogicalTerm,
+    body: u32,
+}
+
+/// Recognize the compiler's explicit opacity boundary, rather than guessing
+/// that every predicate near an `event` scaffold belongs to its quoted body.
+fn abstraction_package(buf: &LogicBuffer, id: u32) -> Option<Abstraction<'_>> {
+    let LogicNode::AndNode((type_id, rest)) = buf.nodes.get(id as usize)? else {
+        return None;
+    };
+    let LogicNode::Predicate((kind, args)) = buf.nodes.get(*type_id as usize)? else {
+        return None;
+    };
+    let [referent] = args.as_slice() else {
+        return None;
+    };
+    if !is_abstraction_scaffold(kind) {
+        return None;
+    }
+    let LogicNode::AndNode((marker_id, body)) = buf.nodes.get(*rest as usize)? else {
+        return None;
+    };
+    let LogicNode::Predicate((marker, marker_args)) = buf.nodes.get(*marker_id as usize)? else {
+        return None;
+    };
+    (crate::is_internal_relation(marker) && marker_args.as_slice() == [referent.clone()]).then_some(
+        Abstraction {
+            kind,
+            referent,
+            body: *body,
+        },
+    )
+}
+
+fn uses_variable(buf: &LogicBuffer, id: u32, var: &str) -> bool {
+    match buf.nodes.get(id as usize) {
+        Some(LogicNode::Predicate((_, args)) | LogicNode::ComputeNode((_, args))) => args
+            .iter()
+            .any(|t| matches!(t, LogicalTerm::Variable(v) if v == var)),
+        Some(LogicNode::AndNode((l, r)) | LogicNode::OrNode((l, r))) => {
+            uses_variable(buf, *l, var) || uses_variable(buf, *r, var)
+        }
+        Some(LogicNode::ExistsNode((_, body)) | LogicNode::ForAllNode((_, body)))
+        | Some(LogicNode::CountNode((_, _, body)))
+        | Some(
+            LogicNode::NotNode(body)
+            | LogicNode::PastNode(body)
+            | LogicNode::PresentNode(body)
+            | LogicNode::FutureNode(body)
+            | LogicNode::ObligatoryNode(body)
+            | LogicNode::PermittedNode(body),
+        ) => uses_variable(buf, *body, var),
+        None => false,
+    }
+}
+
+fn inline_duty_abstraction<'a>(
+    buf: &'a LogicBuffer,
+    var: &str,
+    body: u32,
+) -> Option<Abstraction<'a>> {
+    fn visit<'a>(
+        buf: &'a LogicBuffer,
+        id: u32,
+        var: &str,
+        found: &mut Option<Abstraction<'a>>,
+        uses: &mut usize,
+    ) -> bool {
+        if let Some(abstraction) = abstraction_package(buf, id) {
+            if matches!(abstraction.referent, LogicalTerm::Variable(v) if v == var) {
+                if found.is_some() || uses_variable(buf, abstraction.body, var) {
+                    return false;
+                }
+                *found = Some(abstraction);
+                return true;
+            }
+            return !uses_variable(buf, id, var);
+        }
+        match buf.nodes.get(id as usize) {
+            Some(LogicNode::AndNode((l, r))) => {
+                visit(buf, *l, var, found, uses) && visit(buf, *r, var, found, uses)
+            }
+            Some(LogicNode::ExistsNode((event_var, inner)))
+                if is_private_event(buf, event_var, *inner) =>
+            {
+                visit(buf, *inner, var, found, uses)
+            }
+            Some(LogicNode::Predicate((rel, args)))
+                if (rel == "obliged_x2"
+                    && matches!(args.as_slice(), [_, LogicalTerm::Variable(v)] if v == var))
+                    || (rel == "obliged"
+                        && matches!(args.get(1), Some(LogicalTerm::Variable(v)) if v == var)) =>
+            {
+                if args
+                    .iter()
+                    .enumerate()
+                    .any(|(i, t)| i != 1 && matches!(t, LogicalTerm::Variable(v) if v == var))
+                {
+                    return false;
+                }
+                *uses += 1;
+                true
+            }
+            _ => !uses_variable(buf, id, var),
+        }
+    }
+    let mut found = None;
+    let mut uses = 0;
+    if visit(buf, body, var, &mut found, &mut uses) && uses > 0 {
+        found
+    } else {
+        None
+    }
+}
+
+fn render_duty_content(buf: &LogicBuffer, abstraction: &Abstraction<'_>, ctx: &mut Ctx) -> String {
+    fn simple_predicates(
+        buf: &LogicBuffer,
+        id: u32,
+        out: &mut Vec<(String, Vec<LogicalTerm>)>,
+    ) -> bool {
+        match buf.nodes.get(id as usize) {
+            Some(LogicNode::AndNode((l, r))) => {
+                simple_predicates(buf, *l, out) && simple_predicates(buf, *r, out)
+            }
+            Some(LogicNode::ExistsNode((var, body))) if is_private_event(buf, var, *body) => {
+                simple_predicates(buf, *body, out)
+            }
+            Some(LogicNode::Predicate((rel, args))) if !crate::is_internal_relation(rel) => {
+                out.push((rel.clone(), args.clone()));
+                true
+            }
+            _ => false,
+        }
+    }
+    let mut preds = Vec::new();
+    if abstraction.kind == "event" && simple_predicates(buf, abstraction.body, &mut preds) {
+        let frames = collect_frames(&preds);
+        // Infinitives are safe only for anonymous, positive, unqualified calls.
+        // Filled places and any quantifier/negation retain the complete clause.
+        if !frames.is_empty()
+            && frames.iter().all(|frame| {
+                frame.has_roles
+                    && frame
+                        .places
+                        .values()
+                        .all(|t| matches!(t, LogicalTerm::Unspecified))
+            })
+        {
+            return join_clauses(
+                &frames
+                    .iter()
+                    .map(|frame| deontic_content_phrase(&frame.base))
+                    .collect::<Vec<_>>(),
+            );
+        }
+    }
+    format!(
+        "{} described by ({})",
+        abstraction_noun(abstraction.kind),
+        render_node(buf, abstraction.body, ctx)
+    )
+}
+
+fn abstraction_noun(kind: &str) -> String {
+    format!(
+        "{} {kind}",
+        if matches!(kind, "event" | "amount") {
+            "an"
+        } else {
+            "a"
+        }
+    )
 }
 
 /// A universal: `∀var. body`, where `body` is usually the material conditional
@@ -232,8 +468,8 @@ fn render_forall(buf: &LogicBuffer, var: &str, body: u32, ctx: &mut Ctx) -> Stri
     format!("for every {x}, {inner}")
 }
 
-/// Collect every predicate reachable through And/Exists from `id` into event
-/// frames, render each, and conjoin them with any non-predicate sub-clauses.
+/// Collect predicates within this conjunction into event frames. Individual
+/// binders and opaque abstraction contents remain separate clauses.
 fn render_conjunction(buf: &LogicBuffer, id: u32, ctx: &mut Ctx) -> String {
     let mut preds: Vec<(String, Vec<LogicalTerm>)> = Vec::new();
     let mut extras: Vec<String> = Vec::new();
@@ -251,6 +487,19 @@ fn collect(
     preds: &mut Vec<(String, Vec<LogicalTerm>)>,
     extras: &mut Vec<String>,
 ) {
+    if let Some(abstraction) = abstraction_package(buf, id) {
+        if matches!(abstraction.referent, LogicalTerm::Variable(var) if ctx.duty_contents.contains_key(var))
+        {
+            return;
+        }
+        let referent = render_term(abstraction.referent, ctx).unwrap_or_else(|| "something".into());
+        extras.push(format!(
+            "{referent} is {} described by ({})",
+            abstraction_noun(abstraction.kind),
+            render_node(buf, abstraction.body, ctx)
+        ));
+        return;
+    }
     let Some(node) = buf.nodes.get(id as usize) else {
         return;
     };
@@ -259,9 +508,9 @@ fn collect(
             collect(buf, *l, ctx, preds, extras);
             collect(buf, *r, ctx, preds, extras);
         }
-        // Existential binders (event vars, witnesses) are transparent for frame
-        // collection — descend into the body.
-        LogicNode::ExistsNode((_var, body)) => collect(buf, *body, ctx, preds, extras),
+        LogicNode::ExistsNode((var, body)) if is_private_event(buf, var, *body) => {
+            collect(buf, *body, ctx, preds, extras)
+        }
         LogicNode::Predicate((rel, args)) | LogicNode::ComputeNode((rel, args)) => {
             // The opaque abstraction marker (`__abs_<id>`) is an internal
             // reasoning artifact, not surface content — never render it.
@@ -272,7 +521,7 @@ fn collect(
         }
         // Any logical structure nested inside the conjunction is rendered as its
         // own clause and conjoined.
-        _ => extras.push(render_node(buf, id, ctx)),
+        _ => extras.push(format!("({})", render_node(buf, id, ctx))),
     }
 }
 
@@ -298,6 +547,14 @@ fn term_key(t: Option<&LogicalTerm>) -> String {
 }
 
 fn build_frames(preds: &[(String, Vec<LogicalTerm>)], ctx: &mut Ctx) -> Vec<String> {
+    collect_frames(preds)
+        .into_iter()
+        .map(|acc| render_frame(&acc, ctx))
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+fn collect_frames(preds: &[(String, Vec<LogicalTerm>)]) -> Vec<FrameAcc> {
     let mut order: Vec<(String, String)> = Vec::new();
     let mut map: HashMap<(String, String), FrameAcc> = HashMap::new();
 
@@ -336,102 +593,32 @@ fn build_frames(preds: &[(String, Vec<LogicalTerm>)], ctx: &mut Ctx) -> Vec<Stri
         }
     }
 
-    let accs: Vec<FrameAcc> = order
+    order
         .into_iter()
         .filter_map(|key| map.remove(&key))
-        .collect();
-    let accs = collapse_deontic_event_duties(accs);
-    accs.into_iter()
-        .map(|acc| render_frame(&acc, ctx))
-        .filter(|s| !s.is_empty())
         .collect()
 }
 
-/// Collapse `obliged(person, event { P() })` packaging:
-///   event(Y) ∧ P(…) ∧ obliged(Y, X)  →  "X is obligated to be P"
-/// without the word-salad "Y is event and Y is obligated to X".
-fn collapse_deontic_event_duties(accs: Vec<FrameAcc>) -> Vec<FrameAcc> {
-    let has_scaffold = accs.iter().any(|a| is_abstraction_scaffold(&a.base));
-    let has_deontic = accs.iter().any(|a| is_deontic_duty_rel(&a.base));
-    if !has_scaffold || !has_deontic {
-        return accs;
-    }
-
-    let content: Vec<String> = accs
-        .iter()
-        .filter(|a| !is_deontic_duty_rel(&a.base) && !is_abstraction_scaffold(&a.base))
-        .map(|a| deontic_content_phrase(&a.base))
-        .collect();
-    if content.is_empty() {
-        return accs;
-    }
-    let content_joined = match content.len() {
-        1 => content[0].clone(),
-        2 => format!("{} and {}", content[0], content[1]),
-        _ => {
-            let head = &content[..content.len() - 1];
-            format!("{}, and {}", head.join(", "), content[content.len() - 1])
-        }
-    };
-
-    // One rewritten deontic frame per original deontic (usually one). The SYNTHETIC
-    // frame has its own place convention — place 1 is the English content phrase (a
-    // constant so fill_template still works), place 2 the obligated party — which is
-    // the inverse of the compiled `obliged` it replaces. `obligated_by` is the marker
-    // for that convention; nothing else produces it.
-    let mut out = Vec::new();
-    for acc in &accs {
-        if !is_deontic_duty_rel(&acc.base) {
-            continue;
-        }
-        // x1 is the BOUND PARTY (`obliged` places are `[bound, duty, standard]`), and
-        // both spellings compile to `obliged` — so the duty-holder is place 1 for the
-        // plain spelling and, after nibli-kr's swap, place 1 for the converted one too.
-        // Reading place 2 here took the DUTY as the obligated party, which is why
-        // `obliged(every data governs, event { message() })` back-translated as "then Y
-        // is obligated to notify" — a variable bound to nothing.
-        let who = acc
-            .places
-            .get(&1)
-            .cloned()
-            .or_else(|| acc.flat_args.first().cloned());
-        let mut places = HashMap::new();
-        places.insert(1, LogicalTerm::Constant(content_joined.clone()));
-        if let Some(w) = who {
-            places.insert(2, w);
-        }
-        out.push(FrameAcc {
-            base: "obligated_by".into(),
-            places,
-            flat_args: Vec::new(),
-            has_roles: true,
-        });
-    }
-    // Prefer the collapsed form; if we somehow found no deontic heads, fall back.
-    if out.is_empty() { accs } else { out }
-}
-
 fn render_frame(acc: &FrameAcc, ctx: &mut Ctx) -> String {
-    // The SYNTHETIC collapse frame (and only it) stores the content phrase as a
-    // place-1 constant and the obligated party as place-2 — render with a dedicated
-    // template so we get "X is obligated to be secure", not "X is obligated that be
-    // secure". Keyed on the `obligated_by` marker rather than on "is this deontic":
-    // a genuine compiled `obliged(Adam, Bel)` also has a place-1 constant and a
-    // place-2, and this branch would have read it in the synthetic order and rendered
-    // "Bel is obligated to Adam". It falls through to the corpus template instead.
-    if acc.base == "obligated_by"
-        && let (Some(LogicalTerm::Constant(content)), Some(who_term)) =
-            (acc.places.get(&1), acc.places.get(&2))
-        && let Some(who) = render_term(who_term, ctx)
-    {
-        // Content phrases we synthesized start with "be " / bare verb — use "to".
-        if content.starts_with("be ")
-            || !content.contains(" is ")
-                && !content.chars().next().is_some_and(|c| c.is_uppercase())
+    if acc.base == "obliged" {
+        let duty = if acc.has_roles {
+            acc.places.get(&2)
+        } else {
+            acc.flat_args.get(1)
+        };
+        if let Some(LogicalTerm::Variable(var)) = duty
+            && let Some(content) = ctx.duty_contents.get(var).cloned()
         {
+            let party = if acc.has_roles {
+                acc.places.get(&1)
+            } else {
+                acc.flat_args.first()
+            };
+            let who = party
+                .and_then(|term| render_term(term, ctx))
+                .unwrap_or_else(|| "something".into());
             return format!("{who} is obligated to {content}");
         }
-        return format!("{who} is obligated that {content}");
     }
     let places: Vec<Option<String>> = if acc.has_roles {
         let max_idx = acc.places.keys().copied().max().unwrap_or(0);

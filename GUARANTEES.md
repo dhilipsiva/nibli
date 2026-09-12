@@ -130,7 +130,23 @@ The proofs are model-level (the perfect model is *characterized* by axioms, not 
 
 ## Resource Limits
 
-**Backward-chaining depth:** Configurable `max_chain_depth` (default 10; set via `KnowledgeBase::set_max_chain_depth` — the shipped runtime surfaces keep the default). Iterative deepening tries 1..=max_chain_depth. Exceeding returns `ResourceExceeded(Depth)`.
+**Backward-chaining depth:** Configurable positive `max_chain_depth` (default 10).
+Native, session, WIT and browser APIs expose a checked setter and getter; both
+REPLs expose `:depth [N]`, and `NIBLI_MAX_CHAIN_DEPTH` sets CLI startup. Zero and
+out-of-range values are rejected. The setting survives reset, retraction,
+import-profile rebuild and host recovery. Iterative deepening tries
+1..=max_chain_depth; an exhausted proof search returns `ResourceExceeded(Depth)`.
+Materialization can independently settle an eligible query.
+
+**Generated individual domain:** Rule templates are activated only when their
+premises hold. Query-local closure supports finite nested witness chains, uses
+source-typed identities with equality-normalized dependencies, and shares its
+completeness state across existential, universal, exact-count and enumeration
+queries. The depth setting also bounds generated dependency height. An unfinished
+closure refuses complete witness collections and definitive completeness claims;
+an already established positive existential may still succeed. Closure shares
+the engine's 2,000,000-record stop limit and cooperative cancellation. Query-local
+membership is never persisted as an asserted fact.
 
 **WASM fuel:** Wasmtime fuel-based execution limits prevent unbounded computation. Configurable via `NIBLI_FUEL` env var or `:fuel` REPL command. Exceeding returns `ResourceExceeded(Fuel)`.
 
@@ -142,9 +158,22 @@ The proofs are model-level (the perfect model is *characterized* by axioms, not 
 
 ## Retraction Model
 
+**Retained assertions:** `list_assertion_records` and `:facts --all` show active
+and withdrawn records with stable IDs and labels. Reopening reserves withdrawn
+IDs without decoding obsolete payloads. Only active compiled records contribute
+premises. Reset clears both states; private assumptions do not add live records.
+This is retained metadata, not a complete audit chronology.
+
+**Atomic mutation:** A single text assertion stages every root together, commits
+the authoritative registry, then publishes the candidate into the existing KB
+identity. Admission and precommit failures preserve prior state. Retraction and
+reset use the same boundary. An ambiguous durable commit makes the live instance
+unavailable until fresh open, including existing exposed KB handles; typed-store
+mirror failures cannot turn a committed logical mutation into a rejection.
+
 **One path — rebuild:** Retraction marks the registry record retracted and rebuilds from the surviving records: O(total_non_retracted_facts), guaranteed correct, identity equivalence and every derived index re-derived by replay. The former "incremental O(1)" branch for simple ground facts was RETIRED 2026-08-01: it was never O(1) (preserving fact multiplicity already walked every surviving record), and it could not maintain retract ≡ never-asserted for the QUANTIFIER DOMAIN — the noted sets (`known_entities`/`known_descriptions`/`known_numbers`) are insert-only, precise un-noting needs cross-record reference counting plus the witness entities minted outside record buffers, so a retracted flat `Adam = Bel.` left both names as domain members and a bare `all $x: p($x).` reported a counterexample the store no longer contained — and once asserted numbers joined the domain, a lingering number satisfied arithmetic bodies with NO store backing at all (a wrong definitive verdict, not just a stale member). The guarantee is checked metamorphically at scale (`nibli-verify/src/retract_diff.rs`, part of `just verify-soundness`): seeded random op sequences mix ground (entity AND numeric), existential, rule, identity, and stratified-NAF asserts with retractions of random earlier ops, and after EVERY retraction the engine must answer a battery of GROUND and QUANTIFIED rows (bare universals, an exact count, and an arithmetic universal satisfiable by numbers only) byte-identically to a fresh engine that asserted only the surviving lines — retract ≡ never-asserted. The quantified rows are load-bearing: only they read the domain-member caches, and their addition is what caught the incremental branch (22/200 sequences diverged) plus a stale-cache hole in `rebuild_inner` itself (a replay of ZERO surviving records re-noted nothing, so a warmed member cache survived a full erasure — both pinned by `retracting_a_flat_number_fact_removes_it_from_the_domain` and `rebuild_path_retraction_does_not_serve_stale_domain_members`).
 
-**Public rebuild:** `KnowledgeBase::rebuild()` forces a full rebuild — available as a consistency check or recovery mechanism.
+**Public rebuild:** `KnowledgeBase::rebuild()` atomically replays a ready KB as a consistency check. An uncertain durable commit requires fresh open; rebuilding a poisoned live instance is refused.
 
 **An in-cone insert is folded in, not recomputed.** A stored tuple arriving inside the cone marks the saturation grown; the next query re-enters the semi-naive fixpoint from that delta (`resume_with_delta`) rather than rebuilding the model, carrying each stratum's derivations upward. The resume REFUSES — falling back to a full recompute, never to a weaker claim — on an equality class, on any relation read under NEGATION (growth through a negated condition shrinks the model, so it is not monotone), on a completed relation that can no longer be seeded, on an arity disagreement, and on budget exhaustion. In debug builds every fold is verified against a full recompute, so the entire test suite and the interleaved ON/OFF differential double as gates on the incremental path.
 

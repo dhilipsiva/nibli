@@ -180,7 +180,12 @@ pub fn run_lines(
     cfg: &OracleConfig,
 ) -> Outcome {
     let name = name.to_string();
-    engine.reset();
+    if let Err(error) = engine.reset() {
+        return Outcome::Error {
+            name,
+            error: format!("reset: {error}"),
+        };
+    }
 
     // 1. Source-level negation pre-filter (KB + query). A rule's implication arrow and
     //    a genuine `na` both flatten to `Not`, so genuine negation is caught here.
@@ -660,7 +665,12 @@ pub fn run_lines_asp(
     cfg: &AspConfig,
 ) -> Outcome {
     let name = name.to_string();
-    engine.reset();
+    if let Err(error) = engine.reset() {
+        return Outcome::Error {
+            name,
+            error: format!("reset: {error}"),
+        };
+    }
 
     // 1. Assert the KB, capturing each statement's compiled buffer for translation. (An
     //    unstratifiable rule errors here — nibli rejects it at assert time — so only
@@ -870,7 +880,7 @@ mod tests {
             "an oracle-side universal must not mint a witness"
         );
 
-        engine.reset();
+        engine.reset().unwrap();
         assert!(!engine.is_existential_import());
         engine.assert_text("animal(every dog).").unwrap();
         assert_eq!(engine.count_witnesses_text("dog($d).").unwrap(), 0);

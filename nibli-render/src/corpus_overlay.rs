@@ -60,7 +60,7 @@ pub static GDPR_OVERLAY: DomainGloss = DomainGloss {
         ("necessary", "{x1} is necessary"),
         ("exact", "{x1} has a specific basis"),
         ("message", "{x1} notifies"),
-        ("removes", "{x1} is erased"),
+        ("removes", "{x1} erases {x2} from {x3} leaving {x4}"),
         ("discovers", "{x1} accesses {x2}"),
     ],
     glosses: &[("data", "personal data")],

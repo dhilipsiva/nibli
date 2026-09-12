@@ -626,10 +626,9 @@ fn test_mixed_conclusion_derives_horn_and_fires_constraint() {
 }
 
 #[test]
-fn test_mixed_conclusion_conservative_p_check_misses_derived_antecedent() {
-    // (sub-part a) `check_contradictions` §6 binds the antecedent P by STORE MEMBERSHIP
-    // only. A rule-DERIVED gerku(rex) does NOT trigger the constraint — sound +
-    // conservative (it can only MISS a contradiction, never falsely flag one).
+fn test_mixed_conclusion_check_detects_derived_antecedent() {
+    // The report evaluates the antecedent through the existing query engine,
+    // including a rule-derived gerku(rex) that is absent from the stored facts.
     let kb = new_kb();
     assert_buf(&kb, make_universal("mlatu", "gerku")); // mlatu → dog (DERIVES P)
     assert_buf(
@@ -640,8 +639,8 @@ fn test_mixed_conclusion_conservative_p_check_misses_derived_antecedent() {
     assert_buf(&kb, make_negated_assertion("rex", "danlu"));
     assert_buf(&kb, make_negated_assertion("rex", "xanlu"));
     assert!(
-        kb.check_contradictions().is_empty(),
-        "a DERIVED antecedent does not trigger the disjunctive constraint (store-membership only)"
+        !kb.check_contradictions().is_empty(),
+        "a derived antecedent with every disjunct explicitly denied must be detected"
     );
 }
 

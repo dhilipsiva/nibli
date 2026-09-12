@@ -163,12 +163,13 @@ impl CoreSession {
     /// never acquire live references — assertion ingress refuses them
     /// statically — so their registration is vacuously never blocked.
     pub fn register_compute_predicate(&mut self, name: String) -> Result<(), NibliError> {
+        self.kb.ensure_ready()?;
         // A role spelling would strand its anchor: `transform_compute_nodes`
         // matches EXACT names, so registering `eats_x1` marks exactly the role
         // conjunct every stored/future `eats` statement carries, while the
         // anchor-collapsed reference scan below would have found no blockers.
         let collapsed = nibli_reason::role_collapsed_relation(&name);
-        if collapsed != name && canonical_corpus_relation(&collapsed).is_some() {
+        if collapsed != name && canonical_corpus_relation(collapsed).is_some() {
             return Err(NibliError::Reasoning(format!(
                 "cannot register `{name}` for external compute: role spellings collapse \
                  onto their anchor relation — register `{collapsed}` instead."
@@ -275,6 +276,16 @@ impl CoreSession {
         self.kb.set_strict(strict);
     }
 
+    /// Configure bounded reasoning. Zero is invalid; the default is ten.
+    pub fn set_max_chain_depth(&self, depth: u32) -> Result<(), NibliError> {
+        self.kb.set_max_chain_depth(depth)
+    }
+
+    /// The effective reasoning depth for queries and proof certificates.
+    pub fn max_chain_depth(&self) -> u32 {
+        self.kb.max_chain_depth()
+    }
+
     /// Legacy EXISTENTIAL-IMPORT MODE (default OFF). A profile change
     /// transactionally rebuilds the active KB so it takes effect immediately.
     pub fn set_existential_import(&self, on: bool) -> Result<(), NibliError> {
@@ -296,7 +307,9 @@ impl CoreSession {
 
     /// What the last query's saturation covered: `(complete, [(relation, why not)])`.
     /// Empty until a query has run and after any KB mutation.
-    pub fn materialization_report(&self) -> (Vec<String>, Vec<(String, String)>) {
+    pub fn materialization_report(
+        &self,
+    ) -> Result<nibli_reason::MaterializationReport, NibliError> {
         self.kb.materialization_report()
     }
 
@@ -324,12 +337,52 @@ impl CoreSession {
     pub fn assert_text(&self, text: &str) -> Result<Vec<(u64, LogicBuffer)>, NibliError> {
         let buf = self.compile_text(text)?;
         self.kb.validate_assertion(&buf)?;
-        let mut out = Vec::new();
-        for sub in buf.split_roots() {
-            let id = self.kb.assert_fact(sub.clone(), text.to_string())?;
-            out.push((id, sub));
-        }
-        Ok(out)
+        self.kb.transaction(|candidate| {
+            let mut out = Vec::new();
+            for sub in buf.split_roots() {
+                let id = candidate.assert_fact(sub.clone(), text.to_string())?;
+                out.push((id, sub));
+            }
+            Ok(out)
+        })
+    }
+
+    /// Construct a fresh session from ordered fixture statements. Unlike one
+    /// enormous multi-statement parse, each input is compiled independently;
+    /// rule stratification is checked once before the new session is returned.
+    /// Returned IDs are grouped by input, with one ID per independent root.
+    /// No partially loaded session is exposed on failure.
+    pub fn from_text_batch(texts: &[&str]) -> Result<(Self, Vec<Vec<u64>>), NibliError> {
+        Self::from_text_batch_with_cancel(
+            texts,
+            std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        )
+    }
+
+    /// Cancellable counterpart of [`Self::from_text_batch`]. The flag also
+    /// remains attached to the returned KB for subsequent query cancellation.
+    pub fn from_text_batch_with_cancel(
+        texts: &[&str],
+        cancellation: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    ) -> Result<(Self, Vec<Vec<u64>>), NibliError> {
+        let mut session = Self::new();
+        let statements = texts
+            .iter()
+            .map(|text| {
+                if cancellation.load(std::sync::atomic::Ordering::Relaxed) {
+                    return Err(NibliError::Reasoning(
+                        "fixture construction cancelled".to_owned(),
+                    ));
+                }
+                session
+                    .compile_text(text)
+                    .map(|buffer| (buffer, (*text).to_owned()))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let (kb, ids) =
+            nibli_reason::KnowledgeBase::from_compiled_batch_with_cancel(statements, cancellation)?;
+        session.kb = kb;
+        Ok((session, ids))
     }
 
     /// Assert a fact directly by relation name and arguments, bypassing text
@@ -350,18 +403,18 @@ impl CoreSession {
     ) -> Result<u64, NibliError> {
         let label = format!(":assert {}", relation);
         let buf = self.compile_injected_fact(relation, args)?;
-        match id {
+        self.kb.transaction(|candidate| match id {
             Some(i) => {
                 // The assert is the reasoning stage (buffer already past
                 // nibli-semantics); nibli-reason's `assert_fact_with_id`
                 // returns a String, so wrap as Reasoning.
-                self.kb
+                candidate
                     .assert_fact_with_id(buf, label, i)
                     .map_err(NibliError::Reasoning)?;
                 Ok(i)
             }
-            None => self.kb.assert_fact(buf, label),
-        }
+            None => candidate.assert_fact(buf, label),
+        })
     }
 
     /// Compile one direct/injected fact through the same compute-marking policy
@@ -395,9 +448,11 @@ impl CoreSession {
         id: u64,
     ) -> Result<(), NibliError> {
         nibli_reason::transform_compute_nodes(&mut buffer, &self.compute_predicates);
-        self.kb
-            .assert_fact_with_id(buffer, label, id)
-            .map_err(NibliError::Reasoning)
+        self.kb.transaction(|candidate| {
+            candidate
+                .assert_fact_with_id(buffer, label, id)
+                .map_err(NibliError::Reasoning)
+        })
     }
 
     /// Compile a corpus-resolvable KR query and run the entailment check.
@@ -433,6 +488,7 @@ impl CoreSession {
             result,
             trace,
             nibli_types::logic::EngineProfile {
+                max_chain_depth: self.max_chain_depth(),
                 strict: self.kb.is_strict(),
                 existential_import: self.kb.is_existential_import(),
                 materialization: self.kb.materialization_enabled(),
@@ -474,17 +530,29 @@ impl CoreSession {
     /// Retract a fact by id and rebuild derived state (KB only — durable
     /// tombstones are the persisting surface's concern).
     pub fn retract_fact(&self, id: u64) -> Result<(), NibliError> {
-        self.kb.retract_fact(id)
+        self.kb.transaction(|candidate| candidate.retract_fact(id))
     }
 
     /// Reset the KB, clearing all facts and rules.
     pub fn reset(&self) -> Result<(), NibliError> {
-        self.kb.reset()
+        self.kb.transaction(nibli_reason::KnowledgeBase::reset)
     }
 
     /// List all active (non-retracted) facts with their ids and labels.
     pub fn list_facts(&self) -> Result<Vec<FactSummary>, NibliError> {
         self.kb.list_facts()
+    }
+
+    /// Retained assertion records, including withdrawn premises.
+    pub fn list_assertion_records(
+        &self,
+    ) -> Result<Vec<nibli_types::logic::AssertionRecordSummary>, NibliError> {
+        self.kb.list_assertion_records()
+    }
+
+    /// Reserve a persisted withdrawn source without interpreting its old payload.
+    pub fn restore_withdrawn_assertion(&self, id: u64, label: String) -> Result<(), NibliError> {
+        self.kb.restore_withdrawn_assertion(id, label)
     }
 }
 
@@ -966,5 +1034,56 @@ mod tests {
             message.contains("and 2 more"),
             "the remainder must be counted: {message}"
         );
+    }
+
+    #[test]
+    fn later_policy_rejection_discards_every_root_in_the_session_call() {
+        let session = CoreSession::new();
+        let initial = session.assert_text("dog(Rex).").unwrap()[0].0;
+        assert!(
+            session
+                .assert_text("person(Adam). derived_only(\"animal\"). animal(Adam).")
+                .is_err()
+        );
+        assert_eq!(session.list_facts().unwrap().len(), 1);
+        assert_eq!(session.list_facts().unwrap()[0].id, initial);
+        assert!(session.query_text("person(Adam).").unwrap().is_false());
+        assert_eq!(
+            session.assert_text("animal(Adam).").unwrap()[0].0,
+            initial + 1
+        );
+    }
+
+    #[test]
+    fn checked_depth_survives_content_changes_and_stamps_certificates() {
+        let session = CoreSession::new();
+        assert_eq!(session.max_chain_depth(), 10);
+        session.set_max_chain_depth(17).unwrap();
+        assert!(session.set_max_chain_depth(0).is_err());
+        assert_eq!(session.max_chain_depth(), 17);
+        let id = session.assert_text("dog(Rex).").unwrap()[0].0;
+        assert_eq!(
+            session
+                .certify_text("dog(Rex).")
+                .unwrap()
+                .profile
+                .max_chain_depth,
+            17
+        );
+        session.retract_fact(id).unwrap();
+        assert_eq!(session.max_chain_depth(), 17);
+        session.reset().unwrap();
+        assert_eq!(session.max_chain_depth(), 17);
+    }
+
+    #[test]
+    fn recovery_required_blocks_compute_registration() {
+        let mut session = CoreSession::new();
+        session
+            .kb()
+            .require_recovery("uncertain canonical commit".into());
+        let before = session.compute_predicates().clone();
+        assert!(session.register_compute_predicate("eats".into()).is_err());
+        assert_eq!(session.compute_predicates(), &before);
     }
 }

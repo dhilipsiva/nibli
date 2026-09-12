@@ -7,14 +7,16 @@ use std::path::Path;
 use nibli_store::NibliStore;
 
 pub use nibli_reason::ComputeRequest as EngineComputeRequest;
+pub use nibli_reason::{ContradictionGap, ContradictionGapReason, ContradictionReport};
 pub use nibli_types::logic::{
-    AggregateOp as EngineAggregateOp, AggregateOutcome as EngineAggregateOutcome, EngineProfile,
-    FactSummary as EngineFactSummary, LogicBuffer as EngineLogicBuffer,
-    LogicNode as EngineLogicNode, LogicalTerm as EngineLogicalTerm, PROOF_ENVELOPE_SCHEMA,
-    ProofEnvelope as EngineProofEnvelope, QueryResult as EngineQueryResult,
-    ResourceKind as EngineResourceKind, UnknownReason as EngineUnknownReason,
-    WitnessBinding as EngineWitnessBinding, WitnessOrigin as EngineWitnessOrigin,
-    validate_envelope,
+    AggregateOp as EngineAggregateOp, AggregateOutcome as EngineAggregateOutcome,
+    AssertionRecordSummary as EngineAssertionRecordSummary,
+    AssertionStatus as EngineAssertionStatus, EngineProfile, FactSummary as EngineFactSummary,
+    LogicBuffer as EngineLogicBuffer, LogicNode as EngineLogicNode,
+    LogicalTerm as EngineLogicalTerm, PROOF_ENVELOPE_SCHEMA, ProofEnvelope as EngineProofEnvelope,
+    QueryResult as EngineQueryResult, ResourceKind as EngineResourceKind,
+    UnknownReason as EngineUnknownReason, WitnessBinding as EngineWitnessBinding,
+    WitnessOrigin as EngineWitnessOrigin, validate_envelope,
 };
 
 /// The pipeline's typed error (`Syntax`/`Semantic`/`Reasoning`/`Backend`),
@@ -55,6 +57,25 @@ pub struct NibliEngine {
     /// agree BY CONSTRUCTION.
     core: nibli_session::CoreSession,
     store: RefCell<Option<NibliStore>>,
+}
+
+/// Keeps storage commit classification intact until the live transaction guard
+/// has been released, so an uncertain commit can close every shared KB handle.
+enum MutationError {
+    Engine(EngineError),
+    Store(nibli_store::StoreError),
+}
+
+impl From<EngineError> for MutationError {
+    fn from(error: EngineError) -> Self {
+        Self::Engine(error)
+    }
+}
+
+impl From<nibli_store::StoreError> for MutationError {
+    fn from(error: nibli_store::StoreError) -> Self {
+        Self::Store(error)
+    }
 }
 
 impl Default for NibliEngine {
@@ -103,6 +124,16 @@ impl NibliEngine {
         self.core.kb().set_strict(strict);
     }
 
+    /// Configure bounded reasoning. Zero is invalid; the default is ten.
+    pub fn set_max_chain_depth(&self, depth: u32) -> Result<(), EngineError> {
+        self.core.set_max_chain_depth(depth)
+    }
+
+    /// The effective reasoning depth for queries and proof certificates.
+    pub fn max_chain_depth(&self) -> u32 {
+        self.core.max_chain_depth()
+    }
+
     /// Enable/disable legacy EXISTENTIAL-IMPORT MODE (default OFF). ON makes a
     /// description universal mint logical witnesses that participate in every
     /// quantifier/find/count surface. The change transactionally rebuilds the KB.
@@ -127,7 +158,9 @@ impl NibliEngine {
 
     /// What the last query's saturation covered: `(completed, [(relation, why not)])`.
     /// The only way to see whether a slow `~p(x)` actually got the lookup.
-    pub fn materialization_report(&self) -> (Vec<String>, Vec<(String, String)>) {
+    pub fn materialization_report(
+        &self,
+    ) -> Result<nibli_reason::MaterializationReport, EngineError> {
         self.core.kb().materialization_report()
     }
 
@@ -229,9 +262,15 @@ impl NibliEngine {
             return Ok(()); // No store configured — nothing to replay.
         };
         let facts = store
-            .all_active_facts()
+            .all_fact_records()
             .map_err(|e| format!("Store error: {e}"))?;
         for fact in &facts {
+            if fact.retracted {
+                self.core
+                    .restore_withdrawn_assertion(fact.id, fact.label.clone())
+                    .map_err(|e| format!("Replay error (withdrawn fact {}): {e}", fact.id))?;
+                continue;
+            }
             let buf: logic::LogicBuffer = postcard::from_bytes(&fact.payload)
                 .map_err(|e| format!("Deserialize error: {e}"))?;
             // Re-marks against the live registry (builtins only at open —
@@ -293,94 +332,98 @@ impl NibliEngine {
         self.core.compile_query_text(input)
     }
 
-    /// Persist one compiled root and install it in the live KB under the same
-    /// source id. The durable registry and KB counters are both consulted so
-    /// even a caller that used the exposed lower-level KB cannot cause reuse.
-    /// Pure assertion preflight happens before serialization, id lookup, or a
-    /// durable write. After that, persistence happens before reasoning; a later
-    /// reasoning rejection deletes that row before the error is returned, so
-    /// reopen cannot resurrect a failed assertion.
-    fn persist_and_assert(
+    /// Stage against detached state, commit the canonical registry, then publish
+    /// into the original shared KB identity. No compensating logical mutations
+    /// are needed if validation or a pre-commit storage operation fails.
+    fn apply_mutation<R>(
         &self,
-        store: &mut NibliStore,
-        buffer: logic::LogicBuffer,
-        label: String,
-    ) -> Result<u64, EngineError> {
-        self.core.kb().validate_assertion(&buffer)?;
-        let payload = postcard::to_allocvec(&buffer)
-            .map_err(|e| EngineError::Reasoning(format!("Serialize error: {e}")))?;
-        let durable_id = store
-            .next_fact_id()
-            .map_err(|e| EngineError::Reasoning(format!("Store error: {e}")))?;
-        let live_id = self.core.kb().next_fact_id()?;
-        let fact_id = durable_id.max(live_id);
-
-        store
-            .insert_fact(fact_id, label.clone(), payload)
-            .map_err(|e| EngineError::Reasoning(format!("Store error: {e}")))?;
-
-        if let Err(reason) = self.core.kb().assert_fact_with_id(buffer, label, fact_id) {
-            return match store.delete_fact(fact_id) {
-                Ok(()) => Err(EngineError::Reasoning(reason)),
-                Err(rollback) => Err(EngineError::Reasoning(format!(
-                    "{reason} (additionally, durable rollback of fact {fact_id} failed: {rollback})"
-                ))),
-            };
+        operation: impl FnOnce(
+            &nibli_reason::KnowledgeBase,
+            Option<&mut NibliStore>,
+        ) -> Result<R, MutationError>,
+    ) -> Result<R, EngineError> {
+        let mut store = self.store.try_borrow_mut().map_err(|_| {
+            EngineError::Reasoning("Store error: persistence state is already borrowed".to_string())
+        })?;
+        let mut uncertain_commit = None;
+        let result = self.core.kb().transaction(|candidate| {
+            operation(candidate, store.as_mut()).map_err(|error| match error {
+                MutationError::Engine(error) => error,
+                MutationError::Store(error) => {
+                    if matches!(error, nibli_store::StoreError::CommitOutcomeUnknown(_)) {
+                        uncertain_commit = Some(error.to_string());
+                    }
+                    EngineError::Reasoning(format!("Store error: {error}"))
+                }
+            })
+        });
+        if let Some(reason) = uncertain_commit {
+            self.core.kb().require_recovery(reason);
         }
-
-        Ok(fact_id)
+        result
     }
 
     /// Reset the knowledge base, clearing all facts and rules.
-    pub fn reset(&self) {
-        self.core.kb().reset().ok();
-        if let Ok(mut store) = self.store.try_borrow_mut()
-            && let Some(s) = store.as_mut()
-        {
-            let _ = s.clear();
-        }
+    pub fn reset(&self) -> Result<(), EngineError> {
+        self.apply_mutation(|candidate, store| {
+            candidate.reset()?;
+            if let Some(store) = store {
+                store.clear()?;
+            }
+            Ok(())
+        })
     }
 
     /// Parse KR text, compile to FOL, and assert into the knowledge base.
     ///
-    /// A bare-`.i` multi-sentence text becomes N INDEPENDENT facts — one per root —
+    /// A multi-statement text becomes N independently retractable facts — one per root —
     /// each with its own id, store record, and retraction (connectives compile to a
     /// single root and stay one fact). Returns the minted ids in root order. A
     /// single-sentence text yields exactly one id. Exact-count and executable
     /// compute formulas in asserted position (outside opaque quoted content) are
-    /// query-only. The whole compiled input is preflighted before any independently
-    /// retractable root receives an id or durable row.
+    /// query-only. Validation and reasoning are atomic across every root in this
+    /// call; a later refusal publishes no prefix, consumes no IDs, and adds no
+    /// active or withdrawn durable records.
     pub fn assert_text(&self, text: &str) -> Result<Vec<u64>, EngineError> {
-        let mut store = self.store.try_borrow_mut().map_err(|_| {
-            EngineError::Reasoning("Store error: persistence state is already borrowed".to_string())
-        })?;
-
-        // No-store path: the shared core's assert loop IS this behavior.
-        let Some(s) = store.as_mut() else {
-            return Ok(self
-                .core
-                .assert_text(text)?
-                .into_iter()
-                .map(|(id, _)| id)
-                .collect());
-        };
-
-        // Store write-through path (engine-specific): the durable registry and
-        // live KB share one collision-free id space, so the per-root loop runs
-        // here with persistence in the middle.
         let buf = self.compile_text(text)?;
         self.core.kb().validate_assertion(&buf)?;
-        let label = text.to_string();
-        let parts = buf.split_roots();
-        let mut ids = Vec::with_capacity(parts.len());
-        for sub in parts {
-            ids.push(self.persist_and_assert(s, sub, label.clone())?);
-        }
-        Ok(ids)
+        self.assert_buffers(buf.split_roots(), text.to_string())
+    }
+
+    fn assert_buffers(
+        &self,
+        buffers: Vec<logic::LogicBuffer>,
+        label: String,
+    ) -> Result<Vec<u64>, EngineError> {
+        self.apply_mutation(|candidate, store| {
+            let mut next_id = candidate.next_fact_id()?;
+            if let Some(store) = store.as_ref() {
+                next_id = next_id.max(store.next_fact_id()?);
+            }
+            let mut ids = Vec::with_capacity(buffers.len());
+            let mut rows = Vec::with_capacity(buffers.len());
+            for buffer in buffers {
+                let id = next_id;
+                next_id = next_id
+                    .checked_add(1)
+                    .ok_or_else(|| EngineError::Reasoning("fact ID space exhausted".to_string()))?;
+                let payload = postcard::to_allocvec(&buffer)
+                    .map_err(|e| EngineError::Reasoning(format!("Serialize error: {e}")))?;
+                candidate
+                    .assert_fact_with_id(buffer, label.clone(), id)
+                    .map_err(EngineError::Reasoning)?;
+                ids.push(id);
+                rows.push((id, label.clone(), payload));
+            }
+            if let Some(store) = store {
+                store.insert_facts(&rows)?;
+            }
+            Ok(ids)
+        })
     }
 
     /// Assert a fact directly by relation name and arguments, bypassing text
-    /// parsing. Uses the same durable id/rollback path as [`Self::assert_text`]
+    /// parsing. Uses the same staged atomic mutation as [`Self::assert_text`]
     /// when persistence is configured (label `":assert {relation}"`) and is
     /// event-decomposed to the surface shape.
     pub fn assert_fact_direct(
@@ -388,15 +431,9 @@ impl NibliEngine {
         relation: String,
         args: Vec<EngineLogicalTerm>,
     ) -> Result<u64, EngineError> {
-        let mut store = self.store.try_borrow_mut().map_err(|_| {
-            EngineError::Reasoning("Store error: persistence state is already borrowed".to_string())
-        })?;
-        let Some(store) = store.as_mut() else {
-            return self.core.assert_fact_direct(&relation, &args, None);
-        };
-
         let buffer = self.core.compile_injected_fact(&relation, &args)?;
-        self.persist_and_assert(store, buffer, format!(":assert {relation}"))
+        self.core.kb().validate_assertion(&buffer)?;
+        Ok(self.assert_buffers(vec![buffer], format!(":assert {relation}"))?[0])
     }
 
     /// Certify a KR query: verdict + trace + session profile + lockstep
@@ -496,38 +533,44 @@ impl NibliEngine {
         self.core.kb().list_facts()
     }
 
+    /// List every retained assertion record, including withdrawn premises.
+    pub fn list_assertion_records(
+        &self,
+    ) -> Result<Vec<logic::AssertionRecordSummary>, EngineError> {
+        self.core.list_assertion_records()
+    }
+
     /// Retract a fact by ID and rebuild derived state.
     ///
     /// When persistence is configured, the retraction is also written through to
     /// the on-disk store as a tombstone, so a subsequent `open()` does NOT replay
-    /// (resurrect) the retracted fact. The in-memory KB is retracted first (this
-    /// validates the ID and rebuilds derived state); the durable tombstone is only
-    /// written if that succeeds, keeping both layers consistent.
+    /// (resurrect) the retracted fact. Validation and rebuilding happen on a
+    /// detached candidate, which is published only after the tombstone commits.
     pub fn retract_fact(&self, id: u64) -> Result<(), EngineError> {
-        self.core.kb().retract_fact(id)?;
-
-        let mut store = self.store.try_borrow_mut().map_err(|_| {
-            EngineError::Reasoning("Store error: persistence state is already borrowed".to_string())
-        })?;
-        if let Some(s) = store.as_mut() {
-            // Idempotent at the store layer: retracting an already-tombstoned or
-            // never-persisted-but-known fact is fine. A NotFound here means a caller
-            // mutated the exposed lower-level KB directly — that is not a durability
-            // failure, so swallow it.
-            match s.retract_fact(id) {
-                Ok(()) => {}
-                Err(nibli_store::StoreError::NotFound(_)) => {}
-                Err(e) => return Err(EngineError::Reasoning(format!("Store error: {e}"))),
+        self.apply_mutation(|candidate, store| {
+            candidate.retract_fact(id)?;
+            if let Some(store) = store {
+                // An assertion installed directly through kb() has no durable
+                // row. This low-level use remains non-persistent by contract.
+                match store.retract_fact(id) {
+                    Ok(()) | Err(nibli_store::StoreError::NotFound(_)) => {}
+                    Err(error) => return Err(error.into()),
+                }
             }
-        }
-        Ok(())
+            Ok(())
+        })
     }
 
-    /// Scan for contradictions (asserted store + derived positives for `~P`;
-    /// not a full closure proof — see
-    /// [`nibli_reason::KnowledgeBase::check_contradictions`]).
+    /// Compatibility findings-only scan. Use [`Self::check_contradictions_report`]
+    /// to distinguish a clean scan from checks that could not be decided.
     pub fn check_contradictions(&self) -> Vec<String> {
         self.core.kb().check_contradictions()
+    }
+
+    /// Scan represented constraints, reporting both contradictions and checks
+    /// that could not be decided. This is not unrestricted FOL consistency.
+    pub fn check_contradictions_report(&self) -> ContradictionReport {
+        self.core.kb().check_contradictions_report()
     }
 
     /// Enable tracing for a predicate (interactive debugging).
@@ -548,7 +591,7 @@ impl NibliEngine {
 
 #[cfg(test)]
 mod tests {
-    use super::NibliEngine;
+    use super::{MutationError, NibliEngine};
     use std::fs;
     use std::path::{Path, PathBuf};
 
@@ -642,6 +685,141 @@ mod tests {
         );
 
         drop(store);
+        let id = engine.assert_text("person(Adam).").unwrap()[0];
+        let borrow = engine.store.borrow();
+        assert!(engine.retract_fact(id).is_err());
+        assert!(engine.reset().is_err());
+        assert!(engine.query_holds("person(Adam).").unwrap().is_true());
+        drop(borrow);
+        cleanup(&path);
+    }
+
+    #[test]
+    fn rejected_multiroot_policy_batch_changes_neither_live_nor_durable_state() {
+        let path = temp_db_path("atomic_policy_batch");
+        cleanup(&path);
+        {
+            let engine = NibliEngine::open(&path).unwrap();
+            for text in [
+                "derived_only(\"person\"). person(Adam).",
+                "admits(\"person\"). person(Adam). dog(Rex).",
+            ] {
+                assert!(engine.assert_text(text).is_err(), "{text}");
+                assert!(engine.list_assertion_records().unwrap().is_empty());
+                assert_eq!(engine.kb().next_fact_id().unwrap(), 0);
+                assert_eq!(
+                    engine
+                        .store
+                        .borrow()
+                        .as_ref()
+                        .unwrap()
+                        .total_fact_count()
+                        .unwrap(),
+                    0
+                );
+            }
+            assert_eq!(
+                engine.assert_text("person(Adam). dog(Rex).").unwrap(),
+                vec![0, 1]
+            );
+        }
+        let engine = NibliEngine::open(&path).unwrap();
+        assert!(engine.query_holds("person(Adam).").unwrap().is_true());
+        assert!(engine.query_holds("dog(Rex).").unwrap().is_true());
+        cleanup(&path);
+    }
+
+    #[test]
+    fn precommit_failure_discards_candidate_retraction_reset_and_policy_changes() {
+        let engine = NibliEngine::new();
+        let id = engine.assert_text("person(Adam).").unwrap()[0];
+        for reset in [false, true] {
+            let error = engine
+                .apply_mutation::<()>(|candidate, _| {
+                    if reset {
+                        candidate.reset()?;
+                    } else {
+                        candidate.retract_fact(id)?;
+                    }
+                    Err(nibli_store::StoreError::Io("injected pre-commit failure".into()).into())
+                })
+                .unwrap_err();
+            assert!(error.to_string().contains("injected"));
+            assert!(engine.query_holds("person(Adam).").unwrap().is_true());
+            assert_eq!(engine.list_facts().unwrap().len(), 1);
+        }
+    }
+
+    #[test]
+    fn uncertain_commit_closes_shared_handles_until_fresh_open() {
+        let path = temp_db_path("uncertain_commit_reopen");
+        cleanup(&path);
+        {
+            let engine = NibliEngine::open(&path).unwrap();
+            let handle = engine.kb();
+            let buffer = engine.compile_debug("person(Adam).").unwrap();
+            let error = engine
+                .apply_mutation::<()>(|candidate, store| {
+                    candidate.assert_fact(buffer.clone(), "person(Adam).".into())?;
+                    // Simulate the ambiguous failure's committed branch. The engine
+                    // cannot tell this apart from a commit that did not land.
+                    store.unwrap().insert_fact(
+                        0,
+                        "person(Adam).".into(),
+                        postcard::to_allocvec(&buffer).unwrap(),
+                    )?;
+                    Err(MutationError::Store(
+                        nibli_store::StoreError::CommitOutcomeUnknown(
+                            "injected lost commit acknowledgement".into(),
+                        ),
+                    ))
+                })
+                .unwrap_err();
+            assert!(error.to_string().contains("commit outcome unknown"));
+            assert!(engine.query_holds("person(Adam).").is_err());
+            assert!(engine.assert_text("dog(Rex).").is_err());
+            assert!(engine.reset().is_err());
+            assert!(handle.list_facts().is_err());
+            assert!(handle.materialization_report().is_err());
+            assert!(handle.stratification_report().is_err());
+            assert!(handle.prepare_materialization_plan().is_err());
+            assert!(handle.assert_fact(buffer, "bypass".into()).is_err());
+        }
+        let engine = NibliEngine::open(&path).unwrap();
+        assert!(engine.query_holds("person(Adam).").unwrap().is_true());
+        assert_eq!(engine.assert_text("dog(Rex).").unwrap(), vec![1]);
+        cleanup(&path);
+    }
+
+    #[test]
+    fn withdrawn_envelopes_restore_without_decoding_payload_or_reusing_ids() {
+        let path = temp_db_path("withdrawn_payload_reopen");
+        cleanup(&path);
+        {
+            let mut store = nibli_store::NibliStore::open(&path, "local".into()).unwrap();
+            store
+                .insert_fact(41, "obsolete withdrawn syntax".into(), vec![255, 255])
+                .unwrap();
+            store.retract_fact(41).unwrap();
+        }
+        {
+            let engine = NibliEngine::open(&path).unwrap();
+            assert!(engine.list_facts().unwrap().is_empty());
+            let records = engine.list_assertion_records().unwrap();
+            assert_eq!(records.len(), 1);
+            assert_eq!(records[0].id, 41);
+            assert_eq!(records[0].label, "obsolete withdrawn syntax");
+            assert_eq!(
+                records[0].status,
+                nibli_types::logic::AssertionStatus::Withdrawn
+            );
+            assert_eq!(engine.assert_text("person(Adam).").unwrap(), vec![42]);
+        }
+        let engine = NibliEngine::open(&path).unwrap();
+        assert_eq!(engine.list_assertion_records().unwrap().len(), 2);
+        assert!(engine.query_holds("person(Adam).").unwrap().is_true());
+        engine.reset().unwrap();
+        assert!(engine.list_assertion_records().unwrap().is_empty());
         cleanup(&path);
     }
 }

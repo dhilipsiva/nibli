@@ -634,6 +634,62 @@ fn check_formula_holds_core<S: TraceSink>(
     compute_memo: &mut QueryComputeMemo,
     sink: &mut S,
 ) -> Result<(QueryResult, u32), String> {
+    let node = get_node(buffer, node_id)?;
+    if matches!(node, LogicNode::CountNode(_))
+        && let Some(pending) = inner.query_domain.incomplete.clone()
+    {
+        let idx = if S::RECORDING {
+            sink.push(ProofStep {
+                rule: ProofRule::PredicateCheck {
+                    method: "indeterminate".into(),
+                    detail: "individual witness domain incomplete".into(),
+                },
+                holds: false,
+                children: vec![],
+            })
+        } else {
+            0
+        };
+        return Ok((pending, idx));
+    }
+    let (verdict, idx) = check_formula_holds_core_impl::<S>(
+        buffer,
+        node_id,
+        subs,
+        inner,
+        tense,
+        compute_memo,
+        sink,
+    )?;
+    let depends_on_complete_domain = matches!(node, LogicNode::ExistsNode(_)) && verdict.is_false()
+        || matches!(node, LogicNode::ForAllNode(_)) && verdict.is_true();
+    if depends_on_complete_domain && let Some(pending) = inner.query_domain.incomplete.clone() {
+        let idx = if S::RECORDING {
+            sink.push(ProofStep {
+                rule: ProofRule::PredicateCheck {
+                    method: "indeterminate".into(),
+                    detail: "individual witness domain incomplete".into(),
+                },
+                holds: false,
+                children: vec![idx],
+            })
+        } else {
+            0
+        };
+        return Ok((pending, idx));
+    }
+    Ok((verdict, idx))
+}
+
+fn check_formula_holds_core_impl<S: TraceSink>(
+    buffer: &LogicBuffer,
+    node_id: u32,
+    subs: &mut HashMap<String, GroundTerm>,
+    inner: &mut KnowledgeBaseInner,
+    tense: Option<&str>,
+    compute_memo: &mut QueryComputeMemo,
+    sink: &mut S,
+) -> Result<(QueryResult, u32), String> {
     check_cancelled(inner)?;
     match get_node(buffer, node_id)? {
         LogicNode::AndNode((l, r)) => {
@@ -881,7 +937,11 @@ fn check_formula_holds_core<S: TraceSink>(
             // Try batch compute fast path first (uses slice, no .to_vec()).
             if let Ok(body_node) = get_node(buffer, *body) {
                 if let LogicNode::ComputeNode((rel, args)) = body_node {
-                    let members = inner.all_typed_domain_members();
+                    let members = if v.starts_with("_ev") {
+                        inner.all_typed_domain_members()
+                    } else {
+                        inner.all_non_event_domain_members()
+                    };
                     if let Some(batch) = batch_evaluate_compute_for_members_with_memo(
                         &*inner,
                         rel,
@@ -1026,7 +1086,7 @@ fn check_formula_holds_core<S: TraceSink>(
             // a mandatory positive anchor, enumerate only index/rule-derivable
             // candidates instead of the full domain × SkolemFn-registry
             // cartesian — completeness argument at collect_entailment_candidates.
-            let candidates: Vec<GroundTerm> =
+            let mut candidates: Vec<GroundTerm> =
                 match collect_entailment_candidates(buffer, *body, v, subs, inner, tense) {
                     Some(narrowed) => narrowed,
                     None => {
@@ -1041,6 +1101,7 @@ fn check_formula_holds_core<S: TraceSink>(
                         all
                     }
                 };
+            restrict_to_activated_individuals(&mut candidates, v, inner);
             let mut best_result = None;
             for candidate in &candidates {
                 // Probe the verdict with a no-op sink (no recording of discarded
@@ -1348,18 +1409,18 @@ fn check_formula_holds_core<S: TraceSink>(
             let members: Vec<GroundTerm> = {
                 let mut seen = HashSet::new();
                 let mut out = Vec::new();
-                let mut candidates = inner.all_typed_domain_members().to_vec();
+                let mut candidates = inner.all_non_event_domain_members().to_vec();
                 // If an imported name is `du`-equivalent to a KB name, expose
                 // the KB representative for their one shared entity.
                 candidates.sort_by_cached_key(|m| {
                     (
-                        find_canonical_readonly(&inner.equivalence_parent, m),
+                        canonical_witness_term(&inner.equivalence_parent, m),
                         witness_origin(m) == nibli_types::logic::WitnessOrigin::ExistentialImport,
                         m.clone(),
                     )
                 });
                 for m in &candidates {
-                    let canon = find_canonical_readonly(&inner.equivalence_parent, m);
+                    let canon = canonical_witness_term(&inner.equivalence_parent, m);
                     if seen.insert(canon) {
                         out.push(m.clone());
                     }
@@ -1806,7 +1867,7 @@ pub(super) fn find_witnesses(
             // mandatory anchor). Falls back to the full domain + registry
             // cartesian only when no mandatory positive anchor exists
             // (pure-negation / pure-Or body).
-            let candidates: Vec<GroundTerm> =
+            let mut candidates: Vec<GroundTerm> =
                 match collect_entailment_candidates(buffer, *body, v, subs, inner, tense) {
                     Some(narrowed) => narrowed,
                     None => {
@@ -1822,6 +1883,7 @@ pub(super) fn find_witnesses(
                     }
                 };
 
+            restrict_to_activated_individuals(&mut candidates, v, inner);
             for candidate in candidates {
                 let mut new_subs = subs.clone();
                 new_subs.insert(v.clone(), candidate.clone());
@@ -2085,6 +2147,37 @@ fn typed_fact_is_stored_with_equivalence(
     inner: &KnowledgeBaseInner,
 ) -> Option<StoredFact> {
     let gf = fact.inner();
+    if gf
+        .args
+        .iter()
+        .any(|term| matches!(term, GroundTerm::SkolemFn(_, _) | GroundTerm::DepPair(_, _)))
+    {
+        let canonical = |value: &StoredFact| {
+            StoredFact::with_tense_from(
+                GroundFact::new(
+                    value.relation(),
+                    value
+                        .inner()
+                        .args
+                        .iter()
+                        .map(|term| canonical_witness_term(&inner.equivalence_parent, term))
+                        .collect(),
+                ),
+                value,
+            )
+        };
+        let wanted = canonical(fact);
+        if let Some(found) = inner
+            .fact_store
+            .lookup_predicate(fact.relation())
+            .into_iter()
+            .flatten()
+            .filter(|stored| canonical(stored) == wanted)
+            .min_by(|a, b| a.inner().args.cmp(&b.inner().args))
+        {
+            return Some(found.clone());
+        }
+    }
     // For each arg position, get the equivalence class.
     let equiv_args: Vec<Vec<GroundTerm>> = gf
         .args
@@ -2286,8 +2379,8 @@ pub(super) fn check_predicate_in_kb_typed(
                 return QueryResult::True; // Reflexivity
             }
             if !inner.equivalence_parent.is_empty() {
-                let canon_a = find_canonical_readonly(&inner.equivalence_parent, &args[0]);
-                let canon_b = find_canonical_readonly(&inner.equivalence_parent, &args[1]);
+                let canon_a = canonical_witness_term(&inner.equivalence_parent, &args[0]);
+                let canon_b = canonical_witness_term(&inner.equivalence_parent, &args[1]);
                 if canon_a == canon_b {
                     return QueryResult::True; // Symmetry + transitivity
                 }
@@ -2296,6 +2389,15 @@ pub(super) fn check_predicate_in_kb_typed(
     }
 
     if typed_fact_is_stored(fact, inner) {
+        return QueryResult::True;
+    }
+    if activation_is_being_traced(fact, inner) {
+        inner
+            .cycle_cut_epoch
+            .set(inner.cycle_cut_epoch.get().wrapping_add(1));
+        return QueryResult::Unknown(UnknownReason::CycleCut);
+    }
+    if witness_activation_evidence(fact, inner).is_some() {
         return QueryResult::True;
     }
     let cached = if inner.pred_cache_enabled.get() {
@@ -2350,7 +2452,7 @@ pub(super) fn check_predicate_in_kb_typed(
     // pass return a definitive (and cacheable) False before the fallback ever
     // runs. `visited` is removed by the inner backward chainer for the variant's
     // own derivation, but `fact` itself stays guarded until the loop ends.
-    if result.is_false()
+    if !result.is_true()
         && !inner.equivalence_parent.is_empty()
         && fact.relation() != nibli_types::relations::IDENTITY
         && !visited.contains(&cycle_key(fact))
@@ -2397,8 +2499,8 @@ pub(super) fn check_predicate_in_kb_typed(
                 if variant != *fact && !visited.contains(&cycle_key(&variant)) {
                     let variant_result =
                         check_predicate_in_kb_typed(&variant, inner, depth, visited);
-                    if variant_result.is_true() {
-                        result = QueryResult::True;
+                    result = combine_disjunction(result, variant_result);
+                    if result.is_true() {
                         break;
                     }
                 }
@@ -2416,8 +2518,9 @@ pub(super) fn check_predicate_in_kb_typed(
             // verdict (and would poison the pred_cache). Downgrade to the
             // sound-but-incomplete resource verdict instead — the same class
             // as a cycle cut.
-            if truncated && result.is_false() {
-                result = QueryResult::ResourceExceeded(ResourceKind::Depth);
+            if truncated && !result.is_true() {
+                result =
+                    combine_disjunction(result, QueryResult::ResourceExceeded(ResourceKind::Depth));
             }
         }
     }
@@ -2489,7 +2592,7 @@ fn any_rule_conclusion_unifies(fact: &StoredFact, inner: &KnowledgeBaseInner) ->
             rules.iter().any(|r| {
                 r.typed_conclusions
                     .iter()
-                    .any(|c| unify_facts(c, fact).is_some())
+                    .any(|c| unify_facts_with_witness_congruence(c, fact, inner).is_some())
             })
         })
 }
@@ -2888,6 +2991,43 @@ fn search_event_bindings(
     EventBindingSearch::Exhausted(pending)
 }
 
+/// Activate a generated individual only after its own rule body succeeds.
+/// Candidate construction is not existence evidence. Reuse the ordinary
+/// flavor-aware join and NAF evaluator, with the same depth/cancellation limits.
+pub(super) fn witness_activation_holds(
+    rule: &UniversalRuleRecord,
+    bindings: &mut HashMap<String, GroundTerm>,
+    inner: &KnowledgeBaseInner,
+) -> QueryResult {
+    let event_vars: Vec<String> = rule
+        .pattern_var_names
+        .iter()
+        .filter(|name| name.starts_with("ev__") && !bindings.contains_key(*name))
+        .cloned()
+        .collect();
+    match search_event_bindings(
+        rule,
+        &event_vars,
+        bindings,
+        inner,
+        0,
+        &mut HashSet::new(),
+        &mut None,
+    ) {
+        EventBindingSearch::Found => QueryResult::True,
+        EventBindingSearch::Exhausted(Some(QueryResult::ResourceExceeded(ResourceKind::Depth)))
+            if inner.positive_lookup.get() =>
+        {
+            match materialized_positive_rule_conditions(rule, bindings, inner) {
+                Some(true) => QueryResult::True,
+                Some(false) => QueryResult::False,
+                None => QueryResult::ResourceExceeded(ResourceKind::Depth),
+            }
+        }
+        EventBindingSearch::Exhausted(pending) => pending.unwrap_or(QueryResult::False),
+    }
+}
+
 /// Poisoned index returned by [`push_proof_step`] past the cap. Reserved:
 /// legal indices stop at `u32::MAX - 1`, so the sentinel can never collide
 /// with a real step.
@@ -3113,14 +3253,41 @@ fn emit_derived<S: TraceSink>(
         });
         child_indices.push(leaf);
     }
-    sink.push(ProofStep {
+    let instantiated = rule
+        .typed_conclusions
+        .iter()
+        .map(|template| substitute_fact(template, bindings))
+        .find(|head| {
+            head == fact || unify_facts_with_witness_congruence(head, fact, inner).is_some()
+        })
+        .unwrap_or_else(|| fact.clone());
+    let root = sink.push(ProofStep {
         rule: ProofRule::Derived {
             label: rule.label.clone(),
-            fact: display,
+            fact: instantiated.to_display_string(),
             sources: rule_citations(inner, rule.identity.as_ref()),
         },
         holds: true,
         children: child_indices,
+    });
+    if instantiated == *fact {
+        return root;
+    }
+    let Some(equalities) = equality_support_facts(fact, &instantiated, inner) else {
+        return root;
+    };
+    let mut children = vec![root];
+    for equality in equalities {
+        children.push(sink.trace_child(&equality, inner, depth, visited));
+    }
+    sink.push(ProofStep {
+        rule: ProofRule::EqualitySubstitution {
+            original: display,
+            equality_facts: equals_substitution_note(fact, &instantiated),
+            substituted: instantiated.to_display_string(),
+        },
+        holds: true,
+        children,
     })
 }
 
@@ -3153,7 +3320,9 @@ fn process_phase<S: TraceSink>(
     let rules = matching_rules_typed(match_fact, &inner.universal_rules);
     for rule in rules {
         for typed_concl in &rule.typed_conclusions {
-            let Some(mut bindings) = unify_facts(typed_concl, match_fact) else {
+            let Some(mut bindings) =
+                unify_facts_with_witness_congruence(typed_concl, match_fact, inner)
+            else {
                 continue;
             };
 
@@ -3540,6 +3709,63 @@ pub(super) fn trace_predicate_provenance_typed(
                 children: vec![],
             },
         );
+        memo.insert(fact.clone(), idx);
+        return idx;
+    }
+
+    if !activation_is_being_traced(fact, inner)
+        && let Some(evidence) = witness_activation_evidence(fact, inner)
+    {
+        mark_activation_trace(fact, inner, true);
+        let child = emit_derived(
+            &mut RecordingSink { steps, memo },
+            &evidence.rule,
+            &evidence.bindings,
+            &evidence.conclusion,
+            inner,
+            0,
+            visited,
+        );
+        mark_activation_trace(fact, inner, false);
+        let idx = if &evidence.conclusion == fact {
+            child
+        } else if let Some(equalities) = equality_support_facts(fact, &evidence.conclusion, inner) {
+            let mut children = vec![child];
+            for equality in equalities {
+                children.push(trace_predicate_provenance_typed(
+                    &equality,
+                    inner,
+                    steps,
+                    depth,
+                    memo,
+                    &mut HashSet::new(),
+                ));
+            }
+            push_proof_step(
+                steps,
+                ProofStep {
+                    rule: ProofRule::EqualitySubstitution {
+                        original: display.clone(),
+                        equality_facts: equals_substitution_note(fact, &evidence.conclusion),
+                        substituted: evidence.conclusion.to_display_string(),
+                    },
+                    holds: true,
+                    children,
+                },
+            )
+        } else {
+            push_proof_step(
+                steps,
+                ProofStep {
+                    rule: ProofRule::PredicateCheck {
+                        method: "indeterminate".into(),
+                        detail: "missing witness-congruence evidence".into(),
+                    },
+                    holds: false,
+                    children: vec![],
+                },
+            )
+        };
         memo.insert(fact.clone(), idx);
         return idx;
     }

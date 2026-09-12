@@ -58,7 +58,17 @@ pub struct NTriplesExport {
 pub fn export_ntriples(engine: &NibliEngine) -> NTriplesExport {
     let mut lines: Vec<String> = Vec::new();
     let mut refused: Vec<(String, String)> = Vec::new();
-    let (tuples, structural_refusals) = project_surface_tuples(&engine.kb().active_typed_facts());
+    let facts = match engine.kb().active_typed_facts() {
+        Ok(facts) => facts,
+        Err(error) => {
+            return NTriplesExport {
+                document: String::new(),
+                exported: 0,
+                refused: vec![("knowledge base".into(), error.to_string())],
+            };
+        }
+    };
+    let (tuples, structural_refusals) = project_surface_tuples(&facts);
     refused.extend(structural_refusals);
     for tuple in &tuples {
         match tuple_to_triple(tuple) {

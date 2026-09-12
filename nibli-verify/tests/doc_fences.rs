@@ -203,7 +203,9 @@ fn kr_doc_fences_compile() {
     for st in &statements {
         let key = (st.file.clone(), st.fence);
         if current.as_ref() != Some(&key) {
-            engine.reset();
+            engine
+                .reset()
+                .expect("reset between independent doc fences");
             current = Some(key);
         }
         if let Err(e) = engine.assert_text(&st.text) {

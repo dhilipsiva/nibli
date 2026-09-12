@@ -128,7 +128,7 @@ struct LogicalStateSnapshot {
     skolem_counter: u64,
     skolem_local_counter: u32,
     fact_counter: u64,
-    fact_registry: Vec<(u64, LogicBuffer, String, bool)>,
+    fact_registry: Vec<(u64, Option<LogicBuffer>, String, bool)>,
     facts: std::collections::HashSet<StoredFact>,
     arg_position_index: std::collections::HashMap<
         (String, usize),

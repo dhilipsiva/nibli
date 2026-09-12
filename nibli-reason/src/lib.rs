@@ -28,14 +28,18 @@
 
 use nibli_types::error::NibliError;
 use nibli_types::logic::{
-    AssertionCitation, FactSummary, LogicBuffer, LogicNode, LogicalTerm, ProofRule, ProofStep,
-    ProofTrace, QueryResult, ResourceKind, RuleCitation, UnknownReason, WitnessBinding,
+    AssertionCitation, AssertionRecordSummary, AssertionStatus, FactSummary, LogicBuffer,
+    LogicNode, LogicalTerm, ProofRule, ProofStep, ProofTrace, QueryResult, ResourceKind,
+    RuleCitation, UnknownReason, WitnessBinding,
 };
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 mod compute;
+mod contradictions;
+mod domain;
+pub use contradictions::{ContradictionGap, ContradictionGapReason, ContradictionReport};
 /// Fact store abstraction (trait + in-memory implementation).
 pub mod fact_store;
 mod materialize;
@@ -44,9 +48,13 @@ mod rules;
 
 pub use materialize::Ineligible;
 
+/// Completed relation names and reasons other relations refused materialization.
+pub type MaterializationReport = (Vec<String>, Vec<(String, String)>);
+
 pub use compute::ComputeRequest;
 
 use compute::*;
+use domain::*;
 use reasoning::*;
 use rules::*;
 
@@ -375,7 +383,7 @@ impl KnowledgeBase {
             id,
             FactRecord {
                 id,
-                buffer: logic,
+                buffer: Some(logic),
                 label,
                 retracted: false,
             },
@@ -395,7 +403,7 @@ impl KnowledgeBase {
     /// Advances the internal counter past the given ID. A CountNode or executable
     /// ComputeNode in asserted position fails before the counter advances, so
     /// legacy query-formula assertions fail closed.
-    pub fn assert_fact_with_id(
+    fn assert_fact_with_id_inner(
         &self,
         mut logic: LogicBuffer,
         label: String,
@@ -434,7 +442,7 @@ impl KnowledgeBase {
             id,
             FactRecord {
                 id,
-                buffer: logic,
+                buffer: Some(logic),
                 label,
                 retracted: false,
             },
@@ -468,7 +476,10 @@ impl KnowledgeBase {
         match inner.fact_registry.get_mut(&id) {
             None => return Err(format!("Fact #{} not found", id)),
             Some(r) if r.retracted => return Ok(()), // idempotent
-            Some(r) => r.retracted = true,
+            Some(r) => {
+                r.retracted = true;
+                r.buffer = None;
+            }
         }
         let result = Self::rebuild_inner(&mut inner);
         invalidate_pred_cache(&inner);
@@ -477,8 +488,10 @@ impl KnowledgeBase {
 
     /// Full rebuild from non-retracted facts. Kept as fallback / consistency check.
     pub fn rebuild(&self) -> Result<(), String> {
-        let mut inner = self.inner.borrow_mut();
-        Self::rebuild_inner(&mut inner)
+        self.transaction(|candidate| {
+            Self::rebuild_inner(&mut candidate.inner.borrow_mut()).map_err(NibliError::Reasoning)
+        })
+        .map_err(reasoning_message)
     }
 
     /// Rebuild the KB from all non-retracted facts.
@@ -547,10 +560,12 @@ impl KnowledgeBase {
         inner.domain_members_dirty = true;
         inner.known_rules.clear();
         inner.skolem_fn_registry.clear();
+        inner.query_domain = QueryDomain::default();
         inner.fact_store.clear();
         inner.fact_origins.clear();
         inner.universal_rules.clear();
         inner.pred_dep_graph.clear();
+        *inner.materialization_plan.borrow_mut() = None;
         inner.equivalence_parent.clear();
         inner.equivalence_classes.clear();
         inner.equality_adjacency.clear();
@@ -558,6 +573,7 @@ impl KnowledgeBase {
         inner.arg_position_index.clear();
         inner.current_rule_ordinal = 0;
         inner.negative_facts.clear();
+        inner.negative_scan_gaps.clear();
         inner.disjunctive_constraints.clear();
         // The saturated extensions are derived from the rules and facts being cleared
         // right above. Cleared HERE rather than left to the callers' pairing with
@@ -585,7 +601,14 @@ impl KnowledgeBase {
             .collect();
         entries.sort_by_key(|(id, _)| **id);
         let ids: Vec<u64> = entries.iter().map(|(id, _)| **id).collect();
-        let mut buffers: Vec<LogicBuffer> = entries.iter().map(|(_, r)| r.buffer.clone()).collect();
+        let mut buffers: Vec<LogicBuffer> = entries
+            .iter()
+            .map(|(_, r)| {
+                r.buffer
+                    .clone()
+                    .expect("active assertion has a compiled buffer")
+            })
+            .collect();
 
         // Replay with diagnostic output + stratification checks suppressed
         // (inner.rebuilding == true). Collect-and-continue: replay EVERY surviving
@@ -643,23 +666,36 @@ impl KnowledgeBase {
             .map(|r| FactSummary {
                 id: r.id,
                 label: r.label.clone(),
-                root_count: r.buffer.roots.len() as u32,
+                root_count: r
+                    .buffer
+                    .as_ref()
+                    .expect("active assertion has a compiled buffer")
+                    .roots
+                    .len() as u32,
             })
             .collect();
         facts.sort_by_key(|f| f.id);
         Ok(facts)
     }
 
-    /// Set the backward-chaining depth bound (`max_chain_depth`, default 10) —
-    /// the "Configurable" knob `GUARANTEES.md §Resource Limits` documents.
-    /// Iterative deepening tries 1..=depth; a query whose shallowest proof needs a
-    /// longer chain returns `ResourceExceeded(Depth)`, never FALSE. Practical note:
-    /// deepening cost grows steeply with depth (each level re-explores the shallower
-    /// search — measured ~15×+ per level on linear rule chains), so the bound is a
-    /// soundness/termination contract, not a performance envelope. Values below 1
-    /// are clamped to 1.
-    pub fn set_max_chain_depth(&self, depth: usize) {
-        self.inner.borrow_mut().max_chain_depth = depth.max(1);
+    /// Set the positive reasoning depth budget. The same bound limits generated
+    /// witness dependency height; materialization can independently complete a proof.
+    pub fn set_max_chain_depth(&self, depth: u32) -> Result<(), NibliError> {
+        self.ensure_ready()?;
+        if depth == 0 {
+            return Err(NibliError::Reasoning(
+                "reasoning depth must be a positive u32".into(),
+            ));
+        }
+        let mut inner = self.inner.borrow_mut();
+        inner.max_chain_depth = depth as usize;
+        invalidate_pred_cache(&inner);
+        Ok(())
+    }
+
+    /// Current reasoning depth budget (default 10).
+    pub fn max_chain_depth(&self) -> u32 {
+        self.inner.borrow().max_chain_depth as u32
     }
 
     /// Saturate the relations this query must read completely, so eligible checks can
@@ -715,7 +751,7 @@ impl KnowledgeBase {
         // results persist across depth passes (cross-depth tabling).
         let mut inner = self.inner.borrow_mut();
         enable_pred_cache(&inner);
-        inner.ensure_domain_members_cached();
+        prepare_query_domain(&mut inner)?;
         let mut overall = QueryResult::True;
         for &root_id in &logic.roots {
             let mut subs = HashMap::new();
@@ -802,10 +838,18 @@ impl KnowledgeBase {
         out
     }
 
-    fn query_find_enumerate(
+    fn query_find_enumerate(&self, logic: LogicBuffer) -> Result<Vec<Vec<WitnessBinding>>, String> {
+        let binding_sets = self.query_find_ground(logic)?;
+        let inner = self.inner.borrow();
+        Ok(Self::present_witness_bindings(&inner, binding_sets))
+    }
+
+    /// Internal enumeration keeps generated identities intact for subsequent
+    /// constraint matching. Public witness strings are presentation only.
+    fn query_find_ground(
         &self,
         mut logic: LogicBuffer,
-    ) -> Result<Vec<Vec<WitnessBinding>>, String> {
+    ) -> Result<Vec<Vec<(String, GroundTerm)>>, String> {
         validate_single_flavor_paths(&logic)?;
         canonicalize_abstraction_markers(&mut logic)?;
         // Surfaced (as an Err) when any final witness leaf is non-definitive:
@@ -825,14 +869,17 @@ impl KnowledgeBase {
         // witness set"; `KnowledgeBase::materialization_report` can explain an
         // unsaturated relation, while non-finite compute and exhausted budgets must be
         // addressed at their source.
-        const INCOMPLETE_MSG: &str = "witness enumeration incomplete: a witness leaf could not be decided \
+        const INCOMPLETE_MSG: &str = "witness enumeration incomplete: domain closure or a witness leaf could not be decided \
              (`UNKNOWN` or `RESOURCE_EXCEEDED`), so find/count/aggregate would undercount — \
              `materialization_report` can explain unsaturated relations; non-finite compute \
              or exhausted budgets must be addressed at their source";
         self.ensure_materialized(&logic, true);
         let mut inner = self.inner.borrow_mut();
         clear_and_enable_pred_cache(&inner);
-        inner.ensure_domain_members_cached();
+        prepare_query_domain(&mut inner)?;
+        if inner.query_domain.incomplete.is_some() {
+            return Err(INCOMPLETE_MSG.to_string());
+        }
         inner.find_enumeration_incomplete = false;
         // Enumeration runs its body once per candidate, so external compute is not
         // dispatched from here at all — see `KnowledgeBaseInner::find_enumeration`.
@@ -875,7 +922,7 @@ impl KnowledgeBase {
                     for prev_bindings in prev {
                         for witness_bindings in &witnesses {
                             if let Some(combined) =
-                                merge_witness_bindings(&prev_bindings, witness_bindings)
+                                merge_witness_bindings(&prev_bindings, witness_bindings, &inner)
                             {
                                 joined.push(combined);
                             }
@@ -912,7 +959,13 @@ impl KnowledgeBase {
             }
             return Err(INCOMPLETE_MSG.to_string());
         }
-        let mut binding_sets = result_sets.unwrap_or_default();
+        Ok(result_sets.unwrap_or_default())
+    }
+
+    fn present_witness_bindings(
+        inner: &KnowledgeBaseInner,
+        mut binding_sets: Vec<Vec<(String, GroundTerm)>>,
+    ) -> Vec<Vec<WitnessBinding>> {
         // Determinism + dedup: witness enumeration touches HashSet-backed
         // candidate collections, so the order binding sets arrive in is
         // hasher-seed dependent, and the SAME solution can arrive via distinct
@@ -941,7 +994,7 @@ impl KnowledgeBase {
                 .map(|(var, gt)| {
                     (
                         var.clone(),
-                        find_canonical_readonly(&inner.equivalence_parent, gt),
+                        canonical_witness_term(&inner.equivalence_parent, gt),
                     )
                 })
                 .collect();
@@ -967,7 +1020,7 @@ impl KnowledgeBase {
         // and report ordinary origin for their one shared entity.
         binding_sets.sort_by_cached_key(|b| (entity_key(b), import_rank(b), full_key(b)));
         binding_sets.dedup_by_key(|bindings| entity_key(bindings));
-        Ok(binding_sets
+        binding_sets
             .into_iter()
             .map(|bindings| {
                 bindings
@@ -982,7 +1035,7 @@ impl KnowledgeBase {
                     })
                     .collect()
             })
-            .collect())
+            .collect()
     }
 
     /// Single-pass entailment check with proof trace at the current max_chain_depth.
@@ -1006,7 +1059,7 @@ impl KnowledgeBase {
         // across depth passes (cross-depth tabling).
         let mut inner = self.inner.borrow_mut();
         enable_pred_cache(&inner);
-        inner.ensure_domain_members_cached();
+        prepare_query_domain(&mut inner)?;
         let mut steps: Vec<ProofStep> = Vec::new();
         let mut memo: HashMap<StoredFact, u32> = HashMap::new();
         let mut root_children: Vec<u32> = Vec::new();
@@ -1148,6 +1201,7 @@ impl KnowledgeBase {
 fn merge_witness_bindings(
     left: &[(String, GroundTerm)],
     right: &[(String, GroundTerm)],
+    inner: &KnowledgeBaseInner,
 ) -> Option<Vec<(String, GroundTerm)>> {
     let mut combined = left.to_vec();
     for (var, val) in right {
@@ -1155,12 +1209,26 @@ fn merge_witness_bindings(
             .iter()
             .find(|(existing_var, _)| existing_var == var)
         {
-            Some((_, existing_val)) if existing_val != val => return None,
+            Some((_, existing_val))
+                if canonical_witness_term(&inner.equivalence_parent, existing_val)
+                    != canonical_witness_term(&inner.equivalence_parent, val) =>
+            {
+                return None;
+            }
             Some(_) => {}
             None => combined.push((var.clone(), val.clone())),
         }
     }
     Some(combined)
+}
+
+// String-returning low-level APIs keep the original reasoning message; their
+// callers add the structured error class exactly once.
+fn reasoning_message(error: NibliError) -> String {
+    match error {
+        NibliError::Reasoning(message) => message,
+        other => other.to_string(),
+    }
 }
 
 /// Public API for native callers (nibli-pipeline, nibli-engine).
@@ -1171,6 +1239,126 @@ impl KnowledgeBase {
         KnowledgeBase {
             inner: RefCell::new(KnowledgeBaseInner::new()),
         }
+    }
+
+    /// Refuse use of a session whose durable commit outcome is uncertain.
+    pub fn ensure_ready(&self) -> Result<(), NibliError> {
+        let inner = self.inner.try_borrow().map_err(|_| {
+            NibliError::Reasoning("knowledge base busy: mutation in progress".into())
+        })?;
+        match &inner.recovery_required {
+            Some(reason) => Err(NibliError::Reasoning(format!(
+                "RecoveryRequired: {reason}; reopen the knowledge base before continuing"
+            ))),
+            None => Ok(()),
+        }
+    }
+
+    /// Permanently retire this live instance after an ambiguous durable commit.
+    pub fn require_recovery(&self, reason: String) {
+        self.inner.borrow_mut().recovery_required = Some(reason);
+    }
+
+    /// Stage a mutation on a detached candidate, commit its authoritative storage
+    /// inside `operation`, then publish into this same KB identity. The live borrow
+    /// prevents reentrant use while a candidate is pending. An error discards it.
+    /// The typed store is a recoverable mirror: its infallible writes cannot turn
+    /// a committed authoritative mutation into a rejected logical operation.
+    pub fn transaction<R>(
+        &self,
+        operation: impl FnOnce(&KnowledgeBase) -> Result<R, NibliError>,
+    ) -> Result<R, NibliError> {
+        self.ensure_ready()?;
+        let mut live = self.inner.borrow_mut();
+        let mut snapshot = live.clone();
+        snapshot.deferred_stratification = live.deferred_stratification;
+        *snapshot.materialized.get_mut() = live.materialized.borrow().clone();
+        let candidate = KnowledgeBase {
+            inner: RefCell::new(snapshot),
+        };
+        let result = operation(&candidate)?;
+        candidate.ensure_ready()?;
+        let mut published = candidate.inner.into_inner();
+        // Keep the caller's typed mirror attached to the existing KB identity.
+        // Only apply differences, avoiding an unnecessary rewrite of every tuple.
+        let previous: HashSet<_> = live.fact_store.all_facts().cloned().collect();
+        let current: HashSet<_> = published.fact_store.all_facts().cloned().collect();
+        let mut mirror = std::mem::replace(
+            &mut live.fact_store,
+            Box::new(fact_store::InMemoryFactStore::new()),
+        );
+        for fact in previous.difference(&current) {
+            mirror.remove(fact);
+        }
+        for fact in current.difference(&previous) {
+            mirror.insert(fact.clone());
+        }
+        published.fact_store = mirror;
+        *live = published;
+        Ok(result)
+    }
+
+    /// Replay an active assertion with its original identity, atomically.
+    pub fn assert_fact_with_id(
+        &self,
+        logic: LogicBuffer,
+        label: String,
+        id: u64,
+    ) -> Result<(), String> {
+        self.transaction(|candidate| {
+            candidate
+                .assert_fact_with_id_inner(logic, label, id)
+                .map_err(NibliError::Reasoning)
+        })
+        .map_err(reasoning_message)
+    }
+
+    /// Restore withdrawn metadata without compiling or activating its old payload.
+    pub fn restore_withdrawn_assertion(&self, id: u64, label: String) -> Result<(), NibliError> {
+        self.ensure_ready()?;
+        let successor = id.checked_add(1).ok_or_else(|| {
+            NibliError::Reasoning(
+                "fact id u64::MAX cannot be restored: no collision-free successor remains".into(),
+            )
+        })?;
+        let mut inner = self.inner.borrow_mut();
+        if inner.fact_registry.contains_key(&id) {
+            return Err(NibliError::Reasoning(format!(
+                "fact id {id} is already registered"
+            )));
+        }
+        inner.fact_counter = inner.fact_counter.max(successor);
+        inner.fact_registry.insert(
+            id,
+            FactRecord {
+                id,
+                label,
+                buffer: None,
+                retracted: true,
+            },
+        );
+        Ok(())
+    }
+
+    /// List active and withdrawn assertion records in stable identity order.
+    pub fn list_assertion_records(&self) -> Result<Vec<AssertionRecordSummary>, NibliError> {
+        self.ensure_ready()?;
+        let inner = self.inner.borrow();
+        let mut records: Vec<_> = inner
+            .fact_registry
+            .values()
+            .map(|record| AssertionRecordSummary {
+                id: record.id,
+                label: record.label.clone(),
+                status: if record.retracted {
+                    AssertionStatus::Withdrawn
+                } else {
+                    AssertionStatus::Active
+                },
+            })
+            .collect();
+        records.sort_by_key(|record| record.id);
+        Ok(records)
     }
 
     /// Create a KB with a custom fact store backend (e.g., persistent redb).
@@ -1249,29 +1437,17 @@ impl KnowledgeBase {
     /// prevents a later unrelated retraction from changing which profile the
     /// already-loaded rules use. Configuration survives `reset()`.
     pub fn set_existential_import(&self, on: bool) -> Result<(), String> {
-        let mut inner = self.inner.borrow_mut();
-        if inner.existential_import == on {
-            return Ok(());
-        }
-
-        // Snapshot before replay so even a future profile-sensitive assertion
-        // failure restores the exact pre-change KB without relying on a second,
-        // potentially fallible replay.
-        let previous = inner.clone();
-        inner.existential_import = on;
-        match Self::rebuild_inner(&mut inner) {
-            Ok(()) => {
-                invalidate_pred_cache(&inner);
-                Ok(())
+        self.transaction(|candidate| {
+            let mut inner = candidate.inner.borrow_mut();
+            if inner.existential_import == on {
+                return Ok(());
             }
-            Err(change_error) => {
-                *inner = previous;
-                invalidate_pred_cache(&inner);
-                Err(format!(
-                    "existential-import profile change failed; previous profile restored: {change_error}"
-                ))
-            }
-        }
+            inner.existential_import = on;
+            Self::rebuild_inner(&mut inner).map_err(NibliError::Reasoning)?;
+            invalidate_pred_cache(&inner);
+            Ok(())
+        })
+        .map_err(reasoning_message)
     }
 
     /// Whether existential-import (xorlo witness minting) is enabled.
@@ -1307,6 +1483,20 @@ impl KnowledgeBase {
         self.inner.borrow().materialization
     }
 
+    /// Prepare the immutable rule projection and dependency strata for reuse by
+    /// independent [`Self::with_assumptions`] snapshots.
+    ///
+    /// This performs no logical query, derives no facts, and does not saturate
+    /// any relation. Warming a prepared base before cloning avoids rebuilding
+    /// the same rule plan in every otherwise independent fixture. Ordinary
+    /// mutation/profile invalidation still applies; stored-fact eligibility is
+    /// checked separately when a query actually requests materialization.
+    pub fn prepare_materialization_plan(&self) -> Result<(), NibliError> {
+        self.ensure_ready()?;
+        materialize::materialization_plan(&self.inner.borrow());
+        Ok(())
+    }
+
     /// What the last query's saturation actually covered: `(completed relations, why
     /// each refused relation was not)`, both sorted for reproducible output.
     ///
@@ -1314,11 +1504,12 @@ impl KnowledgeBase {
     /// whose `~p(x)` still takes seconds has no other way to learn that `p` fell out of
     /// the materialisable fragment, or which of its dependencies did. Empty until a
     /// query has run (the saturation is built lazily) and after any mutation.
-    pub fn materialization_report(&self) -> (Vec<String>, Vec<(String, String)>) {
+    pub fn materialization_report(&self) -> Result<MaterializationReport, NibliError> {
+        self.ensure_ready()?;
         let inner = self.inner.borrow();
         let m = inner.materialized.borrow();
         let Some(m) = m.as_ref() else {
-            return (Vec::new(), Vec::new());
+            return Ok((Vec::new(), Vec::new()));
         };
         let mut complete: Vec<String> = m.complete.iter().cloned().collect();
         complete.sort();
@@ -1329,7 +1520,7 @@ impl KnowledgeBase {
             .map(|(rel, why)| (rel.clone(), why.reason()))
             .collect();
         refused.sort();
-        (complete, refused)
+        Ok((complete, refused))
     }
 
     #[cfg(test)]
@@ -1380,9 +1571,10 @@ impl KnowledgeBase {
     /// Deterministic by construction: rows sorted by predicate, edges sorted, duplicates
     /// (four raw edges collapsing onto one surface edge) removed — safe to diff across
     /// runs.
-    pub fn stratification_report(&self) -> Vec<StratumRow> {
+    pub fn stratification_report(&self) -> Result<Vec<StratumRow>, NibliError> {
         use std::collections::{BTreeMap, BTreeSet};
 
+        self.ensure_ready()?;
         let inner = self.inner.borrow();
         let strata = materialize::compute_strata(&inner.pred_dep_graph);
 
@@ -1419,7 +1611,7 @@ impl KnowledgeBase {
             }
         }
 
-        level
+        Ok(level
             .into_iter()
             .map(|(predicate, stratum)| StratumRow {
                 stratum,
@@ -1437,7 +1629,7 @@ impl KnowledgeBase {
                     .unwrap_or_default(),
                 predicate: predicate.to_string(),
             })
-            .collect()
+            .collect())
     }
 
     /// Declare `relation` DERIVED-ONLY (intensional / IDB): thereafter it may be
@@ -1549,6 +1741,7 @@ impl KnowledgeBase {
     /// spaces collide. The value is only a snapshot: the caller must serialize
     /// mutations and then pass its chosen id to [`Self::assert_fact_with_id`].
     pub fn next_fact_id(&self) -> Result<u64, NibliError> {
+        self.ensure_ready()?;
         let id = self.inner.borrow().fact_counter;
         id.checked_add(1).map(|_| id).ok_or_else(|| {
             NibliError::Reasoning(
@@ -1562,6 +1755,7 @@ impl KnowledgeBase {
     /// or mutating the knowledge base. Multi-root surfaces use this before
     /// installing any independently retractable root.
     pub fn validate_assertion(&self, logic: &LogicBuffer) -> Result<(), NibliError> {
+        self.ensure_ready()?;
         let mut logic = logic.clone();
         preflight_assertion_buffer(&mut logic).map_err(NibliError::Reasoning)
     }
@@ -1575,8 +1769,62 @@ impl KnowledgeBase {
         // already passed nibli-semantics, so every failure here (stratification, fail-closed
         // rule compilation, the zero-ingest guard, rebuild replay) is reasoning-layer.
         // The layer contract is Syntax=nibli-kr / Semantic=nibli-semantics / Reasoning=nibli-reason.
-        self.assert_fact_inner(logic, label)
-            .map_err(NibliError::Reasoning)
+        self.transaction(|candidate| {
+            candidate
+                .assert_fact_inner(logic, label)
+                .map_err(NibliError::Reasoning)
+        })
+    }
+
+    /// Build a fresh in-memory KB from ordered, separately compiled statements.
+    ///
+    /// Each root retains its own assertion ID and statement label. All normal
+    /// assertion guards run in order, including vocabulary and derived-only
+    /// declarations. The unpublished KB checks stratification once after the
+    /// last statement instead of repeating the same whole-graph analysis after
+    /// every rule. Any failure discards the entire new KB.
+    pub fn from_compiled_batch(
+        statements: Vec<(LogicBuffer, String)>,
+    ) -> Result<(Self, Vec<Vec<u64>>), NibliError> {
+        Self::from_compiled_batch_with_cancel(
+            statements,
+            Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        )
+    }
+
+    /// Cancellable counterpart of [`Self::from_compiled_batch`].
+    pub fn from_compiled_batch_with_cancel(
+        statements: Vec<(LogicBuffer, String)>,
+        cancellation: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Result<(Self, Vec<Vec<u64>>), NibliError> {
+        let kb = Self::new();
+        kb.set_cancel_flag(Arc::clone(&cancellation));
+        kb.inner.borrow_mut().deferred_stratification = true;
+        let mut ids = Vec::with_capacity(statements.len());
+        for (buffer, label) in statements {
+            if cancellation.load(std::sync::atomic::Ordering::Relaxed) {
+                return Err(NibliError::Reasoning(
+                    "fixture construction cancelled".to_owned(),
+                ));
+            }
+            kb.validate_assertion(&buffer)?;
+            let mut statement_ids = Vec::new();
+            for root in buffer.split_roots() {
+                statement_ids.push(kb.assert_fact(root, label.clone())?);
+            }
+            ids.push(statement_ids);
+        }
+        {
+            if cancellation.load(std::sync::atomic::Ordering::Relaxed) {
+                return Err(NibliError::Reasoning(
+                    "fixture construction cancelled".to_owned(),
+                ));
+            }
+            let mut inner = kb.inner.borrow_mut();
+            rules::check_stratification(&inner.pred_dep_graph).map_err(NibliError::Reasoning)?;
+            inner.deferred_stratification = false;
+        }
+        Ok((kb, ids))
     }
 
     /// Run a query under temporary assumptions without mutating the real KB.
@@ -1591,6 +1839,7 @@ impl KnowledgeBase {
     where
         F: FnOnce(&KnowledgeBase) -> R,
     {
+        self.ensure_ready()?;
         let snapshot = self.inner.borrow().clone();
         let temp_kb = KnowledgeBase {
             inner: RefCell::new(snapshot),
@@ -1615,6 +1864,7 @@ impl KnowledgeBase {
         label: String,
         mut conjuncts: Vec<kb::StoredFact>,
     ) -> Result<(), NibliError> {
+        self.ensure_ready()?;
         for conjunct in &mut conjuncts {
             kb::canonicalize_stored_fact_abstraction_marker(conjunct)
                 .map_err(NibliError::Reasoning)?;
@@ -1637,6 +1887,7 @@ impl KnowledgeBase {
     /// registration or arity inference occurs on this path; compute IR remains
     /// query-only at assertion ingress.
     pub fn query_entailment(&self, logic: LogicBuffer) -> Result<QueryResult, NibliError> {
+        self.ensure_ready()?;
         self.query_entailment_inner(logic)
             .map_err(NibliError::Reasoning)
     }
@@ -1645,6 +1896,7 @@ impl KnowledgeBase {
     /// Returns `NibliError::Reasoning` with `witness enumeration incomplete` when any
     /// evaluated candidate leaf is `Unknown(_)` or `ResourceExceeded(_)`.
     pub fn query_find(&self, logic: LogicBuffer) -> Result<Vec<Vec<WitnessBinding>>, NibliError> {
+        self.ensure_ready()?;
         self.query_find_inner(logic).map_err(NibliError::Reasoning)
     }
 
@@ -1719,12 +1971,14 @@ impl KnowledgeBase {
         &self,
         logic: LogicBuffer,
     ) -> Result<(QueryResult, ProofTrace), NibliError> {
+        self.ensure_ready()?;
         self.query_entailment_with_proof_inner(logic)
             .map_err(NibliError::Reasoning)
     }
 
     /// Clear all facts, rules, indexes, and derived state.
     pub fn reset(&self) -> Result<(), NibliError> {
+        self.ensure_ready()?;
         let mut inner = self.inner.borrow_mut();
         inner.reset();
         invalidate_pred_cache(&inner); // Tabling: KB cleared.
@@ -1735,7 +1989,11 @@ impl KnowledgeBase {
     /// record retracted, rebuild from the survivors (retract ≡ never-asserted;
     /// see `retract_fact_inner`'s doc block and GUARANTEES §Retraction Model).
     pub fn retract_fact(&self, id: u64) -> Result<(), NibliError> {
-        self.retract_fact_inner(id).map_err(NibliError::Reasoning)
+        self.transaction(|candidate| {
+            candidate
+                .retract_fact_inner(id)
+                .map_err(NibliError::Reasoning)
+        })
     }
 
     /// List all active (non-retracted) facts with their IDs and labels.
@@ -1744,16 +2002,19 @@ impl KnowledgeBase {
     /// unspecified order. The TYPED read surface for exporters
     /// (nibli-import's N-Triples emitter): labels are display, these are the
     /// facts. Rules are not facts and are not included.
-    pub fn active_typed_facts(&self) -> Vec<kb::StoredFact> {
-        self.inner
+    pub fn active_typed_facts(&self) -> Result<Vec<kb::StoredFact>, NibliError> {
+        self.ensure_ready()?;
+        Ok(self
+            .inner
             .borrow()
             .fact_store
             .all_facts()
             .cloned()
-            .collect()
+            .collect())
     }
 
     pub fn list_facts(&self) -> Result<Vec<FactSummary>, NibliError> {
+        self.ensure_ready()?;
         self.list_facts_inner().map_err(NibliError::Reasoning)
     }
 
@@ -1773,7 +2034,11 @@ impl KnowledgeBase {
             .fact_registry
             .values()
             .filter(|r| !r.retracted)
-            .filter(|r| kb::buffer_references_relation(&r.buffer, relation))
+            .filter(|r| {
+                r.buffer
+                    .as_ref()
+                    .is_some_and(|buffer| kb::buffer_references_relation(buffer, relation))
+            })
             .map(|r| r.id)
             .collect();
         ids.sort_unstable();
@@ -1790,6 +2055,7 @@ impl KnowledgeBase {
     pub fn invalidate_materialization(&self) {
         let inner = self.inner.borrow();
         reasoning::invalidate_materialization(&inner);
+        *inner.materialization_plan.borrow_mut() = None;
     }
 
     /// Mark all rules concluding the given predicate as forward-chaining enabled.
@@ -1815,6 +2081,7 @@ impl KnowledgeBase {
     /// by `reset()`.
     pub fn set_rule_forward(&self, conclusion_predicate: &str, forward: bool) {
         let mut inner = self.inner.borrow_mut();
+        *inner.materialization_plan.borrow_mut() = None;
         inner
             .rule_exec_overrides
             .entry(conclusion_predicate.to_string())
@@ -1860,6 +2127,7 @@ impl KnowledgeBase {
     /// Cleared by `reset()`.
     pub fn set_rule_priority(&self, conclusion_predicate: &str, priority: u32) {
         let mut inner = self.inner.borrow_mut();
+        *inner.materialization_plan.borrow_mut() = None;
         inner
             .rule_exec_overrides
             .entry(conclusion_predicate.to_string())
@@ -1967,33 +2235,9 @@ impl KnowledgeBase {
             .collect()
     }
 
-    /// Scan the KB for contradictions. Returns human-readable descriptions.
-    ///
-    /// **Category 4 (negation)** uses a two-tier check: (a) store membership of
-    /// the positive counterpart (stored direct/eager facts), then (b) a *cheap middle* —
-    /// after dropping the inner borrow, each unmatched asserted `~P` is re-run
-    /// as a positive entailment query, so a **rule-derived** positive also
-    /// flags (e.g. `travel(every person where ~prisoner)` + `person(Kilo)` +
-    /// `~travel(Kilo)`). This is not full closure consistency (integrity §1/§6
-    /// and disjunctive antecedents stay store-bound by design — re-entrancy /
-    /// false-flag conservatism; see
-    /// `test_mixed_conclusion_conservative_p_check_misses_derived_antecedent`).
-    /// Vampire/clingo remain the fragment-level closure oracles.
-    ///
-    /// Checks:
-    /// 1. Integrity constraint violations (conjuncts that all hold in the store)
-    /// 2. Predicate arity inconsistencies across asserted facts
-    /// 3. Equality-expanded integrity violations (`equals` / du union-find)
-    /// 4. Negation contradictions — asserted `~P` whose positive holds in the
-    ///    store **or** is derivable via backward chaining
-    /// 5. Inequality contradictions (`~equals(X,Y)` vs union-find equivalence)
-    /// 6. Disjunctive-conclusion constraints — antecedent P by store membership
-    ///    only (conservative miss on derived P)
-    pub fn check_contradictions(&self) -> Vec<String> {
+    /// Store-only fast path; the report method adds evaluator-based checks.
+    fn check_contradictions_stored(&self) -> Vec<String> {
         let mut violations = Vec::new();
-        // Negative groups that fail the store-membership leg of §4 — re-checked
-        // via query after the borrow ends (cheap middle for derived positives).
-        let mut derived_negation_candidates: Vec<Vec<StoredFact>> = Vec::new();
 
         let inner = self.inner.borrow();
 
@@ -2159,9 +2403,6 @@ impl KnowledgeBase {
                 if !violations.contains(&msg) {
                     violations.push(msg);
                 }
-            } else {
-                // Cheap middle: try derivation after the borrow drops.
-                derived_negation_candidates.push(group.clone());
             }
         }
 
@@ -2194,11 +2435,8 @@ impl KnowledgeBase {
         //    DERIVED (unsound in a Horn engine — `R` might hold instead); the positive
         //    use is served by a disjunctive QUERY. P uses store-membership only (via
         //    `solve_group_bindings` over `fact_store`): a rule-DERIVED P does NOT trigger
-        //    this — sound + conservative (it can only MISS a contradiction, never falsely
-        //    flag one). The check holds `self.inner.borrow()` and stays store-bound by
-        //    design (re-entering the query engine here would be a borrow / re-entrancy
-        //    hazard). Pinned by
-        //    `test_mixed_conclusion_conservative_p_check_misses_derived_antecedent`.
+        //    this fast path. The report subsequently evaluates antecedents using
+        //    typed witness enumeration after this store borrow has ended.
         for dc in &inner.disjunctive_constraints {
             let bindings = solve_group_bindings(&dc.conditions, &*inner.fact_store);
             let violated = bindings.iter().any(|b| {
@@ -2217,30 +2455,6 @@ impl KnowledgeBase {
                 if !violations.contains(&msg) {
                     violations.push(msg);
                 }
-            }
-        }
-
-        // Drop `inner` before re-entering the query engine (borrow / re-entrancy).
-        drop(inner);
-
-        // 4b. Cheap middle: asserted `~P` vs *derivable* positive.
-        for group in derived_negation_candidates {
-            let Some(buf) = negative_group_to_query_buffer(&group) else {
-                continue;
-            };
-            match self.query_entailment_inner(buf) {
-                Ok(r) if r.is_true() => {
-                    let facts: Vec<String> = group.iter().map(|f| f.to_display_string()).collect();
-                    let msg = format!(
-                        "Negation contradiction: ¬({}) was asserted, but the positive \
-                         counterpart is derivable",
-                        facts.join(" ∧ ")
-                    );
-                    if !violations.contains(&msg) {
-                        violations.push(msg);
-                    }
-                }
-                _ => {}
             }
         }
 
@@ -2267,7 +2481,7 @@ fn negative_group_to_query_buffer(group: &[StoredFact]) -> Option<LogicBuffer> {
             GroundTerm::Number(bits) => Some(LogicalTerm::Number(f64::from_bits(*bits))),
             GroundTerm::Description(s) => Some(LogicalTerm::Description(s.clone())),
             GroundTerm::Unspecified => Some(LogicalTerm::Unspecified),
-            GroundTerm::PatternVar(s) => Some(LogicalTerm::Variable(s.clone())),
+            GroundTerm::PatternVar(s) => Some(LogicalTerm::Variable(template_query_variable(s))),
             GroundTerm::Skolem(_)
             | GroundTerm::SkolemFn(_, _)
             | GroundTerm::DepPair(_, _)
@@ -2283,8 +2497,9 @@ fn negative_group_to_query_buffer(group: &[StoredFact]) -> Option<LogicBuffer> {
         let gf = fact.inner();
         for arg in &gf.args {
             if let GroundTerm::PatternVar(s) = arg {
-                if !pattern_vars.iter().any(|v| v == s) {
-                    pattern_vars.push(s.clone());
+                let variable = template_query_variable(s);
+                if !pattern_vars.contains(&variable) {
+                    pattern_vars.push(variable);
                 }
             }
         }
@@ -2343,6 +2558,23 @@ fn negative_group_to_query_buffer(group: &[StoredFact]) -> Option<LogicBuffer> {
         nodes,
         roots: vec![root],
     })
+}
+
+/// Internal rule/negative-pattern event names are not user individual binders.
+/// Normalize at this adapter boundary, keeping a reversible mapping for the
+/// constraint substitution that consumes enumeration results.
+fn template_query_variable(name: &str) -> String {
+    if name.starts_with("ev__") || name.starts_with("__neg_ev") {
+        format!("_ev__constraint_{name}")
+    } else {
+        name.to_string()
+    }
+}
+
+fn restore_template_query_variable(name: String) -> String {
+    name.strip_prefix("_ev__constraint_")
+        .map(str::to_string)
+        .unwrap_or(name)
 }
 
 #[cfg(test)]

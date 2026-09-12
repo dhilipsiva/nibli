@@ -41,6 +41,17 @@ Re-query and the verdicts reflect the surviving facts only. With the durable
 store attached, the retraction persists as a tombstone — provenance is kept,
 and a replay never resurrects the fact.
 
+Use `:facts --all` to inspect retained assertion records with `active` or
+`withdrawn` status. The default `:facts` still lists active statements only.
+Withdrawn records retain their ID and label across reopening a saved knowledge
+base; their obsolete payloads are not recompiled. This is retained assertion
+metadata, not a complete chronology of changes. `:reset` clears both sets.
+
+A single `assert_text` call commits every root together or leaves the prior
+knowledge base unchanged. Separate input lines remain separate calls. A storage
+commit with an uncertain outcome retires the live session until the database is
+reopened, so subsequent queries cannot certify an uncertain state.
+
 Two worked, engine-checked demos:
 
 - [GDPR walkthrough](gdpr-walkthrough.md) — withdraw consent (`:retract 21`):

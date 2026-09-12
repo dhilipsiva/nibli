@@ -688,7 +688,7 @@ fn make_universal_2cond(c1: &str, c2: &str, concl: &str) -> LogicBuffer {
 #[test]
 fn contaminated_depth_cut_is_not_tabled_for_replay() {
     let kb = new_kb();
-    kb.set_max_chain_depth(5);
+    kb.set_max_chain_depth(5).unwrap();
     assert_buf(&kb, make_universal_2cond("aaa", "fff", "rrr"));
     assert_buf(&kb, make_universal("xxx1", "rrr"));
     assert_buf(&kb, make_universal("xxx2", "xxx1"));

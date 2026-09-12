@@ -11,7 +11,7 @@
 ///
 /// Data crossing the host↔component boundary uses flat index-based arrays
 /// (`u32` indices into parallel lists) — no heap pointers cross the WASM boundary.
-package nibli:engine@0.11.0;
+package nibli:engine@0.12.0;
 
 /// Structured error types shared across all Nibli components.
 interface error-types {
@@ -317,6 +317,14 @@ interface logic-types {
     }
 
     /// Summary of an active fact in the knowledge base.
+    /// Retained assertion state; this is not an immutable audit history.
+    enum assertion-status { active, withdrawn }
+    record assertion-record-summary {
+        id: fact-id,
+        label: string,
+        status: assertion-status,
+    }
+
     record fact-summary {
         /// Unique fact identifier (assigned at assertion time).
         id: fact-id,
@@ -406,7 +414,7 @@ interface compute-backend {
 /// (e.g., the REPL nibli-host; the in-browser surfaces nibli-ui/nibli-wasm embed
 /// the same crates natively rather than through this component).
 interface engine {
-    use logic-types.{fact-id, fact-summary, logic-buffer, logical-term, materialization-report, proof-trace, query-result, witness-binding};
+    use logic-types.{fact-id, fact-summary, assertion-record-summary, logic-buffer, logical-term, materialization-report, proof-trace, query-result, witness-binding};
     use error-types.{nibli-error};
 
     /// A user-facing session that wraps the full pipeline.
@@ -492,6 +500,13 @@ interface engine {
         retract-fact: func(id: fact-id) -> result<_, nibli-error>;
         /// List all active (non-retracted) facts.
         list-facts: func() -> result<list<fact-summary>, nibli-error>;
+        /// All retained assertion identities in ascending order, active or withdrawn.
+        list-assertion-records: func() -> result<list<assertion-record-summary>, nibli-error>;
+        /// Trusted persistence replay: reserve a withdrawn identity without decoding its payload.
+        restore-withdrawn-assertion: func(id: fact-id, label: string) -> result<_, nibli-error>;
+        /// Positive reasoning depth budget (default 10). Zero is rejected.
+        set-max-chain-depth: func(depth: u32) -> result<_, nibli-error>;
+        max-chain-depth: func() -> u32;
         /// Enable/disable STRICT MODE (default off — permissive
         /// warn-and-insert): when on, arity mismatches and integrity-constraint
         /// violations REJECT the offending fact and fail the assertion.
@@ -522,13 +537,13 @@ interface engine {
         /// knowledge base whose `~p(x)` is still slow, or whose find/count refuses
         /// rather than undercounting, has no other way to learn WHICH relation fell
         /// out of the materialisable fragment or why.
-        materialization-report: func() -> materialization-report;
+        materialization-report: func() -> result<materialization-report, nibli-error>;
     }
 }
 
 /// Built-in authorization surface (logical auth v0.1).
 ///
-/// Rides package `nibli:engine@0.11.0` for shipping tooling simplicity (single
+/// Rides package `nibli:engine@0.12.0` for shipping tooling simplicity (single
 /// WIT package / world). A future split to `nibli:auth@0.1.0` may re-home this
 /// interface without changing method shapes. Wraps the same policy as the
 /// native `nibli-auth` crate (`authorized` KR head, not corpus `can`).

@@ -27,6 +27,17 @@ Results from the **external compute backend** (`exponential`, `logarithm`, or an
 
 The guarantee is **soundness relative to what you asserted and any trusted compute replies the proof used**, not omniscience — change those inputs and the verdict can change. What Nibli rules out is *fabrication*: it never invents a fact, a rule, or a proof step.
 
+Native callers can use `KnowledgeBase::check_contradictions_report()` or
+`NibliEngine::check_contradictions_report()` to scan represented integrity and
+disjunctive constraints, explicit negative assertions, arity and equality
+conflicts. Positive counterparts and constraint antecedents include derivation.
+The report separates `violations` from `unresolved` checks; `is_clean()` requires
+both to be empty. `UNKNOWN`, exhausted bounds, unsupported negation shapes and
+evaluation errors never count as a clean scan. The native `:contradictions`
+command displays both fields. The older findings-only `check_contradictions()`
+remains available for compatibility but cannot establish scan completion.
+This is a check of represented constraints, not unrestricted FOL consistency.
+
 ---
 
 ## The nibli KR Language
@@ -139,7 +150,7 @@ Built-in, zero-hallucination **authorization** (entailment of `authorized(...)` 
 |-------|----------|
 | Guide | [mdBook: Authorization](https://dhilipsiva.github.io/nibli/user/authorization.html) (or `just docs-serve`) |
 | Rust crate | `nibli-auth` — `Authorizer`, `tls` (thread-local for async servers). Not on crates.io yet (`publish = false`) — use a git or path dependency |
-| WIT | `nibli:engine@0.11.0` export `authorizer` (the version lives in `wit/world.wit`) |
+| WIT | `nibli:engine@0.12.0` export `authorizer` (the version lives in `wit/world.wit`) |
 | Python | `just build-auth-py` → `nibli_auth` / `nibli_auth_native` |
 | Examples | `examples/auth-axum`, `examples/auth-fastapi` (same policy) |
 | Tests | `just test-auth`; Python: `just test-auth-py` (maturin; gated by the `auth-py` CI job) |

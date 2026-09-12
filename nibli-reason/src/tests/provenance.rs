@@ -976,7 +976,7 @@ fn reset_clears_rule_execution_overrides() {
     let kb = new_kb();
     kb.set_rule_forward("danlu", true);
     kb.set_rule_priority("danlu", 5);
-    kb.reset();
+    kb.reset().unwrap();
     assert_id(&kb, make_universal("gerku", "danlu"), "dogs are animals");
     assert_eq!(
         kb.rule_execution_settings("danlu"),

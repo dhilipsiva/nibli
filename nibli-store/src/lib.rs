@@ -104,8 +104,12 @@ pub enum StoredAssertion {
 #[derive(Debug)]
 pub enum StoreError {
     Io(String),
+    /// A commit failed after entering the storage commit protocol. The caller
+    /// must reopen the canonical registry before deciding which state won.
+    CommitOutcomeUnknown(String),
     Serialization(String),
     NotFound(u64),
+    AlreadyExists(u64),
     SchemaVersion {
         expected: u32,
         found: u32,
@@ -122,8 +126,12 @@ impl std::fmt::Display for StoreError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             StoreError::Io(msg) => write!(f, "I/O error: {msg}"),
+            StoreError::CommitOutcomeUnknown(msg) => {
+                write!(f, "commit outcome unknown; reopen required: {msg}")
+            }
             StoreError::Serialization(msg) => write!(f, "serialization error: {msg}"),
             StoreError::NotFound(id) => write!(f, "fact {id} not found"),
+            StoreError::AlreadyExists(id) => write!(f, "fact {id} already exists"),
             StoreError::SchemaVersion { expected, found } => {
                 write!(
                     f,
@@ -171,7 +179,7 @@ impl From<redb::StorageError> for StoreError {
 
 impl From<redb::CommitError> for StoreError {
     fn from(e: redb::CommitError) -> Self {
-        StoreError::Io(e.to_string())
+        StoreError::CommitOutcomeUnknown(e.to_string())
     }
 }
 
@@ -381,12 +389,6 @@ impl NibliStore {
         Ok(migrated)
     }
 
-    /// Advance the HLC and return the new timestamp.
-    fn tick(&mut self) -> u64 {
-        self.hlc += 1;
-        self.hlc
-    }
-
     fn normalize_predicates<I, S>(predicates: I) -> Vec<String>
     where
         I: IntoIterator<Item = S>,
@@ -462,24 +464,52 @@ impl NibliStore {
         label: String,
         payload: Vec<u8>,
     ) -> Result<(), StoreError> {
-        let ts = self.tick();
-        let record = StoredFactRecord {
-            id,
-            payload,
-            label,
-            retracted: false,
-            node_id: self.node_id.clone(),
-            hlc_timestamp: ts,
-            predicates: Vec::new(),
-        };
-        let bytes = postcard::to_allocvec(&record)?;
+        self.insert_facts(&[(id, label, payload)])
+    }
 
+    /// Insert one logical mutation's records in a single canonical transaction.
+    /// Every ID, including tombstoned IDs and duplicates within this batch, is
+    /// checked inside that transaction. A rejection leaves records and HLC
+    /// unchanged; an uncertain commit must be resolved by reopening the store.
+    pub fn insert_facts(&mut self, facts: &[(u64, String, Vec<u8>)]) -> Result<(), StoreError> {
+        self.insert_records(
+            facts
+                .iter()
+                .map(|(id, label, payload)| (*id, label.clone(), payload.clone(), Vec::new())),
+        )
+    }
+
+    fn insert_records(
+        &mut self,
+        records: impl IntoIterator<Item = (u64, String, Vec<u8>, Vec<String>)>,
+    ) -> Result<(), StoreError> {
+        let mut committed_hlc = self.hlc;
         let txn = self.db.begin_write()?;
         {
             let mut table = txn.open_table(FACTS_TABLE)?;
-            table.insert(id, bytes.as_slice())?;
+            for (id, label, payload, predicates) in records {
+                if table.get(id)?.is_some() {
+                    return Err(StoreError::AlreadyExists(id));
+                }
+                committed_hlc = committed_hlc
+                    .checked_add(1)
+                    .ok_or_else(|| StoreError::Io("logical clock exhausted".to_string()))?;
+                let record = StoredFactRecord {
+                    id,
+                    payload,
+                    label,
+                    retracted: false,
+                    node_id: self.node_id.clone(),
+                    hlc_timestamp: committed_hlc,
+                    predicates,
+                };
+                let bytes = postcard::to_allocvec(&record)?;
+                table.insert(id, bytes.as_slice())?;
+            }
         }
+        Self::rebuild_predicate_index(&txn)?;
         txn.commit()?;
+        self.hlc = committed_hlc;
         Ok(())
     }
 
@@ -505,30 +535,17 @@ impl NibliStore {
         payload: Vec<u8>,
         predicates: &[&str],
     ) -> Result<(), StoreError> {
-        let ts = self.tick();
-        let record = StoredFactRecord {
+        self.insert_records(std::iter::once((
             id,
-            payload,
             label,
-            retracted: false,
-            node_id: self.node_id.clone(),
-            hlc_timestamp: ts,
-            predicates: Self::normalize_predicates(predicates.iter()),
-        };
-        let bytes = postcard::to_allocvec(&record)?;
-
-        let txn = self.db.begin_write()?;
-        {
-            let mut facts = txn.open_table(FACTS_TABLE)?;
-            facts.insert(id, bytes.as_slice())?;
-        }
-        Self::rebuild_predicate_index(&txn)?;
-        txn.commit()?;
-        Ok(())
+            payload,
+            Self::normalize_predicates(predicates.iter()),
+        )))
     }
 
     /// Mark a fact as retracted (tombstone). Idempotent.
     pub fn retract_fact(&mut self, id: u64) -> Result<(), StoreError> {
+        let mut committed_hlc = self.hlc;
         let txn = self.db.begin_write()?;
         {
             let mut table = txn.open_table(FACTS_TABLE)?;
@@ -541,7 +558,10 @@ impl NibliStore {
                 Some(mut record) => {
                     if !record.retracted {
                         record.retracted = true;
-                        record.hlc_timestamp = self.tick();
+                        committed_hlc = committed_hlc
+                            .checked_add(1)
+                            .ok_or_else(|| StoreError::Io("logical clock exhausted".to_string()))?;
+                        record.hlc_timestamp = committed_hlc;
                         let bytes = postcard::to_allocvec(&record)?;
                         table.insert(id, bytes.as_slice())?;
                     }
@@ -551,20 +571,29 @@ impl NibliStore {
         }
         Self::rebuild_predicate_index(&txn)?;
         txn.commit()?;
+        self.hlc = committed_hlc;
         Ok(())
     }
 
     /// Load all active (non-retracted) facts, ordered by ID.
     pub fn all_active_facts(&self) -> Result<Vec<StoredFactRecord>, StoreError> {
+        Ok(self
+            .all_fact_records()?
+            .into_iter()
+            .filter(|record| !record.retracted)
+            .collect())
+    }
+
+    /// Load every durable record envelope in ID order. Payloads remain opaque,
+    /// so withdrawn records can reserve their identities without decoding or
+    /// recompiling syntax from an obsolete engine version.
+    pub fn all_fact_records(&self) -> Result<Vec<StoredFactRecord>, StoreError> {
         let rtxn = self.db.begin_read()?;
         let table = rtxn.open_table(FACTS_TABLE)?;
         let mut results = Vec::new();
         for entry in table.iter()? {
             let (_, val) = entry?;
-            let record = decode_stored_fact_record(val.value())?;
-            if !record.retracted {
-                results.push(record);
-            }
+            results.push(decode_stored_fact_record(val.value())?);
         }
         Ok(results)
     }
@@ -741,6 +770,55 @@ mod tests {
         assert!(!fact.retracted);
         assert_eq!(fact.node_id, "test-node");
 
+        cleanup(&path);
+    }
+
+    #[test]
+    fn batch_collision_aborts_every_row_and_preserves_clock() {
+        let path = temp_db_path("atomic_batch_collision");
+        cleanup(&path);
+        let mut store = NibliStore::open(&path, "node".into()).unwrap();
+        store.insert_fact(7, "original".into(), vec![7]).unwrap();
+        store.retract_fact(7).unwrap();
+        let clock = store.hlc;
+        let error = store
+            .insert_facts(&[
+                (8, "tentative".into(), vec![8]),
+                (7, "collision with withdrawn source".into(), vec![9]),
+            ])
+            .unwrap_err();
+        assert!(matches!(error, StoreError::AlreadyExists(7)));
+        assert!(store.get_fact(8).unwrap().is_none());
+        assert_eq!(store.hlc, clock);
+        assert_eq!(store.get_fact(7).unwrap().unwrap().label, "original");
+        store.insert_fact(8, "accepted".into(), vec![8]).unwrap();
+        assert_eq!(store.get_fact(8).unwrap().unwrap().hlc_timestamp, clock + 1);
+        drop(store);
+        let reopened = NibliStore::open(&path, "node".into()).unwrap();
+        assert_eq!(reopened.total_fact_count().unwrap(), 2);
+        assert!(reopened.get_fact(7).unwrap().unwrap().retracted);
+        cleanup(&path);
+    }
+
+    #[test]
+    fn repeated_id_inside_batch_aborts_and_clock_overflow_is_atomic() {
+        let path = temp_db_path("atomic_batch_duplicate_overflow");
+        cleanup(&path);
+        let mut store = NibliStore::open(&path, "node".into()).unwrap();
+        assert!(matches!(
+            store.insert_facts(&[(1, "first".into(), vec![]), (1, "second".into(), vec![])]),
+            Err(StoreError::AlreadyExists(1))
+        ));
+        assert_eq!(store.total_fact_count().unwrap(), 0);
+        assert_eq!(store.hlc, 0);
+        store.hlc = u64::MAX - 1;
+        assert!(
+            store
+                .insert_facts(&[(1, "first".into(), vec![]), (2, "second".into(), vec![])])
+                .is_err()
+        );
+        assert_eq!(store.total_fact_count().unwrap(), 0);
+        assert_eq!(store.hlc, u64::MAX - 1);
         cleanup(&path);
     }
 

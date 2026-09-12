@@ -39,6 +39,7 @@ reasons.
 | Var | Default | Effect |
 |-----|---------|--------|
 | `NIBLI_WASM_PATH` | `target/wasm32-wasip2/debug/nibli.wasm` | Component location |
+| `NIBLI_MAX_CHAIN_DEPTH` | `10` | Positive u32 reasoning and generated-witness dependency depth; invalid values reject startup |
 | `NIBLI_FUEL` | `50_000_000_000` | Wasmtime fuel budget **per command** (debug WASM is ~6× hungrier than release; `~1.5e11` covers the heaviest demo corpus on debug) |
 | `NIBLI_MEMORY_MB` | `512` | Guest memory cap (`trap_on_grow_failure`) |
 | `NIBLI_COMPUTE_ADDR` | unset | External backend `host:port`; unset = built-in arithmetic only |
@@ -48,7 +49,7 @@ reasons.
 | `NIBLI_EXISTENTIAL_IMPORT` | off | `=1` opts into legacy xorlo witnesses; imported witnesses participate in ∃/∀/find/count/aggregate |
 | `NIBLI_MATERIALIZE` | on | `=0` opts out of NAF saturation, sending every NAF check back through backward chaining |
 
-Runtime toggles: `:fuel [n]`, `:memory [mb]`, `:backend [addr]`,
+Runtime toggles: `:depth [n]`, `:fuel [n]`, `:memory [mb]`, `:backend [addr]`,
 `:strict on|off`, `:existential-import on|off`, `:materialize on|off` (bare
 `:materialize` prints the saturation report). Script mode (`--script <file>`
 or piped stdin) captures transcripts byte-faithfully.
@@ -65,8 +66,12 @@ queries — synthesized into a `RESOURCE_EXCEEDED (fuel|memory)` verdict with a
 remediation hint. A trap poisons the component instance, so the host keeps a
 **journal** of every successful KB mutation and lazily rebuilds a
 byte-identical session on the next call (the engine is deterministic:
-identical fact ids and Skolem numbering). Raising `:fuel` between trap and
-re-query applies to the replay. Depth limits are engine-level, never a trap.
+identical fact ids and Skolem numbering). The journal records successful strict,
+import and depth changes in order. A replacement component is published only
+after complete replay. Failed replay leaves the session unavailable; raising
+`:fuel` or `:memory` lets the next dependent command retry once. An uncertain
+durable commit requires reopening the saved database. Depth limits are
+engine-level, never a trap.
 
 ## The compute backend
 

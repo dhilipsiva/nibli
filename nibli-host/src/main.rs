@@ -13,7 +13,8 @@
 //! - **`:assert`** — Assert ground facts directly (bypasses text parsing;
 //!   registered compute relations remain query-only)
 //! - **`:retract`** — Retract a fact by ID (triggers KB rebuild)
-//! - **`:facts`** — List all active facts in the KB
+//! - **`:facts [--all]`** — Active facts, or retained active/withdrawn records
+//! - **`:depth [n]`** — Show/set the positive reasoning-depth limit
 //! - **`:compute`** — Route corpus predicates to compute dispatch
 //! - **`:backend`** — Show/change external compute backend address
 //! - **`:reset`** — Clear the knowledge base
@@ -25,9 +26,11 @@ use nibli_protocol::{
     AssertionCitation as ProtoAssertionCitation, ProofRule as ProtoRule, ProofStep as ProtoStep,
     ProofTrace as ProtoTrace, RuleCitation as ProtoRuleCitation,
 };
-use nibli_store::{NibliStore, StoredAssertion, StoredLogicalTerm as StoredTerm};
+use nibli_store::{NibliStore, StoreError, StoredAssertion, StoredLogicalTerm as StoredTerm};
 use reedline::{DefaultPrompt, Reedline, Signal};
 mod kr_highlighter;
+#[cfg(test)]
+mod recovery_tests;
 use kr_highlighter::KrHighlighter;
 use std::fs::File;
 use std::io::{BufRead, BufReader, IsTerminal, Write};
@@ -413,16 +416,16 @@ fn try_builtin_arithmetic(relation: &str, args: &[compute_backend::LogicalTerm])
             None
         }
     };
-    if args.len() >= 3 {
-        if let (Some(x1), Some(x2), Some(x3)) = (
+    if args.len() >= 3
+        && let (Some(x1), Some(x2), Some(x3)) = (
             extract_num(&args[0]),
             extract_num(&args[1]),
             extract_num(&args[2]),
-        ) {
-            // The relation match + tolerant-equality comparison is shared with the
-            // nibli-reason engine fast path (and the Python reference backend).
-            return nibli_types::eval_arithmetic(relation, &[x1, x2, x3]);
-        }
+        )
+    {
+        // The relation match + tolerant-equality comparison is shared with the
+        // nibli-reason engine fast path (and the Python reference backend).
+        return nibli_types::eval_arithmetic(relation, &[x1, x2, x3]);
     }
     None
 }
@@ -528,71 +531,60 @@ fn stored_term_to_wit(t: &StoredTerm) -> EngineLogicalTerm {
     }
 }
 
-/// Persist a compiled single-root fact buffer to the store (if configured) —
-/// the FACT itself, not the source text, so restart-replay never recompiles
-/// (`StoredAssertion::Buffer`; the label keeps the source text for `:facts` /
-/// provenance). A write failure is SURFACED to the user — the fact is live in
-/// the KB for this session but will not survive a restart, and staying silent
-/// about that misstates durability.
-fn persist_buffer(
+/// Serialize and commit every root from one assertion in one durable transaction.
+/// Guest changes are tentative until this succeeds; the caller journals afterward.
+fn persist_buffers(
     nibli_store: &mut Option<NibliStore>,
-    fact_id: u64,
+    pairs: &[(u64, EngineLogicBuffer)],
     label: &str,
-    buf: &NibliBuffer,
-) {
-    if let Some(s) = nibli_store.as_mut() {
-        let result = postcard::to_allocvec(buf)
-            .map_err(|e| format!("serialize buffer: {e}"))
-            .and_then(|inner| {
-                postcard::to_allocvec(&StoredAssertion::Buffer(inner))
-                    .map_err(|e| format!("serialize: {e}"))
-            })
-            .and_then(|payload| {
-                s.insert_fact(fact_id, label.to_string(), payload)
-                    .map_err(|e| e.to_string())
-            });
-        if let Err(e) = result {
-            println!(
-                "[Persist Error] Fact #{fact_id} was NOT written to the store ({e}); it is live \
-                 in this session but will not survive a restart."
-            );
-        }
+) -> std::result::Result<Vec<JournalEntry>, StoreError> {
+    let mut records = Vec::with_capacity(pairs.len());
+    let mut journal = Vec::with_capacity(pairs.len());
+    for (id, wit_buf) in pairs {
+        let buffer = wit_logic_buffer_to_types(wit_buf);
+        let payload =
+            postcard::to_allocvec(&StoredAssertion::Buffer(postcard::to_allocvec(&buffer)?))?;
+        records.push((*id, label.to_owned(), payload));
+        journal.push(JournalEntry::AssertBuffer {
+            buffer,
+            label: label.to_owned(),
+            id: *id,
+        });
     }
+    if let Some(store) = nibli_store.as_mut() {
+        store.insert_facts(&records)?;
+    }
+    Ok(journal)
 }
 
-/// Persist a direct assertion to the store (if configured).
 fn persist_direct(
     nibli_store: &mut Option<NibliStore>,
     fact_id: u64,
     relation: &str,
     args: &[EngineLogicalTerm],
-) {
-    if let Some(s) = nibli_store.as_mut() {
+) -> std::result::Result<(), StoreError> {
+    if let Some(store) = nibli_store.as_mut() {
         let assertion = StoredAssertion::Direct {
-            relation: relation.to_string(),
+            relation: relation.to_owned(),
             args: args.iter().map(wit_term_to_stored).collect(),
         };
-        let label = format!(
-            ":assert {} {}",
-            relation,
-            args.iter()
-                .map(|a| format_term(a))
-                .collect::<Vec<_>>()
-                .join(" ")
-        );
-        let result = postcard::to_allocvec(&assertion)
-            .map_err(|e| format!("serialize: {e}"))
-            .and_then(|payload| {
-                s.insert_fact(fact_id, label, payload)
-                    .map_err(|e| e.to_string())
-            });
-        if let Err(e) = result {
-            println!(
-                "[Persist Error] Fact #{fact_id} was NOT written to the store ({e}); it is live \
-                 in this session but will not survive a restart."
-            );
-        }
+        // Match the live CoreSession label. The durable payload retains every
+        // argument; withdrawn records must not change their label on reopening.
+        let label = format!(":assert {relation}");
+        store.insert_fact(fact_id, label, postcard::to_allocvec(&assertion)?)?;
     }
+    Ok(())
+}
+
+fn parse_depth(value: &str) -> std::result::Result<u32, String> {
+    if value.is_empty() || !value.bytes().all(|b| b.is_ascii_digit()) {
+        return Err("depth must be a positive integer no greater than 4294967295".into());
+    }
+    value
+        .parse::<u32>()
+        .ok()
+        .filter(|depth| *depth > 0)
+        .ok_or_else(|| "depth must be a positive integer no greater than 4294967295".into())
 }
 
 fn refuel(store: &mut Store<HostState>, budget: u64) {
@@ -609,10 +601,8 @@ fn refuel(store: &mut Store<HostState>, budget: u64) {
 /// `format_host_error`. (Depth is never a host trap — the engine returns it
 /// directly — so this only ever yields Fuel/Memory.)
 fn classify_resource_trap(e: &anyhow::Error) -> Option<EngineResourceKind> {
-    if let Some(trap) = e.downcast_ref::<wasmtime::Trap>() {
-        if matches!(trap, wasmtime::Trap::OutOfFuel) {
-            return Some(EngineResourceKind::Fuel);
-        }
+    if let Some(wasmtime::Trap::OutOfFuel) = e.downcast_ref::<wasmtime::Trap>() {
+        return Some(EngineResourceKind::Fuel);
     }
     let chain_contains = |needle: &str| e.chain().any(|cause| cause.to_string().contains(needle));
     if chain_contains("fuel") {
@@ -627,14 +617,8 @@ fn classify_resource_trap(e: &anyhow::Error) -> Option<EngineResourceKind> {
     }
 }
 
-/// Actionable hint shown under a query's host-synthesized RESOURCE_EXCEEDED
-/// verdict, so the operator knows how to raise the budget and retry. Depth is
-/// UNREACHABLE here by construction — the sole caller feeds
-/// `classify_resource_trap`'s result, which only ever yields Fuel/Memory (an
-/// engine Depth verdict takes the Ok path, where the verdict-driven `[Why]`
-/// explains the cutoff) — and there is deliberately no depth hint: the shipped
-/// runtime surfaces keep the default `max_chain_depth` (GUARANTEES §Resource
-/// Limits), so a hint would recommend a knob that does not exist here.
+/// Actionable budget hints. Fuel and memory come from Wasmtime traps;
+/// depth is an engine cutoff controlled independently through `:depth`.
 fn resource_hint(kind: EngineResourceKind) -> &'static str {
     match kind {
         EngineResourceKind::Fuel => {
@@ -643,7 +627,9 @@ fn resource_hint(kind: EngineResourceKind) -> &'static str {
         EngineResourceKind::Memory => {
             "WASM memory cap exceeded; raise it with NIBLI_MEMORY_MB or :memory, then re-run"
         }
-        EngineResourceKind::Depth => "backward-chaining depth budget exhausted before a decision",
+        EngineResourceKind::Depth => {
+            "reasoning depth exhausted; raise NIBLI_MAX_CHAIN_DEPTH or :depth, then re-run"
+        }
     }
 }
 
@@ -704,7 +690,14 @@ enum JournalEntry {
         id: u64,
     },
     Retract(u64),
+    RestoreWithdrawn {
+        id: u64,
+        label: String,
+    },
     RegisterCompute(String),
+    Strict(bool),
+    ExistentialImport(bool),
+    Depth(u32),
 }
 
 /// All host-side REPL state. Factored out of `main` (instead of a closure
@@ -723,8 +716,8 @@ struct Repl {
     db_path: Option<String>,
     /// Successful KB mutations, in order — the rebuild-after-trap replay source.
     journal: Vec<JournalEntry>,
-    /// True while replaying the journal (suppresses re-journaling and rebuild).
-    replaying: bool,
+    /// An uncertain durable commit is terminal until the canonical store is reopened.
+    recovery_required: Option<String>,
     /// Set when a host-level error may have poisoned the component instance.
     /// The rebuild runs LAZILY before the next session call, so an intervening
     /// `:fuel`/`:memory` raise applies to the replay.
@@ -744,9 +737,19 @@ struct Repl {
     /// at startup, toggled by `:existential-import on|off`; forwarded to the
     /// guest at (re)instantiation and re-applied to the live session on toggle.
     existential_import: bool,
+    max_chain_depth: u32,
     /// Stratum-ordered materialisation (default ON). Set from `NIBLI_MATERIALIZE=0`
     /// at startup and forwarded into the guest WASI env. No runtime toggle: it
     /// affects only how fast a verdict is reached, never which verdict.
+    materialization: bool,
+}
+
+/// Guest construction flags. Session-changing flags are also journaled so a
+/// recovery can start from clean defaults and restore their original order.
+struct SessionOptions {
+    quiet: bool,
+    strict: bool,
+    existential_import: bool,
     materialization: bool,
 }
 
@@ -761,10 +764,7 @@ impl Repl {
         fuel_budget: u64,
         memory_limit_mb: usize,
         backend_addr: Option<String>,
-        quiet: bool,
-        strict: bool,
-        existential_import: bool,
-        materialization: bool,
+        options: SessionOptions,
     ) -> Result<(Store<HostState>, pipeline_bind::NibliPipeline, ResourceAny)> {
         // Forward the quiet flag into the guest's WASI environment: the ctx
         // otherwise inherits only stdio, so `nibli-pipeline::Session::new` cannot see
@@ -773,22 +773,22 @@ impl Repl {
         let ctx = {
             let mut b = WasiCtxBuilder::new();
             b.inherit_stdout().inherit_stderr();
-            if quiet {
+            if options.quiet {
                 b.env("NIBLI_QUIET", "1");
             }
-            if strict {
+            if options.strict {
                 b.env("NIBLI_STRICT", "1");
             }
             // Clean-core is the guest default; forward only the explicit
             // opt-in to legacy existential import.
-            if existential_import {
+            if options.existential_import {
                 b.env("NIBLI_EXISTENTIAL_IMPORT", "1");
             }
             // Stratum-ordered materialisation defaults ON in the guest; forward the
             // opt-OUT only. Unlike strict / existential-import there is no WIT
             // re-application after a rebuild, because a rebuilt session re-reads this
             // env and materialisation affects only speed, never a verdict.
-            if !materialization {
+            if !options.materialization {
                 b.env("NIBLI_MATERIALIZE", "0");
             }
             b.build()
@@ -828,11 +828,17 @@ impl Repl {
     /// find/count refuses rather than undercounting, cannot tell WHICH relation fell out
     /// of the materialisable fragment.
     fn print_materialization_report(&mut self) {
-        self.prepare_session();
+        if !self.prepare_or_report() {
+            return;
+        }
         let session = self.pipeline.nibli_engine_engine().session();
         let report = match session.call_materialization_report(&mut self.store, self.session_handle)
         {
-            Ok(r) => r,
+            Ok(Ok(r)) => r,
+            Ok(Err(e)) => {
+                println!("{}", format_nibli_error(&e));
+                return;
+            }
             Err(e) => {
                 println!("{}", format_host_error(&e));
                 self.needs_rebuild = true;
@@ -861,118 +867,140 @@ impl Repl {
 
     /// Make the session callable for the next command: rebuild lazily if a
     /// trap poisoned the instance, then refuel.
-    fn prepare_session(&mut self) {
-        if self.needs_rebuild && !self.replaying {
-            self.rebuild_after_trap();
+    fn prepare_session(&mut self) -> Result<()> {
+        if let Some(reason) = &self.recovery_required {
+            anyhow::bail!("session unavailable: {reason}; reopen the saved knowledge base");
         }
-        refuel(&mut self.store, self.fuel_budget);
+        if self.needs_rebuild {
+            self.rebuild_after_trap()?;
+        }
+        self.store.set_fuel(self.fuel_budget)?;
+        Ok(())
     }
 
-    /// A wasm trap permanently poisons the component instance (component-model
-    /// semantics forbid re-entering it). Recover by abandoning the poisoned
-    /// Store/instance/session — WITHOUT resource_drop, which would itself have
-    /// to enter the dead instance — re-instantiating from the compiled
-    /// Component, and replaying the journal. The engine is deterministic, so
-    /// the rebuilt session is byte-identical (same fact ids, same Skolem
-    /// numbering); the guest's per-assert diagnostics ([Skolem]/[Rule] lines)
-    /// print during the replay, making the rebuilt state visible.
-    fn rebuild_after_trap(&mut self) {
-        self.needs_rebuild = false;
+    fn prepare_or_report(&mut self) -> bool {
+        match self.prepare_session() {
+            Ok(()) => true,
+            Err(e) => {
+                println!("[Session] Unavailable: {e}");
+                false
+            }
+        }
+    }
+
+    /// Replay into a separate candidate. A failed replay never publishes a
+    /// prefix or re-enters the previous poisoned/tentative guest.
+    fn rebuild_after_trap(&mut self) -> Result<()> {
+        self.needs_rebuild = true;
         println!(
-            "[Session] Wasm trap poisoned the component instance; rebuilding and replaying {} command(s)...",
+            "[Session] Rebuilding and replaying {} command(s)...",
             self.journal.len()
         );
         let backend_addr = self.store.data().backend.addr().map(str::to_string);
-        match Self::instantiate_session(
+        let (mut store, pipeline, session_handle) = Self::instantiate_session(
             &self.engine,
             &self.component,
             &self.linker,
             self.fuel_budget,
             self.memory_limit_mb,
             backend_addr,
-            self.quiet,
-            self.strict,
-            self.existential_import,
-            self.materialization,
-        ) {
-            Ok((store, pipeline, session_handle)) => {
-                // The old store (with the dead session resource inside it) is
-                // dropped here; its destructor never re-enters the instance.
-                self.store = store;
-                self.pipeline = pipeline;
-                self.session_handle = session_handle;
-            }
-            Err(e) => {
-                println!("[Session] Rebuild failed: {:?}", e);
-                return;
-            }
+            SessionOptions {
+                quiet: self.quiet,
+                strict: false,
+                existential_import: false,
+                materialization: self.materialization,
+            },
+        )?;
+        for (index, entry) in self.journal.iter().enumerate() {
+            Self::replay_entry(
+                &mut store,
+                &pipeline,
+                session_handle,
+                self.fuel_budget,
+                entry,
+            )
+            .map_err(|e| {
+                anyhow::anyhow!(
+                    "replay stopped at command {} of {}: {e}; no partial session was published",
+                    index + 1,
+                    self.journal.len()
+                )
+            })?;
         }
-        self.replaying = true;
-        let journal = std::mem::take(&mut self.journal);
-        let total = journal.len();
-        let mut ok = 0usize;
-        let mut failed: Option<String> = None;
-        for entry in &journal {
-            match self.replay_entry(entry) {
-                Ok(()) => ok += 1,
-                Err(e) => {
-                    failed = Some(format!("{}", e));
-                    break;
-                }
-            }
-        }
-        self.journal = journal;
-        self.replaying = false;
-        if let Some(err) = failed {
+        self.store = store;
+        self.pipeline = pipeline;
+        self.session_handle = session_handle;
+        self.needs_rebuild = false;
+        Ok(())
+    }
+
+    /// A precommit failure restores the last committed journal. An uncertain
+    /// commit cannot be guessed from that journal and terminates the session.
+    fn persistence_failed(&mut self, error: StoreError) {
+        self.needs_rebuild = true;
+        if matches!(error, StoreError::CommitOutcomeUnknown(_)) {
+            self.recovery_required = Some(error.to_string());
             println!(
-                "[Session] Replay incomplete ({} of {}): {} — KB state may be partial; consider :reset",
-                ok, total, err
+                "[Persist Error] {error}; session terminated. Reopen the saved knowledge base."
             );
+            return;
+        }
+        println!("[Persist Error] Mutation rejected before durable commit: {error}");
+        if let Err(e) = self.rebuild_after_trap() {
+            println!("[Session] Unavailable: {e}");
         }
     }
 
     /// Replay one journaled mutation against the fresh session. Persistence is
     /// NOT re-run: the mutation was persisted when it first succeeded, and
     /// re-inserting would spuriously advance the durable store's HLC clock.
-    fn replay_entry(&mut self, entry: &JournalEntry) -> Result<()> {
-        refuel(&mut self.store, self.fuel_budget);
-        let session = self.pipeline.nibli_engine_engine().session();
+    fn replay_entry(
+        store: &mut Store<HostState>,
+        pipeline: &pipeline_bind::NibliPipeline,
+        session_handle: ResourceAny,
+        fuel_budget: u64,
+        entry: &JournalEntry,
+    ) -> Result<()> {
+        refuel(store, fuel_budget);
+        let session = pipeline.nibli_engine_engine().session();
         match entry {
             JournalEntry::AssertBuffer { buffer, label, id } => {
                 let wit_buf = types_logic_buffer_to_wit(buffer);
                 session
-                    .call_assert_buffer_with_id(
-                        &mut self.store,
-                        self.session_handle,
-                        &wit_buf,
-                        label,
-                        *id,
-                    )?
+                    .call_assert_buffer_with_id(&mut *store, session_handle, &wit_buf, label, *id)?
                     .map_err(|e| anyhow::anyhow!("{}", format_nibli_error(&e)))?;
             }
             JournalEntry::AssertDirect { relation, args, id } => {
                 session
-                    .call_assert_fact_with_id(
-                        &mut self.store,
-                        self.session_handle,
-                        relation,
-                        args,
-                        *id,
-                    )?
+                    .call_assert_fact_with_id(&mut *store, session_handle, relation, args, *id)?
                     .map_err(|e| anyhow::anyhow!("{}", format_nibli_error(&e)))?;
             }
             JournalEntry::Retract(id) => {
                 session
-                    .call_retract_fact(&mut self.store, self.session_handle, *id)?
+                    .call_retract_fact(&mut *store, session_handle, *id)?
                     .map_err(|e| anyhow::anyhow!("{}", format_nibli_error(&e)))?;
             }
+            JournalEntry::RestoreWithdrawn { id, label } => {
+                session
+                    .call_restore_withdrawn_assertion(&mut *store, session_handle, *id, label)?
+                    .map_err(|e| anyhow::anyhow!("{}", format_nibli_error(&e)))?;
+            }
+            JournalEntry::Strict(on) => {
+                session.call_set_strict(&mut *store, session_handle, *on)?
+            }
+            JournalEntry::ExistentialImport(on) => session
+                .call_set_existential_import(&mut *store, session_handle, *on)?
+                .map_err(|e| anyhow::anyhow!("{}", format_nibli_error(&e)))?,
+            JournalEntry::Depth(depth) => session
+                .call_set_max_chain_depth(&mut *store, session_handle, *depth)?
+                .map_err(|e| anyhow::anyhow!("{}", format_nibli_error(&e)))?,
             JournalEntry::RegisterCompute(name) => {
                 // Impossible in a well-formed journal (only live-ACCEPTED
                 // registrations are journaled, and replay preserves original
                 // order), so an inner refusal here means corruption — fail the
                 // rebuild loudly rather than serve a partially replayed KB.
                 session
-                    .call_register_compute_predicate(&mut self.store, self.session_handle, name)?
+                    .call_register_compute_predicate(&mut *store, session_handle, name)?
                     .map_err(|e| anyhow::anyhow!("{}", format_nibli_error(&e)))?;
             }
         }
@@ -1021,148 +1049,69 @@ impl Repl {
         Ok(())
     }
 
-    /// Replay persisted facts from the durable store into the WASM session.
-    ///
-    /// Fail-closed (never a silent drop): a corrupt payload/buffer, a legacy Text row
-    /// that survived the v3 migration, or a per-fact reasoning rejection aborts startup —
-    /// a store that cannot be faithfully rebuilt is not served partially. A wasm TRAP is
-    /// the one recoverable case (a resource issue, not corruption): it flags a rebuild and
-    /// replay continues.
+    /// Restore all record envelopes, reserving withdrawn IDs without decoding
+    /// their obsolete payloads. Any failure aborts startup before serving a KB.
     fn replay_persisted(&mut self) -> Result<()> {
-        let facts = match self.nibli_store.as_ref() {
-            Some(s) => match s.all_active_facts() {
-                Ok(facts) if !facts.is_empty() => facts,
-                Ok(_) => return Ok(()),
-                Err(e) => {
-                    return Err(anyhow::anyhow!(
-                        "[Store] failed to read persisted facts: {e}"
-                    ));
-                }
-            },
-            None => return Ok(()),
+        let Some(store) = self.nibli_store.as_ref() else {
+            return Ok(());
         };
-        println!("[Store] Replaying {} persisted facts...", facts.len());
-        // Startup aborts on the failures below, before the REPL exists, so
-        // `:reset` is not an executable recovery instruction. Name the actual
-        // database-level recovery path instead.
-        let recovery = self.db_path.as_deref().map_or_else(
-            || {
-                "back up and move/delete the persisted database (or set NIBLI_DB_PATH to a \
-                 fresh path), restart, then re-import the original KR"
-                    .to_string()
-            },
-            |path| {
-                format!(
-                    "back up and move/delete `{path}` (or set NIBLI_DB_PATH to a fresh path), \
-                     restart, then re-import the original KR"
-                )
-            },
-        );
-        let mut replayed = 0u32;
-        for fact in &facts {
-            let assertion: StoredAssertion = postcard::from_bytes(&fact.payload).map_err(|e| {
-                anyhow::anyhow!(
-                    "[Store] fact #{} payload is corrupt ({e}) — the store cannot be faithfully \
-                     rebuilt; {recovery}",
-                    fact.id,
-                )
-            })?;
-            self.prepare_session();
-            let session = self.pipeline.nibli_engine_engine().session();
-            match assertion {
-                StoredAssertion::Text(_) => {
-                    return Err(anyhow::anyhow!(
-                        "[Store] fact #{} is a legacy text row that survived the v3 migration \
-                         (internal bug) — {recovery}",
-                        fact.id,
-                    ));
-                }
-                StoredAssertion::Buffer(ref inner) => {
-                    // Recompile-free replay: the stored payload IS the fact.
-                    let buffer: NibliBuffer = postcard::from_bytes(inner).map_err(|e| {
-                        anyhow::anyhow!(
-                            "[Store] fact #{} buffer is corrupt ({e}) — the store cannot be \
-                             faithfully rebuilt; {recovery}",
-                            fact.id,
-                        )
-                    })?;
-                    let wit_buf = types_logic_buffer_to_wit(&buffer);
-                    match session.call_assert_buffer_with_id(
-                        &mut self.store,
-                        self.session_handle,
-                        &wit_buf,
-                        &fact.label,
-                        fact.id,
-                    ) {
-                        Ok(Ok(_)) => {
-                            self.journal.push(JournalEntry::AssertBuffer {
-                                buffer,
-                                label: fact.label.clone(),
-                                id: fact.id,
-                            });
-                            replayed += 1;
-                        }
-                        Ok(Err(e)) => {
-                            return Err(anyhow::anyhow!(
-                                "[Store] fact #{} failed to replay: {} — the store cannot be \
-                                 faithfully rebuilt; {recovery}",
-                                fact.id,
-                                format_nibli_error(&e),
-                            ));
-                        }
-                        Err(e) => {
-                            // A wasm trap is recoverable via rebuild, not corruption.
-                            println!(
-                                "[Store] Replay fact #{} trapped: {}",
-                                fact.id,
-                                format_host_error(&e)
-                            );
-                            self.needs_rebuild = true;
-                        }
-                    }
-                }
-                StoredAssertion::Direct {
-                    ref relation,
-                    ref args,
-                } => {
-                    let wit_args: Vec<EngineLogicalTerm> =
-                        args.iter().map(stored_term_to_wit).collect();
-                    match session.call_assert_fact_with_id(
-                        &mut self.store,
-                        self.session_handle,
-                        relation,
-                        &wit_args,
-                        fact.id,
-                    ) {
-                        Ok(Ok(_)) => {
-                            self.journal.push(JournalEntry::AssertDirect {
-                                relation: relation.clone(),
-                                args: wit_args.clone(),
-                                id: fact.id,
-                            });
-                            replayed += 1;
-                        }
-                        Ok(Err(e)) => {
-                            return Err(anyhow::anyhow!(
-                                "[Store] fact #{} failed to replay: {} — the store cannot be \
-                                 faithfully rebuilt; {recovery}",
-                                fact.id,
-                                format_nibli_error(&e),
-                            ));
-                        }
-                        Err(e) => {
-                            println!(
-                                "[Store] Replay fact #{} trapped: {}",
-                                fact.id,
-                                format_host_error(&e)
-                            );
-                            self.needs_rebuild = true;
-                        }
-                    }
-                }
-            }
+        let facts = store.all_fact_records()?;
+        if facts.is_empty() {
+            return Ok(());
         }
-        println!("[Store] Replay complete ({} facts)", replayed);
+        println!(
+            "[Store] Replaying {} retained assertion records...",
+            facts.len()
+        );
+        let mut active = 0;
+        for fact in facts {
+            let entry = if fact.retracted {
+                JournalEntry::RestoreWithdrawn {
+                    id: fact.id,
+                    label: fact.label,
+                }
+            } else {
+                active += 1;
+                match postcard::from_bytes::<StoredAssertion>(&fact.payload).map_err(|e| {
+                    anyhow::anyhow!(
+                        "[Store] fact #{} payload is corrupt ({e}); startup aborted",
+                        fact.id
+                    )
+                })? {
+                    StoredAssertion::Text(_) => anyhow::bail!(
+                        "[Store] fact #{} is a legacy text row after migration; startup aborted",
+                        fact.id
+                    ),
+                    StoredAssertion::Buffer(inner) => JournalEntry::AssertBuffer {
+                        buffer: postcard::from_bytes(&inner).map_err(|e| {
+                            anyhow::anyhow!(
+                                "[Store] fact #{} buffer is corrupt ({e}); startup aborted",
+                                fact.id
+                            )
+                        })?,
+                        label: fact.label,
+                        id: fact.id,
+                    },
+                    StoredAssertion::Direct { relation, args } => JournalEntry::AssertDirect {
+                        relation,
+                        args: args.iter().map(stored_term_to_wit).collect(),
+                        id: fact.id,
+                    },
+                }
+            };
+            Self::replay_entry(
+                &mut self.store,
+                &self.pipeline,
+                self.session_handle,
+                self.fuel_budget,
+                &entry,
+            )
+            .map_err(|e| {
+                anyhow::anyhow!("[Store] replay failed: {e}; startup aborted, no partial KB served")
+            })?;
+            self.journal.push(entry);
+        }
+        println!("[Store] Replay complete ({active} active facts)");
         Ok(())
     }
 
@@ -1172,17 +1121,17 @@ impl Repl {
         match input {
             ":quit" | ":q" => return true,
             ":reset" | ":r" => {
-                self.prepare_session();
+                if !self.prepare_or_report() {
+                    return self.recovery_required.is_some();
+                }
                 let session = self.pipeline.nibli_engine_engine().session();
                 match session.call_reset_kb(&mut self.store, self.session_handle) {
                     Ok(Ok(())) => {
                         if let Some(s) = self.nibli_store.as_mut()
                             && let Err(e) = s.clear()
                         {
-                            println!(
-                                "[Persist Error] Clearing the store failed ({e}); persisted \
-                                 facts may resurrect on restart."
-                            );
+                            self.persistence_failed(e);
+                            return self.recovery_required.is_some();
                         }
                         // `reset-kb` clears facts and rules but NOT the guest's
                         // compute registry (`CoreSession::reset` touches only the
@@ -1190,8 +1139,15 @@ impl Repl {
                         // entries or a post-reset trap rebuild replays them away —
                         // silently re-opening the registration-order hole for
                         // registered corpus relations.
-                        self.journal
-                            .retain(|e| matches!(e, JournalEntry::RegisterCompute(_)));
+                        self.journal.retain(|e| {
+                            matches!(
+                                e,
+                                JournalEntry::RegisterCompute(_)
+                                    | JournalEntry::Strict(_)
+                                    | JournalEntry::ExistentialImport(_)
+                                    | JournalEntry::Depth(_)
+                            )
+                        });
                         println!("[Reset] Knowledge base cleared.");
                     }
                     Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
@@ -1232,7 +1188,9 @@ impl Repl {
                 return false;
             }
             ":compute" => {
-                self.prepare_session();
+                if !self.prepare_or_report() {
+                    return self.recovery_required.is_some();
+                }
                 let session = self.pipeline.nibli_engine_engine().session();
                 match session.call_compute_predicates(&mut self.store, self.session_handle) {
                     Ok(names) => {
@@ -1269,8 +1227,59 @@ impl Repl {
                 }
                 return false;
             }
+            ":depth" => {
+                if !self.prepare_or_report() {
+                    return self.recovery_required.is_some();
+                }
+                match self
+                    .pipeline
+                    .nibli_engine_engine()
+                    .session()
+                    .call_max_chain_depth(&mut self.store, self.session_handle)
+                {
+                    Ok(depth) => {
+                        self.max_chain_depth = depth;
+                        println!("[Depth] Maximum chain depth: {depth}");
+                    }
+                    Err(e) => {
+                        println!("{}", format_host_error(&e));
+                        self.needs_rebuild = true;
+                    }
+                }
+                return false;
+            }
+            ":facts --all" => {
+                if !self.prepare_or_report() {
+                    return self.recovery_required.is_some();
+                }
+                match self
+                    .pipeline
+                    .nibli_engine_engine()
+                    .session()
+                    .call_list_assertion_records(&mut self.store, self.session_handle)
+                {
+                    Ok(Ok(records)) => {
+                        println!("[Facts] {} retained assertion record(s):", records.len());
+                        for record in records {
+                            let status = match record.status {
+                                pipeline_bind::nibli::engine::logic_types::AssertionStatus::Active => "active",
+                                pipeline_bind::nibli::engine::logic_types::AssertionStatus::Withdrawn => "withdrawn",
+                            };
+                            println!("  #{} [{status}]: {}", record.id, record.label);
+                        }
+                    }
+                    Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
+                    Err(e) => {
+                        println!("{}", format_host_error(&e));
+                        self.needs_rebuild = true;
+                    }
+                }
+                return false;
+            }
             ":facts" => {
-                self.prepare_session();
+                if !self.prepare_or_report() {
+                    return self.recovery_required.is_some();
+                }
                 let session = self.pipeline.nibli_engine_engine().session();
                 match session.call_list_facts(&mut self.store, self.session_handle) {
                     Ok(Ok(facts)) => {
@@ -1314,7 +1323,12 @@ impl Repl {
                 );
                 println!("  :assert <rel> <args..> Assert a ground fact directly");
                 println!("  :retract <id>       Retract a fact by ID (rebuilds KB)");
-                println!("  :facts              List all active facts in the KB");
+                println!(
+                    "  :facts [--all]      List active facts, or retained records with active/withdrawn status"
+                );
+                println!(
+                    "  :depth [n]          Show or set positive maximum reasoning depth (default 10)"
+                );
                 println!("  :backend [host:port] Show or set compute backend address");
                 println!("  :fuel [amount]      Show or set WASM fuel budget per command");
                 println!("  :memory [mb]        Show or set WASM memory limit in MB");
@@ -1346,7 +1360,9 @@ impl Repl {
                 return false;
             }
             ":existential-import" => {
-                self.prepare_session();
+                if !self.prepare_or_report() {
+                    return self.recovery_required.is_some();
+                }
                 let session = self.pipeline.nibli_engine_engine().session();
                 match session.call_existential_import_enabled(&mut self.store, self.session_handle)
                 {
@@ -1384,6 +1400,37 @@ impl Repl {
             _ => {}
         }
 
+        if let Some(value) = input.strip_prefix(":depth ") {
+            let depth = match parse_depth(value.trim()) {
+                Ok(depth) => depth,
+                Err(e) => {
+                    println!("[Depth] {e}");
+                    return false;
+                }
+            };
+            if !self.prepare_or_report() {
+                return self.recovery_required.is_some();
+            }
+            match self
+                .pipeline
+                .nibli_engine_engine()
+                .session()
+                .call_set_max_chain_depth(&mut self.store, self.session_handle, depth)
+            {
+                Ok(Ok(())) => {
+                    self.max_chain_depth = depth;
+                    self.journal.push(JournalEntry::Depth(depth));
+                    println!("[Depth] Maximum chain depth: {depth}");
+                }
+                Ok(Err(e)) => println!("{}", format_nibli_error(&e)),
+                Err(e) => {
+                    println!("{}", format_host_error(&e));
+                    self.needs_rebuild = true;
+                }
+            }
+            return false;
+        }
+
         // ── Route by prefix ──
         if let Some(mode) = input.strip_prefix(":strict ") {
             let on = match mode.trim() {
@@ -1394,11 +1441,14 @@ impl Repl {
                     return false;
                 }
             };
-            self.prepare_session();
+            if !self.prepare_or_report() {
+                return self.recovery_required.is_some();
+            }
             let session = self.pipeline.nibli_engine_engine().session();
             match session.call_set_strict(&mut self.store, self.session_handle, on) {
                 Ok(()) => {
                     self.strict = on;
+                    self.journal.push(JournalEntry::Strict(on));
                     println!("[Strict] {}", if on { "ON" } else { "OFF" });
                 }
                 Err(e) => {
@@ -1419,11 +1469,14 @@ impl Repl {
                     return false;
                 }
             };
-            self.prepare_session();
+            if !self.prepare_or_report() {
+                return self.recovery_required.is_some();
+            }
             let session = self.pipeline.nibli_engine_engine().session();
             match session.call_set_existential_import(&mut self.store, self.session_handle, on) {
                 Ok(Ok(())) => {
                     self.existential_import = on;
+                    self.journal.push(JournalEntry::ExistentialImport(on));
                     println!(
                         "[ExistentialImport] {}",
                         if on {
@@ -1455,7 +1508,9 @@ impl Repl {
                     return false;
                 }
             };
-            self.prepare_session();
+            if !self.prepare_or_report() {
+                return self.recovery_required.is_some();
+            }
             let session = self.pipeline.nibli_engine_engine().session();
             match session.call_set_materialization(&mut self.store, self.session_handle, on) {
                 Ok(()) => {
@@ -1475,7 +1530,9 @@ impl Repl {
                 println!("[Host] Usage: :debug <text>");
                 return false;
             }
-            self.prepare_session();
+            if !self.prepare_or_report() {
+                return self.recovery_required.is_some();
+            }
             let session = self.pipeline.nibli_engine_engine().session();
             match session.call_compile_debug(&mut self.store, self.session_handle, text) {
                 Ok(Ok(wit_buf)) => {
@@ -1535,7 +1592,9 @@ impl Repl {
                 println!("[Host] Usage: :compute <predicate-name>");
                 return false;
             }
-            self.prepare_session();
+            if !self.prepare_or_report() {
+                return self.recovery_required.is_some();
+            }
             let session = self.pipeline.nibli_engine_engine().session();
             match session.call_register_compute_predicate(
                 &mut self.store,
@@ -1576,7 +1635,9 @@ impl Repl {
                             _ => "?".to_string(),
                         })
                         .collect();
-                    self.prepare_session();
+                    if !self.prepare_or_report() {
+                        return self.recovery_required.is_some();
+                    }
                     let session = self.pipeline.nibli_engine_engine().session();
                     match session.call_assert_fact(
                         &mut self.store,
@@ -1585,7 +1646,12 @@ impl Repl {
                         &args,
                     ) {
                         Ok(Ok(fact_id)) => {
-                            persist_direct(&mut self.nibli_store, fact_id, &relation, &args);
+                            if let Err(e) =
+                                persist_direct(&mut self.nibli_store, fact_id, &relation, &args)
+                            {
+                                self.persistence_failed(e);
+                                return self.recovery_required.is_some();
+                            }
                             self.journal.push(JournalEntry::AssertDirect {
                                 relation: relation.clone(),
                                 args: args.clone(),
@@ -1613,19 +1679,17 @@ impl Repl {
             let arg = retract_arg.trim();
             match arg.parse::<u64>() {
                 Ok(id) => {
-                    self.prepare_session();
+                    if !self.prepare_or_report() {
+                        return self.recovery_required.is_some();
+                    }
                     let session = self.pipeline.nibli_engine_engine().session();
                     match session.call_retract_fact(&mut self.store, self.session_handle, id) {
                         Ok(Ok(())) => {
                             if let Some(s) = self.nibli_store.as_mut()
                                 && let Err(e) = s.retract_fact(id)
                             {
-                                // An unpersisted retraction RESURRECTS the fact
-                                // on the next restart — say so.
-                                println!(
-                                    "[Persist Error] Retraction of fact #{id} was NOT written \
-                                     to the store ({e}); it will resurrect on restart."
-                                );
+                                self.persistence_failed(e);
+                                return self.recovery_required.is_some();
                             }
                             self.journal.push(JournalEntry::Retract(id));
                             println!("[Retract] Fact #{} retracted. KB rebuilt.", id);
@@ -1676,21 +1740,25 @@ impl Repl {
                     skipped += 1;
                     continue;
                 }
-                self.prepare_session();
+                if !self.prepare_or_report() {
+                    return self.recovery_required.is_some();
+                }
                 let session = self.pipeline.nibli_engine_engine().session();
                 match session.call_assert_text(&mut self.store, self.session_handle, trimmed) {
                     Ok(Ok(pairs)) => {
-                        // One (id, buffer) pair per root: a bare-`.i`
-                        // multi-sentence line is N independent facts.
-                        for (fact_id, wit_buf) in &pairs {
-                            let buffer = wit_logic_buffer_to_types(wit_buf);
-                            persist_buffer(&mut self.nibli_store, *fact_id, trimmed, &buffer);
-                            self.journal.push(JournalEntry::AssertBuffer {
-                                buffer,
-                                label: trimmed.to_string(),
-                                id: *fact_id,
-                            });
-                            if !self.quiet {
+                        match persist_buffers(&mut self.nibli_store, &pairs, trimmed) {
+                            Ok(entries) => self.journal.extend(entries),
+                            Err(e) => {
+                                self.persistence_failed(e);
+                                errors += 1;
+                                if self.recovery_required.is_some() {
+                                    return true;
+                                }
+                                continue;
+                            }
+                        }
+                        if !self.quiet {
+                            for (fact_id, _) in &pairs {
                                 println!("[Fact #{}] {}", fact_id, trimmed);
                             }
                         }
@@ -1718,7 +1786,9 @@ impl Repl {
                 return false;
             }
             // Get facts from WASM session (works with or without persistent store)
-            self.prepare_session();
+            if !self.prepare_or_report() {
+                return self.recovery_required.is_some();
+            }
             let session = self.pipeline.nibli_engine_engine().session();
             match session.call_list_facts(&mut self.store, self.session_handle) {
                 Ok(Ok(facts)) => {
@@ -1785,7 +1855,9 @@ impl Repl {
                 println!("[Host] Usage: ?? <query with a variable>");
                 return false;
             }
-            self.prepare_session();
+            if !self.prepare_or_report() {
+                return self.recovery_required.is_some();
+            }
             let session = self.pipeline.nibli_engine_engine().session();
             match session.call_query_find_text(&mut self.store, self.session_handle, text) {
                 Ok(Ok(binding_sets)) => {
@@ -1822,23 +1894,21 @@ impl Repl {
             }
             self.run_proof_query(text, false);
         } else {
-            self.prepare_session();
+            if !self.prepare_or_report() {
+                return self.recovery_required.is_some();
+            }
             let session = self.pipeline.nibli_engine_engine().session();
             match session.call_assert_text(&mut self.store, self.session_handle, input) {
                 Ok(Ok(pairs)) => {
-                    // One (id, buffer) pair per root: a bare-`.i` multi-sentence
-                    // input is N independent facts (connectives stay one). The
-                    // guest returns each root's compiled buffer so persistence
-                    // stores the FACT itself — replay never recompiles.
-                    for (fact_id, wit_buf) in &pairs {
-                        let buffer = wit_logic_buffer_to_types(wit_buf);
-                        persist_buffer(&mut self.nibli_store, *fact_id, input, &buffer);
-                        self.journal.push(JournalEntry::AssertBuffer {
-                            buffer,
-                            label: input.to_string(),
-                            id: *fact_id,
-                        });
-                        if !self.quiet {
+                    match persist_buffers(&mut self.nibli_store, &pairs, input) {
+                        Ok(entries) => self.journal.extend(entries),
+                        Err(e) => {
+                            self.persistence_failed(e);
+                            return self.recovery_required.is_some();
+                        }
+                    }
+                    if !self.quiet {
+                        for (fact_id, _) in &pairs {
                             println!("[Fact #{}] Asserted.", fact_id);
                         }
                     }
@@ -1861,7 +1931,9 @@ impl Repl {
     /// Prints the JSON envelope on stdout and the independent validator's
     /// verdict on stderr, so piping stdout captures a pure certificate.
     fn run_certify(&mut self, text: &str) {
-        self.prepare_session();
+        if !self.prepare_or_report() {
+            return;
+        }
         let session = self.pipeline.nibli_engine_engine().session();
         match session.call_query_text_with_proof(&mut self.store, self.session_handle, text) {
             Ok(Ok((result, trace))) => {
@@ -1873,6 +1945,7 @@ impl Repl {
                         strict: self.strict,
                         existential_import: self.existential_import,
                         materialization: self.materialization,
+                        max_chain_depth: self.max_chain_depth,
                     },
                 );
                 match nibli_types::logic::validate_envelope(&envelope) {
@@ -1896,7 +1969,9 @@ impl Repl {
     /// macro-logical DAG; `verbose = true` (the `:proof-verbose` escape hatch)
     /// prints the full role-level trace.
     fn run_proof_query(&mut self, text: &str, verbose: bool) {
-        self.prepare_session();
+        if !self.prepare_or_report() {
+            return;
+        }
         let session = self.pipeline.nibli_engine_engine().session();
         match session.call_query_text_with_proof(&mut self.store, self.session_handle, text) {
             Ok(Ok((result, trace))) => {
@@ -1960,7 +2035,12 @@ impl Repl {
     /// trap poisoned the instance (and no rebuild ran since), entering it to
     /// drop the resource would fail with "cannot remove owned resource".
     fn shutdown(mut self) -> Result<()> {
-        let _ = self.session_handle.resource_drop(&mut self.store);
+        if !self.needs_rebuild && self.recovery_required.is_none() {
+            let _ = self.session_handle.resource_drop(&mut self.store);
+        }
+        if let Some(reason) = self.recovery_required {
+            anyhow::bail!("{reason}; reopen required");
+        }
         Ok(())
     }
 }
@@ -2007,6 +2087,15 @@ fn main() -> Result<()> {
         .and_then(|s| s.parse().ok())
         .unwrap_or(512);
     println!("Memory limit: {} MB", memory_limit_mb);
+
+    let max_chain_depth = match std::env::var("NIBLI_MAX_CHAIN_DEPTH") {
+        Ok(value) => {
+            parse_depth(&value).map_err(|e| anyhow::anyhow!("NIBLI_MAX_CHAIN_DEPTH: {e}"))?
+        }
+        Err(std::env::VarError::NotPresent) => 10,
+        Err(e) => anyhow::bail!("NIBLI_MAX_CHAIN_DEPTH: {e}"),
+    };
+    println!("Maximum chain depth: {max_chain_depth}");
 
     // Quiet mode: suppress per-assertion bookkeeping (`[Fact #N] …` on the host,
     // `[Skolem]`/`[Rule]`/`[Constraint]` in the guest). Opt-in — a live REPL stays
@@ -2059,10 +2148,12 @@ fn main() -> Result<()> {
         fuel_budget,
         memory_limit_mb,
         backend_addr,
-        quiet,
-        strict,
-        existential_import,
-        materialization,
+        SessionOptions {
+            quiet,
+            strict,
+            existential_import,
+            materialization,
+        },
     )?;
 
     // ── Persistent store (optional) ──
@@ -2073,13 +2164,7 @@ fn main() -> Result<()> {
                 println!("Persistent store: {}", p);
                 Some(s)
             }
-            Err(e) => {
-                println!(
-                    "[Store] Failed to open {}: {} (running without persistence)",
-                    p, e
-                );
-                None
-            }
+            Err(e) => anyhow::bail!("[Store] Failed to open {p}: {e}; startup aborted"),
         },
         None => None,
     };
@@ -2095,12 +2180,17 @@ fn main() -> Result<()> {
         memory_limit_mb,
         nibli_store,
         db_path,
-        journal: Vec::new(),
-        replaying: false,
+        journal: vec![
+            JournalEntry::Strict(strict),
+            JournalEntry::ExistentialImport(existential_import),
+            JournalEntry::Depth(max_chain_depth),
+        ],
+        recovery_required: None,
         needs_rebuild: false,
         quiet,
         strict,
         existential_import,
+        max_chain_depth,
         materialization,
     };
 
@@ -2108,6 +2198,13 @@ fn main() -> Result<()> {
     // persisted facts into the WASM session. Both are fail-closed: a failed migration
     // leaves the DB at v2, and an unreplayable store aborts startup rather than serving
     // a partial KB.
+    Repl::replay_entry(
+        &mut repl.store,
+        &repl.pipeline,
+        repl.session_handle,
+        repl.fuel_budget,
+        &JournalEntry::Depth(max_chain_depth),
+    )?;
     repl.migrate_store()?;
     repl.replay_persisted()?;
 
@@ -2117,7 +2214,7 @@ fn main() -> Result<()> {
     let use_script_mode = script_path.is_some() || !std::io::stdin().is_terminal();
 
     println!(
-        "Ready. Commands: :quit :reset :load <file> :facts :retract <id> :debug <text> :compute [name] :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :strict [on|off] :existential-import [on|off] :materialize [on|off] :db :help"
+        "Ready. Commands: :quit :reset :load <file> :facts [--all] :depth [n] :retract <id> :debug <text> :compute [name] :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :strict [on|off] :existential-import [on|off] :materialize [on|off] :db :help"
     );
     println!(
         "Prefix '?' for queries with proof trace, '??' for find, plain text for assertions.\n"
@@ -2256,7 +2353,7 @@ mod tests {
             compute_backend::LogicalTerm::Number(3.0),
         ];
         // product: 6 == 2 * 3
-        assert_eq!(host.evaluate("product".to_string(), args).unwrap(), true);
+        assert!(host.evaluate("product".to_string(), args).unwrap());
     }
 
     #[test]
@@ -2283,10 +2380,7 @@ mod tests {
             compute_backend::LogicalTerm::Number(3.0),
         ];
         // exponential is NOT built-in, should forward to backend
-        assert_eq!(
-            host.evaluate("exponential".to_string(), args).unwrap(),
-            true
-        );
+        assert!(host.evaluate("exponential".to_string(), args).unwrap());
     }
 
     // JSON wire-shape serialization is tested in
@@ -2592,7 +2686,7 @@ mod tests {
             compute_backend::LogicalTerm::Number(3.0),
             compute_backend::LogicalTerm::Number(4.0),
         ];
-        assert_eq!(host.evaluate("product".to_string(), args).unwrap(), true);
+        assert!(host.evaluate("product".to_string(), args).unwrap());
     }
 
     #[test]
@@ -2603,7 +2697,7 @@ mod tests {
             compute_backend::LogicalTerm::Number(3.0),
             compute_backend::LogicalTerm::Number(4.0),
         ];
-        assert_eq!(host.evaluate("product".to_string(), args).unwrap(), false);
+        assert!(!host.evaluate("product".to_string(), args).unwrap());
     }
 
     #[test]
@@ -2614,7 +2708,7 @@ mod tests {
             compute_backend::LogicalTerm::Number(3.0),
             compute_backend::LogicalTerm::Number(4.0),
         ];
-        assert_eq!(host.evaluate("sum".to_string(), args).unwrap(), true);
+        assert!(host.evaluate("sum".to_string(), args).unwrap());
     }
 
     #[test]
@@ -2625,7 +2719,7 @@ mod tests {
             compute_backend::LogicalTerm::Number(3.0),
             compute_backend::LogicalTerm::Number(4.0),
         ];
-        assert_eq!(host.evaluate("sum".to_string(), args).unwrap(), false);
+        assert!(!host.evaluate("sum".to_string(), args).unwrap());
     }
 
     #[test]
@@ -2636,7 +2730,7 @@ mod tests {
             compute_backend::LogicalTerm::Number(12.0),
             compute_backend::LogicalTerm::Number(3.0),
         ];
-        assert_eq!(host.evaluate("quotient".to_string(), args).unwrap(), true);
+        assert!(host.evaluate("quotient".to_string(), args).unwrap());
     }
 
     #[test]
@@ -2647,7 +2741,7 @@ mod tests {
             compute_backend::LogicalTerm::Number(12.0),
             compute_backend::LogicalTerm::Number(3.0),
         ];
-        assert_eq!(host.evaluate("quotient".to_string(), args).unwrap(), false);
+        assert!(!host.evaluate("quotient".to_string(), args).unwrap());
     }
 
     #[test]
@@ -2658,7 +2752,7 @@ mod tests {
             compute_backend::LogicalTerm::Number(1.0),
             compute_backend::LogicalTerm::Number(1.5),
         ];
-        assert_eq!(host.evaluate("sum".to_string(), args).unwrap(), true);
+        assert!(host.evaluate("sum".to_string(), args).unwrap());
     }
 
     #[test]
@@ -2669,7 +2763,7 @@ mod tests {
             compute_backend::LogicalTerm::Number(5.0),
             compute_backend::LogicalTerm::Number(2.0),
         ];
-        assert_eq!(host.evaluate("quotient".to_string(), args).unwrap(), true);
+        assert!(host.evaluate("quotient".to_string(), args).unwrap());
     }
 
     #[test]

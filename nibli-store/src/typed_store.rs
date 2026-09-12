@@ -327,13 +327,13 @@ impl FactStore for RedbFactStore {
 
         // Write to redb. The `FactStore` trait's insert is infallible (the
         // reasoning core calls it on hot paths with no error channel), so a
-        // disk-write failure cannot propagate — but it must NEVER be silent:
-        // the fact stays queryable in memory while quietly not surviving a
-        // restart. Log loudly with the fact id and cause.
+        // disk-write failure cannot propagate — report it while keeping the
+        // in-memory fact queryable. Native engine sessions rebuild this mirror
+        // from their canonical assertion registry on reopen.
         if let Err(e) = self.write_fact(id, &fact) {
             eprintln!(
-                "[Persist Error] typed fact {id} ({}) was NOT written to disk: {e} — it remains \
-                 in memory for this session but will not survive a restart",
+                "[Persist Error] typed fact {id} ({}) was NOT written to the mirror: {e} — it \
+                 remains in memory; native engine reopen rebuilds from the canonical registry",
                 fact.relation()
             );
         }

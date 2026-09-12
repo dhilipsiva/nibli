@@ -58,7 +58,7 @@ fn assert_trace_consistent(result: &QueryResult, trace: &ProofTrace) {
 #[test]
 fn depth_boundary_contract() {
     let kb = new_kb();
-    kb.set_max_chain_depth(3);
+    kb.set_max_chain_depth(3).unwrap();
 
     // Chain: gerku(alis) --∀--> danlu --∀--> jmive --∀--> xanlu --∀--> melbi
     // (shallowest proofs: danlu=1 step, jmive=2, xanlu=3, melbi=4).
@@ -98,7 +98,7 @@ fn depth_boundary_contract() {
 
     // Restoring the bound makes the deeper chain provable — the RE verdict above was
     // the bound speaking, not the KB.
-    kb.set_max_chain_depth(4);
+    kb.set_max_chain_depth(4).unwrap();
     assert_eq!(verdict("melbi"), QueryResult::True, "depth 4 reaches melbi");
 }
 
@@ -134,7 +134,7 @@ fn exact_count_with_unresolved_member_bounds() {
     ] {
         assert_buf(&kb, compile_surface(s));
     }
-    kb.set_max_chain_depth(1);
+    kb.set_max_chain_depth(1).unwrap();
 
     // count=1: neither bound is decisive (0 > 1 is false; 0+1 < 1 is false) —
     // the verdict is the member's own non-definitive result, NEVER a guess.
@@ -169,7 +169,7 @@ fn exact_count_with_unresolved_member_bounds() {
     ] {
         assert_buf(&kb2, compile_surface(s));
     }
-    kb2.set_max_chain_depth(1);
+    kb2.set_max_chain_depth(1).unwrap();
     assert_eq!(
         kb2.query_entailment_inner(compile_surface("animal(exactly 1 dog)."))
             .unwrap(),

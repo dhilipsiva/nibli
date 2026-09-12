@@ -75,7 +75,7 @@ pub struct IntegrityConstraint {
 /// constraint `¬(P(x) ∧ ¬Q(x) ∧ ¬R(x))` rather than a derivation rule — a disjunctive
 /// head is NOT a Horn clause, so deriving either disjunct alone would be unsound.
 /// `check_contradictions` flags it when, for one consistent binding, every `conditions`
-/// template (P) holds in the positive store AND every disjunct group is EXPLICITLY
+/// template (P) holds by storage or derivation AND every disjunct group is EXPLICITLY
 /// denied (a stored `na <predicate>` covers it). The positive use ("is X a Q or an R?")
 /// is served by a disjunctive QUERY, not by this constraint.
 #[derive(Clone, Debug)]
@@ -840,7 +840,7 @@ pub enum GroundTerm {
 }
 
 impl GroundTerm {
-    fn contains_compiler_only_term(&self) -> bool {
+    pub(super) fn contains_compiler_only_term(&self) -> bool {
         match self {
             GroundTerm::PatternVar(_) | GroundTerm::SkolemPlaceholder(_) => true,
             GroundTerm::SkolemFn(_, dependency) => dependency.contains_compiler_only_term(),
@@ -1629,7 +1629,9 @@ pub(super) struct UniversalRuleRecord {
     pub(super) label: String,
     /// Condition templates (with PatternVar terms for structural unification).
     pub(super) typed_conditions: Vec<StoredFact>,
-    /// Conclusion templates (with PatternVar terms for structural unification).
+    /// Executable conclusion templates (with PatternVar terms for unification).
+    /// Quoted body atoms contribute dependency edges at registration, but never
+    /// become executable conclusions in the surrounding knowledge base.
     pub(super) typed_conclusions: Vec<StoredFact>,
     /// Pattern variable names used in templates, e.g. ["x__v0"].
     pub(super) pattern_var_names: Vec<String>,
@@ -1652,13 +1654,15 @@ pub(super) struct UniversalRuleRecord {
 #[derive(Clone)]
 pub(super) struct FactRecord {
     pub(super) id: u64,
-    pub(super) buffer: LogicBuffer,
+    pub(super) buffer: Option<LogicBuffer>,
     pub(super) label: String,
     pub(super) retracted: bool,
 }
 
 /// All mutable KB state behind a single RefCell.
 pub(super) struct KnowledgeBaseInner {
+    /// An ambiguous durable commit requires reopening this KB before further use.
+    pub(super) recovery_required: Option<String>,
     /// Presentation-only `sk_N` serial. Semantic identity is source-scoped.
     pub(super) skolem_counter: u64,
     /// Binder-local ordinal reset for each asserted LogicBuffer.
@@ -1678,6 +1682,8 @@ pub(super) struct KnowledgeBaseInner {
     pub(super) known_numbers: HashSet<u64>,
     pub(super) known_rules: RuleIdentityIndex,
     pub(super) skolem_fn_registry: Vec<SkolemFnEntry>,
+    /// Derived individual membership and its completeness, rebuilt per query pass.
+    pub(super) query_domain: QueryDomain,
     /// Pluggable fact store (in-memory or persistent).
     pub(super) fact_store: Box<dyn crate::fact_store::FactStore>,
     /// Multi-valued support for each content-identical tuple in `fact_store`.
@@ -1699,6 +1705,9 @@ pub(super) struct KnowledgeBaseInner {
     pub(super) fact_registry: HashMap<u64, FactRecord>,
     /// Suppresses diagnostic prints during rebuild replay.
     pub(super) rebuilding: bool,
+    /// Fresh, unpublished fixture construction may validate the graph once at
+    /// completion. Ordinary assertion and replay keep their existing checks.
+    pub(super) deferred_stratification: bool,
     /// Configuration parameter preserved across reset/rebuild (kept for WIT API compatibility).
     /// Cached typed domain members — invalidated when entities/descriptions change.
     pub(super) typed_domain_members_cache: Vec<GroundTerm>,
@@ -1765,6 +1774,9 @@ pub(super) struct KnowledgeBaseInner {
     /// `record_negative_ground_fact`). Negatives never enter the positive fact
     /// store or predicate index — queries keep NAF/CWA semantics unchanged.
     pub(super) negative_facts: HashSet<Vec<StoredFact>>,
+    /// Assertion ids whose explicit negations cannot be represented by the
+    /// negative registry. Replayed and retracted together with that registry.
+    pub(super) negative_scan_gaps: HashSet<u64>,
     /// Disjunctive rule conclusions registered as integrity constraints (see
     /// `DisjunctiveConstraint`). DERIVED from assertions → cleared on reset/rebuild
     /// and re-derived on replay (mirrors `negative_facts`/rules, NOT the standalone
@@ -1917,6 +1929,10 @@ pub(super) struct KnowledgeBaseInner {
     /// pair itself with `invalidate_pred_cache`, and a stale saturation surviving a
     /// rebuild would answer `~p(x)` from a knowledge base that no longer exists.
     pub(super) materialized: RefCell<Option<crate::materialize::Materialized>>,
+    /// Immutable rule projection and dependency strata shared by snapshots.
+    /// Ground tuple changes do not alter this plan; their eligibility remains
+    /// checked separately when the extensional store is seeded.
+    pub(super) materialization_plan: RefCell<Option<Arc<crate::materialize::MaterializationPlan>>>,
     /// MATERIALISATION MODE (default ON). Like `strict`/`existential_import` this is
     /// session CONFIGURATION, not derived state — NOT cleared by `reset()`. Off means
     /// every NAF takes the backward-chaining path, which is what the differential gate
@@ -1966,6 +1982,7 @@ pub(super) struct KnowledgeBaseInner {
 impl Clone for KnowledgeBaseInner {
     fn clone(&self) -> Self {
         Self {
+            recovery_required: self.recovery_required.clone(),
             skolem_counter: self.skolem_counter,
             skolem_local_counter: self.skolem_local_counter,
             known_entities: self.known_entities.clone(),
@@ -1974,15 +1991,17 @@ impl Clone for KnowledgeBaseInner {
             known_numbers: self.known_numbers.clone(),
             known_rules: self.known_rules.clone(),
             skolem_fn_registry: self.skolem_fn_registry.clone(),
+            query_domain: QueryDomain::default(),
             fact_store: self.fact_store.clone_box(),
             fact_origins: self.fact_origins.clone(),
             universal_rules: self.universal_rules.clone(),
             fact_counter: self.fact_counter,
             fact_registry: self.fact_registry.clone(),
             rebuilding: false,
+            deferred_stratification: false,
             typed_domain_members_cache: self.typed_domain_members_cache.clone(),
             typed_non_event_members_cache: self.typed_non_event_members_cache.clone(),
-            domain_members_dirty: self.domain_members_dirty,
+            domain_members_dirty: true,
             max_chain_depth: self.max_chain_depth,
             pred_dep_graph: self.pred_dep_graph.clone(),
             equivalence_parent: self.equivalence_parent.clone(),
@@ -1999,6 +2018,7 @@ impl Clone for KnowledgeBaseInner {
             entity_sorts: self.entity_sorts.clone(),
             traced_predicates: self.traced_predicates.clone(),
             negative_facts: self.negative_facts.clone(),
+            negative_scan_gaps: self.negative_scan_gaps.clone(),
             disjunctive_constraints: self.disjunctive_constraints.clone(),
             cancel: self.cancel.clone(),
             compute_eval: self.compute_eval,
@@ -2016,6 +2036,7 @@ impl Clone for KnowledgeBaseInner {
             admitted: self.admitted.clone(),
             strict_violations: Vec::new(),
             materialized: RefCell::new(None),
+            materialization_plan: RefCell::new(self.materialization_plan.borrow().clone()),
             materialization: self.materialization,
             positive_lookup: Cell::new(true),
             find_enumeration_incomplete: false,
@@ -2027,6 +2048,7 @@ impl Clone for KnowledgeBaseInner {
 impl KnowledgeBaseInner {
     pub(super) fn new() -> Self {
         Self {
+            recovery_required: None,
             skolem_counter: 0,
             skolem_local_counter: 0,
             known_entities: HashSet::new(),
@@ -2035,12 +2057,14 @@ impl KnowledgeBaseInner {
             known_numbers: HashSet::new(),
             known_rules: RuleIdentityIndex::default(),
             skolem_fn_registry: Vec::new(),
+            query_domain: QueryDomain::default(),
             fact_store: Box::new(crate::fact_store::InMemoryFactStore::new()),
             fact_origins: HashMap::new(),
             universal_rules: HashMap::new(),
             fact_counter: 0,
             fact_registry: HashMap::new(),
             rebuilding: false,
+            deferred_stratification: false,
             typed_domain_members_cache: Vec::new(),
             typed_non_event_members_cache: Vec::new(),
             domain_members_dirty: true,
@@ -2060,6 +2084,7 @@ impl KnowledgeBaseInner {
             entity_sorts: HashMap::new(),
             traced_predicates: HashSet::new(),
             negative_facts: HashSet::new(),
+            negative_scan_gaps: HashSet::new(),
             disjunctive_constraints: Vec::new(),
             cancel: None,
             compute_eval: None,
@@ -2079,6 +2104,7 @@ impl KnowledgeBaseInner {
             admitted: HashSet::new(),
             strict_violations: Vec::new(),
             materialized: RefCell::new(None),
+            materialization_plan: RefCell::new(None),
             // Materialisation defaults ON. Turning it off restores the pure
             // backward-chaining path byte-for-byte, which is what makes the ON/OFF
             // differential in `nibli-verify` expressible.
@@ -2098,6 +2124,7 @@ impl KnowledgeBaseInner {
         self.known_numbers.clear();
         self.known_rules.clear();
         self.skolem_fn_registry.clear();
+        self.query_domain = QueryDomain::default();
         self.fact_store.clear();
         self.fact_origins.clear();
         self.universal_rules.clear();
@@ -2120,6 +2147,7 @@ impl KnowledgeBaseInner {
         self.current_rule_ordinal = 0;
         self.forward_depth = 0;
         self.negative_facts.clear();
+        self.negative_scan_gaps.clear();
         self.disjunctive_constraints.clear();
         // `derived_only` IS cleared here, unlike `strict`/`existential_import`:
         // it is KB CONTENT (declared by a `derived_only("…")` statement in the KB
@@ -2134,6 +2162,7 @@ impl KnowledgeBaseInner {
         self.depth_cut_table.borrow_mut().clear();
         // The saturation is derived from facts+rules that no longer exist.
         *self.materialized.borrow_mut() = None;
+        *self.materialization_plan.borrow_mut() = None;
         // Note: integrity_constraints, compute_eval/compute_batch_eval, cancel,
         // verbose, strict, existential_import, and materialization are NOT cleared on
         // reset —
@@ -2356,6 +2385,27 @@ pub(super) fn find_canonical_readonly(
     }
 }
 
+/// Congruence for the engine's typed, source-scoped witness functions. Only
+/// dependency terms are normalized; the symbol's source, ordinal, sort and
+/// origin remain part of identity.
+pub(super) fn canonical_witness_term(
+    parent: &HashMap<GroundTerm, GroundTerm>,
+    term: &GroundTerm,
+) -> GroundTerm {
+    let representative = find_canonical_readonly(parent, term);
+    match representative {
+        GroundTerm::SkolemFn(symbol, dependency) => GroundTerm::SkolemFn(
+            symbol,
+            Box::new(canonical_witness_term(parent, &dependency)),
+        ),
+        GroundTerm::DepPair(left, right) => GroundTerm::DepPair(
+            Box::new(canonical_witness_term(parent, &left)),
+            Box::new(canonical_witness_term(parent, &right)),
+        ),
+        other => other,
+    }
+}
+
 /// Union two terms under the `du` equivalence relation.
 pub(super) fn union_terms(inner: &mut KnowledgeBaseInner, a: &GroundTerm, b: &GroundTerm) {
     let root_a = find_canonical(&mut inner.equivalence_parent, a);
@@ -2388,6 +2438,7 @@ pub(super) fn union_terms(inner: &mut KnowledgeBaseInner, a: &GroundTerm, b: &Gr
     // `invalidate_pred_cache`, which the assert path no longer performs
     // unconditionally.
     crate::reasoning::invalidate_materialization(inner);
+    *inner.materialization_plan.borrow_mut() = None;
 
     // Point loser at winner.
     inner
@@ -2450,6 +2501,19 @@ pub(super) fn equality_path_facts(
     if from == to {
         return Some(Vec::new());
     }
+    // A typed witness function respects the equalities of its dependencies.
+    // Cite the actual input equalities, never invent an asserted f(a)=f(b).
+    match (from, to) {
+        (GroundTerm::SkolemFn(a, x), GroundTerm::SkolemFn(b, y)) if a == b => {
+            return equality_path_facts(inner, x, y);
+        }
+        (GroundTerm::DepPair(a, b), GroundTerm::DepPair(c, d)) => {
+            let mut facts = equality_path_facts(inner, a, c)?;
+            facts.extend(equality_path_facts(inner, b, d)?);
+            return Some(facts);
+        }
+        _ => {}
+    }
 
     let mut queue = std::collections::VecDeque::from([from.clone()]);
     let mut visited = HashSet::from([from.clone()]);
@@ -2493,10 +2557,45 @@ pub(super) fn get_equivalence_class_readonly(
     term: &GroundTerm,
 ) -> Vec<GroundTerm> {
     let canon = find_canonical_readonly(parent, term);
-    classes
+    let mut out = classes
         .get(&canon)
         .cloned()
-        .unwrap_or_else(|| vec![term.clone()])
+        .unwrap_or_else(|| vec![term.clone()]);
+    // Congruence is symbolic, never a product of the dependencies' aliases.
+    // Twenty-one equal dependency positions already have 2^21 spellings.
+    out.push(canonical_witness_term(parent, term));
+    out.sort();
+    out.dedup();
+    out
+}
+
+pub(super) fn unify_facts_with_witness_congruence(
+    template: &StoredFact,
+    concrete: &StoredFact,
+    inner: &KnowledgeBaseInner,
+) -> Option<HashMap<String, GroundTerm>> {
+    if inner.equivalence_parent.is_empty() {
+        return unify_facts(template, concrete);
+    }
+    let normalize = |fact: &StoredFact| {
+        StoredFact::with_tense_from(
+            GroundFact::new(
+                fact.relation(),
+                fact.inner()
+                    .args
+                    .iter()
+                    .map(|term| match term {
+                        GroundTerm::SkolemFn(_, _) | GroundTerm::DepPair(_, _) => {
+                            canonical_witness_term(&inner.equivalence_parent, term)
+                        }
+                        _ => term.clone(),
+                    })
+                    .collect(),
+            ),
+            fact,
+        )
+    };
+    unify_facts(&normalize(template), &normalize(concrete))
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -2910,7 +3009,7 @@ fn record_negative_conjuncts(
 /// returning the negation body and the accumulated tense context. Companion to
 /// `root_reduces_to_negation` (which decides THAT a root is a negation; this
 /// returns WHERE its body is). Tense tracking mirrors `collect_ground_facts`:
-/// Past/Present/Future set the context, deontic wrappers are transparent.
+/// Temporal and deontic wrappers both preserve their stored-fact flavor.
 fn find_negation_body(
     buffer: &LogicBuffer,
     node_id: u32,
@@ -2923,9 +3022,8 @@ fn find_negation_body(
         LogicNode::PastNode(n) => find_negation_body(buffer, *n, subs, Some("Past")),
         LogicNode::PresentNode(n) => find_negation_body(buffer, *n, subs, Some("Present")),
         LogicNode::FutureNode(n) => find_negation_body(buffer, *n, subs, Some("Future")),
-        LogicNode::ObligatoryNode(n) | LogicNode::PermittedNode(n) => {
-            find_negation_body(buffer, *n, subs, tense)
-        }
+        LogicNode::ObligatoryNode(n) => find_negation_body(buffer, *n, subs, Some("Obligatory")),
+        LogicNode::PermittedNode(n) => find_negation_body(buffer, *n, subs, Some("Permitted")),
         LogicNode::ExistsNode((v, body)) if subs.contains_key(v.as_str()) => {
             find_negation_body(buffer, *body, subs, tense)
         }
@@ -2969,7 +3067,10 @@ pub(super) fn record_negative_ground_fact(
         // lowering, or `na … jenai …`). Recording the partial body would
         // register a STRENGTHENED negation (¬(P ∧ ¬Q) degraded to ¬P) and
         // fabricate contradiction reports on consistent KBs — keep the
-        // closed-world no-op instead.
+        // closed-world no-op instead, but disclose this gap to scan callers.
+        if let Some(id) = inner.current_assertion_id {
+            inner.negative_scan_gaps.insert(id);
+        }
         return;
     }
     let mut leaves = Vec::new();
@@ -2978,6 +3079,9 @@ pub(super) fn record_negative_ground_fact(
         // Nothing representable under the negation (e.g. ¬¬P, ¬(P ∨ Q)) —
         // keep the closed-world no-op rather than recording an empty group
         // (an empty group would unify trivially and flag a false contradiction).
+        if let Some(id) = inner.current_assertion_id {
+            inner.negative_scan_gaps.insert(id);
+        }
         return;
     }
 
@@ -3226,6 +3330,55 @@ fn tense_wraps_skolemized_exists_over_forall(
     }
 }
 
+/// Binders introduced only within quoted content do not assert outer-domain
+/// membership. The abstraction referent and binders outside the quote retain
+/// their ordinary scope, including a leading existential used in the body.
+fn quoted_only_existential_binders(buffer: &LogicBuffer, root: u32) -> HashSet<String> {
+    let mut pending = vec![(root, false)];
+    let mut visited = HashSet::new();
+    let mut quoted_binders = HashSet::new();
+    let mut outer_binders = HashSet::new();
+    while let Some((node_id, quoted)) = pending.pop() {
+        if !visited.insert((node_id, quoted)) {
+            continue;
+        }
+        let Ok(node) = get_node(buffer, node_id) else {
+            continue;
+        };
+        match node {
+            LogicNode::ExistsNode((name, body)) => {
+                if quoted {
+                    quoted_binders.insert(name.clone());
+                } else {
+                    outer_binders.insert(name.clone());
+                }
+                pending.push((*body, quoted));
+            }
+            LogicNode::AndNode((left, right)) => {
+                pending.push((*left, quoted));
+                pending.push((*right, quoted || is_abstraction_marker(buffer, *left)));
+            }
+            LogicNode::OrNode((left, right)) => {
+                pending.push((*left, quoted));
+                pending.push((*right, quoted));
+            }
+            LogicNode::ForAllNode((_, body))
+            | LogicNode::NotNode(body)
+            | LogicNode::PastNode(body)
+            | LogicNode::PresentNode(body)
+            | LogicNode::FutureNode(body)
+            | LogicNode::ObligatoryNode(body)
+            | LogicNode::PermittedNode(body)
+            | LogicNode::CountNode((_, _, body)) => pending.push((*body, quoted)),
+            LogicNode::Predicate(_) | LogicNode::ComputeNode(_) => {}
+        }
+    }
+    // Serialized legacy buffers identify binders by name. Preserve a binder
+    // also reached in outer scope rather than suppressing its asserted witness.
+    quoted_binders.retain(|name| !outer_binders.contains(name));
+    quoted_binders
+}
+
 pub(super) fn process_assertion(
     inner: &mut KnowledgeBaseInner,
     logic: &mut LogicBuffer,
@@ -3278,14 +3431,19 @@ pub(super) fn process_assertion(
             );
         }
 
-        // Phase 2: Note skolem witness + ground constants — identical for every
-        // dispatch path below, so done once up front.
+        // Phase 2: Only unconditionally asserted individual witnesses seed the
+        // domain. A ground conditional's consequent also has zero-dependency
+        // Skolems, but those require successful rule activation first. Its
+        // antecedent existentials are patterns, not existential premises.
+        // Individuals introduced inside quoted content never seed this domain.
+        let conditional_binders = conditional_existential_binders(logic, root_id);
+        let quoted_binders = quoted_only_existential_binders(logic, root_id);
         for (var, gt) in &skolem_subs {
             if !is_skdep(gt) {
                 if let GroundTerm::Skolem(symbol) = gt {
                     if var.starts_with("_ev") {
                         inner.note_event_entity(GroundTerm::Skolem(*symbol));
-                    } else {
+                    } else if !conditional_binders.contains(var) && !quoted_binders.contains(var) {
                         inner.note_entity(GroundTerm::Skolem(*symbol));
                     }
                 }

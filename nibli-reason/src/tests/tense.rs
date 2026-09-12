@@ -404,7 +404,8 @@ fn test_temporal_rules_require_explicit_flavors() {
 fn bare_rule_is_not_a_tensed_candidate_at_the_depth_horizon() {
     let kb = new_kb();
     assert_buf(&kb, make_universal("gerku", "danlu"));
-    kb.set_max_chain_depth(0);
+    assert!(kb.set_max_chain_depth(0).is_err());
+    kb.set_max_chain_depth(1).unwrap();
 
     let mut nodes = Vec::new();
     let animal = pred(
@@ -436,7 +437,7 @@ fn exact_tensed_rule_remains_a_candidate_at_the_depth_horizon() {
     assert_buf(&kb, make_temporal_event_assertion("alis", "gerku", past));
     assert_buf(&kb, make_temporal_event_universal("gerku", "danlu", past));
     assert_buf(&kb, make_temporal_event_universal("danlu", "jmive", past));
-    kb.set_max_chain_depth(1);
+    kb.set_max_chain_depth(1).unwrap();
 
     assert_eq!(
         query_result(&kb, make_temporal_event_query("alis", "jmive", past)),

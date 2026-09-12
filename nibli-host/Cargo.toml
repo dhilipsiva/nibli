@@ -21,3 +21,6 @@ nibli-render = { workspace = true }
 nibli-store = { workspace = true }
 nibli-types = { workspace = true, features = ["serde"] }
 postcard = { version = "1", features = ["alloc"] }
+
+[dev-dependencies]
+tempfile = "3"

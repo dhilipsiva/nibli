@@ -13,6 +13,75 @@ pub(super) fn skdep_symbol(gt: &GroundTerm) -> Option<SkolemSymbol> {
     }
 }
 
+/// Existential binders inside a material conditional do not assert that their
+/// witnesses exist. Antecedent binders become pattern variables; consequent
+/// binders become candidates activated only when that rule's guard succeeds.
+/// A binder outside the conditional (notably `∃y.∀x.(P -> Q)`) is an explicit
+/// existential premise and must remain an unconditional domain seed.
+pub(super) fn conditional_existential_binders(buffer: &LogicBuffer, root: u32) -> HashSet<String> {
+    fn visit(
+        buffer: &LogicBuffer,
+        node_id: u32,
+        conditional: bool,
+        guarded: &mut HashSet<String>,
+        unguarded: &mut HashSet<String>,
+        visited: &mut HashSet<(u32, bool)>,
+    ) {
+        if !visited.insert((node_id, conditional)) {
+            return;
+        }
+        let Ok(node) = get_node(buffer, node_id) else {
+            return;
+        };
+        match node {
+            LogicNode::ExistsNode((name, body)) => {
+                if conditional {
+                    guarded.insert(name.clone());
+                } else {
+                    unguarded.insert(name.clone());
+                }
+                visit(buffer, *body, conditional, guarded, unguarded, visited);
+            }
+            LogicNode::OrNode((left, right)) => {
+                let conditional = conditional
+                    || matches!(get_node(buffer, *left), Ok(LogicNode::NotNode(_)))
+                    || matches!(get_node(buffer, *right), Ok(LogicNode::NotNode(_)));
+                visit(buffer, *left, conditional, guarded, unguarded, visited);
+                visit(buffer, *right, conditional, guarded, unguarded, visited);
+            }
+            LogicNode::AndNode((left, right)) => {
+                visit(buffer, *left, conditional, guarded, unguarded, visited);
+                visit(buffer, *right, conditional, guarded, unguarded, visited);
+            }
+            LogicNode::ForAllNode((_, body))
+            | LogicNode::NotNode(body)
+            | LogicNode::PastNode(body)
+            | LogicNode::PresentNode(body)
+            | LogicNode::FutureNode(body)
+            | LogicNode::ObligatoryNode(body)
+            | LogicNode::PermittedNode(body) => {
+                visit(buffer, *body, conditional, guarded, unguarded, visited);
+            }
+            LogicNode::Predicate(_) | LogicNode::ComputeNode(_) | LogicNode::CountNode(_) => {}
+        }
+    }
+    let mut guarded = HashSet::new();
+    let mut unguarded = HashSet::new();
+    visit(
+        buffer,
+        root,
+        false,
+        &mut guarded,
+        &mut unguarded,
+        &mut HashSet::new(),
+    );
+    // Existing buffer compatibility identifies binders by name. A leading
+    // explicit binder must not lose its membership if an old shared DAG also
+    // reaches the same name from inside the conditional.
+    guarded.retain(|name| !unguarded.contains(name));
+    guarded
+}
+
 pub(super) fn collect_exists_for_skolem(
     buffer: &LogicBuffer,
     node_id: u32,
@@ -371,25 +440,54 @@ fn flatten_consequent(
     skolem_subs: &HashMap<String, GroundTerm>,
     tense: Option<&'static str>,
 ) -> Vec<(u32, Option<&'static str>)> {
+    flatten_consequent_inner(buffer, node_id, skolem_subs, tense, false)
+}
+
+fn flatten_consequent_inner(
+    buffer: &LogicBuffer,
+    node_id: u32,
+    skolem_subs: &HashMap<String, GroundTerm>,
+    tense: Option<&'static str>,
+    preserve_opacity: bool,
+) -> Vec<(u32, Option<&'static str>)> {
     let Ok(node) = get_node(buffer, node_id) else {
         return vec![(node_id, tense)];
     };
     match node {
         LogicNode::ExistsNode((v, body)) if skolem_subs.contains_key(v.as_str()) => {
-            flatten_consequent(buffer, *body, skolem_subs, tense)
+            flatten_consequent_inner(buffer, *body, skolem_subs, tense, preserve_opacity)
         }
         LogicNode::AndNode((l, r)) => {
-            let mut result = flatten_consequent(buffer, *l, skolem_subs, tense);
-            result.extend(flatten_consequent(buffer, *r, skolem_subs, tense));
+            let mut result =
+                flatten_consequent_inner(buffer, *l, skolem_subs, tense, preserve_opacity);
+            if !preserve_opacity || !is_abstraction_marker(buffer, *l) {
+                result.extend(flatten_consequent_inner(
+                    buffer,
+                    *r,
+                    skolem_subs,
+                    tense,
+                    preserve_opacity,
+                ));
+            }
             result
         }
-        LogicNode::PastNode(inner) => flatten_consequent(buffer, *inner, skolem_subs, Some("Past")),
-        LogicNode::PresentNode(inner) => {
-            flatten_consequent(buffer, *inner, skolem_subs, Some("Present"))
+        LogicNode::PastNode(inner) => {
+            flatten_consequent_inner(buffer, *inner, skolem_subs, Some("Past"), preserve_opacity)
         }
-        LogicNode::FutureNode(inner) => {
-            flatten_consequent(buffer, *inner, skolem_subs, Some("Future"))
-        }
+        LogicNode::PresentNode(inner) => flatten_consequent_inner(
+            buffer,
+            *inner,
+            skolem_subs,
+            Some("Present"),
+            preserve_opacity,
+        ),
+        LogicNode::FutureNode(inner) => flatten_consequent_inner(
+            buffer,
+            *inner,
+            skolem_subs,
+            Some("Future"),
+            preserve_opacity,
+        ),
         // Deontic wrappers set the stored-fact flavor EXACTLY like the tense arms:
         // `ganai A gi e'e B` derives Permitted(B), never bare B. (Pre-2026-07 these
         // stripped the wrapper without setting the flavor — a ground conditional
@@ -397,12 +495,20 @@ fn flatten_consequent(
         // into truth. Reachable from the surface: an deontic on a connective
         // operand wraps that operand's proposition. Found by the mutation-baseline
         // triage; pinned by `deontic_rule_consequent_derives_flavored_fact`.)
-        LogicNode::ObligatoryNode(inner) => {
-            flatten_consequent(buffer, *inner, skolem_subs, Some("Obligatory"))
-        }
-        LogicNode::PermittedNode(inner) => {
-            flatten_consequent(buffer, *inner, skolem_subs, Some("Permitted"))
-        }
+        LogicNode::ObligatoryNode(inner) => flatten_consequent_inner(
+            buffer,
+            *inner,
+            skolem_subs,
+            Some("Obligatory"),
+            preserve_opacity,
+        ),
+        LogicNode::PermittedNode(inner) => flatten_consequent_inner(
+            buffer,
+            *inner,
+            skolem_subs,
+            Some("Permitted"),
+            preserve_opacity,
+        ),
         _ => vec![(node_id, tense)],
     }
 }
@@ -543,6 +649,37 @@ pub(super) fn register_rule(
     requests_existential_import: bool,
     forward: bool,
 ) -> Result<RuleRegistration, String> {
+    register_rule_with_dependencies(
+        inner,
+        kind,
+        label,
+        pattern_var_names,
+        typed_conditions,
+        typed_conclusions.clone(),
+        typed_conclusions,
+        negated_condition_indices,
+        negated_exists_groups,
+        requests_existential_import,
+        forward,
+    )
+}
+
+/// Keep quoted-body dependencies in the stratification graph without making
+/// those atoms executable. Content-addressed abstraction markers remain among
+/// executable heads and therefore bind quoted content into the rule identity.
+fn register_rule_with_dependencies(
+    inner: &mut KnowledgeBaseInner,
+    kind: RuleKind,
+    label: String,
+    pattern_var_names: Vec<String>,
+    typed_conditions: Vec<StoredFact>,
+    typed_conclusions: Vec<StoredFact>,
+    dependency_conclusions: Vec<StoredFact>,
+    negated_condition_indices: Vec<usize>,
+    negated_exists_groups: Vec<NegatedExistsGroup>,
+    requests_existential_import: bool,
+    forward: bool,
+) -> Result<RuleRegistration, String> {
     // FAIL CLOSED: a rule with no extractable conclusions can never fire
     // (backward chaining indexes rules by conclusion relation). Such a rule
     // used to be parked in an unindexed `__fallback__` bucket that only
@@ -585,7 +722,7 @@ pub(super) fn register_rule(
         .sum();
 
     // Update predicate dependency graph before inserting the rule.
-    for concl in &typed_conclusions {
+    for concl in &dependency_conclusions {
         let concl_rel = concl.relation().to_string();
         for (idx, cond) in typed_conditions.iter().enumerate() {
             let is_neg = negated_condition_indices.contains(&idx);
@@ -612,10 +749,10 @@ pub(super) fn register_rule(
     }
 
     // Check stratification (skip during rebuild — same rules passed before).
-    if !inner.rebuilding {
+    if !inner.rebuilding && !inner.deferred_stratification {
         if let Err(e) = check_stratification(&inner.pred_dep_graph) {
             // Rollback: remove the edges we just added.
-            for concl in &typed_conclusions {
+            for concl in &dependency_conclusions {
                 let concl_rel = concl.relation();
                 if let Some(edges) = inner.pred_dep_graph.get_mut(concl_rel) {
                     for _ in 0..(typed_conditions.len() + group_edge_count) {
@@ -695,6 +832,7 @@ pub(super) fn register_rule(
     // is here so the invariant is anchored at the mutation point rather than to a
     // caller's discipline (the same reason `assert_typed_fact` carries its own).
     invalidate_materialization(inner);
+    *inner.materialization_plan.borrow_mut() = None;
 
     Ok(RuleRegistration {
         rule_registered: true,
@@ -829,7 +967,9 @@ pub(super) fn compute_sccs(graph: &HashMap<String, Vec<(String, bool)>>) -> Vec<
 /// edges whose BOTH endpoints lie inside one SCC are counted, so a negative edge
 /// feeding INTO a cycle from outside cannot flip the verdict, and a negative
 /// self-loop (a size-1 SCC) is caught uniformly.
-fn check_stratification(graph: &HashMap<String, Vec<(String, bool)>>) -> Result<(), String> {
+pub(super) fn check_stratification(
+    graph: &HashMap<String, Vec<(String, bool)>>,
+) -> Result<(), String> {
     for scc in compute_sccs(graph) {
         let members: std::collections::HashSet<&str> = scc.iter().map(|s| s.as_str()).collect();
         for node in &scc {
@@ -1291,6 +1431,7 @@ fn register_clause_rule(
     ground_skolems: &HashMap<String, SkolemSymbol>,
     dependent_skolems: &HashMap<String, (SkolemSymbol, Vec<String>)>,
     typed_concls: &[StoredFact],
+    executable_concls: &[StoredFact],
     rule_desc: &str,
     inner: &mut KnowledgeBaseInner,
 ) -> Result<bool, String> {
@@ -1425,12 +1566,13 @@ fn register_clause_rule(
         !universals.is_empty() && universals.iter().all(|v| v.starts_with("_v"));
     let requests_existential_import =
         branch_idx == 0 && is_description_universal && inner.existential_import;
-    let registration = match register_rule(
+    let registration = match register_rule_with_dependencies(
         inner,
         RuleKind::Conditional,
         label,
         all_pattern_var_names,
         typed_conds,
+        executable_concls.to_vec(),
         typed_concls.to_vec(),
         negated_condition_indices,
         negated_exists_groups,
@@ -1655,6 +1797,12 @@ pub(super) fn compile_forall_to_rule(
             }
 
             let mut consequent_atoms = flatten_consequent(buffer, consequent_id, skolem_subs, None);
+            // Quoted bodies retain dependency edges for the stratification firewall,
+            // but only their opaque marker can execute in the surrounding KB.
+            let executable_atoms: HashSet<_> =
+                flatten_consequent_inner(buffer, consequent_id, skolem_subs, None, true)
+                    .into_iter()
+                    .collect();
 
             // DISJUNCTIVE CONCLUSION: a top-level `Or` consequent atom is not a Horn
             // clause (deriving a disjunct would be unsound), so it is registered as the
@@ -1823,6 +1971,7 @@ pub(super) fn compile_forall_to_rule(
             // Each leaf carries its own tense (threaded by `flatten_consequent`), so a
             // tensed conclusion (`ganai A gi pu B` → `Past(B)`) becomes a `Past` template.
             let mut typed_concls: Vec<StoredFact> = Vec::new();
+            let mut executable_concls: Vec<StoredFact> = Vec::new();
             for &(aid, tense) in &consequent_atoms {
                 match build_rule_template_fact(
                     buffer,
@@ -1832,7 +1981,12 @@ pub(super) fn compile_forall_to_rule(
                     &dependent_skolems,
                     tense,
                 ) {
-                    Some(fact) => typed_concls.push(fact),
+                    Some(fact) => {
+                        if executable_atoms.contains(&(aid, tense)) {
+                            executable_concls.push(fact.clone());
+                        }
+                        typed_concls.push(fact);
+                    }
                     None => {
                         return Err(format!(
                             "cannot compile rule conclusion for {rule_desc}: a consequent \
@@ -1859,6 +2013,7 @@ pub(super) fn compile_forall_to_rule(
                     &ground_skolems,
                     &dependent_skolems,
                     &typed_concls,
+                    &executable_concls,
                     &rule_desc,
                     inner,
                 )?;

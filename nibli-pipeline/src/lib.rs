@@ -446,6 +446,28 @@ impl GuestSession for Session {
         }
     }
 
+    fn set_max_chain_depth(&self, depth: u32) -> Result<(), pipeline_err::NibliError> {
+        self.core.borrow().set_max_chain_depth(depth)
+    }
+
+    fn max_chain_depth(&self) -> u32 {
+        self.core.borrow().max_chain_depth()
+    }
+
+    fn list_assertion_records(
+        &self,
+    ) -> Result<Vec<logic::AssertionRecordSummary>, pipeline_err::NibliError> {
+        self.core.borrow().list_assertion_records()
+    }
+
+    fn restore_withdrawn_assertion(
+        &self,
+        id: u64,
+        label: String,
+    ) -> Result<(), pipeline_err::NibliError> {
+        self.core.borrow().restore_withdrawn_assertion(id, label)
+    }
+
     fn set_strict(&self, strict: bool) {
         self.core.borrow().set_strict(strict);
     }
@@ -466,15 +488,17 @@ impl GuestSession for Session {
     /// pair of plain vectors; the record form is what makes the two lists nameable on
     /// the other side (a bare `tuple<list<string>, list<tuple<string,string>>>` reads
     /// as nothing at a REPL).
-    fn materialization_report(&self) -> export_logic::MaterializationReport {
-        let (complete, refused) = self.core.borrow().materialization_report();
-        export_logic::MaterializationReport {
+    fn materialization_report(
+        &self,
+    ) -> Result<export_logic::MaterializationReport, pipeline_err::NibliError> {
+        let (complete, refused) = self.core.borrow().materialization_report()?;
+        Ok(export_logic::MaterializationReport {
             complete,
             refused: refused
                 .into_iter()
                 .map(|(relation, reason)| export_logic::MaterializationRefusal { relation, reason })
                 .collect(),
-        }
+        })
     }
 
     /// Assert KR text, splitting a multi-statement input into one independent
@@ -540,8 +564,9 @@ impl GuestSession for Session {
     }
 
     fn reset_kb(&self) -> Result<(), pipeline_err::NibliError> {
+        self.core.borrow().reset()?;
         self.linter.borrow_mut().reset();
-        self.core.borrow().reset()
+        Ok(())
     }
 
     fn register_compute_predicate(&self, name: String) -> Result<(), pipeline_err::NibliError> {

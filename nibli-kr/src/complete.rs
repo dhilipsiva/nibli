@@ -105,6 +105,11 @@ impl Default for CompleteOpts<'static> {
 pub const REPL_COMMANDS: &[(&str, &str)] = &[
     (":help", "show commands"),
     (":quit", "exit the REPL"),
+    (":depth", "show or set the positive reasoning depth"),
+    (
+        ":facts --all",
+        "list active and withdrawn assertion records",
+    ),
     (":reset", "clear the knowledge base"),
     (":load", "load a .nibli file"),
     (":facts", "list active facts"),
