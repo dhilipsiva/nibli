@@ -1,5 +1,150 @@
 use super::*;
 
+#[test]
+fn complete_unary_witness_filter_tracks_growth_and_proof_mode() {
+    let kb = surface_kb(&["person(Adam).", "likes(every person, some cat)."]);
+    kb.set_materialization(true);
+    kb.ensure_materialized(&compile_surface("person(Adam)."), true);
+    {
+        let inner = kb.inner.borrow();
+        let rule = inner.universal_rules.values().flatten().next().unwrap();
+        let variable = rule
+            .pattern_var_names
+            .iter()
+            .find(|name| !name.starts_with("ev__"))
+            .unwrap();
+        let allowed =
+            materialize::complete_unary_condition_members(&inner, rule, variable).unwrap();
+        assert_eq!(
+            allowed,
+            HashSet::from([GroundTerm::Constant("adam".into())])
+        );
+        inner.positive_lookup.set(false);
+        assert!(materialize::complete_unary_condition_members(&inner, rule, variable).is_none());
+        inner.positive_lookup.set(true);
+    }
+    assert_buf(&kb, compile_surface("bird(Bob)."));
+    assert_eq!(verdict(&kb, "likes(Bob, some cat)."), QueryResult::False);
+    assert_buf(&kb, compile_surface("person(Bob)."));
+    assert_eq!(verdict(&kb, "likes(Bob, some cat)."), QueryResult::True);
+    assert_eq!(verdict(&kb, "cat(exactly 2 cat)."), QueryResult::True);
+    let (result, proof) = kb
+        .query_entailment_with_proof_inner(compile_surface("likes(Bob, some cat)."))
+        .unwrap();
+    assert_eq!(result, QueryResult::True);
+    assert!(!proof.steps.is_empty());
+    let first = kb.list_facts().unwrap()[0].id;
+    kb.retract_fact(first).unwrap();
+    assert_eq!(verdict(&kb, "likes(Adam, some cat)."), QueryResult::False);
+    assert_eq!(verdict(&kb, "cat(exactly 1 cat)."), QueryResult::True);
+}
+
+#[test]
+fn shared_assertion_records_detach_on_scoped_withdrawal() {
+    let kb = surface_kb(&["dog(Adam).", "likes(every dog, some cat)."]);
+    let id = kb.list_facts().unwrap()[0].id;
+    kb.with_assumptions(&[], |candidate| {
+        assert!(Arc::ptr_eq(
+            &kb.inner.borrow().fact_registry[&id],
+            &candidate.inner.borrow().fact_registry[&id]
+        ));
+        candidate.retract_fact(id).unwrap();
+        assert_eq!(verdict(candidate, "dog(Adam)."), QueryResult::False);
+        assert!(!kb.inner.borrow().fact_registry[&id].retracted);
+        assert!(candidate.inner.borrow().fact_registry[&id].retracted);
+        assert!(!Arc::ptr_eq(
+            &kb.inner.borrow().fact_registry[&id],
+            &candidate.inner.borrow().fact_registry[&id]
+        ));
+    })
+    .unwrap();
+    assert_eq!(verdict(&kb, "dog(Adam)."), QueryResult::True);
+    assert_eq!(verdict(&kb, "likes(Adam, some cat)."), QueryResult::True);
+}
+
+#[test]
+fn compact_batch_graph_preserves_polarities_refusals_and_retraction() {
+    let lines = [
+        "dog(Adam).",
+        "all $x: dog($x) & bird($x) -> mouse($x).",
+        "all $x: dog($x) & ~bird($x) -> mouse($x).",
+        "all $x: dog($x) -> cat($x) & animal($x).",
+        "all $x: dog($x) & bird($x) -> cat($x).",
+    ];
+    let sequential = surface_kb(&lines);
+    let (batch, ids) = KnowledgeBase::from_compiled_batch(
+        lines
+            .iter()
+            .map(|line| (compile_surface(line), (*line).to_owned()))
+            .collect(),
+    )
+    .unwrap();
+    let graph = batch.inner.borrow().pred_dep_graph.clone();
+    for edges in graph.values() {
+        let unique: HashSet<_> = edges.iter().collect();
+        assert_eq!(edges.len(), unique.len());
+    }
+    let shape = |kb: &KnowledgeBase| format!("{:?}", kb.stratification_report().unwrap());
+    assert_eq!(shape(&batch), shape(&sequential));
+    for query in ["mouse(Adam).", "cat(Adam).", "animal(Adam)."] {
+        assert_eq!(verdict(&batch, query), verdict(&sequential, query));
+    }
+    let before = shape(&batch);
+    assert!(
+        batch
+            .assert_fact(
+                compile_surface("all $x: mouse($x) -> bird($x)."),
+                "forbidden negative cycle".into()
+            )
+            .is_err()
+    );
+    assert_eq!(shape(&batch), before);
+    assert_eq!(verdict(&batch, "mouse(Adam)."), QueryResult::True);
+    batch.retract_fact(ids[2][0]).unwrap();
+    assert_eq!(verdict(&batch, "mouse(Adam)."), QueryResult::False);
+    batch
+        .assert_fact(compile_surface("bird(Adam)."), "new bird".into())
+        .unwrap();
+    assert_eq!(verdict(&batch, "mouse(Adam)."), QueryResult::True);
+}
+
+#[test]
+fn reusable_domain_plan_matches_fresh_planning_across_mutations() {
+    fn run(reuse: bool, materialization: bool) -> Vec<QueryResult> {
+        let kb = surface_kb(&["dog(Adam).", "likes(every dog, some cat)."]);
+        kb.set_materialization(materialization);
+        let mut results = Vec::new();
+        for source in [None, Some("dog(Bob)."), Some("bird(Cia).")] {
+            if let Some(source) = source {
+                assert_buf(&kb, compile_surface(source));
+            }
+            for query in [
+                "cat(some cat).",
+                "likes(Adam, exactly 1 cat).",
+                "likes(Bob, some cat).",
+                "likes(Cia, some cat).",
+            ] {
+                if !reuse {
+                    kb.inner.borrow().materialization_plan.borrow_mut().take();
+                }
+                results.push(verdict(&kb, query));
+            }
+        }
+        let before = kb.list_facts().unwrap().len();
+        let (verdict, proof) = kb
+            .query_entailment_with_proof_inner(compile_surface("likes(Adam, some cat)."))
+            .unwrap();
+        assert_eq!(verdict, QueryResult::True);
+        assert!(!proof.steps.is_empty());
+        assert_eq!(kb.list_facts().unwrap().len(), before);
+        results
+    }
+    let reference = run(false, false);
+    assert_eq!(run(true, false), reference);
+    assert_eq!(run(false, true), reference);
+    assert_eq!(run(true, true), reference);
+}
+
 fn surface_kb(lines: &[&str]) -> KnowledgeBase {
     let kb = new_kb();
     kb.set_materialization(false);

@@ -2999,6 +2999,28 @@ pub(super) fn witness_activation_holds(
     bindings: &mut HashMap<String, GroundTerm>,
     inner: &KnowledgeBaseInner,
 ) -> QueryResult {
+    // A missing tuple in an already-complete condition needs no event search.
+    // Positive matches still bind event witnesses through the ordinary path.
+    // Do not request new saturation here: recursive/unsupported conditions keep
+    // the ordinary evaluator, and proof tracing keeps its derivation path.
+    if inner.positive_lookup.get()
+        && inner.materialization
+        && rule.negated_condition_indices.is_empty()
+        && rule.negated_exists_groups.is_empty()
+    {
+        if let Some((relation, tuple)) =
+            crate::materialize::probe_positive_rule_conditions(&rule.typed_conditions, bindings)
+        {
+            let materialized = inner.materialized.borrow();
+            if let Some(complete) = materialized.as_ref() {
+                if complete.is_complete_for(&relation, tuple.len())
+                    && !complete.contains(&relation, &tuple)
+                {
+                    return QueryResult::False;
+                }
+            }
+        }
+    }
     let event_vars: Vec<String> = rule
         .pattern_var_names
         .iter()

@@ -713,53 +713,54 @@ fn register_rule_with_dependencies(
         });
     }
 
-    // Each negated-exists group contributes one negative edge per inner condition
-    // relation (added below alongside the flat-condition edges), so the rollback
-    // must pop that many extra edges per conclusion.
-    let group_edge_count: usize = negated_exists_groups
+    // Reachability uses relation/polarity pairs, not one edge per repeated
+    // event-role condition. Large rules can repeat those pairs thousands of
+    // times. Build their distinct graph contribution once; keep both polarities.
+    let mut dependencies: Vec<_> = typed_conditions
         .iter()
-        .map(|g| g.conditions.len())
-        .sum();
-
-    // Update predicate dependency graph before inserting the rule.
-    for concl in &dependency_conclusions {
-        let concl_rel = concl.relation().to_string();
-        for (idx, cond) in typed_conditions.iter().enumerate() {
-            let is_neg = negated_condition_indices.contains(&idx);
+        .enumerate()
+        .map(|(idx, cond)| {
+            (
+                cond.relation().to_owned(),
+                negated_condition_indices.contains(&idx),
+            )
+        })
+        .chain(negated_exists_groups.iter().flat_map(|group| {
+            group
+                .conditions
+                .iter()
+                .map(|cond| (cond.relation().to_owned(), true))
+        }))
+        .collect();
+    dependencies.sort_unstable();
+    dependencies.dedup();
+    let mut heads: Vec<_> = dependency_conclusions
+        .iter()
+        .map(|head| head.relation())
+        .collect();
+    heads.sort_unstable();
+    heads.dedup();
+    let mut previous = Vec::new();
+    if !dependencies.is_empty() {
+        for head in heads {
+            previous.push((head, inner.pred_dep_graph.get(head).map(Vec::len)));
             inner
                 .pred_dep_graph
-                .entry(concl_rel.clone())
+                .entry(head.to_owned())
                 .or_default()
-                .push((cond.relation().to_string(), is_neg));
-        }
-        // A negated event-decomposed restrictor (`poi na <predicate>`) reads its inner
-        // conjuncts under negation-as-failure, so each is a NEGATIVE dependency: a
-        // rule whose conclusion recurses through the negated existential (e.g.
-        // `ro lo X poi na danlu cu danlu`) becomes a negative self-loop and is
-        // rejected as unstratifiable by `check_stratification`.
-        for group in &negated_exists_groups {
-            for cond in &group.conditions {
-                inner
-                    .pred_dep_graph
-                    .entry(concl_rel.clone())
-                    .or_default()
-                    .push((cond.relation().to_string(), true));
-            }
+                .extend(dependencies.iter().cloned());
         }
     }
 
     // Check stratification (skip during rebuild — same rules passed before).
     if !inner.rebuilding && !inner.deferred_stratification {
         if let Err(e) = check_stratification(&inner.pred_dep_graph) {
-            // Rollback: remove the edges we just added.
-            for concl in &dependency_conclusions {
-                let concl_rel = concl.relation();
-                if let Some(edges) = inner.pred_dep_graph.get_mut(concl_rel) {
-                    for _ in 0..(typed_conditions.len() + group_edge_count) {
-                        edges.pop();
-                    }
-                    if edges.is_empty() {
-                        inner.pred_dep_graph.remove(concl_rel);
+            // Restore exact pre-registration lengths, including absent nodes.
+            for (head, length) in previous {
+                match length {
+                    Some(length) => inner.pred_dep_graph.get_mut(head).unwrap().truncate(length),
+                    None => {
+                        inner.pred_dep_graph.remove(head);
                     }
                 }
             }

@@ -365,7 +365,7 @@ mod tests {
     }
 
     #[test]
-    fn lose_and_building_place_order_read_naturally() {
+    fn lose_place_order_reads_naturally() {
         let lose = {
             let ast = nibli_kr::parse_checked("lose(Points, Bela).").unwrap();
             let buf = nibli_semantics::compile_from_ast(ast).unwrap();
@@ -375,19 +375,28 @@ mod tests {
             lose.to_lowercase().contains("bela loses points"),
             "got: {lose}"
         );
-        let bld = {
-            let ast = nibli_kr::parse_checked("building(HighSec, Lalo).").unwrap();
+    }
+
+    #[test]
+    fn building_preserves_building_and_purpose_places() {
+        let render = |kr| {
+            let ast = nibli_kr::parse_checked(kr).unwrap();
             let buf = nibli_semantics::compile_from_ast(ast).unwrap();
             render_logic_buffer(&buf, Register::Spec)
         };
-        assert!(
-            bld.to_lowercase().contains("lalo") && bld.to_lowercase().contains("highsec"),
-            "got: {bld}"
+        assert_eq!(
+            render("building(Library, Reading)."),
+            "Library is a building for Reading."
         );
-        assert!(
-            bld.to_lowercase().contains("placed") || bld.to_lowercase().contains("housed"),
-            "got: {bld}"
-        );
+        assert_eq!(render("building(Adam)."), "Adam is a building.");
+
+        // Domain-specific proof wording remains opt-in and cannot leak into
+        // the default structural back-translation after the render completes.
+        let domain = crate::overlay::with_overlay(Some(&UTOPIA_OVERLAY), || {
+            render("building(HighSec, Lalo).")
+        });
+        assert_eq!(domain, "Lalo is placed at Highsec.");
+        assert_eq!(render("building(Adam)."), "Adam is a building.");
     }
 
     #[test]

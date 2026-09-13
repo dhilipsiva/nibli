@@ -1702,7 +1702,9 @@ pub(super) struct KnowledgeBaseInner {
     /// Monotonically increasing fact ID counter.
     pub(super) fact_counter: u64,
     /// Registry of all asserted facts (including retracted ones, for ID stability).
-    pub(super) fact_registry: HashMap<u64, FactRecord>,
+    // Compiled assertion payloads are immutable except on withdrawal. Share
+    // them across isolated candidates; withdrawal uses copy-on-write.
+    pub(super) fact_registry: HashMap<u64, Arc<FactRecord>>,
     /// Suppresses diagnostic prints during rebuild replay.
     pub(super) rebuilding: bool,
     /// Fresh, unpublished fixture construction may validate the graph once at

@@ -23,8 +23,9 @@ const TEMPLATE_OVERRIDES: &[(&str, &str)] = &[
     // drops the whole line.
     // cirko: x1 = loss, x2 = person who loses.
     ("lose", "{x2} loses {x1}"),
-    // dinju used as facility placement: x1 = facility, x2 = resident.
-    ("building", "{x2} is placed at {x1}"),
+    // dinju: x1 = building, x2 = purpose. Facility/resident wording belongs
+    // only to the explicit Utopia proof overlay, not the structural reading.
+    ("building", "{x1} is a building for {x2}"),
     // vimcu: x1 is the remover; the removed item is x2. The corpus's passive
     // x1-only template loses a named `removed:` witness and reverses its role.
     ("removes", "{x1} removes {x2} from {x3} leaving {x4}"),
@@ -322,7 +323,7 @@ mod tests {
         // override in the converted order here inverts every plain-spelled duty.
         assert_eq!(frame_template("obliged"), "{x1} is obligated to {x2}");
         assert_eq!(frame_template("lose"), "{x2} loses {x1}");
-        assert_eq!(frame_template("building"), "{x2} is placed at {x1}");
+        assert_eq!(frame_template("building"), "{x1} is a building for {x2}");
         assert_eq!(frame_template("prisoner"), "{x1} is a prisoner");
     }
 

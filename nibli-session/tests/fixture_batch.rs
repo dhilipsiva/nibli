@@ -74,3 +74,82 @@ fn cancelled_fixture_is_never_returned() {
     let cancellation = Arc::new(AtomicBool::new(true));
     assert!(CoreSession::from_text_batch_with_cancel(&["person(Ara)."], cancellation).is_err());
 }
+
+#[test]
+fn append_batch_matches_sequential_and_rolls_back_late_failure() {
+    let initial = ["person(Ara).", "derived_only(\"fit\")."];
+    let (batch, _) = CoreSession::from_text_batch(&initial).unwrap();
+    let (sequential, _) = CoreSession::from_text_batch(&initial).unwrap();
+    let lines = [
+        "person(Bel). person(Cia).",
+        "all $x: person($x) & ~rotten($x) -> fit($x).",
+        "rotten(Bel).",
+    ];
+    let compiled = lines
+        .iter()
+        .map(|line| (batch.compile_text(line).unwrap(), (*line).to_owned()))
+        .collect();
+    let ids = batch.kb().assert_compiled_batch(compiled).unwrap();
+    let expected: Vec<Vec<_>> = lines
+        .iter()
+        .map(|line| {
+            sequential
+                .assert_text(line)
+                .unwrap()
+                .into_iter()
+                .map(|(id, _)| id)
+                .collect()
+        })
+        .collect();
+    assert_eq!(ids, expected);
+    for query in ["fit(Ara).", "fit(Bel).", "fit(Cia)."] {
+        assert_eq!(
+            batch.query_text(query).unwrap(),
+            sequential.query_text(query).unwrap()
+        );
+    }
+    let before = format!("{:?}", batch.list_facts().unwrap());
+    let invalid = ["person(Dee).", "fit(Dee)."];
+    assert!(
+        batch
+            .kb()
+            .assert_compiled_batch(
+                invalid
+                    .iter()
+                    .map(|line| { (batch.compile_text(line).unwrap(), (*line).to_owned()) })
+                    .collect()
+            )
+            .is_err()
+    );
+    assert_eq!(format!("{:?}", batch.list_facts().unwrap()), before);
+    assert_eq!(
+        batch.query_text("person(Dee).").unwrap(),
+        QueryResult::False
+    );
+    let batch_next = batch.assert_text("person(Eve).").unwrap()[0].0;
+    let sequential_next = sequential.assert_text("person(Eve).").unwrap()[0].0;
+    assert_eq!(batch_next, sequential_next);
+}
+
+#[test]
+fn append_batch_cancellation_preserves_the_live_registry() {
+    let (session, _) = CoreSession::from_text_batch(&["person(Ara)."]).unwrap();
+    let before = format!("{:?}", session.list_facts().unwrap());
+    let flag = Arc::new(AtomicBool::new(true));
+    session.kb().set_cancel_flag(Arc::clone(&flag));
+    assert!(
+        session
+            .kb()
+            .assert_compiled_batch(vec![(
+                session.compile_text("person(Bel).").unwrap(),
+                "person(Bel).".into()
+            ),])
+            .is_err()
+    );
+    flag.store(false, std::sync::atomic::Ordering::Relaxed);
+    assert_eq!(format!("{:?}", session.list_facts().unwrap()), before);
+    assert_eq!(
+        session.query_text("person(Bel).").unwrap(),
+        QueryResult::False
+    );
+}

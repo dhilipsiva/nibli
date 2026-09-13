@@ -675,6 +675,7 @@ pub(super) struct Eligibility {
 pub(super) struct MaterializationPlan {
     eligibility: Eligibility,
     strata: Strata,
+    pub(super) domain: crate::domain::DomainPlan,
 }
 
 pub(super) fn materialization_plan(
@@ -686,6 +687,7 @@ pub(super) fn materialization_plan(
     let plan = std::sync::Arc::new(MaterializationPlan {
         eligibility: eligible_relations(inner),
         strata: compute_strata(&inner.pred_dep_graph),
+        domain: crate::domain::DomainPlan::new(inner),
     });
     *inner.materialization_plan.borrow_mut() = Some(std::sync::Arc::clone(&plan));
     plan
@@ -2184,6 +2186,45 @@ pub(super) fn probe_negated_group(
         return None;
     }
     Some((atom.relation, tuple))
+}
+
+/// Exact candidate restriction for a single-variable witness rule whose whole
+/// positive body is one completed unary relation. This is only a filter: the
+/// ordinary witness evaluator must still bind and prove every retained case.
+pub(super) fn complete_unary_condition_members(
+    inner: &KnowledgeBaseInner,
+    rule: &crate::kb::UniversalRuleRecord,
+    variable: &str,
+) -> Option<HashSet<GroundTerm>> {
+    if !inner.materialization
+        || !inner.positive_lookup.get()
+        || !rule.negated_condition_indices.is_empty()
+        || !rule.negated_exists_groups.is_empty()
+    {
+        return None;
+    }
+    let (projected, flat) = project_atoms(&rule.typed_conditions).ok()?;
+    if projected.len() != 1 || !flat.is_empty() {
+        return None;
+    }
+    let atom = &projected[0];
+    if atom.values != [GroundTerm::PatternVar(variable.to_owned())] {
+        return None;
+    }
+    let materialized = inner.materialized.borrow();
+    let complete = materialized.as_ref()?;
+    if !complete.grew.is_empty() || !complete.is_complete_for(&atom.relation, 1) {
+        return None;
+    }
+    Some(
+        complete
+            .ext
+            .get(&atom.relation)
+            .into_iter()
+            .flatten()
+            .map(|tuple| tuple[0].clone())
+            .collect(),
+    )
 }
 
 /// Project one rule's complete positive antecedent into a ground surface tuple.

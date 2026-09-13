@@ -381,12 +381,12 @@ impl KnowledgeBase {
         }
         inner.fact_registry.insert(
             id,
-            FactRecord {
+            Arc::new(FactRecord {
                 id,
                 buffer: Some(logic),
                 label,
                 retracted: false,
-            },
+            }),
         );
         // Tabling: KB mutated, clear cached derivations. The SATURATION is not
         // dropped here: every mutation this assertion performed already decided
@@ -440,12 +440,12 @@ impl KnowledgeBase {
         }
         inner.fact_registry.insert(
             id,
-            FactRecord {
+            Arc::new(FactRecord {
                 id,
                 buffer: Some(logic),
                 label,
                 retracted: false,
-            },
+            }),
         );
         invalidate_pred_cache(&inner);
         Ok(())
@@ -477,6 +477,7 @@ impl KnowledgeBase {
             None => return Err(format!("Fact #{} not found", id)),
             Some(r) if r.retracted => return Ok(()), // idempotent
             Some(r) => {
+                let r = Arc::make_mut(r);
                 r.retracted = true;
                 r.buffer = None;
             }
@@ -598,6 +599,7 @@ impl KnowledgeBase {
             .fact_registry
             .iter()
             .filter(|(_, r)| !r.retracted)
+            .map(|(id, record)| (id, record.as_ref()))
             .collect();
         entries.sort_by_key(|(id, _)| **id);
         let ids: Vec<u64> = entries.iter().map(|(id, _)| **id).collect();
@@ -624,6 +626,14 @@ impl KnowledgeBase {
             inner.current_assertion_id = None;
         }
         inner.rebuilding = false;
+        // Graph reachability depends on edge presence, not multiplicity. Keep
+        // distinct polarities, but avoid retaining a copy for every compiled
+        // condition/head pair. Later registration still appends its own edges,
+        // so its failed-insertion length rollback remains exact.
+        for edges in inner.pred_dep_graph.values_mut() {
+            edges.sort_unstable();
+            edges.dedup();
+        }
         debug_assert!(inner.fact_origin_invariant_holds());
 
         // Restore the preserved sorts into the re-populated registry.
@@ -1330,12 +1340,12 @@ impl KnowledgeBase {
         inner.fact_counter = inner.fact_counter.max(successor);
         inner.fact_registry.insert(
             id,
-            FactRecord {
+            Arc::new(FactRecord {
                 id,
                 label,
                 buffer: None,
                 retracted: true,
-            },
+            }),
         );
         Ok(())
     }
@@ -1776,6 +1786,42 @@ impl KnowledgeBase {
         })
     }
 
+    /// Append ordered compiled statements atomically with one detached candidate.
+    /// Normal per-statement guards and stratification still run. Each root has
+    /// its own ID and label; any error discards the entire candidate.
+    pub fn assert_compiled_batch(
+        &self,
+        statements: Vec<(LogicBuffer, String)>,
+    ) -> Result<Vec<Vec<u64>>, NibliError> {
+        self.transaction(|candidate| {
+            let mut groups = Vec::with_capacity(statements.len());
+            for (buffer, label) in statements {
+                if candidate
+                    .inner
+                    .borrow()
+                    .cancel
+                    .as_ref()
+                    .is_some_and(|flag| flag.load(std::sync::atomic::Ordering::Relaxed))
+                {
+                    return Err(NibliError::Reasoning(
+                        "fixture assertion cancelled".to_owned(),
+                    ));
+                }
+                candidate.validate_assertion(&buffer)?;
+                let mut ids = Vec::new();
+                for root in buffer.split_roots() {
+                    ids.push(
+                        candidate
+                            .assert_fact_inner(root, label.clone())
+                            .map_err(NibliError::Reasoning)?,
+                    );
+                }
+                groups.push(ids);
+            }
+            Ok(groups)
+        })
+    }
+
     /// Build a fresh in-memory KB from ordered, separately compiled statements.
     ///
     /// Each root retains its own assertion ID and statement label. All normal
@@ -1810,7 +1856,12 @@ impl KnowledgeBase {
             kb.validate_assertion(&buffer)?;
             let mut statement_ids = Vec::new();
             for root in buffer.split_roots() {
-                statement_ids.push(kb.assert_fact(root, label.clone())?);
+                // This KB is unpublished: a batch error discards it wholesale.
+                // Avoid cloning its growing state for every individual root.
+                statement_ids.push(
+                    kb.assert_fact_inner(root, label.clone())
+                        .map_err(NibliError::Reasoning)?,
+                );
             }
             ids.push(statement_ids);
         }
@@ -1821,6 +1872,10 @@ impl KnowledgeBase {
                 ));
             }
             let mut inner = kb.inner.borrow_mut();
+            for edges in inner.pred_dep_graph.values_mut() {
+                edges.sort_unstable();
+                edges.dedup();
+            }
             rules::check_stratification(&inner.pred_dep_graph).map_err(NibliError::Reasoning)?;
             inner.deferred_stratification = false;
         }

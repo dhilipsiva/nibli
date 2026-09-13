@@ -6,11 +6,11 @@ Nibli is a deterministic theorem prover compiled to WebAssembly (WASI P2). It co
 
 ## Environment
 
-- **OS:** Ubuntu on WSL2 (accessed from Windows via `\\wsl.localhost\Ubuntu\...`)
+- **OS:** Ubuntu on WSL2. The agent is already running inside WSL in this repository.
 - **Dev shell:** Nix flake — all tools (rustc, cargo-component, wac, just, wasmtime) come from `flake.nix`
 - **Enter dev shell:** `nix develop --extra-experimental-features nix-command --extra-experimental-features flakes`
-- **Run commands from Windows side:** `wsl -d Ubuntu -e bash -lc "cd ~/projects/dhilipsiva/nibli && nix ... develop --command bash -c '<CMD>'"`
-- **Set `CARGO_INCREMENTAL=0`** if running cargo from Windows side (filesystem lock issues)
+- **Run commands directly here:** use the current Linux shell and Linux paths. For example: `nix develop --extra-experimental-features nix-command --extra-experimental-features flakes --command just check`.
+- **Stay in WSL:** do not wrap commands in `cmd.exe`, PowerShell, or `wsl.exe`. Use Linux-native tools here, including for document rendering and browser automation.
 
 ## Build & Test
 

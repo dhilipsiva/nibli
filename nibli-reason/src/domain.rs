@@ -105,14 +105,17 @@ fn dependency_height(term: &GroundTerm) -> usize {
     }
 }
 
-fn term_mentions(term: &GroundTerm, variable: &str) -> bool {
+fn collect_pattern_variables<'a>(term: &'a GroundTerm, names: &mut HashSet<&'a str>) {
     match term {
-        GroundTerm::PatternVar(name) => name == variable,
-        GroundTerm::SkolemFn(_, dependency) => term_mentions(dependency, variable),
-        GroundTerm::DepPair(left, right) => {
-            term_mentions(left, variable) || term_mentions(right, variable)
+        GroundTerm::PatternVar(name) => {
+            names.insert(name);
         }
-        _ => false,
+        GroundTerm::SkolemFn(_, dependency) => collect_pattern_variables(dependency, names),
+        GroundTerm::DepPair(left, right) => {
+            collect_pattern_variables(left, names);
+            collect_pattern_variables(right, names);
+        }
+        _ => {}
     }
 }
 
@@ -128,25 +131,23 @@ fn domain_dependency_graph(inner: &KnowledgeBaseInner) -> HashMap<String, Vec<(S
         if !seen.insert(rule.identity.clone()) {
             continue;
         }
+        // Collect guarded names once. Re-scanning every condition separately
+        // for every variable is quadratic in large compiled constitutional rules.
+        let mut guarded = HashSet::new();
+        for (index, condition) in rule.typed_conditions.iter().enumerate() {
+            if !rule.negated_condition_indices.contains(&index)
+                && !is_non_indexable_relation(condition.relation())
+            {
+                for term in &condition.inner().args {
+                    collect_pattern_variables(term, &mut guarded);
+                }
+            }
+        }
         let has_unguarded_variable = rule
             .pattern_var_names
             .iter()
             .filter(|name| !name.starts_with("ev__"))
-            .any(|name| {
-                !rule
-                    .typed_conditions
-                    .iter()
-                    .enumerate()
-                    .any(|(index, condition)| {
-                        !rule.negated_condition_indices.contains(&index)
-                            && !is_non_indexable_relation(condition.relation())
-                            && condition
-                                .inner()
-                                .args
-                                .iter()
-                                .any(|term| term_mentions(term, name))
-                    })
-            });
+            .any(|name| !guarded.contains(name.as_str()));
         if has_unguarded_variable {
             for head in &rule.typed_conclusions {
                 graph
@@ -186,59 +187,117 @@ fn domain_dependency_graph(inner: &KnowledgeBaseInner) -> HashMap<String, Vec<(S
     graph
 }
 
-/// Rebuild before every iterative-deepening pass: negative cache entries from
-/// a smaller domain must never establish absence in a larger one.
+/// Immutable rule/domain planning. Ground facts do not change this plan unless
+/// they change whether a generated individual template is already asserted.
+/// Rule/profile/equality changes invalidate the enclosing materialization plan.
+pub(super) struct DomainPlan {
+    known_individuals: Vec<(GroundTerm, bool)>,
+    incomplete: bool,
+    rules: Vec<(usize, Arc<UniversalRuleRecord>, Vec<GroundTerm>)>,
+}
+
+impl DomainPlan {
+    pub(super) fn new(inner: &KnowledgeBaseInner) -> Self {
+        let mut templates = Vec::new();
+        for rule in materialize::distinct_rules(inner) {
+            for head in &rule.typed_conclusions {
+                for term in &head.inner().args {
+                    individual_templates(term, &mut templates);
+                }
+            }
+        }
+        templates.sort();
+        templates.dedup();
+        let known_individuals = templates
+            .into_iter()
+            .map(|term| {
+                let known = inner.known_entities.contains(&term);
+                (term, known)
+            })
+            .collect();
+        let graph = domain_dependency_graph(inner);
+        if check_stratification(&graph).is_err() {
+            return Self {
+                known_individuals,
+                incomplete: true,
+                rules: Vec::new(),
+            };
+        }
+        let strata = materialize::compute_strata(&graph);
+        let mut seen = HashSet::new();
+        let mut rules = Vec::new();
+        for rule in inner.universal_rules.values().flatten() {
+            if !seen.insert(rule.identity.clone()) {
+                continue;
+            }
+            let mut terms = Vec::new();
+            for fact in &rule.typed_conclusions {
+                for term in &fact.inner().args {
+                    individual_templates(term, &mut terms);
+                }
+            }
+            terms.sort();
+            terms.dedup();
+            terms.retain(|term| !inner.known_entities.contains(term));
+            if terms.is_empty() {
+                continue;
+            }
+            // Schedule by this rule's prerequisites. An unrelated writer can
+            // raise one of a multi-head rule's predicates without raising the
+            // rule's other head predicates; scheduling by max(head) would delay
+            // a lower-stratum witness until its negative readers are already running.
+            let level = rule
+                .typed_conditions
+                .iter()
+                .enumerate()
+                .map(|(index, fact)| {
+                    strata.get(fact.relation()).copied().unwrap_or(0)
+                        + usize::from(rule.negated_condition_indices.contains(&index))
+                })
+                .chain(rule.negated_exists_groups.iter().flat_map(|group| {
+                    group
+                        .conditions
+                        .iter()
+                        .map(|fact| strata.get(fact.relation()).copied().unwrap_or(0) + 1)
+                }))
+                .max()
+                .unwrap_or(0);
+            rules.push((level, rule.clone(), terms));
+        }
+        rules.sort_by(|a, b| (a.0, &a.1.label, &a.2).cmp(&(b.0, &b.1.label, &b.2)));
+        Self {
+            known_individuals,
+            incomplete: false,
+            rules,
+        }
+    }
+
+    fn applies(&self, inner: &KnowledgeBaseInner) -> bool {
+        self.known_individuals
+            .iter()
+            .all(|(term, was_known)| inner.known_entities.contains(term) == *was_known)
+    }
+}
+
+/// Recompute witness activations at each reasoning depth, while sharing only
+/// the immutable rule plan. Cached absence never stands in for a fresh closure.
 pub(super) fn prepare_query_domain(inner: &mut KnowledgeBaseInner) -> Result<(), String> {
     inner.query_domain = QueryDomain::default();
     inner.domain_members_dirty = true;
     inner.ensure_domain_members_cached();
-    let graph = domain_dependency_graph(inner);
-    if check_stratification(&graph).is_err() {
+    let shared = materialize::materialization_plan(inner);
+    let rebuilt;
+    let plan = if shared.domain.applies(inner) {
+        &shared.domain
+    } else {
+        rebuilt = DomainPlan::new(inner);
+        &rebuilt
+    };
+    if plan.incomplete {
         inner.query_domain.incomplete = Some(QueryResult::Unknown(UnknownReason::NafDependent));
         return Ok(());
     }
-    let strata = materialize::compute_strata(&graph);
-    let mut seen = HashSet::new();
-    let mut rules = Vec::new();
-    for rule in inner.universal_rules.values().flatten() {
-        if !seen.insert(rule.identity.clone()) {
-            continue;
-        }
-        let mut terms = Vec::new();
-        for fact in &rule.typed_conclusions {
-            for term in &fact.inner().args {
-                individual_templates(term, &mut terms);
-            }
-        }
-        terms.sort();
-        terms.dedup();
-        terms.retain(|term| !inner.known_entities.contains(term));
-        if terms.is_empty() {
-            continue;
-        }
-        // Schedule by this rule's prerequisites. An unrelated writer can
-        // raise one of a multi-head rule's predicates without raising the
-        // rule's other head predicates; scheduling by max(head) would delay
-        // a lower-stratum witness until its negative readers are already running.
-        let level = rule
-            .typed_conditions
-            .iter()
-            .enumerate()
-            .map(|(index, fact)| {
-                strata.get(fact.relation()).copied().unwrap_or(0)
-                    + usize::from(rule.negated_condition_indices.contains(&index))
-            })
-            .chain(rule.negated_exists_groups.iter().flat_map(|group| {
-                group
-                    .conditions
-                    .iter()
-                    .map(|fact| strata.get(fact.relation()).copied().unwrap_or(0) + 1)
-            }))
-            .max()
-            .unwrap_or(0);
-        rules.push((level, rule.clone(), terms));
-    }
-    rules.sort_by(|a, b| (a.0, &a.1.label, &a.2).cmp(&(b.0, &b.1.label, &b.2)));
+    let rules = &plan.rules;
     if rules.is_empty() {
         return Ok(());
     }
@@ -267,7 +326,24 @@ pub(super) fn prepare_query_domain(inner: &mut KnowledgeBaseInner) -> Result<(),
                     .filter(|name| !name.starts_with("ev__"))
                     .cloned()
                     .collect();
-                for combo in GroundTermCartesianProduct::new(&members, variables.len()) {
+                // Most asserted names cannot satisfy a unary guard such as
+                // person($x). A completed guard supplies an exact candidate
+                // filter; unsupported shapes retain the full domain sweep.
+                let restricted = if variables.len() == 1 {
+                    materialize::complete_unary_condition_members(inner, rule, &variables[0]).map(
+                        |allowed| {
+                            members
+                                .iter()
+                                .filter(|term| allowed.contains(*term))
+                                .cloned()
+                                .collect::<Vec<_>>()
+                        },
+                    )
+                } else {
+                    None
+                };
+                let candidates = restricted.as_deref().unwrap_or(&members);
+                for combo in GroundTermCartesianProduct::new(candidates, variables.len()) {
                     attempts += 1;
                     if attempts > closure_limit() {
                         inner.query_domain.incomplete =
