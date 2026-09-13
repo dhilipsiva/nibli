@@ -3824,8 +3824,8 @@ pub(super) fn collect_entailment_candidates(
     if anchors.is_empty() {
         return None;
     }
-    let members: Vec<GroundTerm> = inner.all_typed_domain_members().to_vec();
-    let mut candidates = select_narrowest_anchor_candidates(&anchors, inner, &members);
+    let members = inner.all_typed_domain_members();
+    let mut candidates = select_narrowest_anchor_candidates(&anchors, inner, members);
     let mut priority_terms = Vec::new();
     let mut seen = HashSet::new();
     collect_candidate_priority_terms(buffer, body_id, subs, &mut priority_terms, &mut seen);
@@ -3954,7 +3954,7 @@ pub(super) fn collect_group_event_candidates(
     event_var: &str,
     inner: &KnowledgeBaseInner,
 ) -> Option<Vec<GroundTerm>> {
-    let members: Vec<GroundTerm> = inner.all_typed_domain_members().to_vec();
+    let members = inner.all_typed_domain_members();
     let mut anchors = Vec::new();
     for cond in conditions {
         let gf = cond.inner();
@@ -3987,7 +3987,7 @@ pub(super) fn collect_group_event_candidates(
             },
         });
     }
-    (!anchors.is_empty()).then(|| select_narrowest_anchor_candidates(&anchors, inner, &members))
+    (!anchors.is_empty()).then(|| select_narrowest_anchor_candidates(&anchors, inner, members))
 }
 
 /// Like `collect_predicate_anchors`, but only MANDATORY anchors: descends
