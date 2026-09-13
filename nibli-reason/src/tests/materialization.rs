@@ -365,6 +365,197 @@ fn a_missing_dependency_root_still_requires_saturation() {
 }
 
 #[test]
+fn a_new_root_extends_completed_cones_without_repeating_their_joins() {
+    let kb = new_kb();
+    for text in [
+        "dog(Rex).",
+        "all $x: dog($x) & ~cat($x) -> animal($x).",
+        "all $x: animal($x) -> fit($x) & healthy($x).",
+        "all $x: fit($x) & ~rotten($x) -> happy($x).",
+    ] {
+        assert_buf(&kb, compile_surface(text));
+    }
+    kb.ensure_materialized(&compile_surface("animal(Rex)."), true);
+    let original_work = kb.materialization_tuple_bind_attempts("animal");
+    assert!(original_work > 0);
+    let animal_tuple_storage = || {
+        let inner = kb.inner.borrow();
+        let materialized = inner.materialized.borrow();
+        materialized.as_ref().unwrap().ext["animal"]
+            .iter()
+            .next()
+            .unwrap()
+            .as_ptr()
+    };
+    let original_storage = animal_tuple_storage();
+    for text in ["fit(Rex).", "happy(Rex).", "healthy(Rex)."] {
+        kb.ensure_materialized(&compile_surface(text), true);
+        assert!(query(&kb, compile_surface(text)));
+        assert_eq!(
+            kb.materialization_tuple_bind_attempts("animal"),
+            original_work,
+            "extending a root must not repeat the completed animal joins"
+        );
+        assert_eq!(
+            animal_tuple_storage(),
+            original_storage,
+            "the completed derived tuple must be moved, not rebuilt or copied"
+        );
+    }
+    let blocker = assert_id(&kb, compile_surface("cat(Rex)."), "block old cone");
+    for text in ["animal(Rex).", "fit(Rex).", "happy(Rex).", "healthy(Rex)."] {
+        assert!(query_false(&kb, compile_surface(text)));
+    }
+    kb.retract_fact(blocker).unwrap();
+    assert!(query(&kb, compile_surface("happy(Rex).")));
+}
+
+#[test]
+fn extended_cones_refresh_outside_facts_and_refuse_new_shape_gaps() {
+    for materialization in [false, true] {
+        let kb = new_kb();
+        kb.set_materialization(materialization);
+        for text in [
+            "dog(Rex).",
+            "all $x: dog($x) -> animal($x).",
+            "all $x: cat($x) & ~rotten($x) -> healthy($x).",
+        ] {
+            assert_buf(&kb, compile_surface(text));
+        }
+        kb.ensure_materialized(&compile_surface("animal(Rex)."), true);
+        assert_buf(&kb, compile_surface("cat(Bel)."));
+        assert_buf(&kb, compile_surface("past rotten(Bel)."));
+        kb.ensure_materialized(&compile_surface("healthy(Bel)."), true);
+        assert!(query(&kb, compile_surface("animal(Rex).")));
+        assert!(query(&kb, compile_surface("cat(Bel).")));
+        assert!(query(&kb, compile_surface("healthy(Bel).")));
+        if materialization {
+            let (complete, _) = kb.materialization_report().unwrap();
+            assert!(!complete.iter().any(|rel| rel == "healthy"));
+            assert!(!complete.iter().any(|rel| rel == "rotten"));
+        }
+    }
+}
+
+#[test]
+fn extended_cone_budget_boundaries_match_a_fresh_union() {
+    let kb = new_kb();
+    for text in [
+        "dog(Rex).",
+        "cat(Bel).",
+        "all $x: dog($x) & ~rotten($x) -> animal($x).",
+        "all $x: animal($x) -> fit($x) & healthy($x).",
+        "all $x: cat($x) -> happy($x).",
+    ] {
+        assert_buf(&kb, compile_surface(text));
+    }
+    let inner = kb.inner.borrow();
+    let eligibility = materialize::eligible_relations(&inner);
+    let strata = materialize::compute_strata(&inner.pred_dep_graph);
+    for first in ["fit", "happy", "healthy", "rotten"] {
+        for limit in 0..=8 {
+            let original = materialize::saturate_extending(
+                &inner,
+                &eligibility,
+                &strata,
+                &HashSet::from([first.into()]),
+                None,
+                limit,
+            );
+            let targets = HashSet::from([first.into(), "fit".into(), "happy".into()]);
+            let extended = materialize::saturate_extending(
+                &inner,
+                &eligibility,
+                &strata,
+                &targets,
+                Some(original),
+                limit,
+            );
+            let fresh = materialize::saturate_extending(
+                &inner,
+                &eligibility,
+                &strata,
+                &targets,
+                None,
+                limit,
+            );
+            assert_eq!(extended.complete, fresh.complete, "{first}, limit {limit}");
+            for rel in &fresh.complete {
+                assert_eq!(
+                    extended.ext.get(rel),
+                    fresh.ext.get(rel),
+                    "{rel}, limit {limit}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn extended_cones_reject_dirty_incomplete_or_newly_unseedable_inputs() {
+    for boundary in ["dirty", "incomplete", "unseedable"] {
+        let kb = new_kb();
+        for text in [
+            "dog(Rex).",
+            "all $x: dog($x) -> animal($x).",
+            "all $x: animal($x) -> fit($x).",
+        ] {
+            assert_buf(&kb, compile_surface(text));
+        }
+        let mut previous = {
+            let inner = kb.inner.borrow();
+            materialize::saturate_extending(
+                &inner,
+                &materialize::eligible_relations(&inner),
+                &materialize::compute_strata(&inner.pred_dep_graph),
+                &HashSet::from(["animal".into()]),
+                None,
+                100,
+            )
+        };
+        assert!(previous.cone.is_subset(&previous.complete));
+        // Exercise the extension helper's defensive contract directly. Ordinary
+        // query planning normally resumes or invalidates these inputs first.
+        match boundary {
+            "dirty" => {
+                assert_buf(&kb, compile_surface("dog(Bel)."));
+                previous.grew.insert("dog".into());
+            }
+            "incomplete" => {
+                assert_buf(&kb, compile_surface("dog(Bel)."));
+                assert!(previous.complete.remove("dog"));
+            }
+            "unseedable" => {
+                assert_buf(&kb, compile_surface("past dog(Bel)."));
+            }
+            _ => unreachable!(),
+        }
+        let inner = kb.inner.borrow();
+        let eligibility = materialize::eligible_relations(&inner);
+        let strata = materialize::compute_strata(&inner.pred_dep_graph);
+        let targets = HashSet::from(["animal".into(), "fit".into()]);
+        let extended = materialize::saturate_extending(
+            &inner,
+            &eligibility,
+            &strata,
+            &targets,
+            Some(previous),
+            100,
+        );
+        let fresh =
+            materialize::saturate_extending(&inner, &eligibility, &strata, &targets, None, 100);
+        assert_eq!(extended.complete, fresh.complete, "{boundary}");
+        for rel in &fresh.complete {
+            assert_eq!(
+                extended.ext.get(rel),
+                fresh.ext.get(rel),
+                "{boundary}: {rel}"
+            );
+        }
+    }
+}
+
+#[test]
 fn warming_rule_plan_performs_no_query_and_shares_only_immutable_planning() {
     let run = |warm: bool| {
         let kb = new_kb();

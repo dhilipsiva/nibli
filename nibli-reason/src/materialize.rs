@@ -1891,6 +1891,21 @@ pub(super) fn saturate(
     strata: &Strata,
     targets: &HashSet<String>,
 ) -> Materialized {
+    saturate_extending(inner, elig, strata, targets, None, MAX_MATERIALIZED_TUPLES)
+}
+
+/// Extend a completed dependency cone without evaluating its rules again.
+/// The caller has already dealt with pending insertions and every other mutation
+/// invalidates the old saturation. Fresh seeding still checks every stored shape
+/// and incorporates inserts that were outside the previously requested cone.
+pub(super) fn saturate_extending(
+    inner: &KnowledgeBaseInner,
+    elig: &Eligibility,
+    strata: &Strata,
+    targets: &HashSet<String>,
+    previous: Option<Materialized>,
+    limit: usize,
+) -> Materialized {
     // EQUALITY GUARD — repeated here, not only in `eligible_relations`.
     //
     // `eligible_relations` refuses every RULE-derived relation when a `du` union-find
@@ -1930,6 +1945,35 @@ pub(super) fn saturate(
         refused.entry(rel.clone()).or_insert_with(|| why.clone());
     }
 
+    let mut complete = HashSet::new();
+    let mut budget = limit;
+    let mut work = MaterializationWork::default();
+    let previous = previous.filter(|m| {
+        m.grew.is_empty()
+            && m.cone.is_subset(&m.complete)
+            && m.complete.iter().all(|rel| !unseedable.contains_key(rel))
+    });
+    let extending = previous.is_some();
+    if let Some(previous) = previous {
+        // Charge already derived tuples against the same cumulative-union
+        // budget as a fresh saturation. Newly stored duplicates cost nothing.
+        // Carry all heads, including side heads outside the previous cone, just
+        // as the ordinary fixpoint does; only completed relations skip work.
+        for (rel, tuples) in previous.ext {
+            let seeded = ext.entry(rel).or_default();
+            for tuple in tuples {
+                if seeded.insert(tuple) {
+                    let Some(remaining) = budget.checked_sub(1) else {
+                        return saturate_extending(inner, elig, strata, targets, None, limit);
+                    };
+                    budget = remaining;
+                }
+            }
+        }
+        complete = previous.complete;
+        work = previous.work;
+    }
+
     // Dependency closure of the targets over eligible relations. A target that is not
     // eligible simply never enters, and its NAF keeps today's behaviour.
     let mut wanted: HashSet<String> = HashSet::new();
@@ -1957,9 +2001,6 @@ pub(super) fn saturate(
         .collect();
     by_stratum.sort();
 
-    let mut complete: HashSet<String> = HashSet::new();
-    let mut budget = MAX_MATERIALIZED_TUPLES;
-    let mut work = MaterializationWork::default();
     let mut idx = 0usize;
     while idx < by_stratum.len() {
         let level = by_stratum[idx].0;
@@ -1985,7 +2026,11 @@ pub(super) fn saturate(
         // Pass 2 — the derived relations of this stratum.
         let mut derived_here: Vec<&String> = rels
             .iter()
-            .filter(|rel| !unseedable.contains_key(**rel) && saturable.contains(**rel))
+            .filter(|rel| {
+                !complete.contains(**rel)
+                    && !unseedable.contains_key(**rel)
+                    && saturable.contains(**rel)
+            })
             .copied()
             .collect();
 
@@ -2050,6 +2095,12 @@ pub(super) fn saturate(
         let overflowed = derived.is_none();
 
         if overflowed {
+            if extending {
+                // New roots can occupy earlier strata than the old roots.
+                // On a budget boundary, replay the ordinary order so neither
+                // old nor new relations gain a different completeness claim.
+                return saturate_extending(inner, elig, strata, targets, None, limit);
+            }
             // Stop-loss. Leave this stratum's relations INCOMPLETE — and every later
             // stratum too, since their negated lookups would read a partial extension.
             for rel in derived_here {
@@ -2062,6 +2113,12 @@ pub(super) fn saturate(
         for rel in derived_here {
             complete.insert(rel.clone());
         }
+    }
+
+    if extending && budget == 0 {
+        // Conservatively preserve the full evaluator's exact-boundary behavior,
+        // including duplicate candidates in a not-yet-published delta round.
+        return saturate_extending(inner, elig, strata, targets, None, limit);
     }
 
     // Anything wanted but never completed is reported, so `materialization_report` can
@@ -2279,8 +2336,8 @@ pub(super) fn query_cone_has_negative_dependency(
 ///
 /// This is shared by top-level query planning and the backward-chainer's lazy
 /// positive-subgoal fallback. The cache represents the union of every requested
-/// root until KB mutation; adding one root recomputes that union rather than
-/// replacing earlier completed extensions.
+/// root until KB mutation. A fully completed old cone is reused when extending
+/// the union; incomplete cones keep the ordinary full recomputation path.
 pub(super) fn ensure_materialized_targets(
     inner: &KnowledgeBaseInner,
     targets: &HashSet<String>,
@@ -2342,7 +2399,30 @@ pub(super) fn ensure_materialized_targets(
     let mut cumulative = targets.clone();
     cumulative.extend(previous_targets);
     let plan = materialization_plan(inner);
-    let materialized = saturate(inner, &plan.eligibility, &plan.strata, &cumulative);
+    let previous = inner.materialized.borrow_mut().take();
+    let materialized = saturate_extending(
+        inner,
+        &plan.eligibility,
+        &plan.strata,
+        &cumulative,
+        previous,
+        MAX_MATERIALIZED_TUPLES,
+    );
+    #[cfg(debug_assertions)]
+    {
+        let fresh = saturate(inner, &plan.eligibility, &plan.strata, &cumulative);
+        debug_assert_eq!(
+            materialized.complete, fresh.complete,
+            "extended completeness disagrees with a full recompute"
+        );
+        for rel in &fresh.complete {
+            debug_assert_eq!(
+                materialized.ext.get(rel),
+                fresh.ext.get(rel),
+                "extended tuples for '{rel}' disagree with a full recompute"
+            );
+        }
+    }
     *inner.materialized.borrow_mut() = Some(materialized);
     true
 }
