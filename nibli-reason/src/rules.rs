@@ -1,5 +1,10 @@
 use super::*;
 
+#[cfg(test)]
+thread_local! {
+    pub(super) static TEST_DEPENDENCY_NAME_COPIES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 /// Check if a GroundTerm represents a dependent Skolem placeholder.
 pub(super) fn is_skdep(gt: &GroundTerm) -> bool {
     matches!(gt, GroundTerm::SkolemPlaceholder(_))
@@ -1738,6 +1743,28 @@ pub(super) fn compile_forall_to_rule(
         format!("∀{}", universals.join(","))
     };
 
+    // Classify condition existentials before allocating conclusion dependency
+    // lists. Those binders become pattern variables, not dependent Skolems;
+    // creating a full list for each one only to remove it wastes large amounts
+    // of copying on wide antecedents. Keep the same capped DNF and binder walk.
+    let clauses = if pf_conditions.is_empty() {
+        None
+    } else {
+        Some(dnf_condition_clauses(
+            buffer,
+            &pf_conditions,
+            MAX_DNF_CLAUSES,
+        )?)
+    };
+    let mut all_condition_exists: HashSet<String> = HashSet::new();
+    if let Some(clauses) = &clauses {
+        for clause in clauses {
+            for &lid in clause {
+                collect_condition_exists(buffer, lid, &mut all_condition_exists);
+            }
+        }
+    }
+
     let mut pattern_vars: HashMap<String, String> = universals
         .iter()
         .enumerate()
@@ -1758,45 +1785,32 @@ pub(super) fn compile_forall_to_rule(
 
     let pattern_var_names: Vec<String> =
         universals.iter().map(|v| pattern_vars[v].clone()).collect();
+    for var in &all_condition_exists {
+        ground_skolems.remove(var);
+        pattern_vars.insert(var.clone(), format!("ev__{}", var));
+    }
     let mut dependent_skolems: HashMap<String, (SkolemSymbol, Vec<String>)> = skolem_subs
         .iter()
+        .filter(|(name, _)| !all_condition_exists.contains(name.as_str()))
         .filter_map(|(k, gt)| {
-            skdep_symbol(gt).map(|symbol| (k.clone(), (symbol, pattern_var_names.clone())))
+            skdep_symbol(gt).map(|symbol| {
+                #[cfg(test)]
+                TEST_DEPENDENCY_NAME_COPIES
+                    .set(TEST_DEPENDENCY_NAME_COPIES.get() + pattern_var_names.len());
+                (k.clone(), (symbol, pattern_var_names.clone()))
+            })
         })
         .collect();
 
-    let implication = if pf_conditions.is_empty() {
-        None
-    } else {
-        Some((pf_conditions, pf_consequent))
-    };
-    match implication {
-        Some((condition_ids, consequent_id)) => {
+    match clauses {
+        Some(clauses) => {
+            let consequent_id = pf_consequent;
             // DNF-split the antecedent into conjunctive clauses and register ONE
             // backward-chaining rule per clause: `∀x.(P(x)∨Q(x))→R(x)` is the
             // conjunction of `∀x.P(x)→R(x)` and `∀x.Q(x)→R(x)`. A pure conjunction
             // yields a single clause (byte-identical to the pre-split path); a
             // disjunctive antecedent (`ro lo X poi P ja Q cu R`, `ganai ga P gi Q gi R`)
             // yields one clause per disjunct.
-            let clauses = dnf_condition_clauses(buffer, &condition_ids, MAX_DNF_CLAUSES)?;
-
-            // The condition event ∃ vars across ALL clauses become pattern vars (not
-            // skolems); what remains in `dependent_skolems` are the CONCLUSION
-            // existentials, shared by every clause. (collect_condition_exists does not
-            // descend `Or`, so this union mirrors the pre-split single-condition set.)
-            let mut all_condition_exists: HashSet<String> = HashSet::new();
-            for clause in &clauses {
-                for &lid in clause {
-                    collect_condition_exists(buffer, lid, &mut all_condition_exists);
-                }
-            }
-            for var in &all_condition_exists {
-                dependent_skolems.remove(var);
-                ground_skolems.remove(var);
-                let pvar = format!("ev__{}", var);
-                pattern_vars.insert(var.clone(), pvar);
-            }
-
             let mut consequent_atoms = flatten_consequent(buffer, consequent_id, skolem_subs, None);
             // Quoted bodies retain dependency edges for the stratification firewall,
             // but only their opaque marker can execute in the surrounding KB.

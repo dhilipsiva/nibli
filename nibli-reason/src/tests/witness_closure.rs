@@ -1,4 +1,166 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
 use super::*;
+
+#[test]
+fn domain_planning_compares_shared_identities_once_and_keeps_value_deduplication() {
+    let kb = surface_kb(&["person(Adam).", "likes(every person, some cat)."]);
+    let mut inner = kb.inner.borrow_mut();
+    let original = inner
+        .universal_rules
+        .values()
+        .flatten()
+        .next()
+        .unwrap()
+        .clone();
+    let indexed_references = inner.universal_rules.values().map(Vec::len).sum::<usize>();
+    assert!(
+        indexed_references > 1,
+        "surface rule is indexed under multiple heads"
+    );
+
+    TEST_DOMAIN_IDENTITY_CHECKS.set(0);
+    assert_eq!(distinct_domain_rules(&inner).count(), 1);
+    assert_eq!(TEST_DOMAIN_IDENTITY_CHECKS.get(), 1);
+
+    // Even a separately allocated but value-equal identity must be deduplicated.
+    // Keep both different rule objects to check first-seen selection as well.
+    let mut detached = original.as_ref().clone();
+    detached.identity = Arc::new(original.identity.as_ref().clone());
+    inner
+        .universal_rules
+        .values_mut()
+        .next()
+        .unwrap()
+        .push(Arc::new(detached));
+    let mut old_seen = HashSet::new();
+    let expected: Vec<_> = inner
+        .universal_rules
+        .values()
+        .flatten()
+        .filter(|rule| old_seen.insert(rule.identity.clone()))
+        .map(Arc::as_ptr)
+        .collect();
+    TEST_DOMAIN_IDENTITY_CHECKS.set(0);
+    let actual: Vec<_> = distinct_domain_rules(&inner).map(Arc::as_ptr).collect();
+    assert_eq!(actual, expected);
+    assert_eq!(actual.len(), 1);
+    assert_eq!(TEST_DOMAIN_IDENTITY_CHECKS.get(), 2);
+}
+
+#[test]
+fn completed_witness_closure_reuses_only_unchanged_state_and_mode() {
+    let kb = surface_kb(&["person(Adam).", "likes(every person, some cat)."]);
+    kb.ensure_materialized(&compile_surface("person(Adam)."), true);
+    TEST_CLOSURE_RUNS.set(0);
+    assert_eq!(verdict(&kb, "likes(Adam, some cat)."), QueryResult::True);
+    let first = TEST_CLOSURE_RUNS.get();
+    assert!(first > 0);
+    assert_eq!(verdict(&kb, "cat(exactly 1 cat)."), QueryResult::True);
+    assert_eq!(
+        TEST_CLOSURE_RUNS.get(),
+        first,
+        "unchanged closure should be reused"
+    );
+
+    let cancel = Arc::new(std::sync::atomic::AtomicBool::new(true));
+    kb.set_cancel_flag(Arc::clone(&cancel));
+    assert!(
+        kb.query_entailment(compile_surface("person(Adam)."))
+            .is_err()
+    );
+    cancel.store(false, std::sync::atomic::Ordering::Relaxed);
+
+    let new_person = assert_id(&kb, compile_surface("person(Bob)."), "new person");
+    assert_eq!(verdict(&kb, "cat(exactly 2 cat)."), QueryResult::True);
+    assert!(
+        TEST_CLOSURE_RUNS.get() > first,
+        "new facts invalidate domain closure"
+    );
+    kb.retract_fact(new_person).unwrap();
+    assert_eq!(verdict(&kb, "cat(exactly 1 cat)."), QueryResult::True);
+    assert_eq!(verdict(&kb, "likes(Bob, some cat)."), QueryResult::False);
+
+    let before_proof = TEST_CLOSURE_RUNS.get();
+    let (result, proof) = kb
+        .query_entailment_with_proof_inner(compile_surface("likes(Adam, some cat)."))
+        .unwrap();
+    assert_eq!(result, QueryResult::True);
+    assert!(!proof.steps.is_empty());
+    assert!(
+        TEST_CLOSURE_RUNS.get() > before_proof,
+        "proof mode rebuilds activation evidence"
+    );
+
+    kb.set_max_chain_depth(1).unwrap();
+    let before_depth = TEST_CLOSURE_RUNS.get();
+    assert_eq!(verdict(&kb, "person(Adam)."), QueryResult::True);
+    assert!(
+        TEST_CLOSURE_RUNS.get() > before_depth,
+        "depth/profile changes invalidate closure"
+    );
+}
+
+#[test]
+fn incomplete_witness_closure_is_never_reused_as_complete() {
+    let kb = surface_kb(&["person(Adam).", "likes(every person, some cat)."]);
+    kb.ensure_materialized(&compile_surface("person(Adam)."), true);
+    assert_eq!(verdict(&kb, "cat(exactly 1 cat)."), QueryResult::True);
+    TEST_CLOSURE_LIMIT.set(Some(1));
+    let result = verdict(&kb, "cat(exactly 1 cat).");
+    TEST_CLOSURE_LIMIT.set(None);
+    assert!(matches!(result, QueryResult::ResourceExceeded(_)));
+    assert!(kb.inner.borrow().query_domain.completed_at.get().is_none());
+    assert_eq!(verdict(&kb, "cat(exactly 1 cat)."), QueryResult::True);
+}
+
+#[test]
+fn cached_witness_closure_matches_fresh_across_mutations_and_profiles() {
+    fn run(reuse: bool) -> Vec<QueryResult> {
+        let kb = surface_kb(&[
+            "person(Adam).",
+            "likes(every person, some cat).",
+            "all $x: cat($x) & ~dog($x) -> animal($x).",
+        ]);
+        let mut results = Vec::new();
+        let mut sample = || {
+            for text in [
+                "likes(Adam, some cat).",
+                "cat(exactly 1 cat).",
+                "cat(exactly 2 cat).",
+                "animal(some cat).",
+                "likes(Bob, some cat).",
+                "person(Bob).",
+            ] {
+                if !reuse {
+                    kb.inner.borrow().query_domain.completed_at.set(None);
+                }
+                results.push(verdict(&kb, text));
+            }
+        };
+        sample();
+        let bob = assert_id(&kb, compile_surface("person(Bob)."), "second person");
+        sample();
+        kb.retract_fact(bob).unwrap();
+        sample();
+        kb.set_materialization(false);
+        sample();
+        kb.set_materialization(true);
+        sample();
+        kb.set_rule_priority("likes", 10);
+        sample();
+        kb.set_rule_forward("likes", false);
+        sample();
+        kb.set_max_chain_depth(1).unwrap();
+        sample();
+        kb.set_max_chain_depth(10).unwrap();
+        sample();
+        kb.reset().unwrap();
+        sample();
+        results
+    }
+    assert_eq!(run(true), run(false));
+}
 
 #[test]
 fn complete_unary_witness_filter_tracks_growth_and_proof_mode() {

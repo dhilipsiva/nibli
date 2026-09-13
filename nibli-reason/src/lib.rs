@@ -36,6 +36,11 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+
+#[cfg(test)]
+thread_local! {
+    static TEST_REBUILD_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
 mod compute;
 mod contradictions;
 mod domain;
@@ -351,34 +356,30 @@ impl KnowledgeBase {
     /// Stores the buffer in the fact registry and returns a unique fact ID.
     /// CountNodes and executable ComputeNodes in asserted position (outside
     /// opaque quoted content) are query-only and fail before id allocation.
-    fn assert_fact_inner(&self, mut logic: LogicBuffer, label: String) -> Result<u64, String> {
+    #[cfg(test)]
+    fn assert_fact_inner(&self, logic: LogicBuffer, label: String) -> Result<u64, String> {
+        self.assert_fact(logic, label).map_err(reasoning_message)
+    }
+
+    /// Only called on a detached transaction candidate or a fresh unpublished KB.
+    /// An error must propagate to its owner, which discards the whole candidate.
+    fn assert_unpublished_fact(
+        &self,
+        mut logic: LogicBuffer,
+        label: String,
+    ) -> Result<u64, String> {
         // Validate before minting an id or borrowing/mutating the KB. The same
         // guard also lives in process_assertion so rebuild replay cannot bypass it.
         preflight_assertion_buffer(&mut logic)?;
         let mut inner = self.inner.borrow_mut();
         let id = inner.fresh_fact_id()?;
         inner.current_assertion_id = Some(id);
-        let result = process_assertion(&mut inner, &mut logic);
+        let result = process_preflighted_assertion(&mut inner, &mut logic);
         // ALWAYS clear: a stale id would mis-attribute the NEXT assertion's
         // rules (register_rule reads current_assertion_id for the rule-source
         // citations proof traces carry).
         inner.current_assertion_id = None;
-        if let Err(e) = result {
-            // Atomic rollback. A multi-root assertion that fails on a later root
-            // leaves earlier roots' facts/rules in the live store, but the
-            // FactRecord is only inserted on success — so those facts would be
-            // orphaned (un-listable, un-retractable). The failed assertion has no
-            // FactRecord, so rebuilding from the durable registry reproduces the
-            // exact pre-assertion state, discarding the partial mutation.
-            // ROLLBACK, not an ordinary rebuild: the saturated extensions survive
-            // when nothing was mutated (see `rollback_inner`).
-            let rb = Self::rollback_inner(&mut inner);
-            invalidate_pred_cache_keeping_saturation(&inner);
-            return match rb {
-                Ok(()) => Err(e),
-                Err(re) => Err(format!("{e} (additionally, rollback failed: {re})")),
-            };
-        }
+        result?;
         inner.fact_registry.insert(
             id,
             Arc::new(FactRecord {
@@ -426,18 +427,9 @@ impl KnowledgeBase {
         // Attribute any rule compiled during this replay to THIS fact — the
         // rule-source citations proof traces carry read current_assertion_id.
         inner.current_assertion_id = Some(id);
-        let result = process_assertion(&mut inner, &mut logic);
+        let result = process_preflighted_assertion(&mut inner, &mut logic);
         inner.current_assertion_id = None;
-        if let Err(e) = result {
-            // ROLLBACK, not an ordinary rebuild: the saturated extensions survive
-            // when nothing was mutated (see `rollback_inner`).
-            let rb = Self::rollback_inner(&mut inner);
-            invalidate_pred_cache_keeping_saturation(&inner);
-            return match rb {
-                Ok(()) => Err(e),
-                Err(re) => Err(format!("{e} (additionally, rollback failed: {re})")),
-            };
-        }
+        result?;
         inner.fact_registry.insert(
             id,
             Arc::new(FactRecord {
@@ -498,40 +490,8 @@ impl KnowledgeBase {
     /// Rebuild the KB from all non-retracted facts.
     /// Preserves fact_registry and fact_counter; resets all derived state.
     fn rebuild_inner(inner: &mut KnowledgeBaseInner) -> Result<(), String> {
-        Self::rebuild_inner_impl(inner, false)
-    }
-
-    /// The ROLLBACK rebuild: identical replay, but the saturated extensions
-    /// SURVIVE it (C3's strictly-sound subset, 2026-08-16).
-    ///
-    /// Why this is sound, and why it is self-limiting: `invalidate_materialization`
-    /// is called AT EVERY MUTATION POINT by structural invariant (the store insert,
-    /// the store removal, and rule registration each carry their own call —
-    /// deliberately not left to caller discipline). So a saturation that is still
-    /// `Some` when a failed assertion rolls back is proof that the attempt mutated
-    /// NOTHING: the state the replay reproduces is the state the saturation was
-    /// built from. An attempt that did mutate — a strict-mode insert-then-eject,
-    /// say — has already dropped the saturation at that mutation, so there is
-    /// nothing to preserve and this behaves exactly as before. The gating is done
-    /// by the existing invalidation calls, not by a new bookkeeping flag that
-    /// could drift out of step with them.
-    ///
-    /// (The replay also drops eagerly forward-derived facts, which it never
-    /// re-fires. That cannot invalidate a preserved saturation: such a fact is
-    /// derivable by the very rules that produced it, so seeding with or without it
-    /// reaches the same fixpoint, and fewer seeds can only make `seed_edb` refuse
-    /// FEWER relations — never wrongly claim completeness for one.)
-    ///
-    /// A replay that ERRORS discards the saturation: the state it leaves is not
-    /// the state anything was computed from.
-    fn rollback_inner(inner: &mut KnowledgeBaseInner) -> Result<(), String> {
-        Self::rebuild_inner_impl(inner, true)
-    }
-
-    fn rebuild_inner_impl(
-        inner: &mut KnowledgeBaseInner,
-        preserve_saturation: bool,
-    ) -> Result<(), String> {
+        #[cfg(test)]
+        TEST_REBUILD_COUNT.set(TEST_REBUILD_COUNT.get() + 1);
         // Preserve user-declared arg sorts (set via `set_predicate_sorts`): replay
         // only re-infers arity+source per predicate, never the sorts, so clearing
         // `predicate_registry` below would silently drop them.
@@ -581,17 +541,7 @@ impl KnowledgeBase {
         // `invalidate_pred_cache`, because `KnowledgeBase::rebuild` is the one rebuild
         // entry point that does NOT invalidate — a stale extension surviving it would
         // answer `~p(x)` from the pre-rebuild knowledge base.
-        //
-        // TAKEN rather than dropped: `rollback_inner` restores it after a successful
-        // replay (see its doc for why a surviving saturation proves the attempt
-        // mutated nothing). Held OUTSIDE the KB for the duration, so the replay's own
-        // per-insert invalidations cannot interact with it.
-        let stashed_saturation = inner.materialized.borrow_mut().take();
-        let stashed_saturation = if preserve_saturation {
-            stashed_saturation
-        } else {
-            None
-        };
+        *inner.materialized.borrow_mut() = None;
 
         // Collect non-retracted buffers + their ids ordered by ID (owned, to avoid
         // a borrow conflict with the mutable replay below).
@@ -651,10 +601,6 @@ impl KnowledgeBase {
         }
 
         if replay_errors.is_empty() {
-            // The replay reproduced the state the saturation was built from.
-            if let Some(saturation) = stashed_saturation {
-                *inner.materialized.borrow_mut() = Some(saturation);
-            }
             Ok(())
         } else {
             let detail = replay_errors
@@ -1478,7 +1424,7 @@ impl KnowledgeBase {
     pub fn set_materialization(&self, on: bool) {
         let mut inner = self.inner.borrow_mut();
         inner.materialization = on;
-        *inner.materialized.borrow_mut() = None;
+        reasoning::invalidate_materialization(&inner);
     }
 
     /// Whether stratum-ordered materialisation is enabled — the read twin of
@@ -1770,6 +1716,17 @@ impl KnowledgeBase {
         preflight_assertion_buffer(&mut logic).map_err(NibliError::Reasoning)
     }
 
+    /// A singleton can transfer its owned arena directly to normal assertion
+    /// ingress, whose preflight still runs before allocating an ID. A multi-root
+    /// statement retains the whole-buffer preflight before independent roots.
+    fn checked_statement_roots(&self, buffer: LogicBuffer) -> Result<Vec<LogicBuffer>, NibliError> {
+        if buffer.roots.len() <= 1 {
+            return Ok(vec![buffer]);
+        }
+        self.validate_assertion(&buffer)?;
+        Ok(buffer.split_roots())
+    }
+
     /// Assert a compiled FOL formula into the knowledge base. Returns the fact ID.
     /// Exact-count and executable compute formulas in asserted position are
     /// query-only and cannot be installed as constraints/facts; opaque
@@ -1781,7 +1738,7 @@ impl KnowledgeBase {
         // The layer contract is Syntax=nibli-kr / Semantic=nibli-semantics / Reasoning=nibli-reason.
         self.transaction(|candidate| {
             candidate
-                .assert_fact_inner(logic, label)
+                .assert_unpublished_fact(logic, label)
                 .map_err(NibliError::Reasoning)
         })
     }
@@ -1807,12 +1764,11 @@ impl KnowledgeBase {
                         "fixture assertion cancelled".to_owned(),
                     ));
                 }
-                candidate.validate_assertion(&buffer)?;
                 let mut ids = Vec::new();
-                for root in buffer.split_roots() {
+                for root in candidate.checked_statement_roots(buffer)? {
                     ids.push(
                         candidate
-                            .assert_fact_inner(root, label.clone())
+                            .assert_unpublished_fact(root, label.clone())
                             .map_err(NibliError::Reasoning)?,
                     );
                 }
@@ -1853,13 +1809,12 @@ impl KnowledgeBase {
                     "fixture construction cancelled".to_owned(),
                 ));
             }
-            kb.validate_assertion(&buffer)?;
             let mut statement_ids = Vec::new();
-            for root in buffer.split_roots() {
+            for root in kb.checked_statement_roots(buffer)? {
                 // This KB is unpublished: a batch error discards it wholesale.
                 // Avoid cloning its growing state for every individual root.
                 statement_ids.push(
-                    kb.assert_fact_inner(root, label.clone())
+                    kb.assert_unpublished_fact(root, label.clone())
                         .map_err(NibliError::Reasoning)?,
                 );
             }
@@ -2136,6 +2091,7 @@ impl KnowledgeBase {
     /// by `reset()`.
     pub fn set_rule_forward(&self, conclusion_predicate: &str, forward: bool) {
         let mut inner = self.inner.borrow_mut();
+        inner.query_domain.completed_at.set(None);
         *inner.materialization_plan.borrow_mut() = None;
         inner
             .rule_exec_overrides
@@ -2182,6 +2138,7 @@ impl KnowledgeBase {
     /// Cleared by `reset()`.
     pub fn set_rule_priority(&self, conclusion_predicate: &str, priority: u32) {
         let mut inner = self.inner.borrow_mut();
+        inner.query_domain.completed_at.set(None);
         *inner.materialization_plan.borrow_mut() = None;
         inner
             .rule_exec_overrides
@@ -2228,6 +2185,7 @@ impl KnowledgeBase {
     /// e.g., `declare_entity_sort("adam", "person")` means adam is a person.
     pub fn declare_entity_sort(&self, entity: &str, sort: &str) {
         let mut inner = self.inner.borrow_mut();
+        inner.query_domain.completed_at.set(None);
         inner
             .entity_sorts
             .insert(entity.to_string(), sort.to_string());
@@ -2238,6 +2196,7 @@ impl KnowledgeBase {
     /// Transitive: if person ⊂ animal and animal ⊂ entity, then person is compatible with entity.
     pub fn declare_subsort(&self, child: &str, parent: &str) {
         let mut inner = self.inner.borrow_mut();
+        inner.query_domain.completed_at.set(None);
         inner
             .sort_hierarchy
             .entry(child.to_string())
@@ -2251,6 +2210,7 @@ impl KnowledgeBase {
     /// Empty string = no constraint for that position.
     pub fn set_predicate_sorts(&self, predicate: &str, arg_sorts: Vec<String>) {
         let mut inner = self.inner.borrow_mut();
+        inner.query_domain.completed_at.set(None);
         if let Some(sig) = inner.predicate_registry.get_mut(predicate) {
             sig.arg_sorts = arg_sorts;
         } else {

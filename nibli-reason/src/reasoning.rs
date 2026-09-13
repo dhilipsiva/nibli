@@ -2093,6 +2093,9 @@ pub(super) fn clear_typed_pred_cache(inner: &KnowledgeBaseInner) {
 /// registration, retraction, reset, profile switch), keeps the unconditional
 /// drop via [`invalidate_materialization`].
 pub(super) fn invalidate_materialization_for_insert(inner: &KnowledgeBaseInner, fact: &StoredFact) {
+    // Domain membership is global, even when this fact is outside the currently
+    // saturated query cone. Never reuse witness closure across any insertion.
+    inner.query_domain.completed_at.set(None);
     let surface = crate::materialize::surface_relation(fact.relation()).to_string();
     // DECIDE under a shared borrow, ACT after releasing it: the two mutating
     // arms below each re-borrow, and a `RefMut` held across them panics.
@@ -2123,6 +2126,7 @@ pub(super) fn invalidate_materialization_for_insert(inner: &KnowledgeBaseInner, 
 }
 
 pub(super) fn invalidate_materialization(inner: &KnowledgeBaseInner) {
+    inner.query_domain.completed_at.set(None);
     *inner.materialized.borrow_mut() = None;
 }
 

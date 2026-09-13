@@ -553,10 +553,17 @@ fn operational_comparison_atom(relation: &str, args: &[LogicalTerm]) -> Option<S
 
 /// Canonicalize/validate internal abstraction markers before using them as
 /// opacity boundaries, then apply every structural assertion guard. Callers run
-/// this before id allocation; `process_assertion` repeats it for replay defense.
+/// this before id allocation; registry replay enters through `process_assertion`.
 pub(super) fn preflight_assertion_buffer(buffer: &mut LogicBuffer) -> Result<(), String> {
+    #[cfg(test)]
+    TEST_ASSERTION_PREFLIGHT_COUNT.set(TEST_ASSERTION_PREFLIGHT_COUNT.get() + 1);
     canonicalize_abstraction_markers(buffer)?;
     validate_assertion_buffer(buffer)
+}
+
+#[cfg(test)]
+thread_local! {
+    pub(super) static TEST_ASSERTION_PREFLIGHT_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 /// The constraint-ingress twin of the assertion guards above, for the
@@ -1682,7 +1689,7 @@ pub(super) struct KnowledgeBaseInner {
     pub(super) known_numbers: HashSet<u64>,
     pub(super) known_rules: RuleIdentityIndex,
     pub(super) skolem_fn_registry: Vec<SkolemFnEntry>,
-    /// Derived individual membership and its completeness, rebuilt per query pass.
+    /// Derived individual membership; completed closure survives read-only queries.
     pub(super) query_domain: QueryDomain,
     /// Pluggable fact store (in-memory or persistent).
     pub(super) fact_store: Box<dyn crate::fact_store::FactStore>,
@@ -2723,11 +2730,10 @@ pub(super) fn enable_pred_cache(inner: &KnowledgeBaseInner) {
 
 /// Invalidate the predicate result cache WITHOUT touching the saturation.
 ///
-/// For the ROLLBACK path only (`KnowledgeBase::rollback_inner`): a refused
-/// assertion leaves the logical state exactly as it was, so the derived
-/// predicate cache is cleared out of caution while the saturated extensions —
-/// which the rollback provably did not invalidate — survive. Every other
-/// mutation path must use [`invalidate_pred_cache`], which drops both.
+/// Successful assertion ingress uses this after each individual mutation has
+/// already invalidated, dirtied or preserved the saturation at its own site.
+/// Other callers without that mutation-site guarantee use [`invalidate_pred_cache`].
+/// A refused detached candidate is discarded without touching the live caches.
 pub(super) fn invalidate_pred_cache_keeping_saturation(inner: &KnowledgeBaseInner) {
     clear_typed_pred_cache(inner);
     inner.pred_cache_enabled.set(false);
@@ -3386,6 +3392,15 @@ pub(super) fn process_assertion(
     logic: &mut LogicBuffer,
 ) -> Result<(), String> {
     preflight_assertion_buffer(logic)?;
+    process_preflighted_assertion(inner, logic)
+}
+
+/// Internal assertion ingress after successful structural preflight, with no
+/// intervening buffer mutation. Replay must use `process_assertion` instead.
+pub(super) fn process_preflighted_assertion(
+    inner: &mut KnowledgeBaseInner,
+    logic: &mut LogicBuffer,
+) -> Result<(), String> {
     inner.begin_skolem_scope();
     // Strict-mode violations from PREVIOUS internal forward chaining (which
     // has no user error channel) must not bleed into THIS assertion's verdict.
@@ -3501,8 +3516,8 @@ pub(super) fn process_assertion(
 
             // FAIL CLOSED: EDB/IDB separation. A relation declared derived-only
             // may become true ONLY by derivation, so a direct ground assertion of
-            // it is refused and the whole assertion unwinds (the caller's
-            // `rebuild_inner` rollback). Checked BEFORE any leaf is stored, so a
+            // it is refused and the detached assertion candidate is discarded.
+            // Checked BEFORE any leaf is stored, so a
             // multi-leaf conjunction cannot half-land.
             //
             // Only the event TYPE leaf is tested (`permits(ev)`), never the role

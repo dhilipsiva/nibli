@@ -7,6 +7,8 @@ pub(super) const MAX_INFERENCE_RECORDS: usize = 2_000_000;
 #[cfg(test)]
 thread_local! {
     pub(super) static TEST_CLOSURE_LIMIT: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) };
+    pub(super) static TEST_CLOSURE_RUNS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    pub(super) static TEST_DOMAIN_IDENTITY_CHECKS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 fn closure_limit() -> usize {
@@ -20,6 +22,9 @@ fn closure_limit() -> usize {
 #[derive(Default)]
 pub(super) struct QueryDomain {
     pub(super) incomplete: Option<QueryResult>,
+    /// Reuse only a fully closed domain, at no smaller reasoning budget and in
+    /// the same proof/lookup mode. Every logical mutation clears this stamp.
+    pub(super) completed_at: std::cell::Cell<Option<(usize, bool, usize)>>,
     /// The actual rule/bindings licensing each member. Kept query-local, never
     /// inserted into the asserted fact store or its provenance sidecar.
     activations: HashMap<GroundTerm, (Arc<UniversalRuleRecord>, HashMap<String, GroundTerm>)>,
@@ -119,6 +124,28 @@ fn collect_pattern_variables<'a>(term: &'a GroundTerm, names: &mut HashSet<&'a s
     }
 }
 
+/// Preserve first-seen semantic identity order without repeatedly comparing a
+/// shared identity's entire body through every conclusion-index reference.
+/// Distinct allocations still receive the ordinary full-value equality check.
+pub(super) fn distinct_domain_rules(
+    inner: &KnowledgeBaseInner,
+) -> impl Iterator<Item = &Arc<UniversalRuleRecord>> {
+    let mut pointers = HashSet::new();
+    let mut identities = HashSet::new();
+    inner
+        .universal_rules
+        .values()
+        .flatten()
+        .filter(move |rule| {
+            if !pointers.insert(Arc::as_ptr(&rule.identity)) {
+                return false;
+            }
+            #[cfg(test)]
+            TEST_DOMAIN_IDENTITY_CHECKS.set(TEST_DOMAIN_IDENTITY_CHECKS.get() + 1);
+            identities.insert(rule.identity.as_ref())
+        })
+}
+
 /// Predicate stratification alone omits the implicit domain read of an
 /// unguarded universal. Generating a new member can then invalidate the very
 /// absence that generated it. Include that dependency before accepting any
@@ -126,11 +153,7 @@ fn collect_pattern_variables<'a>(term: &'a GroundTerm, names: &mut HashSet<&'a s
 fn domain_dependency_graph(inner: &KnowledgeBaseInner) -> HashMap<String, Vec<(String, bool)>> {
     const DOMAIN: &str = "__nibli_activated_individual_domain";
     let mut graph = inner.pred_dep_graph.clone();
-    let mut seen = HashSet::new();
-    for rule in inner.universal_rules.values().flatten() {
-        if !seen.insert(rule.identity.clone()) {
-            continue;
-        }
+    for rule in distinct_domain_rules(inner) {
         // Collect guarded names once. Re-scanning every condition separately
         // for every variable is quadratic in large compiled constitutional rules.
         let mut guarded = HashSet::new();
@@ -224,12 +247,8 @@ impl DomainPlan {
             };
         }
         let strata = materialize::compute_strata(&graph);
-        let mut seen = HashSet::new();
         let mut rules = Vec::new();
-        for rule in inner.universal_rules.values().flatten() {
-            if !seen.insert(rule.identity.clone()) {
-                continue;
-            }
+        for rule in distinct_domain_rules(inner) {
             let mut terms = Vec::new();
             for fact in &rule.typed_conclusions {
                 for term in &fact.inner().args {
@@ -279,9 +298,19 @@ impl DomainPlan {
     }
 }
 
-/// Recompute witness activations at each reasoning depth, while sharing only
-/// the immutable rule plan. Cached absence never stands in for a fresh closure.
+/// A complete fixed point can be reused while facts, rules and profile remain
+/// unchanged. Incomplete or shallower-budget closures are always recomputed.
 pub(super) fn prepare_query_domain(inner: &mut KnowledgeBaseInner) -> Result<(), String> {
+    check_cancelled(inner)?;
+    if let Some((depth, lookup, limit)) = inner.query_domain.completed_at.get()
+        && depth <= inner.max_chain_depth
+        && lookup == inner.positive_lookup.get()
+        && limit == closure_limit()
+    {
+        return Ok(());
+    }
+    #[cfg(test)]
+    TEST_CLOSURE_RUNS.set(TEST_CLOSURE_RUNS.get() + 1);
     inner.query_domain = QueryDomain::default();
     inner.domain_members_dirty = true;
     inner.ensure_domain_members_cached();
@@ -299,6 +328,11 @@ pub(super) fn prepare_query_domain(inner: &mut KnowledgeBaseInner) -> Result<(),
     }
     let rules = &plan.rules;
     if rules.is_empty() {
+        inner.query_domain.completed_at.set(Some((
+            inner.max_chain_depth,
+            inner.positive_lookup.get(),
+            closure_limit(),
+        )));
         return Ok(());
     }
     clear_and_enable_pred_cache(inner);
@@ -452,6 +486,11 @@ pub(super) fn prepare_query_domain(inner: &mut KnowledgeBaseInner) -> Result<(),
             clear_and_enable_pred_cache(inner);
         }
     }
+    inner.query_domain.completed_at.set(Some((
+        inner.max_chain_depth,
+        inner.positive_lookup.get(),
+        closure_limit(),
+    )));
     Ok(())
 }
 

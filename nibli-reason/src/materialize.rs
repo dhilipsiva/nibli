@@ -501,6 +501,8 @@ pub(super) struct ProjectedRule {
     pub(super) positive: Vec<Atom>,
     /// Constant/previously-bound positions, computed once with the rule plan.
     bound_positions: Vec<Vec<usize>>,
+    /// Necessary constant-only matches, checked before allocating join frames.
+    constant_probes: Vec<(usize, Vec<usize>, Vec<GroundTerm>)>,
     /// Negated body atoms, checked by lookup once the positives have bound everything.
     pub(super) negative: Vec<Atom>,
     /// Flat built-in conditions we know how to decide, with their negation flag.
@@ -529,6 +531,79 @@ fn is_builtin(rel: &str) -> bool {
     BUILTIN_RELATIONS.contains(&rel)
 }
 
+/// Specialize an already-admitted projection using positive scalar equalities.
+/// Keep every equality as an executable condition, including conflicts, and
+/// rewrite all its variable uses together. Range/shape checks must run FIRST:
+/// a constant equality does not make an otherwise unbound rule admissible.
+fn specialize_fixed_values(
+    positive: &mut [Atom],
+    negative: &mut [Atom],
+    head: &mut [Atom],
+    builtins: &mut [(StoredFact, bool)],
+) -> Vec<bool> {
+    let mut fixed = HashMap::new();
+    for (fact, negated) in builtins.iter() {
+        if *negated || fact.relation() != nibli_types::relations::IDENTITY {
+            continue;
+        }
+        let (name, value) = match fact.inner().args.as_slice() {
+            [GroundTerm::PatternVar(name), value] | [value, GroundTerm::PatternVar(name)] => {
+                (name, value)
+            }
+            _ => continue,
+        };
+        if matches!(
+            value,
+            GroundTerm::Constant(_)
+                | GroundTerm::Description(_)
+                | GroundTerm::Number(_)
+                | GroundTerm::Unspecified
+        ) {
+            fixed.entry(name.clone()).or_insert_with(|| value.clone());
+        }
+    }
+    if fixed.is_empty() {
+        return Vec::new();
+    }
+    let replace = |value: &mut GroundTerm| {
+        if let GroundTerm::PatternVar(name) = value
+            && let Some(constant) = fixed.get(name)
+        {
+            *value = constant.clone();
+            true
+        } else {
+            false
+        }
+    };
+    let mut promoted = vec![false; positive.len()];
+    for (index, atom) in positive.iter_mut().enumerate() {
+        for value in &mut atom.values {
+            promoted[index] |= replace(value);
+        }
+    }
+    for atom in negative.iter_mut().chain(head.iter_mut()) {
+        for value in &mut atom.values {
+            replace(value);
+        }
+    }
+    for (fact, _) in builtins {
+        if !fact
+            .inner()
+            .args
+            .iter()
+            .any(|value| matches!(value, GroundTerm::PatternVar(name) if fixed.contains_key(name)))
+        {
+            continue;
+        }
+        let mut grounded = fact.inner().clone();
+        for value in &mut grounded.args {
+            replace(value);
+        }
+        *fact = StoredFact::with_tense_from(grounded, fact);
+    }
+    promoted
+}
+
 /// Rewrite one compiled rule as function-free surface Datalog.
 pub(super) fn project_rule(rule: &UniversalRuleRecord) -> Result<ProjectedRule, Ineligible> {
     let label = rule.label.clone();
@@ -553,7 +628,7 @@ pub(super) fn project_rule(rule: &UniversalRuleRecord) -> Result<ProjectedRule, 
         }
     }
 
-    let (positive, pos_flat) = project_atoms(&pos_conds).map_err(&flav)?;
+    let (mut positive, pos_flat) = project_atoms(&pos_conds).map_err(&flav)?;
     let (neg_flat_atoms, neg_flat) = project_atoms(&neg_conds).map_err(&flav)?;
 
     let mut builtins: Vec<(StoredFact, bool)> = Vec::new();
@@ -592,7 +667,7 @@ pub(super) fn project_rule(rule: &UniversalRuleRecord) -> Result<ProjectedRule, 
     // The head. `project_atoms` rejects a `SkolemFn` in a VALUE position but not in the
     // event slot, which is exactly right: the dependent Skolem that every `∀`-rule head
     // carries lives in the event slot and is what the projection eliminates.
-    let (head, head_flat, suppressed) =
+    let (mut head, head_flat, suppressed) =
         project_atoms_inner(&rule.typed_conclusions).map_err(&flav)?;
     if !head_flat.is_empty() || head.is_empty() {
         return Err(Ineligible::NotProjectable(label));
@@ -629,9 +704,38 @@ pub(super) fn project_rule(rule: &UniversalRuleRecord) -> Result<ProjectedRule, 
         return Err(Ineligible::NotRangeRestricted(label));
     }
 
+    let promoted = specialize_fixed_values(&mut positive, &mut negative, &mut head, &mut builtins);
+    let mut constant_probes: Vec<_> = positive
+        .iter()
+        .enumerate()
+        .filter_map(|(index, atom)| {
+            let positions: Vec<_> = atom
+                .values
+                .iter()
+                .enumerate()
+                .filter(|(_, value)| !matches!(value, GroundTerm::PatternVar(_)))
+                .map(|(position, _)| position)
+                .collect();
+            if positions.is_empty() {
+                return None;
+            }
+            let key = positions
+                .iter()
+                .map(|&position| atom.values[position].clone())
+                .collect();
+            Some((index, positions, key))
+        })
+        .collect();
+    if !promoted.is_empty() {
+        // A record-kind or mode equality is usually more selective than the
+        // shared authority/field prefixes. Reorder only necessary prechecks,
+        // never the executable joins or their binding order.
+        constant_probes.sort_by_key(|(index, _, _)| !promoted[*index]);
+    }
     Ok(ProjectedRule {
         label,
         bound_positions: bound_positions(&positive),
+        constant_probes,
         positive,
         negative,
         builtins,
@@ -667,6 +771,10 @@ pub(super) struct Eligibility {
     pub(super) refused: HashMap<String, Ineligible>,
     /// The projected form of every rule that survived, keyed by head relation.
     pub(super) rules: HashMap<String, Vec<std::sync::Arc<ProjectedRule>>>,
+    /// First-seen distinct dependencies per head, projected from exactly the
+    /// same positive/negative atoms as the executable rules. No quoted edges.
+    pub(super) dependencies: HashMap<String, Vec<String>>,
+    pub(super) negatively_read: HashSet<String>,
 }
 
 /// Rule-only planning survives ordinary fact insertions and can be shared by
@@ -716,6 +824,8 @@ pub(super) fn eligible_relations(inner: &KnowledgeBaseInner) -> Eligibility {
             eligible: HashSet::new(),
             refused,
             rules,
+            dependencies: HashMap::new(),
+            negatively_read: HashSet::new(),
         };
     }
 
@@ -756,6 +866,25 @@ pub(super) fn eligible_relations(inner: &KnowledgeBaseInner) -> Eligibility {
         }
     }
 
+    // Plan relation-level reads once. Wide rules often repeat the same relation
+    // hundreds of times with different constant discriminators; that matters to
+    // execution, but not to dependency reachability or completion requirements.
+    let mut dependencies = HashMap::new();
+    let mut negatively_read = HashSet::new();
+    for (head, head_rules) in &rules {
+        let mut seen = HashSet::new();
+        let mut reads = Vec::new();
+        for pr in head_rules {
+            for dep in pr.positive.iter().chain(pr.negative.iter()) {
+                if seen.insert(dep.relation.as_str()) {
+                    reads.push(dep.relation.clone());
+                }
+            }
+            negatively_read.extend(pr.negative.iter().map(|dep| dep.relation.clone()));
+        }
+        dependencies.insert(head.clone(), reads);
+    }
+
     // Candidate set: every relation with at least one surviving rule, minus the refused.
     let mut eligible: HashSet<String> = rules
         .keys()
@@ -781,14 +910,12 @@ pub(super) fn eligible_relations(inner: &KnowledgeBaseInner) -> Eligibility {
     loop {
         let mut drop_rel: Option<(String, String)> = None;
         'outer: for rel in &eligible {
-            for pr in rules.get(rel).into_iter().flatten() {
-                for dep in pr.positive.iter().chain(pr.negative.iter()) {
-                    if eligible.contains(&dep.relation) || is_edb(&dep.relation, &rules, &refused) {
-                        continue;
-                    }
-                    drop_rel = Some((rel.clone(), dep.relation.clone()));
-                    break 'outer;
+            for dep in dependencies.get(rel).into_iter().flatten() {
+                if eligible.contains(dep) || is_edb(dep, &rules, &refused) {
+                    continue;
                 }
+                drop_rel = Some((rel.clone(), dep.clone()));
+                break 'outer;
             }
         }
         match drop_rel {
@@ -804,6 +931,8 @@ pub(super) fn eligible_relations(inner: &KnowledgeBaseInner) -> Eligibility {
         eligible,
         refused,
         rules,
+        dependencies,
+        negatively_read,
     }
 }
 
@@ -819,6 +948,8 @@ pub(super) type Extensions = HashMap<String, HashSet<Vec<GroundTerm>>>;
 pub(super) struct MaterializationWork {
     #[cfg(test)]
     tuple_bind_attempts: HashMap<String, usize>,
+    #[cfg(test)]
+    positive_presence_checks: usize,
     /// How many times this saturation was folded forward incrementally rather
     /// than recomputed. Resets with the `Materialized` it lives in, so a value
     /// of zero after a mutation means the fixpoint was rebuilt from scratch.
@@ -830,6 +961,19 @@ pub(super) struct MaterializationWork {
 }
 
 impl MaterializationWork {
+    #[inline]
+    fn note_positive_presence_check(&mut self) {
+        #[cfg(test)]
+        {
+            self.positive_presence_checks += 1;
+        }
+    }
+
+    #[cfg(test)]
+    pub(super) fn positive_presence_checks(&self) -> usize {
+        self.positive_presence_checks
+    }
+
     #[inline]
     fn note_tuple_bind_attempt(&mut self, _rule: &ProjectedRule) {
         #[cfg(test)]
@@ -1125,8 +1269,8 @@ fn builtin_holds(fact: &StoredFact, bindings: &HashMap<String, GroundTerm>) -> O
 /// one) — soundness never depends on the bound-position analysis, only the
 /// speedup does, and an unexpectedly unbound "bound" variable falls open to the
 /// full scan. Maps are shared across levels and rules in one immutable round;
-/// full and delta extensions have separate keys. Level 0 is never
-/// indexed (it is visited exactly once, so a build costs what one scan costs).
+/// full and delta extensions have separate keys. Constants can index level 0
+/// too: its map is shared by other rules with the same relation/key positions.
 struct LevelIndex<'e> {
     bound_positions: Vec<usize>,
     map: Option<std::sync::Arc<TupleIndex<'e>>>,
@@ -1135,6 +1279,30 @@ struct LevelIndex<'e> {
 type TupleIndex<'e> = HashMap<Vec<GroundTerm>, Vec<&'e Vec<GroundTerm>>>;
 type RoundIndexes<'e> = HashMap<(String, Vec<usize>, bool), std::sync::Arc<TupleIndex<'e>>>;
 
+fn shared_tuple_index<'e>(
+    tuples: &'e HashSet<Vec<GroundTerm>>,
+    relation: &str,
+    positions: &[usize],
+    from_delta: bool,
+    indexes: &mut RoundIndexes<'e>,
+) -> std::sync::Arc<TupleIndex<'e>> {
+    let key = (relation.to_owned(), positions.to_vec(), from_delta);
+    std::sync::Arc::clone(indexes.entry(key).or_insert_with(|| {
+        let mut map: TupleIndex<'e> = HashMap::new();
+        for tuple in tuples {
+            // A short tuple cannot pass the ordinary binder's arity check.
+            if let Some(key) = positions
+                .iter()
+                .map(|&p| tuple.get(p).cloned())
+                .collect::<Option<Vec<_>>>()
+            {
+                map.entry(key).or_default().push(tuple);
+            }
+        }
+        std::sync::Arc::new(map)
+    }))
+}
+
 /// The positions of `positive[i]`'s template bound when the walk reaches level
 /// `i`: constants always, and pattern variables that occur in an earlier
 /// positive atom. (A variable repeated within atom `i` itself binds DURING
@@ -1142,10 +1310,8 @@ type RoundIndexes<'e> = HashMap<(String, Vec<usize>, bool), std::sync::Arc<Tuple
 fn bound_positions(positive: &[Atom]) -> Vec<Vec<usize>> {
     let mut earlier_vars: HashSet<&str> = HashSet::new();
     let mut result = Vec::with_capacity(positive.len());
-    for (i, atom) in positive.iter().enumerate() {
-        result.push(if i == 0 {
-            Vec::new()
-        } else {
+    for atom in positive {
+        result.push(
             atom.values
                 .iter()
                 .enumerate()
@@ -1154,8 +1320,8 @@ fn bound_positions(positive: &[Atom]) -> Vec<Vec<usize>> {
                     _ => true,
                 })
                 .map(|(position, _)| position)
-                .collect()
-        });
+                .collect(),
+        );
         for v in &atom.values {
             if let GroundTerm::PatternVar(n) = v {
                 earlier_vars.insert(n.as_str());
@@ -1172,7 +1338,7 @@ fn bound_positions(positive: &[Atom]) -> Vec<Vec<usize>> {
 /// extension, so a round only re-derives what the previous round could have enabled.
 /// When `None` the rule is evaluated against the full extensions (the seeding round).
 ///
-/// Join levels beyond the first are INDEXED on their statically bound positions
+/// Join levels are INDEXED on their statically bound positions
 /// (see [`LevelIndex`]): a transitive-closure shape that scanned O(|R|²) tuples
 /// per round now touches O(|R| · fanout).
 fn eval_rule<'e>(
@@ -1184,6 +1350,41 @@ fn eval_rule<'e>(
     work: &mut MaterializationWork,
     shared_indexes: &mut RoundIndexes<'e>,
 ) {
+    // Every positive conjunct needs a tuple. In particular, a late constant
+    // discriminator can reject the rule before any earlier cartesian join.
+    // These are necessary conditions only: the unchanged binder still checks
+    // arity, repeated variables and all cross-atom bindings for every survivor.
+    // Try fixed-value discriminators first: one miss can exclude a wide rule
+    // without visiting every remaining relation in its positive body.
+    for (i, positions, key) in &pr.constant_probes {
+        let atom = &pr.positive[*i];
+        let from_delta = delta_pos == Some(*i);
+        let source = if from_delta { delta } else { ext };
+        work.note_positive_presence_check();
+        let Some(tuples) = source
+            .get(&atom.relation)
+            .filter(|tuples| !tuples.is_empty())
+        else {
+            return;
+        };
+        let index = shared_tuple_index(
+            tuples,
+            &atom.relation,
+            positions,
+            from_delta,
+            shared_indexes,
+        );
+        if !index.contains_key(key) {
+            return;
+        }
+    }
+    for (i, atom) in pr.positive.iter().enumerate() {
+        let source = if delta_pos == Some(i) { delta } else { ext };
+        work.note_positive_presence_check();
+        if source.get(&atom.relation).is_none_or(HashSet::is_empty) {
+            return;
+        }
+    }
     // ONE binding map for the whole walk, extended and unwound in place.
     //
     // It used to be an owned `HashMap` cloned per candidate tuple per join level, which
@@ -1245,7 +1446,7 @@ fn eval_rule<'e>(
         let Some(tuples) = source.get(&atom.relation) else {
             return;
         };
-        // Indexed path: a level past the first whose template has statically
+        // Indexed path: a level whose template has statically
         // bound positions visits only the bucket matching the current
         // bindings' key values. `take()`/restore instead of borrowing the map
         // across the recursion — levels strictly increase, so this level's map
@@ -1261,27 +1462,13 @@ fn eval_rule<'e>(
                 .collect();
             if let Some(key) = key {
                 if indexes[i].map.is_none() {
-                    let positions = indexes[i].bound_positions.clone();
-                    let index_key = (
-                        atom.relation.clone(),
-                        positions.clone(),
+                    indexes[i].map = Some(shared_tuple_index(
+                        tuples,
+                        &atom.relation,
+                        &indexes[i].bound_positions,
                         delta_pos == Some(i),
-                    );
-                    let map = shared_indexes.entry(index_key).or_insert_with(|| {
-                        let mut map: TupleIndex<'e> = HashMap::new();
-                        for tuple in tuples {
-                            // Short tuples could never pass bind_tuple's arity check.
-                            if let Some(k) = positions
-                                .iter()
-                                .map(|&p| tuple.get(p).cloned())
-                                .collect::<Option<Vec<_>>>()
-                            {
-                                map.entry(k).or_default().push(tuple);
-                            }
-                        }
-                        std::sync::Arc::new(map)
-                    });
-                    indexes[i].map = Some(std::sync::Arc::clone(map));
+                        shared_indexes,
+                    ));
                 }
                 let map = indexes[i].map.take().expect("index map was just built");
                 if let Some(bucket) = map.get(&key) {
@@ -1595,14 +1782,9 @@ fn resume_with_delta(
     // reading `~` of it must then LOSE a conclusion the fold would keep.
     if !m.negatively_read.is_empty() {
         let mut readers: HashMap<&str, Vec<&str>> = HashMap::new();
-        for (head, rules) in &elig.rules {
-            for pr in rules {
-                for dep in pr.positive.iter().chain(pr.negative.iter()) {
-                    readers
-                        .entry(dep.relation.as_str())
-                        .or_default()
-                        .push(head.as_str());
-                }
+        for (head, dependencies) in &elig.dependencies {
+            for dep in dependencies {
+                readers.entry(dep.as_str()).or_default().push(head.as_str());
             }
         }
         let mut seen: HashSet<&str> = HashSet::new();
@@ -1757,10 +1939,8 @@ pub(super) fn saturate(
         if unseedable.contains_key(&rel) || !wanted.insert(rel.clone()) {
             continue;
         }
-        for pr in elig.rules.get(&rel).into_iter().flatten() {
-            for dep in pr.positive.iter().chain(pr.negative.iter()) {
-                stack.push(dep.relation.clone());
-            }
+        for dep in elig.dependencies.get(&rel).into_iter().flatten() {
+            stack.push(dep.clone());
         }
     }
     // Only relations we are actually allowed to saturate.
@@ -1826,16 +2006,12 @@ pub(super) fn saturate(
         loop {
             let mut drop_idx: Option<(usize, String)> = None;
             'scan: for (i, rel) in derived_here.iter().enumerate() {
-                for pr in elig.rules.get(*rel).into_iter().flatten() {
-                    for dep in pr.positive.iter().chain(pr.negative.iter()) {
-                        if complete.contains(&dep.relation)
-                            || derived_here.iter().any(|r| **r == dep.relation)
-                        {
-                            continue;
-                        }
-                        drop_idx = Some((i, dep.relation.clone()));
-                        break 'scan;
+                for dep in elig.dependencies.get(*rel).into_iter().flatten() {
+                    if complete.contains(dep) || derived_here.contains(&dep) {
+                        continue;
                     }
+                    drop_idx = Some((i, dep.clone()));
+                    break 'scan;
                 }
             }
             match drop_idx {
@@ -1930,14 +2106,7 @@ pub(super) fn saturate(
 
     // Every relation any eligible rule reads under `~`. An insert into one of
     // these is NOT monotone growth, so `resume_with_delta` must refuse it.
-    let mut negatively_read: HashSet<String> = HashSet::new();
-    for rules in elig.rules.values() {
-        for pr in rules {
-            for n in &pr.negative {
-                negatively_read.insert(n.relation.clone());
-            }
-        }
-    }
+    let negatively_read = elig.negatively_read.clone();
 
     Materialized {
         ext,
@@ -2157,8 +2326,17 @@ pub(super) fn ensure_materialized_targets(
         .as_ref()
         .map(|materialized| materialized.requested.clone())
         .unwrap_or_default();
-    if inner.materialized.borrow().is_some() && targets.is_subset(&previous_targets) {
-        return false;
+    if let Some(materialized) = inner.materialized.borrow_mut().as_mut() {
+        if targets.is_subset(&previous_targets) {
+            return false;
+        }
+        // A root already completed as a dependency needs no second saturation.
+        // Retain it in the requested union for later mutation/recompute paths.
+        // Refused or unfinished dependencies never satisfy this shortcut.
+        if targets.is_subset(&materialized.complete) {
+            materialized.requested.extend(targets.iter().cloned());
+            return false;
+        }
     }
 
     let mut cumulative = targets.clone();

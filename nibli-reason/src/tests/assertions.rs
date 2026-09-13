@@ -1,4 +1,156 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
 use super::*;
+
+#[test]
+fn condition_events_do_not_copy_unused_conclusion_dependencies() {
+    let kb = new_kb();
+    assert_buf(&kb, compile_surface("dog(Rex)."));
+    let mut conditions = vec!["dog($x)".to_string()];
+    let mut first_fact = None;
+    for index in 0..30 {
+        let fact = assert_id(
+            &kb,
+            compile_surface(&format!("authorized(Rex, Wanted, Record{index}).")),
+            "required condition",
+        );
+        first_fact.get_or_insert(fact);
+        conditions.push(format!("authorized($x, Wanted, Record{index})"));
+    }
+    TEST_DEPENDENCY_NAME_COPIES.set(0);
+    assert_buf(
+        &kb,
+        compile_surface(&format!(
+            "all $x: {} -> animal($x).",
+            conditions.join(" & ")
+        )),
+    );
+    assert_eq!(
+        TEST_DEPENDENCY_NAME_COPIES.get(),
+        1,
+        "only the head event needs a copy of the universal dependency list"
+    );
+    assert!(query(&kb, compile_surface("animal(Rex).")));
+    kb.retract_fact(first_fact.unwrap()).unwrap();
+    assert!(query_false(&kb, compile_surface("animal(Rex).")));
+}
+
+#[test]
+fn batches_preflight_single_roots_once_and_multi_roots_before_allocation() {
+    TEST_ASSERTION_PREFLIGHT_COUNT.set(0);
+    let (kb, ids) = KnowledgeBase::from_compiled_batch(vec![(
+        compile_surface("dog(Rex)."),
+        "singleton".into(),
+    )])
+    .unwrap();
+    assert_eq!(TEST_ASSERTION_PREFLIGHT_COUNT.get(), 1);
+    assert_eq!(ids.len(), 1);
+    assert_eq!(ids[0].len(), 1);
+
+    TEST_ASSERTION_PREFLIGHT_COUNT.set(0);
+    kb.assert_compiled_batch(vec![(compile_surface("cat(Bel)."), "singleton".into())])
+        .unwrap();
+    assert_eq!(TEST_ASSERTION_PREFLIGHT_COUNT.get(), 1);
+
+    TEST_ASSERTION_PREFLIGHT_COUNT.set(0);
+    kb.assert_compiled_batch(vec![(
+        compile_surface("bird(Ara). mouse(Bob)."),
+        "multi".into(),
+    )])
+    .unwrap();
+    assert_eq!(
+        TEST_ASSERTION_PREFLIGHT_COUNT.get(),
+        3,
+        "the complete statement and each independently allocated root are checked"
+    );
+
+    let next = kb.next_fact_id().unwrap();
+    TEST_ASSERTION_PREFLIGHT_COUNT.set(0);
+    let bad = compile_surface("dog(Phantom). cat(exactly 1 cat).");
+    let error = kb
+        .assert_compiled_batch(vec![(bad, "query-only late root".into())])
+        .unwrap_err();
+    assert!(error.to_string().contains("query-only"), "{error}");
+    assert_eq!(
+        TEST_ASSERTION_PREFLIGHT_COUNT.get(),
+        1,
+        "late structural failure must precede every root assertion"
+    );
+    assert_eq!(kb.next_fact_id().unwrap(), next);
+    assert!(query_false(&kb, compile_surface("dog(Phantom).")));
+    assert!(query(&kb, compile_surface("dog(Rex).")));
+}
+
+#[test]
+fn refused_candidates_are_discarded_without_registry_replay() {
+    for ingress in ["single", "preassigned", "batch", "fresh"] {
+        let kb = new_kb();
+        let setup = ["derived_only(\"fit\").", "dog(Rex)."];
+        for text in setup {
+            assert_buf(&kb, compile_surface(text));
+        }
+        let next_id = kb.next_fact_id().unwrap();
+        let before = kb.active_typed_facts().unwrap();
+        let records = kb.list_assertion_records().unwrap();
+        TEST_REBUILD_COUNT.set(0);
+        let bad = compile_surface("dog(Phantom). fit(Phantom).");
+        assert!(bad.roots.len() > 1, "exercise a late-root failure");
+        match ingress {
+            "single" => {
+                kb.assert_fact(bad, "refused".into()).unwrap_err();
+            }
+            "preassigned" => {
+                kb.assert_fact_with_id(bad, "refused".into(), next_id)
+                    .unwrap_err();
+            }
+            "batch" => {
+                kb.assert_compiled_batch(vec![(bad, "refused".into())])
+                    .unwrap_err();
+            }
+            "fresh" => {
+                let mut statements = setup
+                    .into_iter()
+                    .map(|text| (compile_surface(text), text.into()))
+                    .collect::<Vec<_>>();
+                statements.push((bad, "refused".into()));
+                assert!(KnowledgeBase::from_compiled_batch(statements).is_err());
+            }
+            _ => unreachable!(),
+        }
+        assert_eq!(
+            TEST_REBUILD_COUNT.get(),
+            0,
+            "{ingress} replayed a doomed candidate"
+        );
+        assert_eq!(
+            kb.next_fact_id().unwrap(),
+            next_id,
+            "{ingress} consumed a live ID"
+        );
+        assert_eq!(
+            kb.active_typed_facts().unwrap(),
+            before,
+            "{ingress} leaked facts"
+        );
+        assert_eq!(
+            kb.list_assertion_records().unwrap(),
+            records,
+            "{ingress} leaked records"
+        );
+        assert!(query_false(&kb, compile_surface("dog(Phantom).")));
+        assert!(query(&kb, compile_surface("dog(Rex).")));
+        let id = kb
+            .assert_fact(compile_surface("cat(Bel)."), "accepted".into())
+            .unwrap();
+        assert_eq!(id, next_id);
+        kb.retract_fact(id).unwrap();
+        assert_eq!(
+            TEST_REBUILD_COUNT.get(),
+            1,
+            "ordinary withdrawal still replays"
+        );
+    }
+}
 
 // ─── Multiple roots test ─────────────────────────────────────
 

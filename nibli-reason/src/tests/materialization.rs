@@ -9,7 +9,360 @@
 //! verdict, only how fast one is reached. Everything else here pins a way that could
 //! stop being true.
 
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
 use super::*;
+
+#[test]
+fn scalar_equality_specialization_agrees_with_backward_reasoning() {
+    for (guard, expected) in [
+        ("$kind = Wanted", true),
+        ("Wanted = $kind", true),
+        ("$kind = Other", false),
+        ("$kind = Wanted & $kind = Other", false),
+        ("~($kind = Other)", true),
+        ("~($kind = Wanted)", false),
+        ("$kind = Wanted & ~($kind = Other)", true),
+        ("$kind = Wanted & ~($kind = Wanted)", false),
+    ] {
+        for on in [false, true] {
+            let kb = new_kb();
+            kb.set_materialization(on);
+            assert_buf(&kb, compile_surface("authorized(Rex, Wanted, Record)."));
+            assert_buf(
+                &kb,
+                compile_surface(&format!(
+                    "all $x: all $kind: authorized($x, $kind, Record) & {guard} -> permits($x, $kind)."
+                )),
+            );
+            let goal = compile_surface("permits(Rex, Wanted).");
+            kb.ensure_materialized(&goal, true);
+            let result = query_result(&kb, goal);
+            assert_eq!(
+                result,
+                if expected {
+                    QueryResult::True
+                } else {
+                    QueryResult::False
+                },
+                "{guard}; materialization={on}"
+            );
+        }
+    }
+}
+
+#[test]
+fn specialized_record_kind_is_checked_before_shared_authority_prefixes() {
+    let kb = new_kb();
+    for text in [
+        "authorized(Rex, SharedRole, Record).",
+        "observe(Rex, Record, Other, KindScope).",
+        "all $x: all $record: all $kind: authorized($x, SharedRole, $record) & observe($x, $record, $kind, KindScope) & $kind = Wanted -> permits($x, $record).",
+    ] {
+        assert_buf(&kb, compile_surface(text));
+    }
+    kb.ensure_materialized(&compile_surface("permits(Rex, Record)."), true);
+    assert_eq!(
+        kb.inner
+            .borrow()
+            .materialized
+            .borrow()
+            .as_ref()
+            .unwrap()
+            .work
+            .positive_presence_checks(),
+        1
+    );
+    assert!(query_false(&kb, compile_surface("permits(Rex, Record).")));
+    assert_buf(
+        &kb,
+        compile_surface("observe(Rex, Record, Wanted, KindScope)."),
+    );
+    assert!(query(&kb, compile_surface("permits(Rex, Record).")));
+}
+
+#[test]
+fn scalar_specialization_rewrites_negative_atoms_and_preserves_withdrawal() {
+    let kb = new_kb();
+    for text in [
+        "authorized(Rex, Wanted, Record).",
+        "related(Rex, Other).",
+        "all $x: all $kind: authorized($x, $kind, Record) & $kind = Wanted & ~related($x, $kind) -> permits($x, $kind).",
+    ] {
+        assert_buf(&kb, compile_surface(text));
+    }
+    let goal = compile_surface("permits(Rex, Wanted).");
+    kb.ensure_materialized(&goal, true);
+    assert!(query(&kb, goal.clone()));
+    let blocked = assert_id(&kb, compile_surface("related(Rex, Wanted)."), "blocker");
+    assert!(query_false(&kb, goal.clone()));
+    kb.retract_fact(blocked).unwrap();
+    assert!(query(&kb, goal));
+}
+
+#[test]
+fn scalar_equality_does_not_admit_a_range_unbound_projection() {
+    let kb = new_kb();
+    assert_buf(&kb, compile_surface("all $x: $x = Rex -> animal($x)."));
+    let inner = kb.inner.borrow();
+    let rule = &inner.universal_rules["animal"][0];
+    assert!(matches!(
+        materialize::project_rule(rule),
+        Err(materialize::Ineligible::NotRangeRestricted(_))
+    ));
+}
+
+#[test]
+fn full_and_delta_constant_indexes_never_alias() {
+    for on in [false, true] {
+        let kb = new_kb();
+        kb.set_materialization(on);
+        for text in [
+            "person(Rex).",
+            "authorized(Rex, Left, Record).",
+            "all $x: person($x) -> authorized($x, Right, Record).",
+            "all $x: authorized($x, Left, Record) & authorized($x, Right, Record) -> permits($x, Record).",
+        ] {
+            assert_buf(&kb, compile_surface(text));
+        }
+        let goal = compile_surface("permits(Rex, Record).");
+        kb.ensure_materialized(&goal, true);
+        assert_eq!(
+            query_result(&kb, goal),
+            QueryResult::True,
+            "materialization={on}"
+        );
+    }
+}
+
+#[test]
+fn a_first_constant_miss_skips_later_positive_presence_checks() {
+    let kb = new_kb();
+    assert_buf(&kb, compile_surface("authorized(Rex, Other, Record)."));
+    let mut conditions = vec!["authorized($x, Wanted, Record)".to_string()];
+    for index in 0..30 {
+        conditions.push(format!("authorized($x, Requirement{index}, Record)"));
+    }
+    assert_buf(
+        &kb,
+        compile_surface(&format!(
+            "all $x: {} -> permits($x, Record).",
+            conditions.join(" & ")
+        )),
+    );
+    kb.ensure_materialized(&compile_surface("permits(Rex, Record)."), true);
+    assert_eq!(
+        kb.inner
+            .borrow()
+            .materialized
+            .borrow()
+            .as_ref()
+            .unwrap()
+            .work
+            .positive_presence_checks(),
+        1,
+        "a missing first discriminator needs no walk over the remaining body"
+    );
+    assert!(query_false(&kb, compile_surface("permits(Rex, Record).")));
+}
+
+#[test]
+fn rule_plan_deduplicates_reads_without_losing_negative_dependencies() {
+    let kb = new_kb();
+    for text in [
+        "authorized(Rex, First, RecordOne).",
+        "authorized(Rex, Second, RecordTwo).",
+        "all $x: authorized($x, First, RecordOne) & authorized($x, Second, RecordTwo) & ~cat($x) -> animal($x).",
+        "all $x: animal($x) & ~dog($x) -> fit($x).",
+    ] {
+        assert_buf(&kb, compile_surface(text));
+    }
+    {
+        let inner = kb.inner.borrow();
+        let plan = materialize::eligible_relations(&inner);
+        let mut raw_reads = 0;
+        let mut planned_reads = 0;
+        for (head, rules) in &plan.rules {
+            let mut seen = HashSet::new();
+            let expected: Vec<_> = rules
+                .iter()
+                .flat_map(|rule| rule.positive.iter().chain(rule.negative.iter()))
+                .filter_map(|atom| {
+                    raw_reads += 1;
+                    seen.insert(atom.relation.clone())
+                        .then(|| atom.relation.clone())
+                })
+                .collect();
+            assert_eq!(plan.dependencies[head], expected);
+            planned_reads += expected.len();
+        }
+        assert!(
+            planned_reads < raw_reads,
+            "distinct constants share dependency edges, not execution atoms"
+        );
+        assert_eq!(
+            plan.negatively_read,
+            HashSet::from(["cat".into(), "dog".into()])
+        );
+    }
+    assert!(query(&kb, compile_surface("fit(Rex).")));
+    let blocker = assert_id(
+        &kb,
+        compile_surface("cat(Rex)."),
+        "negative dependency growth",
+    );
+    assert!(query_false(&kb, compile_surface("fit(Rex).")));
+    kb.retract_fact(blocker).unwrap();
+    assert!(query(&kb, compile_surface("fit(Rex).")));
+}
+
+#[test]
+fn first_join_constants_are_indexed_across_unrelated_input_records() {
+    let kb = new_kb();
+    for i in 0..50 {
+        assert_buf(
+            &kb,
+            compile_surface(&format!("authorized(Source{i}, Other, Record{i}).")),
+        );
+    }
+    assert_buf(&kb, compile_surface("authorized(Ara, Wanted, RecordHit)."));
+    assert_buf(
+        &kb,
+        compile_surface(
+            "all $source: all $record: authorized($source, Wanted, $record) -> permits($source, $record).",
+        ),
+    );
+    kb.ensure_materialized(&compile_surface("permits(Ara, RecordHit)."), true);
+    assert!(query(&kb, compile_surface("permits(Ara, RecordHit).")));
+    assert!(query_false(
+        &kb,
+        compile_surface("permits(Source0, Record0).")
+    ));
+    assert!(
+        kb.materialization_tuple_bind_attempts("permits") <= 2,
+        "constant discriminator must exclude unrelated first-level tuples"
+    );
+    let added = assert_id(
+        &kb,
+        compile_surface("authorized(Bel, Wanted, RecordTwo)."),
+        "growth",
+    );
+    assert!(query(&kb, compile_surface("permits(Bel, RecordTwo).")));
+    kb.retract_fact(added).unwrap();
+    assert!(query_false(
+        &kb,
+        compile_surface("permits(Bel, RecordTwo).")
+    ));
+}
+
+#[test]
+fn absent_late_constants_skip_earlier_joins_but_growth_still_fires() {
+    let kb = new_kb();
+    for i in 0..50 {
+        assert_buf(&kb, compile_surface(&format!("dog(Dog{i}).")));
+    }
+    for text in [
+        "authorized(Dog0, Other, Record).",
+        "all $x: all $record: dog($x) & authorized($x, Wanted, $record) -> permits($x, $record).",
+    ] {
+        assert_buf(&kb, compile_surface(text));
+    }
+    kb.ensure_materialized(&compile_surface("permits(Dog0, Record)."), true);
+    assert!(query_false(&kb, compile_surface("permits(Dog0, Record).")));
+    assert_eq!(
+        kb.materialization_tuple_bind_attempts("permits"),
+        0,
+        "no earlier dog join is needed while the late Wanted discriminator has no tuple"
+    );
+
+    let added = assert_id(
+        &kb,
+        compile_surface("authorized(Dog0, Wanted, Record)."),
+        "growth",
+    );
+    kb.ensure_materialized(&compile_surface("permits(Dog0, Record)."), true);
+    assert!(query(&kb, compile_surface("permits(Dog0, Record).")));
+    assert!(kb.materialization_tuple_bind_attempts("permits") > 0);
+    kb.retract_fact(added).unwrap();
+    kb.ensure_materialized(&compile_surface("permits(Dog0, Record)."), true);
+    assert!(query_false(&kb, compile_surface("permits(Dog0, Record).")));
+    assert_eq!(kb.materialization_tuple_bind_attempts("permits"), 0);
+}
+
+#[test]
+fn completed_dependency_roots_reuse_the_existing_saturation() {
+    let kb = new_kb();
+    for text in [
+        "dog(Rex).",
+        "all $x: dog($x) & ~cat($x) -> animal($x).",
+        "all $x: animal($x) -> fit($x).",
+    ] {
+        assert_buf(&kb, compile_surface(text));
+    }
+    let inner = kb.inner.borrow();
+    assert!(materialize::ensure_materialized_targets(
+        &inner,
+        &HashSet::from(["fit".into()])
+    ));
+    assert!(
+        inner
+            .materialized
+            .borrow()
+            .as_ref()
+            .unwrap()
+            .complete
+            .contains("animal")
+    );
+    assert!(!materialize::ensure_materialized_targets(
+        &inner,
+        &HashSet::from(["animal".into()])
+    ));
+    assert!(
+        inner
+            .materialized
+            .borrow()
+            .as_ref()
+            .unwrap()
+            .requested
+            .contains("animal")
+    );
+    drop(inner);
+    assert!(query(&kb, compile_surface("animal(Rex).")));
+    let blocker = assert_id(&kb, compile_surface("cat(Rex)."), "withdrawable blocker");
+    assert!(query_false(&kb, compile_surface("animal(Rex).")));
+    assert!(query_false(&kb, compile_surface("fit(Rex).")));
+    kb.retract_fact(blocker).unwrap();
+    assert!(query(&kb, compile_surface("animal(Rex).")));
+    assert!(query(&kb, compile_surface("fit(Rex).")));
+}
+
+#[test]
+fn a_missing_dependency_root_still_requires_saturation() {
+    let kb = new_kb();
+    for text in ["dog(Rex).", "cat(Bel).", "all $x: dog($x) -> animal($x)."] {
+        assert_buf(&kb, compile_surface(text));
+    }
+    let inner = kb.inner.borrow();
+    assert!(materialize::ensure_materialized_targets(
+        &inner,
+        &HashSet::from(["animal".into()])
+    ));
+    assert!(
+        !inner
+            .materialized
+            .borrow()
+            .as_ref()
+            .unwrap()
+            .complete
+            .contains("cat")
+    );
+    assert!(materialize::ensure_materialized_targets(
+        &inner,
+        &HashSet::from(["cat".into()])
+    ));
+    drop(inner);
+    assert!(query(&kb, compile_surface("cat(Bel).")));
+}
 
 #[test]
 fn warming_rule_plan_performs_no_query_and_shares_only_immutable_planning() {
@@ -1924,9 +2277,9 @@ fn kb_with_live_saturation() -> KnowledgeBase {
     kb
 }
 
-/// A REFUSED assertion that mutated nothing must not throw the saturation
-/// away: its rollback replay reproduces the very state the extensions were
-/// computed from. The control — a SUCCESSFUL assertion — must still drop it.
+/// A REFUSED assertion discards its detached candidate without changing the
+/// live saturation. The control — a SUCCESSFUL relevant assertion — must
+/// still invalidate or dirty that saturation at its mutation site.
 #[test]
 fn a_refused_assertion_preserves_the_saturation() {
     let kb = kb_with_live_saturation();
@@ -1994,13 +2347,10 @@ fn preserved_saturation_answers_exactly_as_a_rebuilt_one() {
     );
 }
 
-/// The rollback's cache hygiene is NOT relaxed along with the saturation: the
-/// derived predicate cache and its depth-cut table are still cleared and the
-/// cache still disabled, so nothing the failed attempt derived can outlive it.
-/// (Pins `invalidate_pred_cache_keeping_saturation` doing its two jobs — a
-/// gutted version leaves the saturation intact and is otherwise invisible.)
+/// A refused detached candidate cannot alter the live query cache. Its own
+/// transient derivations die with it, alongside any partially asserted roots.
 #[test]
-fn a_refused_assertion_still_clears_and_disables_the_predicate_cache() {
+fn a_refused_assertion_leaves_the_live_predicate_cache_untouched() {
     let kb = kb_with_live_saturation();
     {
         // Warm the cache the way a query does, so the clear has something to do.
@@ -2008,22 +2358,27 @@ fn a_refused_assertion_still_clears_and_disables_the_predicate_cache() {
         clear_and_enable_pred_cache(&inner);
     }
     assert!(query(&kb, compile_surface("animal(Rex).")));
+    let before = {
+        let inner = kb.inner.borrow();
+        (
+            inner.pred_cache_enabled.get(),
+            inner.pred_cache.borrow().len(),
+            inner.depth_cut_table.borrow().len(),
+        )
+    };
 
     kb.assert_fact_inner(compile_surface("fit(Rex)."), String::new())
         .expect_err("refused");
 
     let inner = kb.inner.borrow();
-    assert!(
-        !inner.pred_cache_enabled.get(),
-        "the rollback must leave the predicate cache DISABLED"
-    );
-    assert!(
-        inner.pred_cache.borrow().is_empty(),
-        "the rollback must leave the predicate cache EMPTY"
-    );
-    assert!(
-        inner.depth_cut_table.borrow().is_empty(),
-        "the depth-cut table shares the cache lifecycle and must be cleared too"
+    assert_eq!(
+        (
+            inner.pred_cache_enabled.get(),
+            inner.pred_cache.borrow().len(),
+            inner.depth_cut_table.borrow().len()
+        ),
+        before,
+        "a refused candidate must not publish its transient cache"
     );
     drop(inner);
     assert!(
