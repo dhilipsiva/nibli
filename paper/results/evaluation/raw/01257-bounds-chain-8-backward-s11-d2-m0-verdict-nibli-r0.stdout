@@ -1,0 +1,4 @@
+{"ms":0.028969,"phase":"open"}
+{"ids":[0,1,2,3,4,5,6,7,8],"ms":0.536366,"phase":"load","statements":9}
+{"index":0,"ms":36.235324999999996,"phase":"query","result":"False","stage":0,"verdict":"FALSE"}
+{"phase":"complete"}

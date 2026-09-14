@@ -1,0 +1,6 @@
+:fuel 50000000000
+:depth 10
+past dog(N83).
+:certify past dog(N83).
+:certify dog(N83).
+:quit

@@ -1,0 +1,4 @@
+{"ms":0.027607,"phase":"open"}
+{"ids":[0,1,2,3,4,5,6,7,8],"ms":0.5469080000000001,"phase":"load","statements":9}
+{"index":0,"ms":628.763335,"phase":"query","result":{"ResourceExceeded":"Depth"},"stage":0,"verdict":"RESOURCE_EXCEEDED"}
+{"phase":"complete"}

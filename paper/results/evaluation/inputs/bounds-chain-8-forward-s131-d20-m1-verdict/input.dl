@@ -1,0 +1,6 @@
+.decl p_earlier(a0:symbol,a1:symbol)
+.input p_earlier
+p_earlier(A,C) :- p_earlier(A,B), p_earlier(B,C).
+.decl answer(i:number)
+.output answer
+answer(0) :- p_earlier("N2","N5").

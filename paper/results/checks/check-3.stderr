@@ -1,0 +1,3 @@
+    Blocking waiting for file lock on artifact directory
+    Finished `release` profile [optimized] target(s) in 9.42s
+     Running unittests src/lib.rs (target/release/deps/nibli_reason-5a3997aab39deb34)

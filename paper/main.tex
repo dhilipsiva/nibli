@@ -1,0 +1,55 @@
+\documentclass[10pt,letterpaper]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern,microtype,amsmath,amssymb,booktabs,graphicx,tabularx,longtable}
+\usepackage{tikz,listings,csquotes}
+\usetikzlibrary{positioning,arrows.meta}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage[hidelinks]{hyperref}
+\hypersetup{pdftitle={Nibli: Auditable Symbolic Reasoning with Bounded Evaluation and Retractable Premises},pdfauthor={dhilipsiva}}
+\pdfinfoomitdate=1
+\pdftrailerid{}
+\pdfsuppressptexinfo=15
+\newcommand{\True}{\texttt{TRUE}}
+\newcommand{\False}{\texttt{FALSE}}
+\newcommand{\Unknown}{\texttt{UNKNOWN}}
+\newcommand{\Resource}{\texttt{RESOURCE\_EXCEEDED}}
+\newcommand{\Souffle}{Souffl\'e}
+\lstdefinestyle{kr}{basicstyle=\small\ttfamily,columns=fullflexible,
+  keepspaces=true,breaklines=true,showstringspaces=false,
+  aboveskip=8pt,belowskip=8pt}
+\setlength{\emergencystretch}{1.5em}
+\setlength{\parskip}{2pt}
+\input{generated/numbers.tex}
+\title{Nibli: Auditable Symbolic Reasoning with Bounded Evaluation and Retractable Premises}
+\author{dhilipsiva}
+\date{}
+\begin{document}
+\maketitle
+\begin{abstract}
+\input{sections/abstract.tex}
+\end{abstract}
+\input{sections/introduction.tex}
+\input{sections/semantics.tex}
+\input{sections/architecture.tex}
+\input{sections/verification.tex}
+\input{sections/evaluation.tex}
+\input{sections/related.tex}
+\input{sections/limitations.tex}
+\input{sections/conclusion.tex}
+\label{main-end}
+\clearpage
+\section*{Acknowledgment of AI assistance}
+OpenAI Codex provided substantial assistance with repository and literature
+analysis, experimental tooling, data analysis, and drafting and revising this
+manuscript. The measurements reported here were obtained by executing the
+recorded tools on the stated workloads. AI assistance does not supply an
+independent verification of the claims, and responsibility for the submitted
+work remains with the human author. This disclosure follows arXiv's policy
+on significant use of generative language tools~\cite{arxiv-policy}.
+\bibliographystyle{plainnat}
+\bibliography{references}
+\clearpage
+\appendix
+\input{sections/appendices.tex}
+\end{document}

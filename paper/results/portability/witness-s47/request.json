@@ -1,0 +1,13 @@
+{
+  "depth": 10,
+  "materialization": true,
+  "mode": "certificate",
+  "queries": [
+    "bite(some dog, N47).",
+    "dog(\"sk_0\")."
+  ],
+  "statements": [
+    "bite(some dog, N47)."
+  ],
+  "updates": []
+}

@@ -1,0 +1,22 @@
+\section{Conclusion}
+
+Nibli makes several decisions visible that an ordinary Boolean query interface
+can conceal: whether a result is definitive, which premises support it, which
+closed-world assumptions it uses, and which evaluation profile produced it.
+The evaluated design combines bounded reasoning, selective completion,
+source-preserving withdrawal, and an evidence interface across shared native
+and WebAssembly code.
+
+The experiments record no definitive disagreement or stale source citation,
+and the shared runtime scenarios agree. Those observations coexist with
+substantial limits: single-statement ingestion fails to finish at the largest
+policy target, forward recursion hits the cutoff on short chains, and
+certificate-producing queries cost more than verdict queries. Selective
+materialization improves returned definitiveness in the forward-chain slice.
+These results support the specific semantic, transition, and portability
+claims recorded in the artifact, together with their performance boundaries.
+The proof argument remains conditional at its model boundaries, and envelope
+coherence remains distinct from semantic verification. Future extensions that
+change materialization, witness handling, or persistence should preserve those
+distinctions and rerun the affected evidence, rather than inherit claims from
+an earlier revision.

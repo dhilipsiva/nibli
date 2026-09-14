@@ -1,0 +1,10 @@
+.decl p_alive(a0:symbol)
+.decl p_animal(a0:symbol)
+.decl p_dog(a0:symbol)
+.input p_dog
+p_animal(X) :- p_dog(X).
+p_alive(X) :- p_animal(X).
+.decl answer(i:number)
+.output answer
+answer(0) :- p_alive("Ada").
+answer(1) :- p_alive("Bea").

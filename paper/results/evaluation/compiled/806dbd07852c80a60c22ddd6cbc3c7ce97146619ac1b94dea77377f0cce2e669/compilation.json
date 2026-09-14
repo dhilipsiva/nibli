@@ -1,0 +1,22 @@
+{
+  "binary_sha256": "15c2194ee306255fa32c395147eb5bc01573cb4afdeddafda005186a766fa427",
+  "command": [
+    "souffle",
+    "-j",
+    "1",
+    "-o",
+    "/home/dhilipsiva/projects/dhilipsiva/nibli/paper/results/evaluation/compiled/806dbd07852c80a60c22ddd6cbc3c7ce97146619ac1b94dea77377f0cce2e669/program",
+    "/home/dhilipsiva/projects/dhilipsiva/nibli/paper/results/evaluation/inputs/comparison-chain-8-forward-s23-d10-m1-verdict/input.dl"
+  ],
+  "cpu_system_s": 0.57,
+  "cpu_user_s": 8.3,
+  "cutoff_seconds": 300,
+  "exit_code": 0,
+  "peak_rss_kib": 493924,
+  "started_utc": "2026-09-14T08:53:59.312966+00:00",
+  "status": "ok",
+  "stderr": "paper/results/evaluation/compiled/806dbd07852c80a60c22ddd6cbc3c7ce97146619ac1b94dea77377f0cce2e669/compile.stderr",
+  "stdout": "paper/results/evaluation/compiled/806dbd07852c80a60c22ddd6cbc3c7ce97146619ac1b94dea77377f0cce2e669/compile.stdout",
+  "usage": "paper/results/evaluation/compiled/806dbd07852c80a60c22ddd6cbc3c7ce97146619ac1b94dea77377f0cce2e669/compile.time",
+  "wall_ms": 9045.260917999258
+}

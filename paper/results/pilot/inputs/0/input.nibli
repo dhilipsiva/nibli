@@ -1,0 +1,3 @@
+all $x: dog($x) -> animal($x).
+all $x: animal($x) -> alive($x).
+dog(Ada).

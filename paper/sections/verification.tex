@@ -1,0 +1,123 @@
+\section{Verification evidence and its scope}
+\label{sec:verification}
+
+The assurance argument combines model-level proofs, implementation conformance
+tests, external solver comparisons, and state-transition tests. Each supports
+a different claim. Passing all of them is stronger evidence than any one alone,
+but their conjunction is not a machine-checked proof of the entire parser,
+compiler, runtime, and storage stack.
+
+\subsection{Mechanized models}
+
+The Lean files are self-contained formalizations checked by the locked Lean
+toolchain. Table~\ref{tab:proof-scope} lists their principal results and the
+boundaries that matter for interpreting them. They model selected mechanisms;
+Rust code is not extracted from Lean.
+
+\begin{table}[t]
+\centering\small
+\begin{tabular}{p{2.3cm}p{5.8cm}p{6.0cm}}
+\toprule
+Model & Established result & Implementation boundary \\
+\midrule
+Combiner & Definitive connective outcomes have the specified decisive inputs;
+unresolved combinations preserve uncertainty/resource information. &
+Exhaustive comparison with the finite Rust result domain. \\
+Stratification & Absence of a negative cycle is equivalent to existence of a
+valid stratification. & Predicate graphs constructed by the compiler and
+registration path require separate testing. \\
+SCC & A correct SCC partition yields the same rejection criterion as
+mutual reachability. & The imperative Tarjan traversal is not verified;
+its output is compared with an independent reachability implementation. \\
+Unification & Successful one-directional matching against a ground term
+produces a substitution instantiating the template to that term. &
+Groundness is a hypothesis; number payloads abstract away floating-point
+arithmetic. Rust enforces a ground stored-fact boundary. \\
+Rule firing & Head matching plus satisfied premises of a model-sound rule
+entails the instantiated goal. & The rule's validity in the model is a
+hypothesis; compilation and condition discharge need correspondence evidence. \\
+Trace & Positive and negative certificates imply model membership and
+non-membership; compound query certificates inherit the result. &
+Assumes sourced facts, rule closure, candidate correctness, and support;
+not a complete verifier for serialized envelopes or every KR proof variant. \\
+\bottomrule
+\end{tabular}
+\caption{Lean proof scope. File names and executable correspondence tests are
+listed in Appendix~\ref{app:claims} and the artifact's claim register.}
+\label{tab:proof-scope}
+\end{table}
+
+The capstone is especially easy to overstate. Its \texttt{PerfectModel} structure
+contains an interpretation $M$, a base-fact predicate, finite candidate firings
+for each ground goal, and explicit assumptions. Base facts hold in $M$;
+a candidate with satisfied positive premises and refuted negative premises
+concludes into $M$; candidates identify the correct goal; and every true goal
+is either a fact or has a fireable supporting candidate. The file does not
+construct the perfect model from arbitrary KR source.
+
+Positive certificates are depth-indexed: a goal is a base fact or a candidate
+has recursively certified premises. Negative certificates require that the goal
+is not a base fact and \emph{every} candidate is blocked by a definitive premise.
+Induction gives
+\[
+  \operatorname{Pos}_d(a)\Rightarrow M(a),\qquad
+  \operatorname{Neg}_d(a)\Rightarrow\neg M(a).
+\]
+Here $d$ is the formal certificate index, not a measured Wasmtime fuel budget.
+The negative direction depends critically on candidate completeness and the
+support assumption. A trace omitting an alternative rule cannot establish
+closed-world absence merely because its displayed branch failed.
+
+The implementation's trace conformance test checks local step conditions and
+bridges asserted leaves to stored facts, derived steps to registered rules,
+and negative leaves to candidate-blocking evidence. Its corpus exercises the
+bridges and includes deliberately damaged evidence. It remains a corpus test.
+Specialized existential, universal, count, compute, modal, and equality
+proof variants are not all covered by one end-to-end Lean theorem. Negated
+existential groups also have a narrower bridge than ordinary rule premises.
+We retain those limitations when citing the capstone.
+
+\subsection{Independent checks on the implementation}
+
+The native soundness gate uses Vampire for an applicable classical Horn
+fragment and clingo for stratified negation and closed-world behavior.
+The two oracles are necessary because treating default negation as classical
+negation would change the experiment's semantics. Input filters and translation
+failures are part of the recorded evidence. A solver that was unavailable or
+never reached would establish nothing.
+
+Metamorphic tests target operations for which a comparison of final answers
+alone is weak. Retraction is compared with replay of surviving premises,
+including quantified and numeric-domain queries. Materialization on and off
+must agree whenever both produce definitive answers; a non-definitive answer
+becoming definitive is counted separately. Registration tests compare negative
+cycle rejection against an independent graph criterion and query a fresh replay
+after rejection. These tests address stale state as well as isolated inference.
+
+The KR seam gate tests compilation structure and metamorphic relationships
+between equivalent spellings. This is essential because testing a hand-built
+flat fact can miss the event/role decomposition actually produced by the
+front end. Persistence tests exercise retained IDs, withdrawn records,
+reopening, and commit-failure behavior. Runtime tests separately exercise
+component imports, fuel recovery, and native/Wasmtime/Node behavior.
+The artifact reruns these required checks with the relevant tools present
+and retains their output, rather than citing historical green CI.
+
+\subsection{What an envelope check establishes}
+
+The knowledge-base-independent envelope validator checks schema and profile
+constraints, step references, root/result coherence, and consistency of
+closed-world and negation-dependency flags. It does not establish that the
+claimed input was actually asserted, that every displayed rule application is
+semantically valid, or that every possible derivation has been considered.
+An internally coherent fabricated trace can therefore remain outside its
+assurance boundary.
+
+The new artifact adds a distinct, limited check: every asserted or derived source
+citation must refer to a currently active record with exactly the recorded label.
+A deleted or mislabeled citation is a failure even if the envelope is coherent.
+Negative controls check that this audit rejects a withdrawn source, a changed
+label, and an empty source list. This improves the audit trail for premise
+changes without upgrading the envelope to an independent semantic proof checker.
+Substantive claims in the manuscript map to definitions, named Lean results,
+named tests, generated observations, or verified primary references.

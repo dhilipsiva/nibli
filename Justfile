@@ -11,6 +11,28 @@ export RUST_BACKTRACE := "full"
 # The default target executes the full build-and-run pipeline
 default: run
 
+# Research artifact. Run these inside `nix develop .#paper` (same flake lock).
+paper-driver:
+    cargo build --release --locked -p nibli --features bench-bins --bin nibli-bench-paper
+
+paper-check: paper-driver
+    python3 paper/scripts/run.py check
+
+paper-smoke: paper-driver
+    python3 paper/scripts/run.py smoke
+
+paper-evaluate: paper-driver
+    python3 paper/scripts/run.py evaluate
+    python3 paper/scripts/analyze.py
+
+paper-build:
+    python3 paper/scripts/analyze.py
+    python3 paper/scripts/check_artifact.py
+    python3 paper/scripts/build.py
+
+paper-package: paper-build
+    python3 paper/scripts/package.py
+
 # Remove stale WASM artifacts for the active profile
 clean-wasm:
     @echo "Removing stale WASM artifacts ({{profile}})..."

@@ -1,0 +1,22 @@
+==================================================
+ Nibli Neuro-Symbolic Engine - V4 Typed Pipeline  
+==================================================
+Compute backend: built-in only (set NIBLI_COMPUTE_ADDR=host:port for external)
+Fuel budget: 50000000000 per command
+Memory limit: 512 MB
+Maximum chain depth: 10
+Existential import: OFF (clean-core — universals do not mint witnesses)
+Loading WebAssembly Component from /home/dhilipsiva/projects/dhilipsiva/nibli/target/wasm32-wasip2/release/nibli.wasm...
+Ready. Commands: :quit :reset :load <file> :facts [--all] :depth [n] :retract <id> :debug <text> :compute [name] :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :strict [on|off] :existential-import [on|off] :materialize [on|off] :db :help
+Prefix '?' for queries with proof trace, '??' for find, plain text for assertions.
+
+nibli> :fuel 50000000000
+[Fuel] Budget set to 50000000000
+nibli> :depth 10
+[Depth] Maximum chain depth: 10
+nibli> past dog(N11).
+nibli> :certify past dog(N11).
+{"schema":2,"engine_version":"0.2.0","profile":{"strict":false,"existential_import":false,"materialization":true,"max_chain_depth":10},"query":"past dog(N11).","result":"True","trace":{"steps":[{"rule":{"type":"asserted","fact":"Past(dog(sk_0))","sources":[{"id":0,"label":"past dog(N11)."}]},"holds":true,"children":[]},{"rule":{"type":"asserted","fact":"Past(dog_x1(sk_0, n11))","sources":[{"id":0,"label":"past dog(N11)."}]},"holds":true,"children":[]},{"rule":{"type":"conjunction"},"holds":true,"children":[0,1]},{"rule":{"type":"asserted","fact":"Past(dog_x2(sk_0, _))","sources":[{"id":0,"label":"past dog(N11)."}]},"holds":true,"children":[]},{"rule":{"type":"conjunction"},"holds":true,"children":[2,3]},{"rule":{"type":"exists_witness","var":"_ev0","term":{"constant":"sk_0"},"origin":"generated_witness"},"holds":true,"children":[4]},{"rule":{"type":"modal_passthrough","kind":"past"},"holds":true,"children":[5]}],"root":6,"naf_dependent":false,"cwa_false":false}}
+nibli> :certify dog(N11).
+{"schema":2,"engine_version":"0.2.0","profile":{"strict":false,"existential_import":false,"materialization":true,"max_chain_depth":10},"query":"dog(N11).","result":"False","trace":{"steps":[{"rule":{"type":"exists_failed"},"holds":false,"children":[]}],"root":0,"naf_dependent":false,"cwa_false":true}}
+nibli> :quit

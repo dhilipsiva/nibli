@@ -1,0 +1,84 @@
+{
+  "direction": "both",
+  "expected": [
+    "TRUE",
+    "FALSE",
+    "FALSE"
+  ],
+  "facts": [
+    {
+      "args": [
+        "Ada"
+      ],
+      "name": "dog",
+      "neg": false
+    },
+    {
+      "args": [
+        "Bea"
+      ],
+      "name": "dog",
+      "neg": false
+    },
+    {
+      "args": [
+        "Bea"
+      ],
+      "name": "cat",
+      "neg": false
+    }
+  ],
+  "family": "hand_naf",
+  "queries": [
+    {
+      "args": [
+        "Ada"
+      ],
+      "name": "animal",
+      "neg": false
+    },
+    {
+      "args": [
+        "Bea"
+      ],
+      "name": "animal",
+      "neg": false
+    },
+    {
+      "args": [
+        "Cyd"
+      ],
+      "name": "animal",
+      "neg": false
+    }
+  ],
+  "rules": [
+    {
+      "body": [
+        {
+          "args": [
+            "$x"
+          ],
+          "name": "dog",
+          "neg": false
+        },
+        {
+          "args": [
+            "$x"
+          ],
+          "name": "cat",
+          "neg": true
+        }
+      ],
+      "head": {
+        "args": [
+          "$x"
+        ],
+        "name": "animal",
+        "neg": false
+      }
+    }
+  ],
+  "seed": 0,
+  "size": 3
+}

@@ -1,0 +1,83 @@
+{
+  "direction": "backward",
+  "expected": [
+    "FALSE"
+  ],
+  "facts": [
+    {
+      "args": [
+        "N4",
+        "N3"
+      ],
+      "name": "earlier",
+      "neg": false
+    },
+    {
+      "args": [
+        "N2",
+        "N0"
+      ],
+      "name": "earlier",
+      "neg": false
+    },
+    {
+      "args": [
+        "N1",
+        "N2"
+      ],
+      "name": "earlier",
+      "neg": false
+    },
+    {
+      "args": [
+        "N0",
+        "N4"
+      ],
+      "name": "earlier",
+      "neg": false
+    }
+  ],
+  "family": "chain",
+  "queries": [
+    {
+      "args": [
+        "N3",
+        "N1"
+      ],
+      "name": "earlier",
+      "neg": false
+    }
+  ],
+  "rules": [
+    {
+      "body": [
+        {
+          "args": [
+            "$a",
+            "$b"
+          ],
+          "name": "earlier",
+          "neg": false
+        },
+        {
+          "args": [
+            "$b",
+            "$c"
+          ],
+          "name": "earlier",
+          "neg": false
+        }
+      ],
+      "head": {
+        "args": [
+          "$a",
+          "$c"
+        ],
+        "name": "earlier",
+        "neg": false
+      }
+    }
+  ],
+  "seed": 83,
+  "size": 4
+}

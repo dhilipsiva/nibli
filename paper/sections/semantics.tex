@@ -1,0 +1,192 @@
+\section{Reasoning model and operational contract}
+\label{sec:semantics}
+
+Nibli accepts a formal predicate-call language, nibli KR, and compiles it to an
+indexed first-order representation. Its executable semantics is a supported,
+bounded reasoning procedure over that representation, rather than an unrestricted
+first-order validity decision procedure. This distinction separates three objects:
+the statement a person intends, the formula accepted by the compiler, and the
+answer obtained by evaluating that formula against the current premises.
+Deterministic compilation addresses the second object. It does not establish
+agreement with the first.
+
+\subsection{A finite comparison fragment}
+
+We define the fragment used in the experiments independently of the implementation.
+Let $C$ be the finite set of opaque constants occurring in a workload's program
+and queries, and $\Sigma$ a finite set of predicate symbols of fixed arity.
+A ground atom is $p(c_1,\ldots,c_k)$ with $c_i\in C$.
+A program consists of a finite extensional set $E$ and range-restricted rules
+\begin{equation}
+ H \leftarrow A_1,\ldots,A_m,\ \mathop{\mathrm{not}} B_1,\ldots,
+ \mathop{\mathrm{not}} B_n .
+ \label{eq:rule}
+\end{equation}
+Every variable occurs in a positive body atom. There are no function symbols,
+existential heads, arithmetic operations, equality merges, or modal operators in
+this fragment. Extensional and intensional occurrences of the same predicate
+are permitted, as in the reachability experiment.
+
+For each rule, put an edge from its head predicate to every body predicate, with
+negative polarity for a negated body atom. A stratification assigns a natural
+number $s(p)$ to each predicate such that $s(H)\geq s(A_i)$ and $s(H)>s(B_j)$.
+Nibli rejects registration that creates a strongly connected component containing
+a negative edge. A rejection is an input error, not an \Unknown\ answer.
+For accepted fragment programs, compute a least fixed point within each stratum
+after fixing the extensions of lower strata. We write the resulting perfect
+model as $M(E,P)$. The chain and policy workloads have hand-derived expected
+memberships in this model; clingo and \Souffle\ supply independently executed
+comparison results.
+
+A negative body literal holds only when its positive atom is absent from the
+completed lower-stratum model. This is the closed-world assumption. It is not a
+claim that the physical world contains no further evidence. Similarly, queries
+quantify over the engine's represented domain rather than every possible entity
+in the world. Range restriction means that a fresh query-only constant cannot
+create positive support merely by appearing in an adapter's symbol universe.
+The comparison uses ground membership queries, not cross-system comparisons
+of quantified domains. Shuffling input order or consistently renaming
+those constants changes an execution workload without changing the expected
+abstract membership answers.
+
+\subsection{The broader KR surface}
+
+The implemented surface includes quantified arguments, connected clauses,
+equality, generated witnesses, tense, deontic wrappers, and opaque quoted
+abstractions. These features make the integrated engine more than a direct
+Datalog evaluator. They also prevent a claim that the entire surface has the
+same semantics as the comparison fragment. The artifact's claim register
+separates implementation tests for these features from the narrower external
+solver comparison.
+
+An ordinary multi-place predicate is represented through an event anchor and
+role predicates. Schematically, a ground surface assertion $p(a,b)$ introduces
+\begin{equation}
+ \exists e.\ p(e)\land p_{x1}(e,a)\land p_{x2}(e,b).
+ \label{eq:event}
+\end{equation}
+The actual representation carries typed terms and shared node indices. Equation
+\ref{eq:event} is a readable projection, not a literal serialization of the
+intermediate buffer. Rules can introduce dependent event witnesses. Consequently,
+a function-free surface workload need not have a function-free internal encoding.
+Both materialization eligibility and external solver translation must account
+for this seam. Unspecified corpus places are also implicit in the KR compilation;
+the comparison concerns the explicitly supplied argument positions, used
+consistently in facts, rules, and queries.
+
+Names, generated individuals, generated events, and compiler placeholders are
+different term cases. A generated witness has a semantic identity containing its
+source assertion ID, binder ordinal, sort, and origin; a dependent witness also
+depends on its arguments. A printed label such as \texttt{sk\_0} is a display
+convenience. It is not an address that an input string can use to select the
+witness. This matters when a source is withdrawn or replayed: confusing a user
+constant with a generated witness would create joins and citations that have
+no supporting premise.
+
+The represented domain includes named entities and admitted generated individuals,
+with finite numeric terms occurring in assertions also contributing members.
+Querying does not itself assert a new domain member. Equality can identify
+represented entities, and withdrawal reconstructs the domain and equality indexes.
+The default universal reading has no existential import: a universally stated
+restriction does not by itself establish a member of its restrictor class.
+An explicit legacy profile changes that behavior and is recorded in the proof
+envelope. All new measurements use existential import disabled.
+
+Tense wrappers distinguish stored and derived flavors; they do not imply a
+clock, interval arithmetic, or automatic temporal lifting of bare rules. Opaque
+abstractions describe content without asserting that the content actually holds.
+These are representation commitments enforced by compilation and reasoning
+tests. They are not claims to cover arbitrary natural-language tense or modal
+logic. In particular, the finite comparison deliberately excludes those forms
+rather than silently flattening them into ordinary predicates.
+
+\subsection{Four outcomes, not four truth values}
+\label{sec:outcomes}
+
+The public result type has four operational classes, with reasons on the two
+non-definitive classes (Table~\ref{tab:outcomes-contract}). Calling this an
+operational interface avoids assigning an epistemic probability or a
+many-valued model-theoretic meaning to a resource failure.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lp{10.5cm}}
+\toprule
+Outcome & Meaning for a supported query in its recorded profile \\
+\midrule
+\True & Evaluation finds a positive derivation, or an accepted trusted
+compute result establishes the query. \\
+\False & Evaluation definitively fails to derive the claim in the current
+closed model, or a supported computation definitively refutes its supplied
+arguments. It is not, in general, a derivation of explicit negation. \\
+\Unknown & Evaluation cannot settle the claim for a recorded reason, such as
+a cycle cut, unavailable compute backend, or non-finite computation. \\
+\Resource & A configured depth or host resource limit prevents a definitive
+answer. The reason distinguishes depth, fuel, or memory. \\
+\bottomrule
+\end{tabular}
+\caption{Operational result contract. An external experiment cutoff is recorded
+outside this table; it is not an engine result.}
+\label{tab:outcomes-contract}
+\end{table}
+
+Negation must preserve this distinction. If proving $A$ remains non-definitive,
+its absence has not been established, so a negation-as-failure check cannot
+turn that uncertainty into a definitive success. Connective combination also
+has decisive cases: a false conjunct settles a conjunction, while a true
+disjunct settles a disjunction. For unresolved combinations, resource exhaustion
+takes precedence over uncertainty. Reasons need not be commutative even when
+the result class is. These finite combinations are the part of the Lean-to-Rust
+correspondence that can be checked exhaustively.
+
+Depth is an evaluation horizon, not a limit on the number of edges appearing
+in a dataset. A transitive rule can compose two already established subpaths.
+Materialization can also establish a complete finite extension that settles a
+query beyond the backward search horizon. Thus a chain longer than the configured
+depth need not return \Resource, and merely increasing the depth does not
+characterize elapsed time. The experiments measure definitive coverage alongside
+latency to expose this distinction.
+
+\subsection{Premise withdrawal and the trusted boundary}
+\label{sec:withdrawal}
+
+Let $R$ be an ordered registry of accepted assertion records with stable IDs, and
+let $L(R)$ be its active subsequence. Ordinary withdrawal changes a record's
+status and reconstructs logical state by replaying $L(R)$, preserving record
+identity. For a query $q$, the intended observational property is
+\begin{equation}
+ \operatorname{eval}(\operatorname{withdraw}(R,i),q,\pi)
+ \simeq
+ \operatorname{eval}(\operatorname{replay}(L(R)\setminus\{i\}),q,\pi),
+ \label{eq:replay}
+\end{equation}
+where $\pi$ fixes the session profile. Verdict equivalence is the central
+observation; stable source IDs permit the evidence to be checked against the
+surviving registry as well. This property does not say that withdrawing one
+support removes every derivation. Alternative support must remain effective.
+
+Some declarations intentionally survive rebuild, including restrictions on
+which predicates may be asserted directly. Equation~\ref{eq:replay} therefore
+applies to ordinary premises under the same admission state and configuration,
+not to treating every administrative declaration as a reversible logical fact.
+Reset and reopen are separate operations. Reopen reconstructs active logical
+records and retains withdrawn IDs; it is not a replay of a complete chronological
+audit log. The new update experiment explicitly supplies its operation sequence
+because retained status alone cannot recover that history.
+
+The compute interface is another boundary of the argument. A backend evaluates
+supplied arguments and its reply is trusted for the current query. The reply is
+not automatically inserted into the durable premise registry. Failure to obtain
+a supported reply remains non-definitive. A computation step in a trace is
+evidence that the engine used that boundary, not a proof that the external
+implementation, input source, or freshness policy is correct. The current
+envelope does not supply a cryptographically authenticated backend transcript.
+
+These qualifications give a precise interpretation of the project's
+\enquote{zero hallucination} description: conclusions are constrained by accepted
+premises, supported inference, the recorded evaluation profile, and explicitly
+trusted computation. The phrase does not certify factual inputs, intended
+natural-language meaning, every implementation path, or unrestricted logical
+completeness. A wrong premise can yield a correctly derived wrong real-world
+decision.

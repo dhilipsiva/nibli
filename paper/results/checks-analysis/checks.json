@@ -1,0 +1,43 @@
+{
+  "claim_register": {
+    "claims": 27,
+    "verified_references": 11
+  },
+  "inputs": {
+    "paper/protocol.freeze.json": "3252f1469a9b2f7f5db1a9b613fc92a98cb298f4e0e9ff65ecb55aaf3bf13f48",
+    "paper/research/claims.json": "727915412ec4078add9f2a3bb6f7fe4015d9c1930bad8755aebea6403e203ca3",
+    "paper/research/sources.json": "31542dc22f30f18f7b696c88801edf79ac917d0491215214692c0c019bbe0ee7",
+    "paper/scripts/analyze.py": "cf0e640d0f5c2d226acdaed697353091c23f9f58786bf2512af6fc851948d406",
+    "paper/scripts/build.py": "b3b77eb765dda27a66344205dbf0aac91bcef9d29b81a0814e527ea7922f9962",
+    "paper/scripts/check_artifact.py": "d7d0ef182ab216ab63b531f7d332e56666354c4b90c80fbf370c37dac1ad17b1",
+    "paper/scripts/package.py": "601f2e5b2584ac86bcf971cca610f5f285972721d56e3d479e7ae1e8b60747af",
+    "paper/scripts/portability.py": "46091c2a32a306f1ba5388b9868dabf64a61e3c75c5989eec45c5d1e1b51a4b2",
+    "paper/scripts/run.py": "f86d26c50a4eded3cccc5195da0bafe9e57ea7e46d301b095a88370adbf77936",
+    "paper/scripts/workloads.py": "42d2f6f7bb4d21a5aae6336b53fd6a4916a02906061cc4cab000ab6e395d22b8",
+    "paper/tests/test_adapters.py": "946a33ca46df17a8c8bde0b74010ada573ddfae4b2acd50e1c1d9ec2350e95e3",
+    "paper/tests/test_evidence.py": "710eb15152be4414bf4d36f38f3d1bfd1831b68516025d5247be0f60274a8a03"
+  },
+  "passed": true,
+  "test_run": {
+    "command": [
+      "/nix/store/3h5k4xy886jlly20qn6n32zfajgvh04b-python3-3.13.12-env/bin/python3",
+      "-m",
+      "unittest",
+      "discover",
+      "-s",
+      "paper/tests",
+      "-v"
+    ],
+    "cpu_system_s": 0.04,
+    "cpu_user_s": 0.27,
+    "cutoff_seconds": 60,
+    "exit_code": 0,
+    "peak_rss_kib": 71100,
+    "started_utc": "2026-09-14T11:45:22.293514+00:00",
+    "status": "ok",
+    "stderr": "paper/results/checks-analysis/check-0.stderr",
+    "stdout": "paper/results/checks-analysis/check-0.stdout",
+    "usage": "paper/results/checks-analysis/check-0.time",
+    "wall_ms": 328.1794340000488
+  }
+}

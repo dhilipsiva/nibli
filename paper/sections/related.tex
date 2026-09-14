@@ -1,0 +1,97 @@
+\section{Related work}
+\label{sec:related}
+
+Nibli combines established mechanisms. The relevant comparison is therefore
+which contracts are integrated and measured, not whether symbolic inference,
+controlled syntax, provenance, or premise updates first appear here.
+Table~\ref{tab:related} summarizes the precedents closest to the research questions.
+Its entries describe published capabilities, not outcomes of a new comparative
+usability or feature-completeness study.
+
+\begin{table}[t]
+\centering\small
+\begin{tabular}{p{2.6cm}p{5.5cm}p{6.0cm}}
+\toprule
+Precedent & Established mechanism & Relationship to this study \\
+\midrule
+Attempto Controlled English & Constrained language translated to formal
+representations, with paraphrasing and reasoning tools. &
+Precedent for determinate input interpretation; KR uses explicit predicate
+calls, and authoring quality is not measured here. \\
+XSB / tabled logic programming & Reuse and completion of subgoal computations;
+tabled negation and support for changing programs. &
+Precedent for demand-driven evaluation; Nibli's bounded path and selective
+completion have different operational limits. \\
+\Souffle\ provenance & Annotations and on-demand proof-tree construction
+within a high-performance Datalog system. &
+Provenance is not unique to Nibli; this experiment measures Nibli envelopes
+and only verdict workloads across systems. \\
+RDFox B/F maintenance & Incremental deletion handling that searches for
+alternative derivations. &
+Precedent for support-sensitive changes; Nibli's measured withdrawal
+reconstructs surviving state. \\
+Cedar & Mechanized executable models, differential random tests, and
+property-based implementation tests. &
+Precedent for combining model proofs with implementation evidence. \\
+Logic-LM & Language-model formalization followed by symbolic solving and
+error-driven refinement. &
+Precedent for solver-assisted language workflows; this study starts with
+accepted formal premises. \\
+\bottomrule
+\end{tabular}
+\caption{Related mechanisms. The accompanying discussion cites the corresponding
+primary publications and distinguishes them from the measured Nibli scope.}
+\label{tab:related}
+\end{table}
+
+Attempto Controlled English (ACE) gives a precisely constrained English surface
+and translates accepted text to discourse representation structures and other
+formal targets. Its surrounding tools include paraphrasing, reasoning, and rule
+execution~\cite{ace}. Nibli's predicate-call syntax pursues a more explicit
+argument-place discipline. That difference can be described structurally, but
+the present experiments do not establish that one surface is easier to author
+or less likely to be misunderstood. A formal parse can be determinate while a
+person still gives it an unintended reading.
+
+Tabled logic programming supplies a long-established account of reusing subgoals,
+resuming suspended computations, and establishing completion. XSB also supports
+negation and incremental treatment of changing programs~\cite{xsb}.
+Nibli's depth-sensitive caches should not be equated with a complete SLG
+evaluation strategy. Nor is combining top-down and bottom-up computation itself
+new: Warren describes their procedural integration through tabled
+evaluation~\cite{topdown-bottomup}. The contribution here is the measured behavior
+of Nibli's particular completion requests, bounded outcomes, state reconstruction,
+and evidence interface.
+
+\Souffle\ synthesizes executable analyzers from Datalog~\cite{souffle}.
+Its provenance work augments evaluation with proof annotations and supports
+construction of partial proof trees for debugging~\cite{souffle-provenance}.
+It would therefore be incorrect to motivate Nibli by claiming that Datalog
+systems do not explain their answers. Our compiled \Souffle\ baseline measures
+ordinary evaluation with provenance disabled; it establishes no relative
+provenance overhead or certificate-strength result. Nibli's envelope binds
+profile, outcome, and trace, while the structural checker remains weaker than
+an independent semantic proof verifier.
+
+The Backward/Forward maintenance algorithm studied with RDFox seeks alternative
+derivations when facts are deleted and compares that work with
+Delete/Rederive~\cite{rdfox-bf}. This is directly relevant to the sole-support
+and alternative-support cases. Nibli instead reconstructs from retained
+assertions on withdrawal. Those designs address related correctness concerns
+with different update mechanisms. The new experiments do not measure RDFox
+updates or support a claim that reconstruction is generally faster.
+
+Cedar's verification-guided development combines proved executable models with
+differential random testing against production code and property-based testing
+of unmodeled components~\cite{cedar}. It is a methodological precedent for
+Nibli's mixed assurance argument, not a baseline theorem prover. In both cases,
+the distinction between a proved model and evidence connecting production
+implementation to that model matters.
+
+Logic-LM uses a language model to formulate a problem, a symbolic solver to
+reason over the formulation, and solver feedback for refinement~\cite{logic-lm}.
+This separates the quality of formalization from the reliability of solving an
+accepted formulation. Nibli has an optional formalization workflow, but no
+language model is in the measured reasoning loop. We make no comparative
+language-model accuracy claim, and solver success alone does not validate an
+intended natural-language meaning.

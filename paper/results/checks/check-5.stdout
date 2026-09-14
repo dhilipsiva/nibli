@@ -1,0 +1,1004 @@
+Removing stale WASM artifacts (release)...
+Building WASI lasna component (wasm32-wasip2, release)...
+Smoke-testing the component's import surface (wasm-tools component wit)...
+PASS: import surface is the documented wasi:cli/wasi:io/insecure-seed + compute-backend set
+Building native host gasnu...
+
+running 5 tests
+test recovery_tests::wasm_ambiguous_commit_requires_reopening ... ok
+test recovery_tests::wasm_failed_replay_never_publishes_its_prefix ... ok
+test recovery_tests::wasm_recovery_replays_original_configuration_order ... ok
+test recovery_tests::wasm_storage_batch_failure_restores_the_committed_session ... ok
+test recovery_tests::wasm_withdrawn_envelopes_reserve_ids_without_decoding_payloads ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 45 filtered out; finished in 128.37s
+
+PASS: retained records survive processes, IDs never reuse, depth/reset/config, assertion atomicity and quoted-body opacity agree
+Smoke-testing gasnu :certify (JSON proof envelope)...
+PASS: :certify binds verdict+trace+profile+version into a coherent JSON envelope
+Smoke-testing gasnu script mode (piped stdin)...
+==================================================
+ Nibli Neuro-Symbolic Engine - V4 Typed Pipeline  
+==================================================
+Compute backend: built-in only (set NIBLI_COMPUTE_ADDR=host:port for external)
+Fuel budget: 50000000000 per command
+Memory limit: 512 MB
+Maximum chain depth: 10
+Existential import: OFF (clean-core — universals do not mint witnesses)
+Loading WebAssembly Component from target/wasm32-wasip2/release/nibli.wasm...
+Ready. Commands: :quit :reset :load <file> :facts [--all] :depth [n] :retract <id> :debug <text> :compute [name] :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :strict [on|off] :existential-import [on|off] :materialize [on|off] :db :help
+Prefix '?' for queries with proof trace, '??' for find, plain text for assertions.
+
+nibli> dog(Adam).
+[Skolem] 1 variable(s) → _ev0 ↦ sk_0
+[Fact #0] Asserted.
+nibli> ? dog(Adam).
+[Query] TRUE
+[Why] Because adam is a dog.
+  ▣ adam is a dog  [given] -> TRUE
+nibli> :facts
+[Facts] 1 active fact(s):
+  #0: dog(Adam). (1 root)
+PASS: gasnu script mode emits echoed prompts + expected markers
+Smoke-testing gasnu trap recovery (fuel trap mid-session)...
+==================================================
+ Nibli Neuro-Symbolic Engine - V4 Typed Pipeline  
+==================================================
+Compute backend: built-in only (set NIBLI_COMPUTE_ADDR=host:port for external)
+Fuel budget: 50000000000 per command
+Memory limit: 512 MB
+Maximum chain depth: 10
+Existential import: OFF (clean-core — universals do not mint witnesses)
+Loading WebAssembly Component from target/wasm32-wasip2/release/nibli.wasm...
+Ready. Commands: :quit :reset :load <file> :facts [--all] :depth [n] :retract <id> :debug <text> :compute [name] :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :strict [on|off] :existential-import [on|off] :materialize [on|off] :db :help
+Prefix '?' for queries with proof trace, '??' for find, plain text for assertions.
+
+nibli> dog(Adam).
+[Skolem] 1 variable(s) → _ev0 ↦ sk_0
+[Fact #0] Asserted.
+nibli> :fuel 1000
+[Fuel] Budget set to 1000
+nibli> ? dog(Adam).
+[Query] RESOURCE_EXCEEDED (fuel)
+  (WASM fuel budget exhausted; raise it with NIBLI_FUEL or :fuel, then re-run)
+nibli> :fuel 10000000000
+[Fuel] Budget set to 10000000000
+nibli> ? dog(Adam).
+[Session] Rebuilding and replaying 4 command(s)...
+[Skolem] 1 variable(s) → _ev0 ↦ sk_0
+[Query] TRUE
+[Why] Because adam is a dog.
+  ▣ adam is a dog  [given] -> TRUE
+nibli> :facts
+[Facts] 1 active fact(s):
+  #0: dog(Adam). (1 root)
+PASS: fuel trap recovered — session rebuilt and replayed
+Smoke-testing gasnu persistent restart-replay (fact-id drift)...
+==================================================
+ Nibli Neuro-Symbolic Engine - V4 Typed Pipeline  
+==================================================
+Compute backend: built-in only (set NIBLI_COMPUTE_ADDR=host:port for external)
+Fuel budget: 50000000000 per command
+Memory limit: 512 MB
+Maximum chain depth: 10
+Existential import: OFF (clean-core — universals do not mint witnesses)
+Loading WebAssembly Component from target/wasm32-wasip2/release/nibli.wasm...
+Persistent store: /tmp/nix-shell.esul48/tmp.Wj4K5xx5wE/nibli-smoke.redb
+Ready. Commands: :quit :reset :load <file> :facts [--all] :depth [n] :retract <id> :debug <text> :compute [name] :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :strict [on|off] :existential-import [on|off] :materialize [on|off] :db :help
+Prefix '?' for queries with proof trace, '??' for find, plain text for assertions.
+
+nibli> dog(Adam).
+[Skolem] 1 variable(s) → _ev0 ↦ sk_0
+[Fact #0] Asserted.
+nibli> dog(Bel).
+[Skolem] 1 variable(s) → _ev0 ↦ sk_1
+[Fact #1] Asserted.
+nibli> dog(Kar).
+[Skolem] 1 variable(s) → _ev0 ↦ sk_2
+[Fact #2] Asserted.
+nibli> :retract 1
+[Retract] Fact #1 retracted. KB rebuilt.
+==================================================
+ Nibli Neuro-Symbolic Engine - V4 Typed Pipeline  
+==================================================
+Compute backend: built-in only (set NIBLI_COMPUTE_ADDR=host:port for external)
+Fuel budget: 50000000000 per command
+Memory limit: 512 MB
+Maximum chain depth: 10
+Existential import: OFF (clean-core — universals do not mint witnesses)
+Loading WebAssembly Component from target/wasm32-wasip2/release/nibli.wasm...
+Persistent store: /tmp/nix-shell.esul48/tmp.Wj4K5xx5wE/nibli-smoke.redb
+[Store] Replaying 3 retained assertion records...
+[Skolem] 1 variable(s) → _ev0 ↦ sk_0
+[Skolem] 1 variable(s) → _ev0 ↦ sk_1
+[Store] Replay complete (2 active facts)
+Ready. Commands: :quit :reset :load <file> :facts [--all] :depth [n] :retract <id> :debug <text> :compute [name] :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :strict [on|off] :existential-import [on|off] :materialize [on|off] :db :help
+Prefix '?' for queries with proof trace, '??' for find, plain text for assertions.
+
+nibli> :facts
+[Facts] 2 active fact(s):
+  #0: dog(Adam). (1 root)
+  #2: dog(Kar). (1 root)
+nibli> :retract 2
+[Retract] Fact #2 retracted. KB rebuilt.
+nibli> ? dog(Kar).
+[Query] FALSE
+[Why] No example could be found that satisfies the query.
+[Note: FALSE is closed-world — not derivable from the KB, not a proof of the negation]
+  ∃ No witness found -> FALSE
+PASS: persistent restart-replay keeps live==store fact-ids (gap preserved, high store id retractable)
+Smoke-testing gasnu statement split (N independent facts + buffer replay)...
+==================================================
+ Nibli Neuro-Symbolic Engine - V4 Typed Pipeline  
+==================================================
+Compute backend: built-in only (set NIBLI_COMPUTE_ADDR=host:port for external)
+Fuel budget: 50000000000 per command
+Memory limit: 512 MB
+Maximum chain depth: 10
+Existential import: OFF (clean-core — universals do not mint witnesses)
+Loading WebAssembly Component from target/wasm32-wasip2/release/nibli.wasm...
+Persistent store: /tmp/nix-shell.esul48/tmp.9lhVGHsB60/nibli-smoke.redb
+Ready. Commands: :quit :reset :load <file> :facts [--all] :depth [n] :retract <id> :debug <text> :compute [name] :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :strict [on|off] :existential-import [on|off] :materialize [on|off] :db :help
+Prefix '?' for queries with proof trace, '??' for find, plain text for assertions.
+
+nibli> dog(Adam). cat(Betis).
+[Skolem] 1 variable(s) → _ev0 ↦ sk_0
+[Skolem] 1 variable(s) → _ev1 ↦ sk_1
+[Fact #0] Asserted.
+[Fact #1] Asserted.
+nibli> :facts
+[Facts] 2 active fact(s):
+  #0: dog(Adam). cat(Betis). (1 root)
+  #1: dog(Adam). cat(Betis). (1 root)
+nibli> :retract 0
+[Retract] Fact #0 retracted. KB rebuilt.
+nibli> ? dog(Adam).
+[Query] FALSE
+[Why] No example could be found that satisfies the query.
+[Note: FALSE is closed-world — not derivable from the KB, not a proof of the negation]
+  ∃ No witness found -> FALSE
+nibli> ? cat(Betis).
+[Query] TRUE
+[Why] Because betis is a cat.
+  ▣ betis is a cat  [given] -> TRUE
+==================================================
+ Nibli Neuro-Symbolic Engine - V4 Typed Pipeline  
+==================================================
+Compute backend: built-in only (set NIBLI_COMPUTE_ADDR=host:port for external)
+Fuel budget: 50000000000 per command
+Memory limit: 512 MB
+Maximum chain depth: 10
+Existential import: OFF (clean-core — universals do not mint witnesses)
+Loading WebAssembly Component from target/wasm32-wasip2/release/nibli.wasm...
+Persistent store: /tmp/nix-shell.esul48/tmp.9lhVGHsB60/nibli-smoke.redb
+[Store] Replaying 2 retained assertion records...
+[Skolem] 1 variable(s) → _ev1 ↦ sk_0
+[Store] Replay complete (1 active facts)
+Ready. Commands: :quit :reset :load <file> :facts [--all] :depth [n] :retract <id> :debug <text> :compute [name] :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :strict [on|off] :existential-import [on|off] :materialize [on|off] :db :help
+Prefix '?' for queries with proof trace, '??' for find, plain text for assertions.
+
+nibli> :facts
+[Facts] 1 active fact(s):
+  #1: dog(Adam). cat(Betis). (1 root)
+nibli> ? cat(Betis).
+[Query] TRUE
+[Why] Because betis is a cat.
+  ▣ betis is a cat  [given] -> TRUE
+==================================================
+ Nibli Neuro-Symbolic Engine - V4 Typed Pipeline  
+==================================================
+Compute backend: built-in only (set NIBLI_COMPUTE_ADDR=host:port for external)
+Fuel budget: 50000000000 per command
+Memory limit: 512 MB
+Maximum chain depth: 10
+Existential import: OFF (clean-core — universals do not mint witnesses)
+Loading WebAssembly Component from target/wasm32-wasip2/release/nibli.wasm...
+Ready. Commands: :quit :reset :load <file> :facts [--all] :depth [n] :retract <id> :debug <text> :compute [name] :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :strict [on|off] :existential-import [on|off] :materialize [on|off] :db :help
+Prefix '?' for queries with proof trace, '??' for find, plain text for assertions.
+
+nibli> dog(Adam) & cat(Adam).
+[Skolem] 2 variable(s) → _ev0 ↦ sk_0, _ev1 ↦ sk_1
+[Fact #0] Asserted.
+nibli> :facts
+[Facts] 1 active fact(s):
+  #0: dog(Adam) & cat(Adam). (1 root)
+PASS: nibli KR statements split into independent, per-statement-retractable, buffer-replayed facts; conjunctions stay whole
+Smoke-testing gasnu query-only exact counts (atomic assert + replay)...
+==================================================
+ Nibli Neuro-Symbolic Engine - V4 Typed Pipeline  
+==================================================
+Compute backend: built-in only (set NIBLI_COMPUTE_ADDR=host:port for external)
+Fuel budget: 50000000000 per command
+Memory limit: 512 MB
+Maximum chain depth: 10
+Existential import: OFF (clean-core — universals do not mint witnesses)
+Loading WebAssembly Component from target/wasm32-wasip2/release/nibli.wasm...
+Persistent store: /tmp/nix-shell.esul48/tmp.YqG8ndSSA7/nibli-count.redb
+Ready. Commands: :quit :reset :load <file> :facts [--all] :depth [n] :retract <id> :debug <text> :compute [name] :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :strict [on|off] :existential-import [on|off] :materialize [on|off] :db :help
+Prefix '?' for queries with proof trace, '??' for find, plain text for assertions.
+
+nibli> person(Adam). big(exactly 1 dog).
+[Reasoning Error] exact-count formulas (`exactly N` and `no`) are query-only and cannot be asserted: the knowledge base does not persist or enforce cardinality constraints. Assert ordinary facts, then evaluate the exact-count formula through a query.
+nibli> :facts
+[Facts] Knowledge base is empty.
+nibli> ? person(Adam).
+[Query] FALSE
+[Why] No example could be found that satisfies the query.
+[Note: FALSE is closed-world — not derivable from the KB, not a proof of the negation]
+  ∃ No witness found -> FALSE
+nibli> ? big(no dog).
+[Query] TRUE
+  # Count: expected 0, got 0 -> TRUE
+nibli> dog(Bel) & big(Bel).
+[Skolem] 2 variable(s) → _ev0 ↦ sk_0, _ev1 ↦ sk_1
+[Fact #0] Asserted.
+nibli> ? big(exactly 1 dog).
+[Query] TRUE
+[Why] Because bel is a dog; and because bel is big.
+  # Count: expected 1, got 1 -> TRUE
+    ∧ Conjunction -> TRUE
+      ∃ Witness: _ev1 = sk_0 [generated-witness] -> TRUE
+        ∧ Conjunction -> TRUE
+          ∧ Conjunction -> TRUE
+            ▣ Asserted: dog [assertions: #0 dog(Bel) & big(Bel).] -> TRUE
+            ▣ Asserted: dog.dog(bel) [assertions: #0 dog(Bel) & big(Bel).] -> TRUE
+          ▣ Asserted: dog.breed(_) [assertions: #0 dog(Bel) & big(Bel).] -> TRUE
+      ∃ Witness: _ev0 = sk_1 [generated-witness] -> TRUE
+        ∧ Conjunction -> TRUE
+          ∧ Conjunction -> TRUE
+            ∧ Conjunction -> TRUE
+              ▣ Asserted: big [assertions: #0 dog(Bel) & big(Bel).] -> TRUE
+              ▣ Asserted: big.big(bel) [assertions: #0 dog(Bel) & big(Bel).] -> TRUE
+            ▣ Asserted: big.dimension(_) [assertions: #0 dog(Bel) & big(Bel).] -> TRUE
+          ▣ Asserted: big.standard(_) [assertions: #0 dog(Bel) & big(Bel).] -> TRUE
+nibli> :facts
+[Facts] 1 active fact(s):
+  #0: dog(Bel) & big(Bel). (1 root)
+==================================================
+ Nibli Neuro-Symbolic Engine - V4 Typed Pipeline  
+==================================================
+Compute backend: built-in only (set NIBLI_COMPUTE_ADDR=host:port for external)
+Fuel budget: 50000000000 per command
+Memory limit: 512 MB
+Maximum chain depth: 10
+Existential import: OFF (clean-core — universals do not mint witnesses)
+Loading WebAssembly Component from target/wasm32-wasip2/release/nibli.wasm...
+Persistent store: /tmp/nix-shell.esul48/tmp.YqG8ndSSA7/nibli-count.redb
+[Store] Replaying 1 retained assertion records...
+[Skolem] 2 variable(s) → _ev0 ↦ sk_0, _ev1 ↦ sk_1
+[Store] Replay complete (1 active facts)
+Ready. Commands: :quit :reset :load <file> :facts [--all] :depth [n] :retract <id> :debug <text> :compute [name] :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :strict [on|off] :existential-import [on|off] :materialize [on|off] :db :help
+Prefix '?' for queries with proof trace, '??' for find, plain text for assertions.
+
+nibli> ? big(exactly 1 dog).
+[Query] TRUE
+[Why] Because bel is a dog; and because bel is big.
+  # Count: expected 1, got 1 -> TRUE
+    ∧ Conjunction -> TRUE
+      ∃ Witness: _ev1 = sk_0 [generated-witness] -> TRUE
+        ∧ Conjunction -> TRUE
+          ∧ Conjunction -> TRUE
+            ▣ Asserted: dog [assertions: #0 dog(Bel) & big(Bel).] -> TRUE
+            ▣ Asserted: dog.dog(bel) [assertions: #0 dog(Bel) & big(Bel).] -> TRUE
+          ▣ Asserted: dog.breed(_) [assertions: #0 dog(Bel) & big(Bel).] -> TRUE
+      ∃ Witness: _ev0 = sk_1 [generated-witness] -> TRUE
+        ∧ Conjunction -> TRUE
+          ∧ Conjunction -> TRUE
+            ∧ Conjunction -> TRUE
+              ▣ Asserted: big [assertions: #0 dog(Bel) & big(Bel).] -> TRUE
+              ▣ Asserted: big.big(bel) [assertions: #0 dog(Bel) & big(Bel).] -> TRUE
+            ▣ Asserted: big.dimension(_) [assertions: #0 dog(Bel) & big(Bel).] -> TRUE
+          ▣ Asserted: big.standard(_) [assertions: #0 dog(Bel) & big(Bel).] -> TRUE
+nibli> :facts
+[Facts] 1 active fact(s):
+  #0: dog(Bel) & big(Bel). (1 root)
+PASS: exact counts are query-only and mixed assertion rejection is atomic across WIT + persistence
+Smoke-testing gasnu schema v2→v3 migration (Text→Buffer recompile-once)...
+==================================================
+ Nibli Neuro-Symbolic Engine - V4 Typed Pipeline  
+==================================================
+Compute backend: built-in only (set NIBLI_COMPUTE_ADDR=host:port for external)
+Fuel budget: 50000000000 per command
+Memory limit: 512 MB
+Maximum chain depth: 10
+Existential import: OFF (clean-core — universals do not mint witnesses)
+Loading WebAssembly Component from target/wasm32-wasip2/release/nibli.wasm...
+Persistent store: /tmp/nix-shell.esul48/tmp.PjVH6yfWdy/nibli-v2.redb
+[Store] Migrated 1 legacy text fact(s) → v3 buffers.
+[Store] Replaying 1 retained assertion records...
+[Skolem] 1 variable(s) → _ev0 ↦ sk_0
+[Store] Replay complete (1 active facts)
+Ready. Commands: :quit :reset :load <file> :facts [--all] :depth [n] :retract <id> :debug <text> :compute [name] :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :strict [on|off] :existential-import [on|off] :materialize [on|off] :db :help
+Prefix '?' for queries with proof trace, '??' for find, plain text for assertions.
+
+nibli> :facts
+[Facts] 1 active fact(s):
+  #5: dog(Adam). (1 root)
+nibli> ? dog(Adam).
+[Query] TRUE
+[Why] Because adam is a dog.
+  ▣ adam is a dog  [given] -> TRUE
+==================================================
+ Nibli Neuro-Symbolic Engine - V4 Typed Pipeline  
+==================================================
+Compute backend: built-in only (set NIBLI_COMPUTE_ADDR=host:port for external)
+Fuel budget: 50000000000 per command
+Memory limit: 512 MB
+Maximum chain depth: 10
+Existential import: OFF (clean-core — universals do not mint witnesses)
+Loading WebAssembly Component from target/wasm32-wasip2/release/nibli.wasm...
+Persistent store: /tmp/nix-shell.esul48/tmp.PjVH6yfWdy/nibli-v2.redb
+[Store] Replaying 1 retained assertion records...
+[Skolem] 1 variable(s) → _ev0 ↦ sk_0
+[Store] Replay complete (1 active facts)
+Ready. Commands: :quit :reset :load <file> :facts [--all] :depth [n] :retract <id> :debug <text> :compute [name] :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :strict [on|off] :existential-import [on|off] :materialize [on|off] :db :help
+Prefix '?' for queries with proof trace, '??' for find, plain text for assertions.
+
+nibli> ? dog(Adam).
+[Query] TRUE
+[Why] Because adam is a dog.
+  ▣ adam is a dog  [given] -> TRUE
+==================================================
+ Nibli Neuro-Symbolic Engine - V4 Typed Pipeline  
+==================================================
+Compute backend: built-in only (set NIBLI_COMPUTE_ADDR=host:port for external)
+Fuel budget: 50000000000 per command
+Memory limit: 512 MB
+Maximum chain depth: 10
+Existential import: OFF (clean-core — universals do not mint witnesses)
+Loading WebAssembly Component from target/wasm32-wasip2/release/nibli.wasm...
+Persistent store: /tmp/nix-shell.esul48/tmp.PjVH6yfWdy/nibli-v2-bad.redb
+Error: [Store] cannot upgrade the database to schema v3: schema v2→v3 migration failed on fact 5: [Syntax Error] line 1:21: expected a predicate word or an argument list `( … )`. The database is unchanged (still v2) — recover with the v0.1-lojban-final binary or start fresh.
+
+Stack backtrace:
+   0: <unknown>
+   1: <unknown>
+   2: <unknown>
+   3: <unknown>
+   4: <unknown>
+   5: <unknown>
+   6: __libc_start_call_main
+   7: __libc_start_main_alias_2
+   8: <unknown>
+PASS: schema v2→v3 migrates Text→Buffer (replays TRUE, stamps v3) and fails closed non-destructively on non-KR rows
+Smoke-testing gasnu NAF-dependent proof note (WIT proof-trace flag)...
+==================================================
+ Nibli Neuro-Symbolic Engine - V4 Typed Pipeline  
+==================================================
+Compute backend: built-in only (set NIBLI_COMPUTE_ADDR=host:port for external)
+Fuel budget: 50000000000 per command
+Memory limit: 512 MB
+Maximum chain depth: 10
+Existential import: OFF (clean-core — universals do not mint witnesses)
+Loading WebAssembly Component from target/wasm32-wasip2/release/nibli.wasm...
+Ready. Commands: :quit :reset :load <file> :facts [--all] :depth [n] :retract <id> :debug <text> :compute [name] :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :strict [on|off] :existential-import [on|off] :materialize [on|off] :db :help
+Prefix '?' for queries with proof trace, '??' for find, plain text for assertions.
+
+nibli> ? ~dog(Adam).
+[Query] TRUE
+[Note: result depends on negation-as-failure (closed-world assumption)]
+  ¬ Negation -> TRUE
+    ∃ No witness found -> FALSE
+PASS: NAF-dependent proof carries the closed-world note through the WIT proof-trace
+Smoke-testing gasnu closed-world FALSE note (WIT proof-trace cwa-false flag)...
+==================================================
+ Nibli Neuro-Symbolic Engine - V4 Typed Pipeline  
+==================================================
+Compute backend: built-in only (set NIBLI_COMPUTE_ADDR=host:port for external)
+Fuel budget: 50000000000 per command
+Memory limit: 512 MB
+Maximum chain depth: 10
+Existential import: OFF (clean-core — universals do not mint witnesses)
+Loading WebAssembly Component from target/wasm32-wasip2/release/nibli.wasm...
+Ready. Commands: :quit :reset :load <file> :facts [--all] :depth [n] :retract <id> :debug <text> :compute [name] :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :strict [on|off] :existential-import [on|off] :materialize [on|off] :db :help
+Prefix '?' for queries with proof trace, '??' for find, plain text for assertions.
+
+nibli> ? dog(Adam).
+[Query] FALSE
+[Why] No example could be found that satisfies the query.
+[Note: FALSE is closed-world — not derivable from the KB, not a proof of the negation]
+  ∃ No witness found -> FALSE
+==================================================
+ Nibli Neuro-Symbolic Engine - V4 Typed Pipeline  
+==================================================
+Compute backend: built-in only (set NIBLI_COMPUTE_ADDR=host:port for external)
+Fuel budget: 50000000000 per command
+Memory limit: 512 MB
+Maximum chain depth: 10
+Existential import: OFF (clean-core — universals do not mint witnesses)
+Loading WebAssembly Component from target/wasm32-wasip2/release/nibli.wasm...
+Ready. Commands: :quit :reset :load <file> :facts [--all] :depth [n] :retract <id> :debug <text> :compute [name] :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :strict [on|off] :existential-import [on|off] :materialize [on|off] :db :help
+Prefix '?' for queries with proof trace, '??' for find, plain text for assertions.
+
+nibli> ? num_equal(5, 3).
+[Query] FALSE
+[Why] Decided by computation: num_equal is false (computed locally). This is a decision about the values, not closed-world non-derivability.
+  ⊢ num_equal  [computed (local)] -> FALSE
+PASS: closed-world FALSE carries the caveat; numeric-decided FALSE does not
+Smoke-testing gasnu :debug WASM round-trip (typed buffer -> host render)...
+==================================================
+ Nibli Neuro-Symbolic Engine - V4 Typed Pipeline  
+==================================================
+Compute backend: built-in only (set NIBLI_COMPUTE_ADDR=host:port for external)
+Fuel budget: 50000000000 per command
+Memory limit: 512 MB
+Maximum chain depth: 10
+Existential import: OFF (clean-core — universals do not mint witnesses)
+Loading WebAssembly Component from target/wasm32-wasip2/release/nibli.wasm...
+Ready. Commands: :quit :reset :load <file> :facts [--all] :depth [n] :retract <id> :debug <text> :compute [name] :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :strict [on|off] :existential-import [on|off] :materialize [on|off] :db :help
+Prefix '?' for queries with proof trace, '??' for find, plain text for assertions.
+
+nibli> :debug animal(every dog).
+[Logic]
+∀ _v0:
+  Or:
+    ¬:
+      ∃ _ev1:
+        And:
+          And:
+            dog(_ev1)
+            dog_x1(_ev1, _v0)
+          dog_x2(_ev1, something)
+    ∃ _ev0:
+      And:
+        And:
+          animal(_ev0)
+          animal_x1(_ev0, _v0)
+        animal_x2(_ev0, something)
+
+[English] For every X, if X is a dog, then X is an animal.
+PASS: :debug renders the typed buffer host-side (tree + English), no S-expr
+Smoke-testing gasnu collapsed proof (? default) + :proof-verbose escape hatch...
+==================================================
+ Nibli Neuro-Symbolic Engine - V4 Typed Pipeline  
+==================================================
+Compute backend: built-in only (set NIBLI_COMPUTE_ADDR=host:port for external)
+Fuel budget: 50000000000 per command
+Memory limit: 512 MB
+Maximum chain depth: 10
+Existential import: OFF (clean-core — universals do not mint witnesses)
+Loading WebAssembly Component from target/wasm32-wasip2/release/nibli.wasm...
+Ready. Commands: :quit :reset :load <file> :facts [--all] :depth [n] :retract <id> :debug <text> :compute [name] :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :strict [on|off] :existential-import [on|off] :materialize [on|off] :db :help
+Prefix '?' for queries with proof trace, '??' for find, plain text for assertions.
+
+nibli> dog(Rex).
+[Skolem] 1 variable(s) → _ev0 ↦ sk_0
+[Fact #0] Asserted.
+nibli> animal(every dog).
+[Skolem] 2 variable(s) → _ev0 ↦ sk_2(∀-dependent), _ev1 ↦ sk_1(∀-dependent)
+[Rule] Compiled ∀_v0 to backward-chaining rule
+[Fact #1] Asserted.
+nibli> ? animal(Rex).
+[Query] TRUE
+[Why] Because rex is a dog, rex is an animal.
+  ⊢ rex is an animal  [by the rule: every dog is an animal] -> TRUE
+    ▣ rex is a dog  [given] -> TRUE
+PASS: ? shows the clean collapsed macro-logical DAG
+==================================================
+ Nibli Neuro-Symbolic Engine - V4 Typed Pipeline  
+==================================================
+Compute backend: built-in only (set NIBLI_COMPUTE_ADDR=host:port for external)
+Fuel budget: 50000000000 per command
+Memory limit: 512 MB
+Maximum chain depth: 10
+Existential import: OFF (clean-core — universals do not mint witnesses)
+Loading WebAssembly Component from target/wasm32-wasip2/release/nibli.wasm...
+Ready. Commands: :quit :reset :load <file> :facts [--all] :depth [n] :retract <id> :debug <text> :compute [name] :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :strict [on|off] :existential-import [on|off] :materialize [on|off] :db :help
+Prefix '?' for queries with proof trace, '??' for find, plain text for assertions.
+
+nibli> dog(Rex).
+[Skolem] 1 variable(s) → _ev0 ↦ sk_0
+[Fact #0] Asserted.
+nibli> animal(every dog).
+[Skolem] 2 variable(s) → _ev0 ↦ sk_2(∀-dependent), _ev1 ↦ sk_1(∀-dependent)
+[Rule] Compiled ∀_v0 to backward-chaining rule
+[Fact #1] Asserted.
+nibli> :proof-verbose animal(Rex).
+[Query] TRUE
+[Why] Because rex is a dog, rex is an animal.
+  Exists: _ev0 = sk_2(rex) [generated-witness] -> TRUE
+    Conjunction -> TRUE
+      Conjunction -> TRUE
+        Rule (dog → animal): animal(#2(rex)) [rule sources: #1/0 animal(every dog).] -> TRUE
+          Fact: dog [assertions: #0 dog(Rex).] -> TRUE
+          Fact: dog.dog(rex) [assertions: #0 dog(Rex).] -> TRUE
+          Fact: dog.breed(_) [assertions: #0 dog(Rex).] -> TRUE
+        Rule (dog → animal): animal.animal(#2(rex), rex) [rule sources: #1/0 animal(every dog).] -> TRUE
+          (see above): dog -> TRUE
+            Fact: dog [assertions: #0 dog(Rex).] -> TRUE
+          (see above): dog.dog(rex) -> TRUE
+            Fact: dog.dog(rex) [assertions: #0 dog(Rex).] -> TRUE
+          (see above): dog.breed(_) -> TRUE
+            Fact: dog.breed(_) [assertions: #0 dog(Rex).] -> TRUE
+      Rule (dog → animal): animal.species(#2(rex), _) [rule sources: #1/0 animal(every dog).] -> TRUE
+        (see above): dog -> TRUE
+          Fact: dog [assertions: #0 dog(Rex).] -> TRUE
+        (see above): dog.dog(rex) -> TRUE
+          Fact: dog.dog(rex) [assertions: #0 dog(Rex).] -> TRUE
+        (see above): dog.breed(_) -> TRUE
+          Fact: dog.breed(_) [assertions: #0 dog(Rex).] -> TRUE
+PASS: :proof-verbose shows the full role-level trace
+Smoke-testing gasnu backend-unavailable verdict (no compute backend configured)...
+==================================================
+ Nibli Neuro-Symbolic Engine - V4 Typed Pipeline  
+==================================================
+Compute backend: built-in only (set NIBLI_COMPUTE_ADDR=host:port for external)
+Fuel budget: 50000000000 per command
+Memory limit: 512 MB
+Maximum chain depth: 10
+Existential import: OFF (clean-core — universals do not mint witnesses)
+Loading WebAssembly Component from target/wasm32-wasip2/release/nibli.wasm...
+Ready. Commands: :quit :reset :load <file> :facts [--all] :depth [n] :retract <id> :debug <text> :compute [name] :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :strict [on|off] :existential-import [on|off] :materialize [on|off] :db :help
+Prefix '?' for queries with proof trace, '??' for find, plain text for assertions.
+
+nibli> :compute exponential
+[Compute] Registered corpus predicate 'exponential' for external dispatch (bare :compute shows its canonical compiled relation)
+nibli> ? exponential(8, 2, 3).
+[Query] UNKNOWN (backend-unavailable)
+[Why] No verdict: the external compute backend was unavailable, so a required computation could not be evaluated.
+  ⊢ exponential  [computed] -> FALSE
+PASS: an unreachable compute backend yields UNKNOWN (backend-unavailable), not FALSE
+Smoke-testing gasnu query-only reference compute names (assertion ingress)...
+==================================================
+ Nibli Neuro-Symbolic Engine - V4 Typed Pipeline  
+==================================================
+Compute backend: built-in only (set NIBLI_COMPUTE_ADDR=host:port for external)
+Fuel budget: 50000000000 per command
+Memory limit: 512 MB
+Maximum chain depth: 10
+Existential import: OFF (clean-core — universals do not mint witnesses)
+Loading WebAssembly Component from target/wasm32-wasip2/release/nibli.wasm...
+Persistent store: /tmp/nix-shell.esul48/tmp.Ve8xyp6S54/nibli-compute.redb
+Ready. Commands: :quit :reset :load <file> :facts [--all] :depth [n] :retract <id> :debug <text> :compute [name] :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :strict [on|off] :existential-import [on|off] :materialize [on|off] :db :help
+Prefix '?' for queries with proof trace, '??' for find, plain text for assertions.
+
+nibli> exponential(2, 3, 8).
+[Reasoning Error] `exponential` is reserved for EXTERNAL COMPUTE and is query-only: a query dispatches it to the registered compute backend (`:compute exponential` plus a backend wiring such as `enable_compute_backend`) and the computed verdict wins, so a stored `exponential` fact or rule literal would never be consulted — unreachable the moment the name is registered anywhere. Assert ordinary facts, then evaluate `exponential(…)` through a query. (Quoted content such as `fact { exponential(8, 2, 3) }` remains assertable.)
+nibli> person(Adam). logarithm(3, 8, 2).
+[Reasoning Error] `logarithm` is reserved for EXTERNAL COMPUTE and is query-only: a query dispatches it to the registered compute backend (`:compute logarithm` plus a backend wiring such as `enable_compute_backend`) and the computed verdict wins, so a stored `logarithm` fact or rule literal would never be consulted — unreachable the moment the name is registered anywhere. Assert ordinary facts, then evaluate `logarithm(…)` through a query. (Quoted content such as `fact { logarithm(8, 2, 3) }` remains assertable.)
+nibli> ? person(Adam).
+[Query] FALSE
+[Why] No example could be found that satisfies the query.
+[Note: FALSE is closed-world — not derivable from the KB, not a proof of the negation]
+  ∃ No witness found -> FALSE
+nibli> :facts
+[Facts] Knowledge base is empty.
+nibli> person(Adam).
+[Skolem] 1 variable(s) → _ev0 ↦ sk_0
+[Fact #0] Asserted.
+nibli> :facts
+[Facts] 1 active fact(s):
+  #0: person(Adam). (1 root)
+==================================================
+ Nibli Neuro-Symbolic Engine - V4 Typed Pipeline  
+==================================================
+Compute backend: built-in only (set NIBLI_COMPUTE_ADDR=host:port for external)
+Fuel budget: 50000000000 per command
+Memory limit: 512 MB
+Maximum chain depth: 10
+Existential import: OFF (clean-core — universals do not mint witnesses)
+Loading WebAssembly Component from target/wasm32-wasip2/release/nibli.wasm...
+Persistent store: /tmp/nix-shell.esul48/tmp.Ve8xyp6S54/nibli-compute.redb
+[Store] Replaying 1 retained assertion records...
+[Skolem] 1 variable(s) → _ev0 ↦ sk_0
+[Store] Replay complete (1 active facts)
+Ready. Commands: :quit :reset :load <file> :facts [--all] :depth [n] :retract <id> :debug <text> :compute [name] :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :strict [on|off] :existential-import [on|off] :materialize [on|off] :db :help
+Prefix '?' for queries with proof trace, '??' for find, plain text for assertions.
+
+nibli> :facts
+[Facts] 1 active fact(s):
+  #0: person(Adam). (1 root)
+PASS: reference compute names are query-only at assertion ingress, atomically, across WIT + persistence
+Smoke-testing gasnu corpus-scoped, fallible :compute...
+==================================================
+ Nibli Neuro-Symbolic Engine - V4 Typed Pipeline  
+==================================================
+Compute backend: built-in only (set NIBLI_COMPUTE_ADDR=host:port for external)
+Fuel budget: 50000000000 per command
+Memory limit: 512 MB
+Maximum chain depth: 10
+Existential import: OFF (clean-core — universals do not mint witnesses)
+Loading WebAssembly Component from target/wasm32-wasip2/release/nibli.wasm...
+Ready. Commands: :quit :reset :load <file> :facts [--all] :depth [n] :retract <id> :debug <text> :compute [name] :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :strict [on|off] :existential-import [on|off] :materialize [on|off] :db :help
+Prefix '?' for queries with proof trace, '??' for find, plain text for assertions.
+
+nibli> :compute external_probe
+[Reasoning Error] cannot register `external_probe` for external compute: not a corpus-resolvable nibli KR predicate. Compute registration selects dispatch for existing vocabulary; it does not declare a name or infer arity. Arbitrary compute names require an explicit raw ComputeNode through the native KnowledgeBase API, or a future explicit vocabulary/schema extension.
+nibli> ? external_probe(Sample).
+[Syntax Error] line 1:1: unknown predicate "external_probe": not a corpus name — unknown names are a compile error, never an arity-2 guess (NIBLI_KR §13)
+nibli> person(Adam).
+[Skolem] 1 variable(s) → _ev0 ↦ sk_0
+[Fact #0] Asserted.
+nibli> :compute person
+[Reasoning Error] cannot register `person` for external compute: canonical relation `person` is referenced by 1 live stored statement(s) (#0). A registered name is computed by the backend at query time, so its stored extension would become unreachable — retract the listed statements (or reset) first, then register, then re-ask them as queries.
+nibli> :facts
+[Facts] 1 active fact(s):
+  #0: person(Adam). (1 root)
+nibli> :retract 0
+[Retract] Fact #0 retracted. KB rebuilt.
+nibli> :compute person
+[Compute] Registered corpus predicate 'person' for external dispatch (bare :compute shows its canonical compiled relation)
+nibli> :compute
+[Compute] Registered: person, product, quotient, sum
+[Compute] product, sum, quotient are built-in (local arithmetic first); other registered corpus relations dispatch to the external backend
+[Compute] Registration routes existing KR vocabulary; it does not declare names or infer arity.
+nibli> ? person(Adam).
+[Query] UNKNOWN (backend-unavailable)
+[Why] No verdict: the external compute backend was unavailable, so a required computation could not be evaluated.
+  ⊢ person  [computed] -> FALSE
+nibli> ? person(Adam, Bel).
+[Syntax Error] line 1:14: too many arguments for "person" (arity 1)
+nibli> :reset
+[Reset] Knowledge base cleared.
+nibli> :fuel 1000
+[Fuel] Budget set to 1000
+nibli> ? dog(Adam).
+[Query] RESOURCE_EXCEEDED (fuel)
+  (WASM fuel budget exhausted; raise it with NIBLI_FUEL or :fuel, then re-run)
+nibli> :fuel 10000000000
+[Fuel] Budget set to 10000000000
+nibli> person(Bel).
+[Session] Rebuilding and replaying 4 command(s)...
+[Reasoning Error] compute formulas are query-only and cannot be asserted: executable ComputeNode content is evaluated only during a query proof and is not persisted as a fact or rule literal. Assert ordinary facts, then evaluate the compute formula through a query.
+PASS: text registration is corpus-scoped and arity-safe; live references block it; accepted routing survives :reset + trap rebuild
+Smoke-testing gasnu NIBLI_QUIET mode (suppress [Fact]/[Skolem]/[Rule], keep proof)...
+==================================================
+ Nibli Neuro-Symbolic Engine - V4 Typed Pipeline  
+==================================================
+Compute backend: built-in only (set NIBLI_COMPUTE_ADDR=host:port for external)
+Fuel budget: 50000000000 per command
+Memory limit: 512 MB
+Maximum chain depth: 10
+Existential import: OFF (clean-core — universals do not mint witnesses)
+Loading WebAssembly Component from target/wasm32-wasip2/release/nibli.wasm...
+Ready. Commands: :quit :reset :load <file> :facts [--all] :depth [n] :retract <id> :debug <text> :compute [name] :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :strict [on|off] :existential-import [on|off] :materialize [on|off] :db :help
+Prefix '?' for queries with proof trace, '??' for find, plain text for assertions.
+
+nibli> dog(Adam).
+nibli> animal(every dog).
+nibli> ? animal(Adam).
+[Query] TRUE
+[Why] Because adam is a dog, adam is an animal.
+  ⊢ adam is an animal  [by the rule: every dog is an animal] -> TRUE
+    ▣ adam is a dog  [given] -> TRUE
+==================================================
+ Nibli Neuro-Symbolic Engine - V4 Typed Pipeline  
+==================================================
+Compute backend: built-in only (set NIBLI_COMPUTE_ADDR=host:port for external)
+Fuel budget: 50000000000 per command
+Memory limit: 512 MB
+Maximum chain depth: 10
+Existential import: OFF (clean-core — universals do not mint witnesses)
+Loading WebAssembly Component from target/wasm32-wasip2/release/nibli.wasm...
+Ready. Commands: :quit :reset :load <file> :facts [--all] :depth [n] :retract <id> :debug <text> :compute [name] :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :strict [on|off] :existential-import [on|off] :materialize [on|off] :db :help
+Prefix '?' for queries with proof trace, '??' for find, plain text for assertions.
+
+nibli> dog(Adam).
+[Skolem] 1 variable(s) → _ev0 ↦ sk_0
+[Fact #0] Asserted.
+nibli> animal(every dog).
+[Skolem] 2 variable(s) → _ev0 ↦ sk_2(∀-dependent), _ev1 ↦ sk_1(∀-dependent)
+[Rule] Compiled ∀_v0 to backward-chaining rule
+[Fact #1] Asserted.
+nibli> ? animal(Adam).
+[Query] TRUE
+[Why] Because adam is a dog, adam is an animal.
+  ⊢ adam is an animal  [by the rule: every dog is an animal] -> TRUE
+    ▣ adam is a dog  [given] -> TRUE
+PASS: NIBLI_QUIET=1 suppresses [Fact]/[Skolem]/[Rule] but keeps the verdict + proof; default stays verbose
+Smoke-testing gasnu strict mode (env + :strict toggle plumbing)...
+==================================================
+ Nibli Neuro-Symbolic Engine - V4 Typed Pipeline  
+==================================================
+Compute backend: built-in only (set NIBLI_COMPUTE_ADDR=host:port for external)
+Fuel budget: 50000000000 per command
+Memory limit: 512 MB
+Maximum chain depth: 10
+Strict mode: ON (arity/constraint violations reject)
+Existential import: OFF (clean-core — universals do not mint witnesses)
+Loading WebAssembly Component from target/wasm32-wasip2/release/nibli.wasm...
+Ready. Commands: :quit :reset :load <file> :facts [--all] :depth [n] :retract <id> :debug <text> :compute [name] :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :strict [on|off] :existential-import [on|off] :materialize [on|off] :db :help
+Prefix '?' for queries with proof trace, '??' for find, plain text for assertions.
+
+nibli> :strict
+[Strict] ON (arity/constraint violations reject the offending fact)
+nibli> dog(Adam).
+[Skolem] 1 variable(s) → _ev0 ↦ sk_0
+[Fact #0] Asserted.
+nibli> ? dog(Adam).
+[Query] TRUE
+[Why] Because adam is a dog.
+  ▣ adam is a dog  [given] -> TRUE
+==================================================
+ Nibli Neuro-Symbolic Engine - V4 Typed Pipeline  
+==================================================
+Compute backend: built-in only (set NIBLI_COMPUTE_ADDR=host:port for external)
+Fuel budget: 50000000000 per command
+Memory limit: 512 MB
+Maximum chain depth: 10
+Existential import: OFF (clean-core — universals do not mint witnesses)
+Loading WebAssembly Component from target/wasm32-wasip2/release/nibli.wasm...
+Ready. Commands: :quit :reset :load <file> :facts [--all] :depth [n] :retract <id> :debug <text> :compute [name] :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :strict [on|off] :existential-import [on|off] :materialize [on|off] :db :help
+Prefix '?' for queries with proof trace, '??' for find, plain text for assertions.
+
+nibli> :strict on
+[Strict] ON
+nibli> :strict
+[Strict] ON (arity/constraint violations reject the offending fact)
+nibli> :strict off
+[Strict] OFF
+nibli> :strict
+[Strict] OFF (arity/constraint violations warn and insert)
+PASS: NIBLI_STRICT=1 + :strict toggle plumbing works end to end
+Smoke-testing gasnu existential-import flag (env + :existential-import toggle)...
+==================================================
+ Nibli Neuro-Symbolic Engine - V4 Typed Pipeline  
+==================================================
+Compute backend: built-in only (set NIBLI_COMPUTE_ADDR=host:port for external)
+Fuel budget: 50000000000 per command
+Memory limit: 512 MB
+Maximum chain depth: 10
+Existential import: OFF (clean-core — universals do not mint witnesses)
+Loading WebAssembly Component from target/wasm32-wasip2/release/nibli.wasm...
+Ready. Commands: :quit :reset :load <file> :facts [--all] :depth [n] :retract <id> :debug <text> :compute [name] :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :strict [on|off] :existential-import [on|off] :materialize [on|off] :db :help
+Prefix '?' for queries with proof trace, '??' for find, plain text for assertions.
+
+nibli> animal(every dog).
+[Skolem] 2 variable(s) → _ev0 ↦ sk_1(∀-dependent), _ev1 ↦ sk_0(∀-dependent)
+[Rule] Compiled ∀_v0 to backward-chaining rule
+[Fact #0] Asserted.
+nibli> ? dog(?).
+[Query] FALSE
+[Why] No example could be found that satisfies the query.
+[Note: FALSE is closed-world — not derivable from the KB, not a proof of the negation]
+  ∃ No witness found -> FALSE
+nibli> ?? dog($d).
+[Find] No witnesses found.
+nibli> ? dog(no dog).
+[Query] TRUE
+  # Count: expected 0, got 0 -> TRUE
+==================================================
+ Nibli Neuro-Symbolic Engine - V4 Typed Pipeline  
+==================================================
+Compute backend: built-in only (set NIBLI_COMPUTE_ADDR=host:port for external)
+Fuel budget: 50000000000 per command
+Memory limit: 512 MB
+Maximum chain depth: 10
+Existential import: OFF (clean-core — universals do not mint witnesses)
+Loading WebAssembly Component from target/wasm32-wasip2/release/nibli.wasm...
+Ready. Commands: :quit :reset :load <file> :facts [--all] :depth [n] :retract <id> :debug <text> :compute [name] :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :strict [on|off] :existential-import [on|off] :materialize [on|off] :db :help
+Prefix '?' for queries with proof trace, '??' for find, plain text for assertions.
+
+nibli> :assert cat sk_0
+[Skolem] 1 variable(s) → _ev0 ↦ sk_0
+[Fact #0] cat(sk_0) asserted.
+nibli> ?? cat($c).
+[Find] _ev0 = sk_0 [generated-witness], $c = sk_0 [knowledge-base]
+nibli> :proof-verbose cat(some cat).
+[Query] TRUE
+[Why] Because "sk_0" is a cat.
+  Exists: _v0 = sk_0 -> TRUE
+    Conjunction -> TRUE
+      Exists: _ev1 = sk_0 [generated-witness] -> TRUE
+        Conjunction -> TRUE
+          Conjunction -> TRUE
+            Fact: cat [assertions: #0 :assert cat] -> TRUE
+            Fact: cat.cat("sk_0") [assertions: #0 :assert cat] -> TRUE
+          Fact: cat.breed(_) [assertions: #0 :assert cat] -> TRUE
+      Exists: _ev0 = sk_0 [generated-witness] -> TRUE
+        Conjunction -> TRUE
+          Conjunction -> TRUE
+            (see above): cat -> TRUE
+              Fact: cat [assertions: #0 :assert cat] -> TRUE
+            (see above): cat.cat("sk_0") -> TRUE
+              Fact: cat.cat("sk_0") [assertions: #0 :assert cat] -> TRUE
+          (see above): cat.breed(_) -> TRUE
+            Fact: cat.breed(_) [assertions: #0 :assert cat] -> TRUE
+==================================================
+ Nibli Neuro-Symbolic Engine - V4 Typed Pipeline  
+==================================================
+Compute backend: built-in only (set NIBLI_COMPUTE_ADDR=host:port for external)
+Fuel budget: 50000000000 per command
+Memory limit: 512 MB
+Maximum chain depth: 10
+Existential import: OFF (clean-core — universals do not mint witnesses)
+Loading WebAssembly Component from target/wasm32-wasip2/release/nibli.wasm...
+Ready. Commands: :quit :reset :load <file> :facts [--all] :depth [n] :retract <id> :debug <text> :compute [name] :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :strict [on|off] :existential-import [on|off] :materialize [on|off] :db :help
+Prefix '?' for queries with proof trace, '??' for find, plain text for assertions.
+
+nibli> animal(every dog).
+[Skolem] 2 variable(s) → _ev0 ↦ sk_1(∀-dependent), _ev1 ↦ sk_0(∀-dependent)
+[Rule] Compiled ∀_v0 to backward-chaining rule
+[Fact #0] Asserted.
+nibli> :existential-import on
+[ExistentialImport] ON (imported witnesses participate in find/count)
+nibli> :existential-import
+[ExistentialImport] ON (legacy import; minted witnesses participate in ∃/∀/find/count)
+nibli> ? dog(?).
+[Query] TRUE
+  ∧ (detail) -> TRUE
+    ∃ Presupposed (legacy existential import; dog → animal): dog [rule sources: #0/0 animal(every dog).] -> TRUE
+    ∃ Presupposed (legacy existential import; dog → animal): dog.dog [rule sources: #0/0 animal(every dog).] -> TRUE
+    ∃ Presupposed (legacy existential import; dog → animal): dog.breed(_) [rule sources: #0/0 animal(every dog).] -> TRUE
+nibli> ?? dog($d).
+[Find] _ev0 = sk_3 [existential-import], $d = sk_2 [existential-import]
+nibli> ? dog(exactly 1 dog).
+[Query] TRUE
+  # Count: expected 1, got 1 (1 existential-imported) -> TRUE
+    ∧ Conjunction -> TRUE
+      ∃ Witness: _ev1 = sk_3 [existential-import] -> TRUE
+        ∧ Conjunction -> TRUE
+          ∧ Conjunction -> TRUE
+            ∃ Presupposed (legacy existential import; dog → animal): dog [rule sources: #0/0 animal(every dog).] -> TRUE
+            ∃ Presupposed (legacy existential import; dog → animal): dog.dog [rule sources: #0/0 animal(every dog).] -> TRUE
+          ∃ Presupposed (legacy existential import; dog → animal): dog.breed(_) [rule sources: #0/0 animal(every dog).] -> TRUE
+      ∃ Witness: _ev0 = sk_3 [existential-import] -> TRUE
+        ∧ Conjunction -> TRUE
+          ∧ Conjunction -> TRUE
+            ↑ (proved above): dog
+            ↑ (proved above): dog.dog
+          ↑ (proved above): dog.breed(_)
+nibli> :existential-import off
+[ExistentialImport] OFF (clean-core)
+nibli> ? dog(?).
+[Query] FALSE
+[Why] No example could be found that satisfies the query.
+[Note: FALSE is closed-world — not derivable from the KB, not a proof of the negation]
+  ∃ No witness found -> FALSE
+==================================================
+ Nibli Neuro-Symbolic Engine - V4 Typed Pipeline  
+==================================================
+Compute backend: built-in only (set NIBLI_COMPUTE_ADDR=host:port for external)
+Fuel budget: 50000000000 per command
+Memory limit: 512 MB
+Maximum chain depth: 10
+Existential import: ON (legacy — imported witnesses participate in find/count)
+Loading WebAssembly Component from target/wasm32-wasip2/release/nibli.wasm...
+Ready. Commands: :quit :reset :load <file> :facts [--all] :depth [n] :retract <id> :debug <text> :compute [name] :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :strict [on|off] :existential-import [on|off] :materialize [on|off] :db :help
+Prefix '?' for queries with proof trace, '??' for find, plain text for assertions.
+
+nibli> animal(every dog).
+[Skolem] 2 variable(s) → _ev0 ↦ sk_1(∀-dependent), _ev1 ↦ sk_0(∀-dependent)
+[Rule] Compiled ∀_v0 to backward-chaining rule
+[Fact #0] Asserted.
+nibli> ? dog(?).
+[Query] TRUE
+  ∧ (detail) -> TRUE
+    ∃ Presupposed (legacy existential import; dog → animal): dog [rule sources: #0/0 animal(every dog).] -> TRUE
+    ∃ Presupposed (legacy existential import; dog → animal): dog.dog [rule sources: #0/0 animal(every dog).] -> TRUE
+    ∃ Presupposed (legacy existential import; dog → animal): dog.breed(_) [rule sources: #0/0 animal(every dog).] -> TRUE
+nibli> ?? dog($d).
+[Find] _ev0 = sk_3 [existential-import], $d = sk_2 [existential-import]
+nibli> ? dog(exactly 1 dog).
+[Query] TRUE
+  # Count: expected 1, got 1 (1 existential-imported) -> TRUE
+    ∧ Conjunction -> TRUE
+      ∃ Witness: _ev1 = sk_3 [existential-import] -> TRUE
+        ∧ Conjunction -> TRUE
+          ∧ Conjunction -> TRUE
+            ∃ Presupposed (legacy existential import; dog → animal): dog [rule sources: #0/0 animal(every dog).] -> TRUE
+            ∃ Presupposed (legacy existential import; dog → animal): dog.dog [rule sources: #0/0 animal(every dog).] -> TRUE
+          ∃ Presupposed (legacy existential import; dog → animal): dog.breed(_) [rule sources: #0/0 animal(every dog).] -> TRUE
+      ∃ Witness: _ev0 = sk_3 [existential-import] -> TRUE
+        ∧ Conjunction -> TRUE
+          ∧ Conjunction -> TRUE
+            ↑ (proved above): dog
+            ↑ (proved above): dog.dog
+          ↑ (proved above): dog.breed(_)
+PASS: clean-core default + typed witness origins + coherent import algebra + retroactive toggles work end to end
+Smoke-testing gasnu materialisation (report + :materialize toggle + env)...
+==================================================
+ Nibli Neuro-Symbolic Engine - V4 Typed Pipeline  
+==================================================
+Compute backend: built-in only (set NIBLI_COMPUTE_ADDR=host:port for external)
+Fuel budget: 50000000000 per command
+Memory limit: 512 MB
+Maximum chain depth: 10
+Existential import: OFF (clean-core — universals do not mint witnesses)
+Loading WebAssembly Component from target/wasm32-wasip2/release/nibli.wasm...
+Ready. Commands: :quit :reset :load <file> :facts [--all] :depth [n] :retract <id> :debug <text> :compute [name] :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :strict [on|off] :existential-import [on|off] :materialize [on|off] :db :help
+Prefix '?' for queries with proof trace, '??' for find, plain text for assertions.
+
+nibli> person(Ara).
+[Skolem] 1 variable(s) → _ev0 ↦ sk_0
+[Fact #0] Asserted.
+nibli> all $x: person($x) & ~rotten($x) -> fit($x).
+[Skolem] 3 variable(s) → _ev0 ↦ sk_1(∀-dependent), _ev1 ↦ sk_2(∀-dependent), _ev2 ↦ sk_3(∀-dependent)
+[Rule] Compiled ∀$x to backward-chaining rule
+[Fact #1] Asserted.
+nibli> ? fit(Ara).
+[Query] TRUE
+[Why] Because ara is a person, Negation, Negation, Negation, and Negation, ara fits _ _. (Under the closed-world assumption — nothing known contradicts it.)
+[Note: result depends on negation-as-failure (closed-world assumption)]
+  ⊢ ara fits _ _  [by the rule: every person fits something something] -> TRUE
+    ▣ ara is a person  [given] -> TRUE
+    ¬ Negation -> TRUE
+    ¬ Negation -> TRUE
+    ¬ Negation -> TRUE
+    ¬ Negation -> TRUE
+nibli> :materialize
+[Materialize] ON (each `~p(x)` is a lookup into a saturated extension)
+[Materialize] Saturated: fit, person, rotten
+==================================================
+ Nibli Neuro-Symbolic Engine - V4 Typed Pipeline  
+==================================================
+Compute backend: built-in only (set NIBLI_COMPUTE_ADDR=host:port for external)
+Fuel budget: 50000000000 per command
+Memory limit: 512 MB
+Maximum chain depth: 10
+Existential import: OFF (clean-core — universals do not mint witnesses)
+Loading WebAssembly Component from target/wasm32-wasip2/release/nibli.wasm...
+Ready. Commands: :quit :reset :load <file> :facts [--all] :depth [n] :retract <id> :debug <text> :compute [name] :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :strict [on|off] :existential-import [on|off] :materialize [on|off] :db :help
+Prefix '?' for queries with proof trace, '??' for find, plain text for assertions.
+
+nibli> :materialize off
+[Materialize] OFF
+nibli> person(Ara).
+[Skolem] 1 variable(s) → _ev0 ↦ sk_0
+[Fact #0] Asserted.
+nibli> all $x: person($x) & ~rotten($x) -> fit($x).
+[Skolem] 3 variable(s) → _ev0 ↦ sk_1(∀-dependent), _ev1 ↦ sk_2(∀-dependent), _ev2 ↦ sk_3(∀-dependent)
+[Rule] Compiled ∀$x to backward-chaining rule
+[Fact #1] Asserted.
+nibli> ? fit(Ara).
+[Query] TRUE
+[Why] Because ara is a person, Negation, Negation, Negation, and Negation, ara fits _ _. (Under the closed-world assumption — nothing known contradicts it.)
+[Note: result depends on negation-as-failure (closed-world assumption)]
+  ⊢ ara fits _ _  [by the rule: every person fits something something] -> TRUE
+    ▣ ara is a person  [given] -> TRUE
+    ¬ Negation -> TRUE
+    ¬ Negation -> TRUE
+    ¬ Negation -> TRUE
+    ¬ Negation -> TRUE
+==================================================
+ Nibli Neuro-Symbolic Engine - V4 Typed Pipeline  
+==================================================
+Compute backend: built-in only (set NIBLI_COMPUTE_ADDR=host:port for external)
+Fuel budget: 50000000000 per command
+Memory limit: 512 MB
+Maximum chain depth: 10
+Existential import: OFF (clean-core — universals do not mint witnesses)
+Materialisation: OFF (every negation-as-failure re-proves its positive)
+Loading WebAssembly Component from target/wasm32-wasip2/release/nibli.wasm...
+Ready. Commands: :quit :reset :load <file> :facts [--all] :depth [n] :retract <id> :debug <text> :compute [name] :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :strict [on|off] :existential-import [on|off] :materialize [on|off] :db :help
+Prefix '?' for queries with proof trace, '??' for find, plain text for assertions.
+
+nibli> person(Ara).
+[Skolem] 1 variable(s) → _ev0 ↦ sk_0
+[Fact #0] Asserted.
+nibli> all $x: person($x) & ~rotten($x) -> fit($x).
+[Skolem] 3 variable(s) → _ev0 ↦ sk_1(∀-dependent), _ev1 ↦ sk_2(∀-dependent), _ev2 ↦ sk_3(∀-dependent)
+[Rule] Compiled ∀$x to backward-chaining rule
+[Fact #1] Asserted.
+nibli> ? fit(Ara).
+[Query] TRUE
+[Why] Because ara is a person, Negation, Negation, Negation, and Negation, ara fits _ _. (Under the closed-world assumption — nothing known contradicts it.)
+[Note: result depends on negation-as-failure (closed-world assumption)]
+  ⊢ ara fits _ _  [by the rule: every person fits something something] -> TRUE
+    ▣ ara is a person  [given] -> TRUE
+    ¬ Negation -> TRUE
+    ¬ Negation -> TRUE
+    ¬ Negation -> TRUE
+    ¬ Negation -> TRUE
+PASS: materialisation report + toggle + env opt-out work end to end, verdicts unchanged
+Smoke-testing gasnu three-way determinism corpus...
+PASS: gasnu verdicts match every pinned determinism annotation
+no tests to run!
+Executing bindgen...                                                                                running 2 tests
+test exact_count_assertions_fail_closed_on_the_v8_wrapper ... ok
+test determinism_corpus_v8 ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 filtered out; finished in 0.18s
+
+                                                  Executing bindgen...                                                                                running 3 tests
+test quoted_individual_witnesses_remain_opaque ... ok
+test generated_individual_domain_agrees_across_query_forms ... ok
+test checked_depth_history_and_certificate_survive_reset ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 filtered out; finished in 0.11s
+
+                                                  
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

@@ -1,0 +1,22 @@
+==================================================
+ Nibli Neuro-Symbolic Engine - V4 Typed Pipeline  
+==================================================
+Compute backend: built-in only (set NIBLI_COMPUTE_ADDR=host:port for external)
+Fuel budget: 50000000000 per command
+Memory limit: 512 MB
+Maximum chain depth: 10
+Existential import: OFF (clean-core — universals do not mint witnesses)
+Loading WebAssembly Component from /home/dhilipsiva/projects/dhilipsiva/nibli/target/wasm32-wasip2/release/nibli.wasm...
+Ready. Commands: :quit :reset :load <file> :facts [--all] :depth [n] :retract <id> :debug <text> :compute [name] :assert <rel> <args..> :backend [addr] :fuel [n] :memory [mb] :strict [on|off] :existential-import [on|off] :materialize [on|off] :db :help
+Prefix '?' for queries with proof trace, '??' for find, plain text for assertions.
+
+nibli> :fuel 50000000000
+[Fuel] Budget set to 50000000000
+nibli> :depth 10
+[Depth] Maximum chain depth: 10
+nibli> bite(some dog, N83).
+nibli> :certify bite(some dog, N83).
+{"schema":2,"engine_version":"0.2.0","profile":{"strict":false,"existential_import":false,"materialization":true,"max_chain_depth":10},"query":"bite(some dog, N83).","result":"True","trace":{"steps":[{"rule":{"type":"asserted","fact":"dog(sk_1)","sources":[{"id":0,"label":"bite(some dog, N83)."}]},"holds":true,"children":[]},{"rule":{"type":"asserted","fact":"dog_x1(sk_1, sk_0)","sources":[{"id":0,"label":"bite(some dog, N83)."}]},"holds":true,"children":[]},{"rule":{"type":"conjunction"},"holds":true,"children":[0,1]},{"rule":{"type":"asserted","fact":"dog_x2(sk_1, _)","sources":[{"id":0,"label":"bite(some dog, N83)."}]},"holds":true,"children":[]},{"rule":{"type":"conjunction"},"holds":true,"children":[2,3]},{"rule":{"type":"exists_witness","var":"_ev1","term":{"constant":"sk_1"},"origin":"generated_witness"},"holds":true,"children":[4]},{"rule":{"type":"asserted","fact":"bite(sk_2)","sources":[{"id":0,"label":"bite(some dog, N83)."}]},"holds":true,"children":[]},{"rule":{"type":"asserted","fact":"bite_x1(sk_2, sk_0)","sources":[{"id":0,"label":"bite(some dog, N83)."}]},"holds":true,"children":[]},{"rule":{"type":"conjunction"},"holds":true,"children":[6,7]},{"rule":{"type":"asserted","fact":"bite_x2(sk_2, n83)","sources":[{"id":0,"label":"bite(some dog, N83)."}]},"holds":true,"children":[]},{"rule":{"type":"conjunction"},"holds":true,"children":[8,9]},{"rule":{"type":"asserted","fact":"bite_x3(sk_2, _)","sources":[{"id":0,"label":"bite(some dog, N83)."}]},"holds":true,"children":[]},{"rule":{"type":"conjunction"},"holds":true,"children":[10,11]},{"rule":{"type":"asserted","fact":"bite_x4(sk_2, _)","sources":[{"id":0,"label":"bite(some dog, N83)."}]},"holds":true,"children":[]},{"rule":{"type":"conjunction"},"holds":true,"children":[12,13]},{"rule":{"type":"exists_witness","var":"_ev0","term":{"constant":"sk_2"},"origin":"generated_witness"},"holds":true,"children":[14]},{"rule":{"type":"conjunction"},"holds":true,"children":[5,15]},{"rule":{"type":"exists_witness","var":"_v0","term":{"constant":"sk_0"},"origin":"generated_witness"},"holds":true,"children":[16]}],"root":17,"naf_dependent":false,"cwa_false":false}}
+nibli> :certify dog("sk_0").
+{"schema":2,"engine_version":"0.2.0","profile":{"strict":false,"existential_import":false,"materialization":true,"max_chain_depth":10},"query":"dog(\"sk_0\").","result":"False","trace":{"steps":[{"rule":{"type":"exists_failed"},"holds":false,"children":[]}],"root":0,"naf_dependent":false,"cwa_false":true}}
+nibli> :quit

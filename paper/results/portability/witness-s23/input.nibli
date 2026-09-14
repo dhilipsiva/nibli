@@ -1,0 +1,6 @@
+:fuel 50000000000
+:depth 10
+bite(some dog, N23).
+:certify bite(some dog, N23).
+:certify dog("sk_0").
+:quit

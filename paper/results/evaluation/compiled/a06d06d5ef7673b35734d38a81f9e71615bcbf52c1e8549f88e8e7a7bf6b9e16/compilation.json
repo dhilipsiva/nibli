@@ -1,0 +1,22 @@
+{
+  "binary_sha256": "bbef6743b690bdbda452ffb7cedff5962c3bca16f6d63b4d982eebd9f895aae8",
+  "command": [
+    "souffle",
+    "-j",
+    "1",
+    "-o",
+    "/home/dhilipsiva/projects/dhilipsiva/nibli/paper/results/evaluation/compiled/a06d06d5ef7673b35734d38a81f9e71615bcbf52c1e8549f88e8e7a7bf6b9e16/program",
+    "/home/dhilipsiva/projects/dhilipsiva/nibli/paper/results/evaluation/inputs/comparison-chain-16-forward-s83-d10-m1-verdict/input.dl"
+  ],
+  "cpu_system_s": 0.62,
+  "cpu_user_s": 8.6,
+  "cutoff_seconds": 300,
+  "exit_code": 0,
+  "peak_rss_kib": 493940,
+  "started_utc": "2026-09-14T08:55:31.445271+00:00",
+  "status": "ok",
+  "stderr": "paper/results/evaluation/compiled/a06d06d5ef7673b35734d38a81f9e71615bcbf52c1e8549f88e8e7a7bf6b9e16/compile.stderr",
+  "stdout": "paper/results/evaluation/compiled/a06d06d5ef7673b35734d38a81f9e71615bcbf52c1e8549f88e8e7a7bf6b9e16/compile.stdout",
+  "usage": "paper/results/evaluation/compiled/a06d06d5ef7673b35734d38a81f9e71615bcbf52c1e8549f88e8e7a7bf6b9e16/compile.time",
+  "wall_ms": 9428.924620999169
+}

@@ -1,0 +1,23 @@
+{
+  "measured_runs": 1065,
+  "warmup_runs": 355,
+  "timeouts": 91,
+  "failures": 0,
+  "definitive_mismatches": 0,
+  "envelope_failures": 0,
+  "certificates": 1016,
+  "citations": 8036,
+  "citation_errors": 0,
+  "bounds_comparable": 216,
+  "bounds_gains": 24,
+  "bounds_changes": 0,
+  "bounds_regressions": 0,
+  "verdicts": {
+    "RESOURCE_EXCEEDED": 15,
+    "FALSE": 1123,
+    "TRUE": 1054,
+    "UNKNOWN": 9
+  },
+  "nibli_timeouts_before_load_completed": 45,
+  "incomplete_certificate_json_lines": 0
+}

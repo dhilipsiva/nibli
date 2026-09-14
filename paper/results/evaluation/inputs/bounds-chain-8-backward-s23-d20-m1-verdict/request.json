@@ -1,0 +1,20 @@
+{
+  "depth": 20,
+  "materialization": true,
+  "mode": "verdict",
+  "queries": [
+    "earlier(N4, N6)."
+  ],
+  "statements": [
+    "all $a, $b, $c: earlier($a, $b) & earlier($b, $c) -> earlier($a, $c).",
+    "earlier(N3, N2).",
+    "earlier(N7, N3).",
+    "earlier(N6, N5).",
+    "earlier(N8, N0).",
+    "earlier(N5, N7).",
+    "earlier(N2, N8).",
+    "earlier(N1, N4).",
+    "earlier(N0, N1)."
+  ],
+  "updates": []
+}

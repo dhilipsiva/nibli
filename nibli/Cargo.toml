@@ -15,6 +15,8 @@ nibli-import = { workspace = true }
 nibli-render = { workspace = true }
 reedline = "0.45.0"
 nu-ansi-term = "0.50"
+serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
 
 [features]
 # REPO-ONLY: the bench bins `include_str!` the shipped corpora from the repo
@@ -24,7 +26,7 @@ nu-ansi-term = "0.50"
 # (`required-features` below); the Justfile bench recipes enable it. Enabling
 # this feature on the crates.io tarball will NOT build — run the benches from
 # a repo checkout.
-bench-bins = []
+bench-bins = ["dep:serde", "dep:serde_json"]
 
 # (No per-target `description` keys: cargo has no such field and warned
 # `unused manifest key` on every invocation while they were here.)
@@ -70,4 +72,10 @@ required-features = ["bench-bins"]
 [[bin]]
 name = "nibli-bench-closure"
 path = "src/bin/bench_closure.rs"
+required-features = ["bench-bins"]
+
+# Private research driver; reads the frozen paper protocol's JSON workloads.
+[[bin]]
+name = "nibli-bench-paper"
+path = "src/bin/bench_paper.rs"
 required-features = ["bench-bins"]

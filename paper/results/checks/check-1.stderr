@@ -1,0 +1,13 @@
+    Checking nibli-lexicon v0.2.0 (/home/dhilipsiva/projects/dhilipsiva/nibli/nibli-lexicon)
+    Checking nibli-types v0.2.0 (/home/dhilipsiva/projects/dhilipsiva/nibli/nibli-types)
+    Checking nibli-protocol v0.2.0 (/home/dhilipsiva/projects/dhilipsiva/nibli/nibli-protocol)
+    Checking nibli-reason v0.2.0 (/home/dhilipsiva/projects/dhilipsiva/nibli/nibli-reason)
+    Checking nibli-semantics v0.2.0 (/home/dhilipsiva/projects/dhilipsiva/nibli/nibli-semantics)
+    Checking nibli-kr v0.2.0 (/home/dhilipsiva/projects/dhilipsiva/nibli/nibli-kr)
+    Checking nibli-render v0.2.0 (/home/dhilipsiva/projects/dhilipsiva/nibli/nibli-render)
+    Checking nibli-store v0.2.0 (/home/dhilipsiva/projects/dhilipsiva/nibli/nibli-store)
+    Checking nibli-session v0.2.0 (/home/dhilipsiva/projects/dhilipsiva/nibli/nibli-session)
+    Checking nibli-engine v0.2.0 (/home/dhilipsiva/projects/dhilipsiva/nibli/nibli-engine)
+    Checking nibli-import v0.2.0 (/home/dhilipsiva/projects/dhilipsiva/nibli/nibli-import)
+    Checking nibli v0.2.0 (/home/dhilipsiva/projects/dhilipsiva/nibli/nibli)
+    Finished `release` profile [optimized] target(s) in 5.94s

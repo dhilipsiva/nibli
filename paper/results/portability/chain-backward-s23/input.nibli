@@ -1,0 +1,9 @@
+:fuel 50000000000
+:depth 10
+all $a, $b, $c: earlier($a, $b) & earlier($b, $c) -> earlier($a, $c).
+earlier(N1, N3).
+earlier(N4, N1).
+earlier(N3, N0).
+earlier(N0, N2).
+:certify earlier(N2, N4).
+:quit

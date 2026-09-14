@@ -1,0 +1,5 @@
+all $a, $b, $c: earlier($a, $b) & earlier($b, $c) -> earlier($a, $c).
+earlier(N2, N0).
+earlier(N1, N4).
+earlier(N0, N1).
+earlier(N4, N3).

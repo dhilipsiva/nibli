@@ -1,0 +1,984 @@
+all $d, $f, $o, $r, $s: carries($f, $d, $s, $o, $r) & dangerous($s, $d, Exploit) & prevents(Sanitizer, $f) -> authorized($f, Release, $s).
+all $d, $f, $o, $r, $s: carries($f, $d, $s, $o, $r) & dangerous($s, $d, Exploit) & permits(Review, $f, Waiver) -> authorized($f, Release, $s).
+all $d, $f, $o, $r, $s: carries($f, $d, $s, $o, $r) & ~authorized($f, Release, $s) -> warns(Gate, $f, $s).
+carries(F131, Data, S131, Origin, Route).
+carries(F361, Data, S361, Origin, Route).
+prevents(Sanitizer, F64).
+permits(Review, F125, Waiver).
+carries(F160, Data, S160, Origin, Route).
+prevents(Sanitizer, F20).
+dangerous(S283, Data, Exploit).
+permits(Review, F234, Waiver).
+dangerous(S297, Data, Exploit).
+carries(F135, Data, S135, Origin, Route).
+prevents(Sanitizer, F233).
+carries(F80, Data, S80, Origin, Route).
+prevents(Sanitizer, F73).
+dangerous(S344, Data, Exploit).
+prevents(Sanitizer, F192).
+prevents(Sanitizer, F99).
+permits(Review, F332, Waiver).
+permits(Review, F265, Waiver).
+carries(F171, Data, S171, Origin, Route).
+dangerous(S159, Data, Exploit).
+dangerous(S193, Data, Exploit).
+dangerous(S190, Data, Exploit).
+dangerous(S280, Data, Exploit).
+prevents(Sanitizer, F325).
+dangerous(S205, Data, Exploit).
+carries(F95, Data, S95, Origin, Route).
+carries(F61, Data, S61, Origin, Route).
+dangerous(S153, Data, Exploit).
+prevents(Sanitizer, F112).
+carries(F332, Data, S332, Origin, Route).
+prevents(Sanitizer, F354).
+prevents(Sanitizer, F184).
+carries(F125, Data, S125, Origin, Route).
+prevents(Sanitizer, F59).
+carries(F267, Data, S267, Origin, Route).
+dangerous(S5, Data, Exploit).
+carries(F287, Data, S287, Origin, Route).
+carries(F59, Data, S59, Origin, Route).
+dangerous(S64, Data, Exploit).
+dangerous(S178, Data, Exploit).
+permits(Review, F233, Waiver).
+carries(F119, Data, S119, Origin, Route).
+carries(F190, Data, S190, Origin, Route).
+carries(F78, Data, S78, Origin, Route).
+dangerous(S298, Data, Exploit).
+dangerous(S62, Data, Exploit).
+carries(F315, Data, S315, Origin, Route).
+carries(F33, Data, S33, Origin, Route).
+dangerous(S148, Data, Exploit).
+dangerous(S324, Data, Exploit).
+dangerous(S8, Data, Exploit).
+dangerous(S354, Data, Exploit).
+prevents(Sanitizer, F77).
+carries(F85, Data, S85, Origin, Route).
+permits(Review, F352, Waiver).
+dangerous(S163, Data, Exploit).
+carries(F138, Data, S138, Origin, Route).
+prevents(Sanitizer, F36).
+dangerous(S27, Data, Exploit).
+carries(F189, Data, S189, Origin, Route).
+carries(F288, Data, S288, Origin, Route).
+carries(F108, Data, S108, Origin, Route).
+dangerous(S331, Data, Exploit).
+carries(F2, Data, S2, Origin, Route).
+permits(Review, F328, Waiver).
+carries(F74, Data, S74, Origin, Route).
+carries(F126, Data, S126, Origin, Route).
+permits(Review, F70, Waiver).
+dangerous(S88, Data, Exploit).
+carries(F243, Data, S243, Origin, Route).
+prevents(Sanitizer, F0).
+carries(F66, Data, S66, Origin, Route).
+dangerous(S237, Data, Exploit).
+carries(F221, Data, S221, Origin, Route).
+dangerous(S55, Data, Exploit).
+permits(Review, F317, Waiver).
+prevents(Sanitizer, F160).
+dangerous(S15, Data, Exploit).
+carries(F60, Data, S60, Origin, Route).
+dangerous(S309, Data, Exploit).
+dangerous(S348, Data, Exploit).
+prevents(Sanitizer, F310).
+dangerous(S81, Data, Exploit).
+carries(F318, Data, S318, Origin, Route).
+dangerous(S171, Data, Exploit).
+dangerous(S18, Data, Exploit).
+carries(F250, Data, S250, Origin, Route).
+permits(Review, F10, Waiver).
+carries(F146, Data, S146, Origin, Route).
+carries(F204, Data, S204, Origin, Route).
+carries(F13, Data, S13, Origin, Route).
+carries(F15, Data, S15, Origin, Route).
+prevents(Sanitizer, F17).
+carries(F22, Data, S22, Origin, Route).
+dangerous(S2, Data, Exploit).
+dangerous(S138, Data, Exploit).
+carries(F322, Data, S322, Origin, Route).
+dangerous(S38, Data, Exploit).
+permits(Review, F174, Waiver).
+carries(F316, Data, S316, Origin, Route).
+permits(Review, F218, Waiver).
+carries(F157, Data, S157, Origin, Route).
+prevents(Sanitizer, F206).
+permits(Review, F315, Waiver).
+dangerous(S82, Data, Exploit).
+carries(F302, Data, S302, Origin, Route).
+dangerous(S184, Data, Exploit).
+dangerous(S285, Data, Exploit).
+dangerous(S225, Data, Exploit).
+permits(Review, F259, Waiver).
+carries(F142, Data, S142, Origin, Route).
+prevents(Sanitizer, F115).
+dangerous(S39, Data, Exploit).
+permits(Review, F354, Waiver).
+carries(F237, Data, S237, Origin, Route).
+dangerous(S351, Data, Exploit).
+permits(Review, F219, Waiver).
+prevents(Sanitizer, F166).
+prevents(Sanitizer, F276).
+carries(F321, Data, S321, Origin, Route).
+permits(Review, F135, Waiver).
+dangerous(S223, Data, Exploit).
+permits(Review, F297, Waiver).
+dangerous(S53, Data, Exploit).
+dangerous(S140, Data, Exploit).
+carries(F148, Data, S148, Origin, Route).
+dangerous(S293, Data, Exploit).
+prevents(Sanitizer, F134).
+permits(Review, F68, Waiver).
+carries(F195, Data, S195, Origin, Route).
+dangerous(S314, Data, Exploit).
+dangerous(S282, Data, Exploit).
+permits(Review, F209, Waiver).
+dangerous(S334, Data, Exploit).
+dangerous(S129, Data, Exploit).
+dangerous(S117, Data, Exploit).
+carries(F54, Data, S54, Origin, Route).
+carries(F64, Data, S64, Origin, Route).
+carries(F192, Data, S192, Origin, Route).
+dangerous(S255, Data, Exploit).
+prevents(Sanitizer, F218).
+carries(F49, Data, S49, Origin, Route).
+carries(F245, Data, S245, Origin, Route).
+prevents(Sanitizer, F278).
+permits(Review, F132, Waiver).
+dangerous(S85, Data, Exploit).
+carries(F92, Data, S92, Origin, Route).
+dangerous(S29, Data, Exploit).
+carries(F24, Data, S24, Origin, Route).
+prevents(Sanitizer, F225).
+prevents(Sanitizer, F247).
+prevents(Sanitizer, F12).
+carries(F158, Data, S158, Origin, Route).
+dangerous(S241, Data, Exploit).
+carries(F254, Data, S254, Origin, Route).
+dangerous(S182, Data, Exploit).
+carries(F29, Data, S29, Origin, Route).
+dangerous(S199, Data, Exploit).
+dangerous(S176, Data, Exploit).
+carries(F196, Data, S196, Origin, Route).
+carries(F203, Data, S203, Origin, Route).
+carries(F70, Data, S70, Origin, Route).
+permits(Review, F213, Waiver).
+dangerous(S17, Data, Exploit).
+dangerous(S279, Data, Exploit).
+dangerous(S276, Data, Exploit).
+dangerous(S306, Data, Exploit).
+carries(F278, Data, S278, Origin, Route).
+dangerous(S218, Data, Exploit).
+permits(Review, F121, Waiver).
+dangerous(S96, Data, Exploit).
+carries(F166, Data, S166, Origin, Route).
+carries(F71, Data, S71, Origin, Route).
+carries(F117, Data, S117, Origin, Route).
+prevents(Sanitizer, F30).
+carries(F87, Data, S87, Origin, Route).
+carries(F106, Data, S106, Origin, Route).
+permits(Review, F358, Waiver).
+permits(Review, F102, Waiver).
+carries(F334, Data, S334, Origin, Route).
+dangerous(S1, Data, Exploit).
+prevents(Sanitizer, F136).
+carries(F276, Data, S276, Origin, Route).
+permits(Review, F12, Waiver).
+carries(F67, Data, S67, Origin, Route).
+permits(Review, F99, Waiver).
+permits(Review, F140, Waiver).
+carries(F82, Data, S82, Origin, Route).
+dangerous(S257, Data, Exploit).
+permits(Review, F104, Waiver).
+carries(F84, Data, S84, Origin, Route).
+dangerous(S266, Data, Exploit).
+carries(F122, Data, S122, Origin, Route).
+carries(F344, Data, S344, Origin, Route).
+carries(F281, Data, S281, Origin, Route).
+dangerous(S127, Data, Exploit).
+carries(F232, Data, S232, Origin, Route).
+dangerous(S330, Data, Exploit).
+dangerous(S294, Data, Exploit).
+carries(F201, Data, S201, Origin, Route).
+carries(F1, Data, S1, Origin, Route).
+carries(F275, Data, S275, Origin, Route).
+dangerous(S299, Data, Exploit).
+dangerous(S122, Data, Exploit).
+carries(F353, Data, S353, Origin, Route).
+prevents(Sanitizer, F298).
+prevents(Sanitizer, F307).
+dangerous(S128, Data, Exploit).
+dangerous(S83, Data, Exploit).
+dangerous(S172, Data, Exploit).
+permits(Review, F308, Waiver).
+dangerous(S326, Data, Exploit).
+carries(F284, Data, S284, Origin, Route).
+carries(F102, Data, S102, Origin, Route).
+carries(F62, Data, S62, Origin, Route).
+carries(F277, Data, S277, Origin, Route).
+carries(F320, Data, S320, Origin, Route).
+carries(F163, Data, S163, Origin, Route).
+carries(F127, Data, S127, Origin, Route).
+permits(Review, F222, Waiver).
+prevents(Sanitizer, F69).
+carries(F43, Data, S43, Origin, Route).
+carries(F101, Data, S101, Origin, Route).
+dangerous(S86, Data, Exploit).
+carries(F263, Data, S263, Origin, Route).
+carries(F19, Data, S19, Origin, Route).
+dangerous(S44, Data, Exploit).
+prevents(Sanitizer, F14).
+carries(F73, Data, S73, Origin, Route).
+dangerous(S168, Data, Exploit).
+dangerous(S72, Data, Exploit).
+carries(F359, Data, S359, Origin, Route).
+carries(F339, Data, S339, Origin, Route).
+carries(F337, Data, S337, Origin, Route).
+carries(F253, Data, S253, Origin, Route).
+carries(F205, Data, S205, Origin, Route).
+carries(F283, Data, S283, Origin, Route).
+dangerous(S71, Data, Exploit).
+carries(F268, Data, S268, Origin, Route).
+carries(F218, Data, S218, Origin, Route).
+prevents(Sanitizer, F170).
+dangerous(S167, Data, Exploit).
+carries(F226, Data, S226, Origin, Route).
+dangerous(S162, Data, Exploit).
+dangerous(S78, Data, Exploit).
+prevents(Sanitizer, F42).
+carries(F200, Data, S200, Origin, Route).
+carries(F105, Data, S105, Origin, Route).
+carries(F132, Data, S132, Origin, Route).
+dangerous(S322, Data, Exploit).
+dangerous(S152, Data, Exploit).
+carries(F79, Data, S79, Origin, Route).
+carries(F330, Data, S330, Origin, Route).
+carries(F235, Data, S235, Origin, Route).
+prevents(Sanitizer, F183).
+prevents(Sanitizer, F62).
+carries(F11, Data, S11, Origin, Route).
+dangerous(S73, Data, Exploit).
+dangerous(S30, Data, Exploit).
+prevents(Sanitizer, F103).
+permits(Review, F334, Waiver).
+carries(F228, Data, S228, Origin, Route).
+carries(F57, Data, S57, Origin, Route).
+prevents(Sanitizer, F106).
+dangerous(S327, Data, Exploit).
+prevents(Sanitizer, F144).
+carries(F347, Data, S347, Origin, Route).
+prevents(Sanitizer, F76).
+carries(F103, Data, S103, Origin, Route).
+prevents(Sanitizer, F342).
+carries(F47, Data, S47, Origin, Route).
+permits(Review, F158, Waiver).
+dangerous(S155, Data, Exploit).
+dangerous(S143, Data, Exploit).
+carries(F222, Data, S222, Origin, Route).
+dangerous(S250, Data, Exploit).
+prevents(Sanitizer, F332).
+dangerous(S361, Data, Exploit).
+dangerous(S239, Data, Exploit).
+dangerous(S216, Data, Exploit).
+carries(F26, Data, S26, Origin, Route).
+carries(F121, Data, S121, Origin, Route).
+carries(F317, Data, S317, Origin, Route).
+prevents(Sanitizer, F44).
+dangerous(S137, Data, Exploit).
+permits(Review, F7, Waiver).
+prevents(Sanitizer, F97).
+carries(F83, Data, S83, Origin, Route).
+carries(F279, Data, S279, Origin, Route).
+permits(Review, F288, Waiver).
+dangerous(S260, Data, Exploit).
+dangerous(S229, Data, Exploit).
+prevents(Sanitizer, F197).
+prevents(Sanitizer, F39).
+dangerous(S66, Data, Exploit).
+dangerous(S349, Data, Exploit).
+carries(F259, Data, S259, Origin, Route).
+dangerous(S281, Data, Exploit).
+permits(Review, F11, Waiver).
+carries(F187, Data, S187, Origin, Route).
+prevents(Sanitizer, F269).
+carries(F30, Data, S30, Origin, Route).
+dangerous(S201, Data, Exploit).
+dangerous(S47, Data, Exploit).
+carries(F251, Data, S251, Origin, Route).
+dangerous(S32, Data, Exploit).
+dangerous(S95, Data, Exploit).
+dangerous(S16, Data, Exploit).
+permits(Review, F215, Waiver).
+carries(F109, Data, S109, Origin, Route).
+prevents(Sanitizer, F48).
+dangerous(S214, Data, Exploit).
+carries(F169, Data, S169, Origin, Route).
+carries(F8, Data, S8, Origin, Route).
+dangerous(S77, Data, Exploit).
+carries(F340, Data, S340, Origin, Route).
+dangerous(S238, Data, Exploit).
+prevents(Sanitizer, F260).
+dangerous(S217, Data, Exploit).
+dangerous(S107, Data, Exploit).
+dangerous(S126, Data, Exploit).
+carries(F145, Data, S145, Origin, Route).
+dangerous(S142, Data, Exploit).
+carries(F21, Data, S21, Origin, Route).
+carries(F256, Data, S256, Origin, Route).
+dangerous(S187, Data, Exploit).
+carries(F225, Data, S225, Origin, Route).
+carries(F326, Data, S326, Origin, Route).
+dangerous(S93, Data, Exploit).
+prevents(Sanitizer, F321).
+dangerous(S92, Data, Exploit).
+prevents(Sanitizer, F121).
+carries(F3, Data, S3, Origin, Route).
+carries(F129, Data, S129, Origin, Route).
+carries(F356, Data, S356, Origin, Route).
+dangerous(S185, Data, Exploit).
+dangerous(S136, Data, Exploit).
+carries(F331, Data, S331, Origin, Route).
+dangerous(S106, Data, Exploit).
+dangerous(S10, Data, Exploit).
+dangerous(S244, Data, Exploit).
+prevents(Sanitizer, F248).
+dangerous(S252, Data, Exploit).
+prevents(Sanitizer, F193).
+prevents(Sanitizer, F315).
+dangerous(S112, Data, Exploit).
+permits(Review, F277, Waiver).
+carries(F41, Data, S41, Origin, Route).
+dangerous(S101, Data, Exploit).
+prevents(Sanitizer, F361).
+permits(Review, F47, Waiver).
+permits(Review, F165, Waiver).
+prevents(Sanitizer, F304).
+dangerous(S220, Data, Exploit).
+dangerous(S212, Data, Exploit).
+prevents(Sanitizer, F227).
+dangerous(S287, Data, Exploit).
+prevents(Sanitizer, F79).
+dangerous(S113, Data, Exploit).
+permits(Review, F20, Waiver).
+prevents(Sanitizer, F330).
+dangerous(S110, Data, Exploit).
+dangerous(S275, Data, Exploit).
+dangerous(S173, Data, Exploit).
+carries(F329, Data, S329, Origin, Route).
+prevents(Sanitizer, F250).
+carries(F118, Data, S118, Origin, Route).
+carries(F94, Data, S94, Origin, Route).
+carries(F227, Data, S227, Origin, Route).
+carries(F358, Data, S358, Origin, Route).
+dangerous(S333, Data, Exploit).
+carries(F89, Data, S89, Origin, Route).
+dangerous(S328, Data, Exploit).
+dangerous(S59, Data, Exploit).
+carries(F264, Data, S264, Origin, Route).
+dangerous(S120, Data, Exploit).
+dangerous(S103, Data, Exploit).
+dangerous(S222, Data, Exploit).
+carries(F257, Data, S257, Origin, Route).
+dangerous(S179, Data, Exploit).
+carries(F185, Data, S185, Origin, Route).
+carries(F306, Data, S306, Origin, Route).
+dangerous(S70, Data, Exploit).
+prevents(Sanitizer, F343).
+carries(F151, Data, S151, Origin, Route).
+dangerous(S291, Data, Exploit).
+dangerous(S337, Data, Exploit).
+permits(Review, F290, Waiver).
+dangerous(S34, Data, Exploit).
+prevents(Sanitizer, F5).
+carries(F272, Data, S272, Origin, Route).
+dangerous(S135, Data, Exploit).
+prevents(Sanitizer, F259).
+carries(F355, Data, S355, Origin, Route).
+prevents(Sanitizer, F194).
+carries(F35, Data, S35, Origin, Route).
+dangerous(S248, Data, Exploit).
+dangerous(S158, Data, Exploit).
+dangerous(S300, Data, Exploit).
+carries(F16, Data, S16, Origin, Route).
+dangerous(S105, Data, Exploit).
+carries(F77, Data, S77, Origin, Route).
+dangerous(S46, Data, Exploit).
+carries(F100, Data, S100, Origin, Route).
+carries(F241, Data, S241, Origin, Route).
+carries(F247, Data, S247, Origin, Route).
+carries(F112, Data, S112, Origin, Route).
+dangerous(S313, Data, Exploit).
+carries(F188, Data, S188, Origin, Route).
+carries(F99, Data, S99, Origin, Route).
+carries(F265, Data, S265, Origin, Route).
+dangerous(S242, Data, Exploit).
+dangerous(S80, Data, Exploit).
+carries(F14, Data, S14, Origin, Route).
+dangerous(S188, Data, Exploit).
+prevents(Sanitizer, F16).
+carries(F336, Data, S336, Origin, Route).
+dangerous(S119, Data, Exploit).
+dangerous(S24, Data, Exploit).
+dangerous(S221, Data, Exploit).
+prevents(Sanitizer, F41).
+dangerous(S347, Data, Exploit).
+carries(F178, Data, S178, Origin, Route).
+carries(F307, Data, S307, Origin, Route).
+carries(F208, Data, S208, Origin, Route).
+prevents(Sanitizer, F96).
+dangerous(S109, Data, Exploit).
+dangerous(S317, Data, Exploit).
+carries(F98, Data, S98, Origin, Route).
+dangerous(S207, Data, Exploit).
+dangerous(S265, Data, Exploit).
+carries(F224, Data, S224, Origin, Route).
+dangerous(S236, Data, Exploit).
+carries(F147, Data, S147, Origin, Route).
+dangerous(S181, Data, Exploit).
+carries(F217, Data, S217, Origin, Route).
+carries(F93, Data, S93, Origin, Route).
+prevents(Sanitizer, F172).
+dangerous(S288, Data, Exploit).
+dangerous(S263, Data, Exploit).
+dangerous(S321, Data, Exploit).
+carries(F199, Data, S199, Origin, Route).
+carries(F211, Data, S211, Origin, Route).
+dangerous(S131, Data, Exploit).
+permits(Review, F21, Waiver).
+carries(F186, Data, S186, Origin, Route).
+carries(F161, Data, S161, Origin, Route).
+dangerous(S41, Data, Exploit).
+carries(F32, Data, S32, Origin, Route).
+dangerous(S14, Data, Exploit).
+carries(F76, Data, S76, Origin, Route).
+dangerous(S215, Data, Exploit).
+prevents(Sanitizer, F344).
+prevents(Sanitizer, F128).
+dangerous(S359, Data, Exploit).
+dangerous(S25, Data, Exploit).
+prevents(Sanitizer, F279).
+carries(F242, Data, S242, Origin, Route).
+permits(Review, F76, Waiver).
+carries(F162, Data, S162, Origin, Route).
+dangerous(S50, Data, Exploit).
+dangerous(S342, Data, Exploit).
+dangerous(S362, Data, Exploit).
+prevents(Sanitizer, F290).
+dangerous(S253, Data, Exploit).
+carries(F212, Data, S212, Origin, Route).
+prevents(Sanitizer, F359).
+permits(Review, F190, Waiver).
+carries(F10, Data, S10, Origin, Route).
+carries(F175, Data, S175, Origin, Route).
+dangerous(S35, Data, Exploit).
+dangerous(S208, Data, Exploit).
+carries(F312, Data, S312, Origin, Route).
+dangerous(S233, Data, Exploit).
+carries(F258, Data, S258, Origin, Route).
+carries(F104, Data, S104, Origin, Route).
+dangerous(S357, Data, Exploit).
+carries(F295, Data, S295, Origin, Route).
+carries(F255, Data, S255, Origin, Route).
+prevents(Sanitizer, F32).
+permits(Review, F2, Waiver).
+prevents(Sanitizer, F209).
+prevents(Sanitizer, F292).
+carries(F65, Data, S65, Origin, Route).
+dangerous(S336, Data, Exploit).
+dangerous(S157, Data, Exploit).
+dangerous(S318, Data, Exploit).
+carries(F240, Data, S240, Origin, Route).
+dangerous(S11, Data, Exploit).
+prevents(Sanitizer, F167).
+carries(F128, Data, S128, Origin, Route).
+permits(Review, F284, Waiver).
+dangerous(S160, Data, Exploit).
+dangerous(S296, Data, Exploit).
+dangerous(S37, Data, Exploit).
+prevents(Sanitizer, F283).
+carries(F164, Data, S164, Origin, Route).
+carries(F327, Data, S327, Origin, Route).
+carries(F362, Data, S362, Origin, Route).
+carries(F144, Data, S144, Origin, Route).
+carries(F290, Data, S290, Origin, Route).
+dangerous(S194, Data, Exploit).
+prevents(Sanitizer, F92).
+prevents(Sanitizer, F347).
+dangerous(S56, Data, Exploit).
+prevents(Sanitizer, F261).
+permits(Review, F189, Waiver).
+dangerous(S262, Data, Exploit).
+carries(F285, Data, S285, Origin, Route).
+carries(F56, Data, S56, Origin, Route).
+carries(F9, Data, S9, Origin, Route).
+dangerous(S84, Data, Exploit).
+dangerous(S132, Data, Exploit).
+prevents(Sanitizer, F268).
+prevents(Sanitizer, F199).
+dangerous(S355, Data, Exploit).
+dangerous(S249, Data, Exploit).
+carries(F23, Data, S23, Origin, Route).
+dangerous(S329, Data, Exploit).
+dangerous(S121, Data, Exploit).
+dangerous(S278, Data, Exploit).
+dangerous(S111, Data, Exploit).
+dangerous(S310, Data, Exploit).
+dangerous(S230, Data, Exploit).
+carries(F0, Data, S0, Origin, Route).
+carries(F170, Data, S170, Origin, Route).
+prevents(Sanitizer, F45).
+carries(F48, Data, S48, Origin, Route).
+dangerous(S36, Data, Exploit).
+dangerous(S26, Data, Exploit).
+prevents(Sanitizer, F226).
+permits(Review, F195, Waiver).
+carries(F81, Data, S81, Origin, Route).
+dangerous(S60, Data, Exploit).
+prevents(Sanitizer, F313).
+carries(F136, Data, S136, Origin, Route).
+prevents(Sanitizer, F25).
+carries(F333, Data, S333, Origin, Route).
+dangerous(S147, Data, Exploit).
+dangerous(S290, Data, Exploit).
+dangerous(S231, Data, Exploit).
+permits(Review, F207, Waiver).
+prevents(Sanitizer, F38).
+carries(F179, Data, S179, Origin, Route).
+dangerous(S19, Data, Exploit).
+permits(Review, F147, Waiver).
+dangerous(S189, Data, Exploit).
+dangerous(S89, Data, Exploit).
+carries(F314, Data, S314, Origin, Route).
+carries(F360, Data, S360, Origin, Route).
+carries(F236, Data, S236, Origin, Route).
+permits(Review, F25, Waiver).
+carries(F114, Data, S114, Origin, Route).
+dangerous(S311, Data, Exploit).
+prevents(Sanitizer, F273).
+prevents(Sanitizer, F161).
+carries(F110, Data, S110, Origin, Route).
+dangerous(S20, Data, Exploit).
+dangerous(S345, Data, Exploit).
+dangerous(S353, Data, Exploit).
+carries(F350, Data, S350, Origin, Route).
+dangerous(S161, Data, Exploit).
+prevents(Sanitizer, F195).
+carries(F197, Data, S197, Origin, Route).
+prevents(Sanitizer, F275).
+prevents(Sanitizer, F339).
+dangerous(S341, Data, Exploit).
+dangerous(S43, Data, Exploit).
+carries(F261, Data, S261, Origin, Route).
+carries(F153, Data, S153, Origin, Route).
+dangerous(S267, Data, Exploit).
+dangerous(S183, Data, Exploit).
+prevents(Sanitizer, F104).
+permits(Review, F260, Waiver).
+dangerous(S219, Data, Exploit).
+permits(Review, F127, Waiver).
+carries(F303, Data, S303, Origin, Route).
+dangerous(S338, Data, Exploit).
+prevents(Sanitizer, F187).
+dangerous(S325, Data, Exploit).
+carries(F311, Data, S311, Origin, Route).
+carries(F294, Data, S294, Origin, Route).
+dangerous(S307, Data, Exploit).
+dangerous(S247, Data, Exploit).
+carries(F213, Data, S213, Origin, Route).
+carries(F90, Data, S90, Origin, Route).
+dangerous(S98, Data, Exploit).
+prevents(Sanitizer, F267).
+dangerous(S195, Data, Exploit).
+dangerous(S125, Data, Exploit).
+dangerous(S63, Data, Exploit).
+prevents(Sanitizer, F306).
+prevents(Sanitizer, F213).
+carries(F44, Data, S44, Origin, Route).
+dangerous(S258, Data, Exploit).
+dangerous(S320, Data, Exploit).
+carries(F53, Data, S53, Origin, Route).
+carries(F301, Data, S301, Origin, Route).
+carries(F319, Data, S319, Origin, Route).
+carries(F154, Data, S154, Origin, Route).
+carries(F274, Data, S274, Origin, Route).
+carries(F246, Data, S246, Origin, Route).
+dangerous(S6, Data, Exploit).
+carries(F141, Data, S141, Origin, Route).
+carries(F342, Data, S342, Origin, Route).
+prevents(Sanitizer, F50).
+carries(F266, Data, S266, Origin, Route).
+prevents(Sanitizer, F150).
+carries(F12, Data, S12, Origin, Route).
+dangerous(S170, Data, Exploit).
+prevents(Sanitizer, F28).
+dangerous(S340, Data, Exploit).
+carries(F223, Data, S223, Origin, Route).
+dangerous(S68, Data, Exploit).
+prevents(Sanitizer, F60).
+carries(F134, Data, S134, Origin, Route).
+prevents(Sanitizer, F240).
+prevents(Sanitizer, F88).
+dangerous(S134, Data, Exploit).
+carries(F107, Data, S107, Origin, Route).
+prevents(Sanitizer, F356).
+dangerous(S45, Data, Exploit).
+carries(F349, Data, S349, Origin, Route).
+permits(Review, F224, Waiver).
+prevents(Sanitizer, F124).
+prevents(Sanitizer, F61).
+prevents(Sanitizer, F98).
+carries(F210, Data, S210, Origin, Route).
+dangerous(S23, Data, Exploit).
+dangerous(S210, Data, Exploit).
+prevents(Sanitizer, F205).
+prevents(Sanitizer, F293).
+dangerous(S213, Data, Exploit).
+carries(F88, Data, S88, Origin, Route).
+prevents(Sanitizer, F49).
+dangerous(S169, Data, Exploit).
+dangerous(S261, Data, Exploit).
+dangerous(S264, Data, Exploit).
+dangerous(S308, Data, Exploit).
+prevents(Sanitizer, F133).
+carries(F296, Data, S296, Origin, Route).
+carries(F273, Data, S273, Origin, Route).
+dangerous(S124, Data, Exploit).
+dangerous(S156, Data, Exploit).
+carries(F216, Data, S216, Origin, Route).
+carries(F180, Data, S180, Origin, Route).
+dangerous(S254, Data, Exploit).
+carries(F50, Data, S50, Origin, Route).
+dangerous(S31, Data, Exploit).
+carries(F289, Data, S289, Origin, Route).
+prevents(Sanitizer, F277).
+prevents(Sanitizer, F10).
+prevents(Sanitizer, F212).
+prevents(Sanitizer, F71).
+carries(F308, Data, S308, Origin, Route).
+carries(F343, Data, S343, Origin, Route).
+carries(F215, Data, S215, Origin, Route).
+dangerous(S52, Data, Exploit).
+carries(F193, Data, S193, Origin, Route).
+permits(Review, F188, Waiver).
+dangerous(S246, Data, Exploit).
+dangerous(S130, Data, Exploit).
+carries(F86, Data, S86, Origin, Route).
+carries(F328, Data, S328, Origin, Route).
+prevents(Sanitizer, F341).
+dangerous(S202, Data, Exploit).
+dangerous(S94, Data, Exploit).
+dangerous(S58, Data, Exploit).
+dangerous(S228, Data, Exploit).
+carries(F38, Data, S38, Origin, Route).
+permits(Review, F280, Waiver).
+carries(F124, Data, S124, Origin, Route).
+dangerous(S191, Data, Exploit).
+dangerous(S356, Data, Exploit).
+carries(F300, Data, S300, Origin, Route).
+dangerous(S209, Data, Exploit).
+dangerous(S286, Data, Exploit).
+carries(F165, Data, S165, Origin, Route).
+dangerous(S245, Data, Exploit).
+carries(F115, Data, S115, Origin, Route).
+carries(F325, Data, S325, Origin, Route).
+dangerous(S274, Data, Exploit).
+carries(F123, Data, S123, Origin, Route).
+permits(Review, F325, Waiver).
+carries(F7, Data, S7, Origin, Route).
+permits(Review, F198, Waiver).
+dangerous(S227, Data, Exploit).
+prevents(Sanitizer, F324).
+dangerous(S90, Data, Exploit).
+dangerous(S118, Data, Exploit).
+carries(F229, Data, S229, Origin, Route).
+dangerous(S149, Data, Exploit).
+carries(F6, Data, S6, Origin, Route).
+carries(F233, Data, S233, Origin, Route).
+dangerous(S154, Data, Exploit).
+dangerous(S270, Data, Exploit).
+dangerous(S323, Data, Exploit).
+carries(F143, Data, S143, Origin, Route).
+dangerous(S54, Data, Exploit).
+carries(F75, Data, S75, Origin, Route).
+dangerous(S243, Data, Exploit).
+carries(F51, Data, S51, Origin, Route).
+dangerous(S192, Data, Exploit).
+permits(Review, F159, Waiver).
+prevents(Sanitizer, F126).
+dangerous(S360, Data, Exploit).
+carries(F152, Data, S152, Origin, Route).
+permits(Review, F161, Waiver).
+carries(F46, Data, S46, Origin, Route).
+dangerous(S312, Data, Exploit).
+dangerous(S12, Data, Exploit).
+prevents(Sanitizer, F82).
+carries(F37, Data, S37, Origin, Route).
+prevents(Sanitizer, F33).
+permits(Review, F221, Waiver).
+carries(F174, Data, S174, Origin, Route).
+dangerous(S335, Data, Exploit).
+carries(F150, Data, S150, Origin, Route).
+carries(F297, Data, S297, Origin, Route).
+permits(Review, F65, Waiver).
+dangerous(S339, Data, Exploit).
+dangerous(S235, Data, Exploit).
+permits(Review, F256, Waiver).
+permits(Review, F309, Waiver).
+permits(Review, F34, Waiver).
+dangerous(S232, Data, Exploit).
+carries(F52, Data, S52, Origin, Route).
+prevents(Sanitizer, F37).
+prevents(Sanitizer, F323).
+dangerous(S141, Data, Exploit).
+carries(F167, Data, S167, Origin, Route).
+dangerous(S123, Data, Exploit).
+carries(F354, Data, S354, Origin, Route).
+permits(Review, F176, Waiver).
+dangerous(S211, Data, Exploit).
+dangerous(S343, Data, Exploit).
+permits(Review, F115, Waiver).
+permits(Review, F122, Waiver).
+carries(F351, Data, S351, Origin, Route).
+dangerous(S277, Data, Exploit).
+permits(Review, F72, Waiver).
+dangerous(S69, Data, Exploit).
+carries(F96, Data, S96, Origin, Route).
+permits(Review, F32, Waiver).
+prevents(Sanitizer, F357).
+prevents(Sanitizer, F208).
+dangerous(S145, Data, Exploit).
+prevents(Sanitizer, F125).
+carries(F111, Data, S111, Origin, Route).
+permits(Review, F202, Waiver).
+dangerous(S139, Data, Exploit).
+dangerous(S234, Data, Exploit).
+prevents(Sanitizer, F107).
+permits(Review, F55, Waiver).
+carries(F230, Data, S230, Origin, Route).
+dangerous(S75, Data, Exploit).
+dangerous(S272, Data, Exploit).
+carries(F352, Data, S352, Origin, Route).
+carries(F338, Data, S338, Origin, Route).
+carries(F42, Data, S42, Origin, Route).
+permits(Review, F211, Waiver).
+prevents(Sanitizer, F108).
+dangerous(S316, Data, Exploit).
+prevents(Sanitizer, F178).
+dangerous(S352, Data, Exploit).
+dangerous(S269, Data, Exploit).
+prevents(Sanitizer, F139).
+carries(F5, Data, S5, Origin, Route).
+dangerous(S166, Data, Exploit).
+permits(Review, F246, Waiver).
+carries(F45, Data, S45, Origin, Route).
+carries(F282, Data, S282, Origin, Route).
+carries(F173, Data, S173, Origin, Route).
+dangerous(S256, Data, Exploit).
+dangerous(S146, Data, Exploit).
+dangerous(S289, Data, Exploit).
+carries(F39, Data, S39, Origin, Route).
+dangerous(S51, Data, Exploit).
+carries(F260, Data, S260, Origin, Route).
+carries(F28, Data, S28, Origin, Route).
+dangerous(S133, Data, Exploit).
+carries(F25, Data, S25, Origin, Route).
+permits(Review, F270, Waiver).
+carries(F252, Data, S252, Origin, Route).
+dangerous(S175, Data, Exploit).
+dangerous(S114, Data, Exploit).
+carries(F209, Data, S209, Origin, Route).
+dangerous(S28, Data, Exploit).
+dangerous(S151, Data, Exploit).
+carries(F292, Data, S292, Origin, Route).
+prevents(Sanitizer, F117).
+carries(F116, Data, S116, Origin, Route).
+carries(F313, Data, S313, Origin, Route).
+prevents(Sanitizer, F186).
+dangerous(S197, Data, Exploit).
+carries(F155, Data, S155, Origin, Route).
+carries(F299, Data, S299, Origin, Route).
+prevents(Sanitizer, F13).
+dangerous(S76, Data, Exploit).
+dangerous(S164, Data, Exploit).
+dangerous(S295, Data, Exploit).
+permits(Review, F33, Waiver).
+prevents(Sanitizer, F258).
+prevents(Sanitizer, F70).
+carries(F156, Data, S156, Origin, Route).
+carries(F69, Data, S69, Origin, Route).
+dangerous(S7, Data, Exploit).
+carries(F341, Data, S341, Origin, Route).
+prevents(Sanitizer, F190).
+dangerous(S204, Data, Exploit).
+prevents(Sanitizer, F219).
+prevents(Sanitizer, F282).
+dangerous(S304, Data, Exploit).
+carries(F176, Data, S176, Origin, Route).
+carries(F262, Data, S262, Origin, Route).
+permits(Review, F180, Waiver).
+carries(F36, Data, S36, Origin, Route).
+dangerous(S319, Data, Exploit).
+carries(F271, Data, S271, Origin, Route).
+permits(Review, F229, Waiver).
+dangerous(S100, Data, Exploit).
+carries(F130, Data, S130, Origin, Route).
+carries(F31, Data, S31, Origin, Route).
+prevents(Sanitizer, F47).
+carries(F55, Data, S55, Origin, Route).
+carries(F345, Data, S345, Origin, Route).
+dangerous(S0, Data, Exploit).
+dangerous(S65, Data, Exploit).
+carries(F291, Data, S291, Origin, Route).
+carries(F214, Data, S214, Origin, Route).
+prevents(Sanitizer, F55).
+carries(F20, Data, S20, Origin, Route).
+dangerous(S200, Data, Exploit).
+carries(F310, Data, S310, Origin, Route).
+dangerous(S99, Data, Exploit).
+prevents(Sanitizer, F231).
+carries(F348, Data, S348, Origin, Route).
+carries(F239, Data, S239, Origin, Route).
+dangerous(S48, Data, Exploit).
+prevents(Sanitizer, F318).
+permits(Review, F306, Waiver).
+carries(F97, Data, S97, Origin, Route).
+prevents(Sanitizer, F53).
+carries(F120, Data, S120, Origin, Route).
+carries(F324, Data, S324, Origin, Route).
+prevents(Sanitizer, F57).
+prevents(Sanitizer, F155).
+carries(F58, Data, S58, Origin, Route).
+dangerous(S226, Data, Exploit).
+dangerous(S350, Data, Exploit).
+carries(F270, Data, S270, Origin, Route).
+dangerous(S91, Data, Exploit).
+dangerous(S301, Data, Exploit).
+carries(F168, Data, S168, Origin, Route).
+carries(F137, Data, S137, Origin, Route).
+dangerous(S332, Data, Exploit).
+dangerous(S4, Data, Exploit).
+dangerous(S87, Data, Exploit).
+carries(F248, Data, S248, Origin, Route).
+dangerous(S21, Data, Exploit).
+carries(F298, Data, S298, Origin, Route).
+prevents(Sanitizer, F102).
+dangerous(S292, Data, Exploit).
+carries(F194, Data, S194, Origin, Route).
+prevents(Sanitizer, F300).
+carries(F198, Data, S198, Origin, Route).
+prevents(Sanitizer, F142).
+dangerous(S302, Data, Exploit).
+permits(Review, F303, Waiver).
+dangerous(S49, Data, Exploit).
+prevents(Sanitizer, F333).
+carries(F18, Data, S18, Origin, Route).
+carries(F149, Data, S149, Origin, Route).
+prevents(Sanitizer, F80).
+carries(F182, Data, S182, Origin, Route).
+carries(F34, Data, S34, Origin, Route).
+permits(Review, F291, Waiver).
+carries(F206, Data, S206, Origin, Route).
+carries(F249, Data, S249, Origin, Route).
+permits(Review, F126, Waiver).
+prevents(Sanitizer, F329).
+carries(F183, Data, S183, Origin, Route).
+dangerous(S97, Data, Exploit).
+carries(F357, Data, S357, Origin, Route).
+dangerous(S180, Data, Exploit).
+carries(F207, Data, S207, Origin, Route).
+carries(F309, Data, S309, Origin, Route).
+dangerous(S206, Data, Exploit).
+carries(F234, Data, S234, Origin, Route).
+dangerous(S116, Data, Exploit).
+dangerous(S358, Data, Exploit).
+carries(F63, Data, S63, Origin, Route).
+dangerous(S150, Data, Exploit).
+dangerous(S104, Data, Exploit).
+carries(F68, Data, S68, Origin, Route).
+dangerous(S165, Data, Exploit).
+prevents(Sanitizer, F81).
+carries(F191, Data, S191, Origin, Route).
+prevents(Sanitizer, F222).
+dangerous(S177, Data, Exploit).
+dangerous(S271, Data, Exploit).
+dangerous(S224, Data, Exploit).
+prevents(Sanitizer, F86).
+carries(F220, Data, S220, Origin, Route).
+dangerous(S79, Data, Exploit).
+carries(F133, Data, S133, Origin, Route).
+dangerous(S67, Data, Exploit).
+carries(F72, Data, S72, Origin, Route).
+carries(F40, Data, S40, Origin, Route).
+prevents(Sanitizer, F116).
+dangerous(S13, Data, Exploit).
+dangerous(S303, Data, Exploit).
+carries(F181, Data, S181, Origin, Route).
+carries(F219, Data, S219, Origin, Route).
+prevents(Sanitizer, F6).
+carries(F172, Data, S172, Origin, Route).
+dangerous(S284, Data, Exploit).
+dangerous(S22, Data, Exploit).
+prevents(Sanitizer, F65).
+carries(F293, Data, S293, Origin, Route).
+dangerous(S57, Data, Exploit).
+carries(F244, Data, S244, Origin, Route).
+carries(F113, Data, S113, Origin, Route).
+dangerous(S42, Data, Exploit).
+permits(Review, F276, Waiver).
+dangerous(S115, Data, Exploit).
+carries(F177, Data, S177, Origin, Route).
+prevents(Sanitizer, F21).
+prevents(Sanitizer, F334).
+dangerous(S102, Data, Exploit).
+dangerous(S108, Data, Exploit).
+dangerous(S198, Data, Exploit).
+carries(F159, Data, S159, Origin, Route).
+dangerous(S144, Data, Exploit).
+dangerous(S74, Data, Exploit).
+prevents(Sanitizer, F119).
+dangerous(S61, Data, Exploit).
+dangerous(S259, Data, Exploit).
+carries(F139, Data, S139, Origin, Route).
+carries(F238, Data, S238, Origin, Route).
+permits(Review, F59, Waiver).
+carries(F280, Data, S280, Origin, Route).
+carries(F91, Data, S91, Origin, Route).
+permits(Review, F53, Waiver).
+dangerous(S346, Data, Exploit).
+prevents(Sanitizer, F157).
+prevents(Sanitizer, F349).
+permits(Review, F157, Waiver).
+dangerous(S40, Data, Exploit).
+carries(F304, Data, S304, Origin, Route).
+carries(F4, Data, S4, Origin, Route).
+carries(F269, Data, S269, Origin, Route).
+permits(Review, F133, Waiver).
+dangerous(S196, Data, Exploit).
+dangerous(S9, Data, Exploit).
+dangerous(S240, Data, Exploit).
+dangerous(S203, Data, Exploit).
+dangerous(S174, Data, Exploit).
+carries(F335, Data, S335, Origin, Route).
+dangerous(S33, Data, Exploit).
+dangerous(S315, Data, Exploit).
+carries(F140, Data, S140, Origin, Route).
+dangerous(S305, Data, Exploit).
+permits(Review, F0, Waiver).
+carries(F323, Data, S323, Origin, Route).
+permits(Review, F128, Waiver).
+dangerous(S251, Data, Exploit).
+prevents(Sanitizer, F312).
+carries(F286, Data, S286, Origin, Route).
+prevents(Sanitizer, F153).
+carries(F17, Data, S17, Origin, Route).
+carries(F346, Data, S346, Origin, Route).
+carries(F231, Data, S231, Origin, Route).
+dangerous(S268, Data, Exploit).
+carries(F27, Data, S27, Origin, Route).
+dangerous(S273, Data, Exploit).
+carries(F305, Data, S305, Origin, Route).
+carries(F202, Data, S202, Origin, Route).
+carries(F184, Data, S184, Origin, Route).
+dangerous(S186, Data, Exploit).
+prevents(Sanitizer, F1).

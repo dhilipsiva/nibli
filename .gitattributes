@@ -1,3 +1,8 @@
 # Vendored Predilex CSVs are parsed by a byte-exact include_str! reader —
 # never let a Windows-side checkout CRLF-normalize them.
 nibli-verify/vendor/predilex/* text eol=lf
+
+# Research records retain their captured bytes, including terminal whitespace.
+paper/results/** -text -whitespace
+# Generated CSV uses the standard CRLF record separator.
+paper/generated/*.csv -text whitespace=cr-at-eol

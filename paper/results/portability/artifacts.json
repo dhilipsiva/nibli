@@ -1,0 +1,9 @@
+{
+  "paper/build/node/nibli_wasm.js": "82d8e48645c5b71ab2a541cc7c0825a9634480638f2b3f4fa4539eb3a02c0b4d",
+  "paper/build/node/nibli_wasm_bg.wasm": "4b77aeb0d085a8f81bf79be6bfb24a5de96845e91ef13fda7c9e858e1d0f5e77",
+  "paper/scripts/portability.cjs": "caed48b9fe4b272f682ddcc798c42403c189adb1cac95460286fb18b54b64809",
+  "paper/scripts/portability.py": "46091c2a32a306f1ba5388b9868dabf64a61e3c75c5989eec45c5d1e1b51a4b2",
+  "target/release/nibli-bench-paper": "b0123cd0c93b111b25d23bff3de79f08b337f323428bd5d1656598c4bfe0bde5",
+  "target/release/nibli-host": "8ef19bee21e869fb4880855e28cc941959cec4ff70efb784236e69806531b4f7",
+  "target/wasm32-wasip2/release/nibli.wasm": "f388b8c5be5fcd802dffa1359597c473d42c4f729a4bda8c4c6e91da71d3f876"
+}

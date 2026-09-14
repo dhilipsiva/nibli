@@ -1,0 +1,21 @@
+Nibli integrates a formal predicate-call language, bounded symbolic evaluation,
+selective materialization, retractable premise identities, and optional evidence
+envelopes across native and WebAssembly execution. We describe its supported
+reasoning model and distinguish derivation from accepted premises from claims
+about input truth. Selected Lean proofs establish conditional model properties;
+implementation tests connect those models to code, while envelope validation
+checks structural coherence. A frozen research artifact compares finite Horn
+and stratified-negation workloads with clingo and compiled, single-threaded
+\Souffle, varies evaluation bounds, and exercises withdrawal and saved-state
+reopening. Across \MeasuredRuns\ measured processes, no definitive-answer
+disagreement is observed, while \TimeoutRuns\ executions reach an external
+cutoff. The audit checks \CertificateCount\ envelopes and \CitationCount\ source
+citations without a coherence or source-liveness error. Materialization recovers
+\BoundsGains\ returned definitive answers in the fixed bounds slice. At the
+1,000-fact target, certificate query time is \CertificateMedianRatio\ times
+verdict-only query time by ratio of medians. Larger ingestion and forward
+recursion cases expose substantial limits under the cutoff. Native, Wasmtime,
+and Node/V8 agree on all \PortableAnswers\ measured query outcomes in the shared
+scenarios. The results characterize an integration whose auditability depends
+on explicit premise identity, evaluation profiles, and evidence boundaries,
+while its performance and completeness remain workload-dependent.

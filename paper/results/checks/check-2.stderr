@@ -1,0 +1,476 @@
+cargo test -p nibli-verify --lib --test differential_gate --release -- --nocapture --test-threads=1
+    Finished `release` profile [optimized] target(s) in 0.48s
+     Running unittests src/lib.rs (target/release/deps/nibli_verify-aef109384561e4e6)
+     Running tests/differential_gate.rs (target/release/deps/differential_gate-bbba3026f1863adb)
+nibli-verify gdpr slice: 50 agree / 0 diverge / 0 skip /              0 error (50 checked)
+nibli-verify ddi slice: 56 agree / 0 diverge / 0 skip /              0 error (56 checked)
+nibli-verify utopia slice: 609 agree / 0 diverge / 0 skip /              0 error (609 checked)
+AGREE   fact_lookup_true: nibli=TRUE == oracle
+AGREE   fact_lookup_false: nibli=FALSE == oracle
+AGREE   named_query_join_split_false: nibli=FALSE == oracle
+AGREE   named_query_join_joint_true: nibli=TRUE == oracle
+AGREE   syllogism_true: nibli=TRUE == oracle
+AGREE   syllogism_false_other_predicate: nibli=FALSE == oracle
+AGREE   no_rule_so_false: nibli=FALSE == oracle
+AGREE   chain_two_true: nibli=TRUE == oracle
+AGREE   chain_two_false_other: nibli=FALSE == oracle
+AGREE   chain_three_true: nibli=TRUE == oracle
+AGREE   two_rules_entity_a_true: nibli=TRUE == oracle
+AGREE   two_rules_entity_b_true: nibli=TRUE == oracle
+AGREE   unknown_entity_false: nibli=FALSE == oracle
+AGREE   disjoint_chain_cat_alive_true: nibli=TRUE == oracle
+AGREE   disjoint_chain_dog_alive_true: nibli=TRUE == oracle
+AGREE   disjoint_chain_false_other: nibli=FALSE == oracle
+AGREE   du_reflexive_true: nibli=TRUE == oracle
+AGREE   du_symmetric_true: nibli=TRUE == oracle
+AGREE   du_chain_transitive_true: nibli=TRUE == oracle
+AGREE   du_chain_broken_false: nibli=FALSE == oracle
+AGREE   du_no_link_false: nibli=FALSE == oracle
+AGREE   du_substitutivity_fact_true: nibli=TRUE == oracle
+AGREE   du_substitutivity_broken_chain_false: nibli=FALSE == oracle
+AGREE   du_rule_fires_through_identity: nibli=TRUE == oracle
+AGREE   du_ground_rule_chain_alternative_true: nibli=TRUE == oracle
+AGREE   du_ground_rule_chain_reversed_alias_true: nibli=TRUE == oracle
+AGREE   du_transitive_substitutivity_through_rule_true: nibli=TRUE == oracle
+AGREE   tense_diag_pu_true: nibli=TRUE == oracle
+AGREE   tense_diag_ca_true: nibli=TRUE == oracle
+AGREE   tense_diag_ba_true: nibli=TRUE == oracle
+AGREE   tense_offdiag_pu_fact_bare_query_false: nibli=FALSE == oracle
+AGREE   tense_offdiag_bare_fact_pu_query_false: nibli=FALSE == oracle
+AGREE   tense_offdiag_ca_fact_pu_query_false: nibli=FALSE == oracle
+AGREE   tense_offdiag_bare_fact_ca_query_false: nibli=FALSE == oracle
+AGREE   tense_bare_taxonomy_chain_past_false: nibli=FALSE == oracle
+AGREE   tense_past_fact_bare_query_false: nibli=FALSE == oracle
+AGREE   tense_other_flavor_blocked_false: nibli=FALSE == oracle
+AGREE   tense_bare_taxonomy_rule_present_false: nibli=FALSE == oracle
+AGREE   tense_explicit_taxonomy_chain_past_true: nibli=TRUE == oracle
+AGREE   tense_bare_taxonomy_rule_future_false: nibli=FALSE == oracle
+AGREE   tense_explicit_taxonomy_rule_future_true: nibli=TRUE == oracle
+AGREE   tense_bare_causal_rule_past_false: nibli=FALSE == oracle
+AGREE   tense_explicit_causal_cross_flavor_true: nibli=TRUE == oracle
+AGREE   tense_antecedent_explicit_fires_true: nibli=TRUE == oracle
+AGREE   tense_antecedent_explicit_query_flavor_blocked_false: nibli=FALSE == oracle
+AGREE   tense_antecedent_bare_witness_blocked_false: nibli=FALSE == oracle
+AGREE   tense_consequent_explicit_fires_true: nibli=TRUE == oracle
+AGREE   tense_consequent_bare_query_blocked_false: nibli=FALSE == oracle
+AGREE   tense_consequent_past_fact_blocked_false: nibli=FALSE == oracle
+nibli-verify: 49 agree / 0 diverge / 0 skip / 0 error (49 of 49 checked)
+nibli-verify materialize: 60 agree / 0 diverge / 0 error (4248 battery queries, 0 became definitive, across 60 programs)
+nibli-verify predilex-taxonomy: 39 agree / 0 diverge / 0 skip / 0 error (39 checked)
+nibli-verify random count: 100 agree / 0 diverge / 0 skip / 0 error (100 of 100 checked)
+nibli-verify random: 200 agree / 0 diverge / 0 skip / 0 error (200 of 200 checked)
+nibli-verify random NAF: 96 agree / 0 diverge / 4 skip / 0 error (96 of 100 checked)
+nibli-verify random tense×NAF: 98 agree / 0 diverge / 2 skip / 0 error (98 of 100 checked)
+[Forward] Derived: animal(sk_3(adam))
+[Forward] Derived: animal_x1(sk_3(adam), adam)
+[Forward] Derived: animal_x2(sk_3(adam), _)
+[Forward] Derived: animal(sk_3(adam))
+[Forward] Derived: animal_x1(sk_3(adam), adam)
+[Forward] Derived: animal_x2(sk_3(adam), _)
+[Forward] Derived: animal(sk_1(bel))
+[Forward] Derived: animal_x1(sk_1(bel), bel)
+[Forward] Derived: animal_x2(sk_1(bel), _)
+[Forward] Derived: animal(sk_1(bel))
+[Forward] Derived: animal_x1(sk_1(bel), bel)
+[Forward] Derived: animal_x2(sk_1(bel), _)
+[Forward] Derived: animal(sk_1(bel))
+[Forward] Derived: animal(sk_1(sk_6))
+[Forward] Derived: animal_x1(sk_1(bel), bel)
+[Forward] Derived: alive(sk_9(adam))
+[Forward] Derived: alive(sk_9(sk_6))
+[Forward] Derived: alive_x1(sk_9(adam), adam)
+[Forward] Derived: alive_x1(sk_9(sk_6), sk_6)
+[Forward] Derived: alive_x2(sk_9(adam), _)
+[Forward] Derived: alive_x2(sk_9(sk_6), _)
+[Forward] Derived: animal_x1(sk_1(sk_6), sk_6)
+[Forward] Derived: animal_x2(sk_1(bel), _)
+[Forward] Derived: animal_x2(sk_1(sk_6), _)
+[Forward] Derived: alive(sk_9(bel))
+[Forward] Derived: alive_x1(sk_9(bel), bel)
+[Forward] Derived: alive_x2(sk_9(bel), _)
+[Forward] Derived: animal(sk_1(bel))
+[Forward] Derived: animal_x1(sk_1(bel), bel)
+[Forward] Derived: animal_x2(sk_1(bel), _)
+[Forward] Derived: animal(sk_1(sk_5))
+[Forward] Derived: animal_x1(sk_1(sk_5), sk_5)
+[Forward] Derived: animal_x2(sk_1(sk_5), _)
+[Forward] Derived: alive(sk_7(sk_1))
+[Forward] Derived: alive_x1(sk_7(sk_1), sk_1)
+[Forward] Derived: alive_x2(sk_7(sk_1), _)
+[Forward] Derived: alive(sk_7(sk_1))
+[Forward] Derived: alive_x1(sk_7(sk_1), sk_1)
+[Forward] Derived: alive_x2(sk_7(sk_1), _)
+[Forward] Derived: animal(sk_7(sk_1))
+[Forward] Derived: animal_x1(sk_7(sk_1), sk_1)
+[Forward] Derived: animal_x2(sk_7(sk_1), _)
+[Forward] Derived: animal(sk_7(7))
+[Forward] Derived: animal_x1(sk_7(7), 7)
+[Forward] Derived: animal_x2(sk_7(7), _)
+[Forward] Derived: animal(sk_5(adam))
+[Forward] Derived: animal_x1(sk_5(adam), adam)
+[Forward] Derived: animal_x2(sk_5(adam), _)
+[Forward] Derived: animal(sk_5(bel))
+[Forward] Derived: animal_x1(sk_5(bel), bel)
+[Forward] Derived: animal_x2(sk_5(bel), _)
+[Forward] Derived: animal(sk_4(bel))
+[Forward] Derived: animal_x1(sk_4(bel), bel)
+[Forward] Derived: animal_x2(sk_4(bel), _)
+[Forward] Derived: animal(sk_5(7))
+[Forward] Derived: animal_x1(sk_5(7), 7)
+[Forward] Derived: animal_x2(sk_5(7), _)
+[Forward] Derived: animal(sk_5(bel))
+[Forward] Derived: animal_x1(sk_5(bel), bel)
+[Forward] Derived: animal_x2(sk_5(bel), _)
+[Forward] Derived: animal(sk_2(adam))
+[Forward] Derived: animal_x1(sk_2(adam), adam)
+[Forward] Derived: animal_x2(sk_2(adam), _)
+[Forward] Derived: animal(sk_2(adam))
+[Forward] Derived: animal_x1(sk_2(adam), adam)
+[Forward] Derived: animal_x2(sk_2(adam), _)
+[Forward] Derived: animal(sk_2(adam))
+[Forward] Derived: animal_x1(sk_2(adam), adam)
+[Forward] Derived: animal_x2(sk_2(adam), _)
+[Forward] Derived: alive(sk_4(sk_0))
+[Forward] Derived: alive_x1(sk_4(sk_0), sk_0)
+[Forward] Derived: alive_x2(sk_4(sk_0), _)
+[Forward] Derived: alive(sk_4(sk_0))
+[Forward] Derived: alive_x1(sk_4(sk_0), sk_0)
+[Forward] Derived: alive_x2(sk_4(sk_0), _)
+[Forward] Derived: alive(sk_2(bel))
+[Forward] Derived: alive_x1(sk_2(bel), bel)
+[Forward] Derived: alive_x2(sk_2(bel), _)
+[Forward] Derived: animal(sk_1(sk_4))
+[Forward] Derived: animal_x1(sk_1(sk_4), sk_4)
+[Forward] Derived: animal_x2(sk_1(sk_4), _)
+[Forward] Derived: alive(sk_1(adam))
+[Forward] Derived: alive_x1(sk_1(adam), adam)
+[Forward] Derived: alive_x2(sk_1(adam), _)
+[Forward] Derived: animal(sk_4(sk_0))
+[Forward] Derived: animal_x1(sk_4(sk_0), sk_0)
+[Forward] Derived: animal_x2(sk_4(sk_0), _)
+[Forward] Derived: animal(sk_4(sk_0))
+[Forward] Derived: animal_x1(sk_4(sk_0), sk_0)
+[Forward] Derived: animal_x2(sk_4(sk_0), _)
+[Forward] Derived: alive(sk_1(sk_3))
+[Forward] Derived: alive_x1(sk_1(sk_3), sk_3)
+[Forward] Derived: alive_x2(sk_1(sk_3), _)
+[Forward] Derived: alive(sk_1(sk_3))
+[Forward] Derived: alive_x1(sk_1(sk_3), sk_3)
+[Forward] Derived: alive_x2(sk_1(sk_3), _)
+[Forward] Derived: alive(sk_1(sk_11))
+[Forward] Derived: alive(sk_1(sk_3))
+[Forward] Derived: alive_x1(sk_1(sk_11), sk_11)
+[Forward] Derived: alive_x1(sk_1(sk_3), sk_3)
+[Forward] Derived: alive_x2(sk_1(sk_11), _)
+[Forward] Derived: alive_x2(sk_1(sk_3), _)
+[Forward] Derived: alive(sk_1(adam))
+[Forward] Derived: alive_x1(sk_1(adam), adam)
+[Forward] Derived: alive_x2(sk_1(adam), _)
+[Forward] Derived: alive(sk_7(3))
+[Forward] Derived: alive_x1(sk_7(3), 3)
+[Forward] Derived: alive_x2(sk_7(3), _)
+[Forward] Derived: alive(sk_5(7))
+[Forward] Derived: alive(sk_5(adam))
+[Forward] Derived: alive_x1(sk_5(7), 7)
+[Forward] Derived: alive_x1(sk_5(adam), adam)
+[Forward] Derived: alive_x2(sk_5(7), _)
+[Forward] Derived: alive_x2(sk_5(adam), _)
+[Forward] Derived: animal(sk_2(sk_4))
+[Forward] Derived: animal_x1(sk_2(sk_4), sk_4)
+[Forward] Derived: animal_x2(sk_2(sk_4), _)
+[Forward] Derived: animal(sk_6(bel))
+[Forward] Derived: animal(sk_6(sk_3))
+[Forward] Derived: animal_x1(sk_6(bel), bel)
+[Forward] Derived: animal_x1(sk_6(sk_3), sk_3)
+[Forward] Derived: animal_x2(sk_6(bel), _)
+[Forward] Derived: animal_x2(sk_6(sk_3), _)
+[Forward] Derived: animal(sk_6(bel))
+[Forward] Derived: animal(sk_6(sk_2))
+[Forward] Derived: animal_x1(sk_6(bel), bel)
+[Forward] Derived: animal_x1(sk_6(sk_2), sk_2)
+[Forward] Derived: animal_x2(sk_6(bel), _)
+[Forward] Derived: animal_x2(sk_6(sk_2), _)
+[Forward] Derived: animal(sk_15(sk_11))
+[Forward] Derived: animal_x1(sk_15(sk_11), sk_11)
+[Forward] Derived: animal_x2(sk_15(sk_11), _)
+[Forward] Derived: animal(sk_14(sk_10))
+[Forward] Derived: animal_x1(sk_14(sk_10), sk_10)
+[Forward] Derived: animal_x2(sk_14(sk_10), _)
+[Forward] Derived: animal(sk_1(sk_8))
+[Forward] Derived: animal_x1(sk_1(sk_8), sk_8)
+[Forward] Derived: animal_x2(sk_1(sk_8), _)
+[Forward] Derived: animal(sk_1(sk_11))
+[Forward] Derived: animal_x1(sk_1(sk_11), sk_11)
+[Forward] Derived: animal_x2(sk_1(sk_11), _)
+[Forward] Derived: animal(sk_1(sk_5))
+[Forward] Derived: animal_x1(sk_1(sk_5), sk_5)
+[Forward] Derived: animal_x2(sk_1(sk_5), _)
+[Forward] Derived: animal(sk_1(sk_8))
+[Forward] Derived: animal_x1(sk_1(sk_8), sk_8)
+[Forward] Derived: animal_x2(sk_1(sk_8), _)
+[Forward] Derived: animal(sk_1(sk_5))
+[Forward] Derived: animal_x1(sk_1(sk_5), sk_5)
+[Forward] Derived: animal_x2(sk_1(sk_5), _)
+[Forward] Derived: animal(sk_2(sk_9))
+[Forward] Derived: animal_x1(sk_2(sk_9), sk_9)
+[Forward] Derived: animal_x2(sk_2(sk_9), _)
+[Forward] Derived: animal(sk_1(sk_8))
+[Forward] Derived: animal_x1(sk_1(sk_8), sk_8)
+[Forward] Derived: animal_x2(sk_1(sk_8), _)
+[Forward] Derived: animal(sk_8(sk_1))
+[Forward] Derived: animal(sk_8(sk_4))
+[Forward] Derived: animal_x1(sk_8(sk_1), sk_1)
+[Forward] Derived: animal_x1(sk_8(sk_4), sk_4)
+[Forward] Derived: animal_x2(sk_8(sk_1), _)
+[Forward] Derived: animal_x2(sk_8(sk_4), _)
+[Forward] Derived: alive(sk_2(adam))
+[Forward] Derived: alive_x1(sk_2(adam), adam)
+[Forward] Derived: alive_x2(sk_2(adam), _)
+[Forward] Derived: animal(sk_3(bel))
+[Forward] Derived: animal_x1(sk_3(bel), bel)
+[Forward] Derived: animal_x2(sk_3(bel), _)
+[Forward] Derived: animal(sk_2(bel))
+[Forward] Derived: animal_x1(sk_2(bel), bel)
+[Forward] Derived: animal_x2(sk_2(bel), _)
+[Forward] Derived: animal(sk_6(bel))
+[Forward] Derived: animal_x1(sk_6(bel), bel)
+[Forward] Derived: animal_x2(sk_6(bel), _)
+nibli-verify retract: 200 agree / 0 diverge / 0 error (490 retractions, 288 complex/rebuild-path, across 200 sequences)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'dog' -> 'dog' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'alive' -> 'animal' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'dog' -> 'animal' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'beautiful' -> 'beautiful' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'animal' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'beautiful' -> 'beautiful' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'animal' -> 'animal' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'animal' -> 'animal' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'beautiful' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'animal' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'cat' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'beautiful' -> 'beautiful' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'alive' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'cat' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'animal' -> 'animal' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'animal' -> 'animal' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'beautiful' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'cat' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'animal' -> 'animal' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'beautiful' -> 'beautiful' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'alive' -> 'alive' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'animal' -> 'animal' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'cat' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'beautiful' -> 'beautiful' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'alive' -> 'alive' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'cat' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'animal' -> 'animal' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'cat' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'alive' -> 'alive' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'beautiful' -> 'beautiful' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'animal' -> 'animal' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'beautiful' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'alive' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'alive' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'alive' -> 'beautiful' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'cat' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'animal' -> 'animal' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'animal' -> 'animal' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'animal' -> 'beautiful' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'cat' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'animal' -> 'animal' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'alive' -> 'alive' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'animal' -> 'animal' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'animal' -> 'animal' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'beautiful' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'beautiful' -> 'beautiful' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'cat' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'alive' -> 'alive' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'cat' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'alive' -> 'alive' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'cat' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'alive' -> 'alive' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'alive' -> 'alive' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'animal' -> 'beautiful' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'animal' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'animal' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'animal' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'cat' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'cat' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'alive' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'beautiful' -> 'beautiful' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'beautiful' -> 'beautiful' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'alive' -> 'alive' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'cat' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'cat' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'alive' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'alive' -> 'cat' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'alive' -> 'animal' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'alive' -> 'alive' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'cat' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'cat' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'beautiful' -> 'beautiful' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'animal' -> 'animal' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'beautiful' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'alive' -> 'alive' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'animal' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'cat' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'animal' -> 'beautiful' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'alive' -> 'cat' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'alive' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'alive' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'beautiful' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'beautiful' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'alive' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'cat' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'alive' -> 'animal' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'animal' -> 'cat' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'cat' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'beautiful' -> 'beautiful' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'cat' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'alive' -> 'alive' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'cat' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'animal' -> 'alive' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'alive' -> 'alive' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'alive' -> 'beautiful' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'animal' -> 'beautiful' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'cat' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'alive' -> 'beautiful' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'alive' -> 'beautiful' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'alive' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'beautiful' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'alive' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'animal' -> 'animal' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'animal' -> 'animal' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'animal' -> 'animal' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'animal' -> 'alive' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'alive' -> 'alive' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'cat' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'animal' -> 'animal' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'cat' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'beautiful' -> 'beautiful' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'beautiful' -> 'beautiful' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'beautiful' -> 'beautiful' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'animal' -> 'animal' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'cat' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'alive' -> 'alive' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'beautiful' -> 'beautiful' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'alive' -> 'alive' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'animal' -> 'animal' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'animal' -> 'beautiful' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'animal' -> 'alive' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'beautiful' -> 'beautiful' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'cat' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'beautiful' -> 'beautiful' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'beautiful' -> 'beautiful' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'beautiful' -> 'beautiful' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'alive' -> 'alive' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'alive' -> 'cat' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'animal' -> 'animal' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'beautiful' -> 'beautiful' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'animal' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'beautiful' -> 'beautiful' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'alive' -> 'beautiful' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'beautiful' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'beautiful' -> 'beautiful' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'cat' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'animal' -> 'alive' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'alive' -> 'animal' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'animal' -> 'beautiful' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'alive' -> 'cat' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'cat' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'animal' -> 'alive' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'cat' -> 'animal' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'animal' -> 'animal' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'animal' -> 'animal' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'alive' -> 'beautiful' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'alive' -> 'alive' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'alive' -> 'animal' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'beautiful' -> 'beautiful' (negative)
+nibli-verify strat: 305 agree / 0 diverge / 0 error (149 rules rejected across 305 programs)
+AGREE   naf_no_witness_fires: nibli=TRUE == oracle
+AGREE   naf_witness_blocks: nibli=FALSE == oracle
+AGREE   naf_other_entity_out_of_domain: nibli=FALSE == oracle
+AGREE   naf_domain_required: nibli=FALSE == oracle
+AGREE   naf_plain_fact_baseline: nibli=TRUE == oracle
+AGREE   asp_named_query_join_split_false: nibli=FALSE == oracle
+AGREE   naf_taxonomy_through_naf: nibli=TRUE == oracle
+AGREE   naf_taxonomy_blocked_by_witness: nibli=FALSE == oracle
+AGREE   naf_two_rules_jmive_fires: nibli=TRUE == oracle
+AGREE   naf_two_rules_morsi_blocked: nibli=FALSE == oracle
+AGREE   naf_positive_and_negative_restrictor: nibli=TRUE == oracle
+AGREE   naf_positive_and_negative_restrictor_blocked: nibli=FALSE == oracle
+AGREE   gdpr_erasure_no_consent: nibli=TRUE == oracle
+AGREE   gdpr_erasure_with_consent: nibli=FALSE == oracle
+AGREE   naf_du_blocked_through_equality: nibli=FALSE == oracle
+AGREE   naf_du_unlinked_witness_fires: nibli=TRUE == oracle
+AGREE   naf_du_domain_through_equality: nibli=TRUE == oracle
+AGREE   naf_du_derived_chain_through_equality: nibli=TRUE == oracle
+AGREE   naf_du_query_identity_true: nibli=TRUE == oracle
+AGREE   naf_du_query_identity_false: nibli=FALSE == oracle
+AGREE   tense_asp_diag_pu_true: nibli=TRUE == oracle
+AGREE   tense_asp_offdiag_false: nibli=FALSE == oracle
+AGREE   tense_asp_bare_taxonomy_rule_past_false: nibli=FALSE == oracle
+AGREE   tense_asp_explicit_taxonomy_rule_past_true: nibli=TRUE == oracle
+AGREE   tense_asp_bare_taxonomy_rule_future_false: nibli=FALSE == oracle
+AGREE   tense_asp_explicit_taxonomy_rule_future_true: nibli=TRUE == oracle
+AGREE   tense_asp_bare_causal_rule_past_false: nibli=FALSE == oracle
+AGREE   tense_asp_explicit_causal_cross_flavor_true: nibli=TRUE == oracle
+AGREE   tense_asp_consequent_explicit_true: nibli=TRUE == oracle
+AGREE   tense_naf_no_past_witness_fires: nibli=TRUE == oracle
+AGREE   tense_naf_past_witness_blocks: nibli=FALSE == oracle
+AGREE   tense_naf_bare_witness_does_not_block: nibli=TRUE == oracle
+AGREE   tense_naf_future_witness_does_not_block: nibli=TRUE == oracle
+AGREE   tense_naf_bare_rule_does_not_lift_to_past: nibli=FALSE == oracle
+AGREE   tense_naf_bare_rule_ignores_past_witness: nibli=TRUE == oracle
+AGREE   tense_naf_taxonomy_chain_fires: nibli=TRUE == oracle
+AGREE   tense_naf_taxonomy_chain_blocked_by_past_witness: nibli=FALSE == oracle
+AGREE   count_exact_two_true: nibli=TRUE == oracle
+AGREE   count_exact_one_false: nibli=FALSE == oracle
+AGREE   count_exact_three_false: nibli=FALSE == oracle
+AGREE   count_body_restricts_true: nibli=TRUE == oracle
+AGREE   count_body_restricts_false: nibli=FALSE == oracle
+AGREE   count_three_entities_true: nibli=TRUE == oracle
+nibli-verify NAF: 43 agree / 0 diverge / 0 skip / 0 error (43 of 43 checked)
+AGREE   floor_adam_person: nibli=TRUE == oracle
+AGREE   floor_adam_prisoner: nibli=TRUE == oracle
+AGREE   void_bela: nibli=TRUE == oracle
+AGREE   no_reward_bela: nibli=FALSE == oracle
+AGREE   reward_gia: nibli=TRUE == oracle
+AGREE   void_lupo: nibli=TRUE == oracle
+AGREE   no_void_mira: nibli=FALSE == oracle
+AGREE   reward_mira: nibli=TRUE == oracle
+AGREE   void_dev_kin: nibli=TRUE == oracle
+AGREE   no_void_esa_bare_capture: nibli=FALSE == oracle
+AGREE   reward_esa: nibli=TRUE == oracle
+AGREE   travel_bela: nibli=TRUE == oracle
+AGREE   no_travel_adam: nibli=FALSE == oracle
+AGREE   dwell_hano: nibli=TRUE == oracle
+AGREE   no_prisoner_jala: nibli=FALSE == oracle
+AGREE   no_prisoner_nia: nibli=FALSE == oracle
+AGREE   prisoner_hano: nibli=TRUE == oracle
+AGREE   highsec_lalo: nibli=TRUE == oracle
+AGREE   dwell_lalo: nibli=TRUE == oracle
+AGREE   lowsec_nando: nibli=TRUE == oracle
+AGREE   reward_quin: nibli=TRUE == oracle
+AGREE   no_reward_koa: nibli=FALSE == oracle
+AGREE   art7_no_solo_void_rebel: nibli=FALSE == oracle
+AGREE   art7_no_prisoner_rebel: nibli=FALSE == oracle
+AGREE   art7_defend_rebel: nibli=TRUE == oracle
+cargo test -p nibli-verify --test nibli_kr_seam_gate --release -- --nocapture --test-threads=1
+    Finished `release` profile [optimized] target(s) in 1.21s
+     Running tests/nibli_kr_seam_gate.rs (target/release/deps/nibli_kr_seam_gate-99d1ac032dc38172)
+kr→nibli-semantics seam: 17 structural golden + 20 fail-closed stack checks + 4 scope checks + 64 inventory + 67 metamorphic checks passed
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'prisoner' -> 'eats' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'prisoner' -> 'dwell' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'prisoner' -> 'learn' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'prisoner' -> 'eats' (negative)
+[Stratification Error] Unstratifiable negation: strongly-connected component containing 'prisoner' -> 'prisoner' (negative)
+./target/debug/nibli-pin --kb examples/adjudication/policy.nibli --kb examples/adjudication/facts.nibli examples/adjudication/policy.pins.nibli
+cargo test -p nibli-engine --test integration persistent_engine_honors_store_retractions_after_reopen -- --nocapture --test-threads=1
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.17s
+     Running tests/integration.rs (target/debug/deps/integration-314cd97b64fcd74b)
+cargo test -p nibli-store -- --nocapture
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.08s
+     Running unittests src/lib.rs (target/debug/deps/nibli_store-44b45b49b7525c8c)
+[Persist Error] rejected typed fact with invalid opaque-abstraction identity: legacy hash-only opaque-abstraction marker `__abs_0123456789abcdef` cannot be replayed soundly; recompile/re-import the original KR with this engine version
+     Running unittests src/bin/seed_v2_text.rs (target/debug/deps/seed_v2_text-4d2f9a417fe05d2a)
+   Doc-tests nibli_store

@@ -1,0 +1,73 @@
+{
+  "direction": "both",
+  "expected": [
+    "TRUE",
+    "FALSE"
+  ],
+  "facts": [
+    {
+      "args": [
+        "Ada"
+      ],
+      "name": "dog",
+      "neg": false
+    }
+  ],
+  "family": "hand_horn",
+  "queries": [
+    {
+      "args": [
+        "Ada"
+      ],
+      "name": "alive",
+      "neg": false
+    },
+    {
+      "args": [
+        "Bea"
+      ],
+      "name": "alive",
+      "neg": false
+    }
+  ],
+  "rules": [
+    {
+      "body": [
+        {
+          "args": [
+            "$x"
+          ],
+          "name": "dog",
+          "neg": false
+        }
+      ],
+      "head": {
+        "args": [
+          "$x"
+        ],
+        "name": "animal",
+        "neg": false
+      }
+    },
+    {
+      "body": [
+        {
+          "args": [
+            "$x"
+          ],
+          "name": "animal",
+          "neg": false
+        }
+      ],
+      "head": {
+        "args": [
+          "$x"
+        ],
+        "name": "alive",
+        "neg": false
+      }
+    }
+  ],
+  "seed": 0,
+  "size": 2
+}

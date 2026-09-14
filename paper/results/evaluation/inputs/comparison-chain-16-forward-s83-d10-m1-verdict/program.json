@@ -1,0 +1,179 @@
+{
+  "direction": "forward",
+  "expected": [
+    "TRUE"
+  ],
+  "facts": [
+    {
+      "args": [
+        "N16",
+        "N4"
+      ],
+      "name": "earlier",
+      "neg": false
+    },
+    {
+      "args": [
+        "N11",
+        "N0"
+      ],
+      "name": "earlier",
+      "neg": false
+    },
+    {
+      "args": [
+        "N14",
+        "N15"
+      ],
+      "name": "earlier",
+      "neg": false
+    },
+    {
+      "args": [
+        "N4",
+        "N8"
+      ],
+      "name": "earlier",
+      "neg": false
+    },
+    {
+      "args": [
+        "N5",
+        "N10"
+      ],
+      "name": "earlier",
+      "neg": false
+    },
+    {
+      "args": [
+        "N7",
+        "N13"
+      ],
+      "name": "earlier",
+      "neg": false
+    },
+    {
+      "args": [
+        "N0",
+        "N6"
+      ],
+      "name": "earlier",
+      "neg": false
+    },
+    {
+      "args": [
+        "N8",
+        "N5"
+      ],
+      "name": "earlier",
+      "neg": false
+    },
+    {
+      "args": [
+        "N10",
+        "N7"
+      ],
+      "name": "earlier",
+      "neg": false
+    },
+    {
+      "args": [
+        "N9",
+        "N3"
+      ],
+      "name": "earlier",
+      "neg": false
+    },
+    {
+      "args": [
+        "N2",
+        "N1"
+      ],
+      "name": "earlier",
+      "neg": false
+    },
+    {
+      "args": [
+        "N13",
+        "N9"
+      ],
+      "name": "earlier",
+      "neg": false
+    },
+    {
+      "args": [
+        "N12",
+        "N16"
+      ],
+      "name": "earlier",
+      "neg": false
+    },
+    {
+      "args": [
+        "N6",
+        "N2"
+      ],
+      "name": "earlier",
+      "neg": false
+    },
+    {
+      "args": [
+        "N1",
+        "N14"
+      ],
+      "name": "earlier",
+      "neg": false
+    },
+    {
+      "args": [
+        "N3",
+        "N11"
+      ],
+      "name": "earlier",
+      "neg": false
+    }
+  ],
+  "family": "chain",
+  "queries": [
+    {
+      "args": [
+        "N12",
+        "N15"
+      ],
+      "name": "earlier",
+      "neg": false
+    }
+  ],
+  "rules": [
+    {
+      "body": [
+        {
+          "args": [
+            "$a",
+            "$b"
+          ],
+          "name": "earlier",
+          "neg": false
+        },
+        {
+          "args": [
+            "$b",
+            "$c"
+          ],
+          "name": "earlier",
+          "neg": false
+        }
+      ],
+      "head": {
+        "args": [
+          "$a",
+          "$c"
+        ],
+        "name": "earlier",
+        "neg": false
+      }
+    }
+  ],
+  "seed": 83,
+  "size": 16
+}

@@ -1,0 +1,172 @@
+release-check PASS: 22 members at lockstep 0.2.0
+checking proofs/Combiner.lean
+checking proofs/RuleFiring.lean
+checking proofs/Scc.lean
+checking proofs/Stratification.lean
+checking proofs/Trace.lean
+checking proofs/Unify.lean
+verify-proofs: all proofs/*.lean check (mechanized soundness)
+
+running 67 tests
+test asp::tests::abstraction_referent_is_opaque_constant ... ok
+test asp::tests::count_query_becomes_count_aggregate ... ok
+test asp::tests::du_query_becomes_eq_builtin ... ok
+test asp::tests::equality_facts_canonicalize_constants_and_are_dropped ... ok
+test asp::tests::equals_canonicalization_is_order_independent ... ok
+test asp::tests::ground_fact_query ... ok
+test asp::tests::horn_rule_regroups ... ok
+test asp::tests::negated_restrictor_becomes_naf ... ok
+test asp::tests::nested_prenex_forall_flattens ... ok
+test asp::tests::non_classical_node_errors ... ok
+test asp::tests::nonground_disequality_renders_as_the_clingo_builtin_not_a_naf_atom ... ok
+test asp::tests::nonground_equality_renders_as_the_clingo_builtin ... ok
+test asp::tests::rigid_unspecified_constant ... ok
+test asp::tests::sanitize_strips_dots_and_guards_start ... ok
+test asp::tests::unsafe_rule_is_rejected ... ok
+test corpora::tests::corpora_load_and_strip_comments ... ok
+test filter::tests::a_numeric_comparison_is_not_mappable_by_any_filter ... ok
+test filter::tests::asp_mappable_accepts_naf_rejects_non_classical ... ok
+test filter::tests::detects_negation_tokens ... ok
+test filter::tests::flags_non_classical_nodes ... ok
+test filter::tests::ground_sole_root_equals_is_mappable_in_both_fragments ... ok
+test filter::tests::nested_or_non_ground_equals_is_skipped_in_both_fragments ... ok
+test generator::tests::and_production_appears_in_random_case ... ok
+test generator::tests::deterministic ... ok
+test generator::tests::naf_case_deterministic ... ok
+test generator::tests::naf_case_stratified_by_construction ... ok
+test generator::tests::tense_naf_case_deterministic_and_well_formed ... ok
+test generator::tests::well_formed_mappable_shape ... ok
+test materialize_diff::tests::every_case_defers_ground_facts_to_interleave ... ok
+test materialize_diff::tests::every_case_has_a_battery ... ok
+test materialize_diff::tests::generator_is_deterministic ... ok
+test materialize_diff::tests::the_batch_covers_the_join_shapes ... ok
+test materialize_diff::tests::the_batch_covers_the_refusal_shapes ... ok
+test nibli_kr_seam::tests::all_families_appear_and_compile ... ok
+test nibli_kr_seam::tests::pairs_are_deterministic ... ok
+test oracle::tests::classify_statuses ... ok
+test oracle_asp::tests::classify_statuses ... ok
+test oracle_asp::tests::unsatisfiable_not_confused_with_satisfiable ... ok
+test predilex::tests::bound_derivation_matrix ... ok
+test predilex::tests::lemma_normalization ... ok
+test predilex::tests::pinned_real_rows ... ok
+test predilex::tests::splitter_handles_quotes_commas_escapes_and_newlines ... ok
+test predilex::tests::splitter_skips_blank_lines_and_handles_missing_final_newline ... ok
+test predilex::tests::taxonomy_edges_pinned_and_sane ... ok
+test predilex::tests::vendored_files_parse_with_expected_shape ... ok
+test retract_diff::tests::generator_is_deterministic_and_mixes_ops ... ok
+test seam::tests::canonicalize_distinguishes_different_shapes ... ok
+test seam::tests::canonicalize_equates_alpha_variants ... ok
+test seam::tests::canonicalize_renames_positionally ... ok
+test strat_diff::tests::generator_is_deterministic_and_produces_both_kinds ... ok
+test strat_diff::tests::reference_criterion_boundary_shapes ... ok
+test tense::tests::bare_naf_restrictor_remains_unsuffixed ... ok
+test tense::tests::explicit_consequent_pins_one_copy_with_bare_conditions ... ok
+test tense::tests::explicit_rule_literals_keep_their_declared_flavors ... ok
+test tense::tests::no_tense_is_identity ... ok
+test tense::tests::raw_tense_deontic_stacks_never_reach_an_external_oracle ... ok
+test tense::tests::suffix_keeps_role_tail_parseable ... ok
+test tense::tests::tense_with_abstraction_is_skipped ... ok
+test tense::tests::tense_with_naf_restrictor_is_flavorized ... ok
+test tense::tests::tensed_fact_and_query_are_suffixed ... ok
+test tense::tests::unmarked_rule_remains_bare_in_a_tensed_program ... ok
+test tests::verifier_engine_pins_clean_core_across_reset ... ok
+test tptp::tests::cmevla_dots_stripped ... ok
+test tptp::tests::equals_maps_to_native_equality ... ok
+test tptp::tests::ground_atom ... ok
+test tptp::tests::universal_implication ... ok
+test tptp::tests::unspecified_arg_is_rigid_constant ... ok
+
+test result: ok. 67 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+
+running 12 tests
+test case_study_mappable_slices_agree_with_vampire ... ok
+test horn_fragment_agrees_with_vampire ... ok
+test materialization_is_equivalent_to_backward_chaining ... ok
+test predilex_taxonomy_agrees_with_vampire ... ok
+test random_count_cases_agree_with_clingo ... ok
+test random_horn_cases_agree_with_vampire ... ok
+test random_naf_cases_agree_with_clingo ... ok
+test random_tense_naf_cases_agree_with_clingo ... ok
+test retraction_is_equivalent_to_never_asserted ... ok
+test stratification_rejection_matches_independent_criterion ... ok
+test stratified_naf_agrees_with_clingo ... ok
+test utopia_asp_pins_agree_with_clingo ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 27.47s
+
+
+running 2 tests
+test determinism_corpus_nibli_kr_native ... ok
+test kr_semantics_seam_conformance ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+  closed-vocabulary-order.nibli: 2 pins, 0 findings, 0 harness errors
+  closed-vocabulary.nibli: 10 pins, 0 findings, 0 harness errors
+  converse-alias.nibli: 8 pins, 0 findings, 0 harness errors
+  derived-only.nibli: 13 pins, 0 findings, 0 harness errors
+  external-compute-boundary.nibli: 10 pins, 0 findings, 0 harness errors
+  materialize-insert-after-query.nibli: 5 pins, 0 findings, 0 harness errors
+  numeric-comparison-boundary.nibli: 17 pins, 0 findings, 0 harness errors
+  rights-floor.nibli: 12 pins, 0 findings, 0 harness errors
+  scoped-control.nibli: 6 pins, 0 findings, 0 harness errors
+  temporal-order.nibli: 23 pins, 0 findings, 0 harness errors
+  witness-domain-opacity.nibli: 6 pins, 0 findings, 0 harness errors
+nibli-pin: PASS — 112 pins
+  policy.pins.nibli: 14 pins, 0 findings, 0 harness errors
+nibli-pin: PASS — 14 pins
+
+running 1 test
+test persistent_engine_honors_store_retractions_after_reopen ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 255 filtered out; finished in 0.38s
+
+
+running 30 tests
+test tests::open_rejects_mismatched_schema_version ... ok
+test tests::open_accepts_v2_and_flags_migration ... ok
+test tests::migrate_v2_text_rows_rewrites_only_active_text_and_stamps_v3 ... ok
+test tests::repeated_id_inside_batch_aborts_and_clock_overflow_is_atomic ... ok
+test tests::open_rejects_future_schema_version ... ok
+test tests::batch_collision_aborts_every_row_and_preserves_clock ... ok
+test tests::migrate_v2_text_rows_with_no_text_still_stamps_v3 ... ok
+test tests::migrate_v2_text_rows_fails_closed_and_leaves_db_at_v2 ... ok
+test tests::finalize_v3_restamps_without_touching_rows ... ok
+test tests::test_active_and_total_counts ... ok
+test tests::test_clear ... ok
+test tests::test_idempotent_retract ... ok
+test tests::test_max_fact_id ... ok
+test tests::test_predicate_index ... ok
+test tests::test_stored_assertion_roundtrip ... ok
+test tests::test_open_and_insert ... ok
+test tests::test_next_fact_id_and_delete_fact ... ok
+test tests::test_retract_removes_fact_from_predicate_index ... ok
+test tests::test_retraction_filters ... ok
+test tests::test_export_to_file ... ok
+test tests::test_persistence_across_reopen ... ok
+test tests::test_retract_not_found ... ok
+[TypedStore] Loaded 1 persisted facts
+test typed_store::schema_guard_tests::fresh_store_is_stamped_and_reopens ... ok
+test typed_store::schema_guard_tests::direct_insert_rejects_legacy_abstraction_identity ... ok
+test typed_store::schema_guard_tests::undecodable_fact_fails_closed_not_silently_dropped ... ok
+test typed_store::schema_guard_tests::schema_version_mismatch_fails_closed ... ok
+test typed_store::schema_guard_tests::populated_pre_versioning_store_fails_closed_until_rebuilt ... ok
+test typed_store::schema_guard_tests::current_schema_rejects_persisted_compiler_only_terms ... ok
+[TypedStore] Loaded 1 persisted facts
+[TypedStore] Loaded 1 persisted facts
+test typed_store::schema_guard_tests::abstraction_rows_fail_closed_or_normalize_durably ... ok
+test typed_store::schema_guard_tests::v1_fails_closed_but_disposable_rebuild_wipes_and_restamps ... ok
+
+test result: ok. 30 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.14s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

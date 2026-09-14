@@ -1,0 +1,58 @@
+\section{Limitations and threats to validity}
+\label{sec:limitations}
+
+The evaluation is intentionally local and finite. Synthetic policy records
+exercise a selected join pattern; a directed chain exercises one particularly
+unfavorable recursive rule. They do not represent the distribution of real
+authorization policies or static analyses. Larger, denser graphs, different
+selectivities, many rule alternatives, mixed query batches, and adversarial
+update schedules can produce different costs. The tested fact counts are input
+surface facts, not internal event-role tuples or full derived closures.
+No general scalability claim follows from their absolute latency.
+In particular, a timeout while loading through repeated single-statement API
+calls does not establish that every possible ingestion strategy fails at that
+dataset size. It does establish a cost of the measured public-API workflow.
+
+Implementation order is randomized, but the experiment does not isolate the
+machine from its host operating system or control CPU frequency and competing
+workstation activity. Warm-ups reduce first-use effects without making the
+measurements warm in-process service timings. Peak RSS includes runtime and
+library overhead and cannot be read as the marginal size of a knowledge base.
+The 30-second cutoff also means that medians among completed samples can be
+optimistic for a partially censored cell. The outcome table, raw samples, and
+coverage plots preserve the information needed to notice that bias.
+
+Cross-system equivalence is restricted to the declared finite fragment.
+The renderers are independent translations from common data, but they share
+that data generator and can share a misunderstanding of its intended semantics.
+Hand-derived discriminators and the existing independent solver gates reduce
+this risk without eliminating it. Nibli demand-driven queries and baseline
+materialization perform different amounts of internal work. The result is a
+comparison of delivering the requested answers, not an implementation-independent
+measure of inference steps. clingo also supports richer multi-shot workflows
+than the one-process invocation used here~\cite{clingo}; this experiment does
+not evaluate them.
+
+Formal assurance remains partial. The Lean models do not prove compiler
+correctness, transaction implementation, all quantifier and modal behavior,
+materialization projection, or the complete WebAssembly toolchain.
+The trace theorem has explicit semantic hypotheses, and most correspondence
+tests are sampled. The source audit checks whether citations identify current
+premises, not whether each inference follows from them. Envelopes are not
+authenticated attestations. These limits preclude describing the system as a
+fully independently verified prover on every accepted input.
+
+Closed-world policy quality is outside the experiment. A missing analyzer
+record, incorrect waiver, or incorrectly formalized policy can change an answer
+without exposing an engine defect. The example chooses positive authorization
+evidence, but an application must establish when its case records are complete
+enough to support a negative decision. Generated witnesses are logical
+representatives, not discovered real-world entities; separate witnesses do not
+by themselves prove that the represented individuals are unequal.
+
+Finally, cross-runtime agreement covers the retained scenarios and supported
+profiles. It does not promise identical memory usage, latency, resource limits,
+or proof byte order. A synchronous external compute call is a host-side
+operation and is not automatically bounded by guest instruction fuel.
+External computation is excluded from the comparative workloads, and neither
+its correctness nor its real-world freshness is certified by this study.

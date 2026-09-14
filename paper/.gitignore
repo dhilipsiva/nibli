@@ -1,0 +1,10 @@
+build/
+__pycache__/
+*.pyc
+dist/
+results/**/compiled/**/program
+results/**/*.redb
+results/**/*.redb.*
+results/**/schedule.json
+results/**/*-preflight/
+results/**/*-review/

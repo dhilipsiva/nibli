@@ -1,0 +1,15 @@
+{
+  "depth": 10,
+  "materialization": true,
+  "mode": "verdict",
+  "queries": [
+    "alive(Ada).",
+    "alive(Bea)."
+  ],
+  "statements": [
+    "all $x: dog($x) -> animal($x).",
+    "all $x: animal($x) -> alive($x).",
+    "dog(Ada)."
+  ],
+  "updates": []
+}

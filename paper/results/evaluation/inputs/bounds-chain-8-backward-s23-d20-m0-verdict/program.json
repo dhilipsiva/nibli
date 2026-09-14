@@ -1,0 +1,115 @@
+{
+  "direction": "backward",
+  "expected": [
+    "FALSE"
+  ],
+  "facts": [
+    {
+      "args": [
+        "N3",
+        "N2"
+      ],
+      "name": "earlier",
+      "neg": false
+    },
+    {
+      "args": [
+        "N7",
+        "N3"
+      ],
+      "name": "earlier",
+      "neg": false
+    },
+    {
+      "args": [
+        "N6",
+        "N5"
+      ],
+      "name": "earlier",
+      "neg": false
+    },
+    {
+      "args": [
+        "N8",
+        "N0"
+      ],
+      "name": "earlier",
+      "neg": false
+    },
+    {
+      "args": [
+        "N5",
+        "N7"
+      ],
+      "name": "earlier",
+      "neg": false
+    },
+    {
+      "args": [
+        "N2",
+        "N8"
+      ],
+      "name": "earlier",
+      "neg": false
+    },
+    {
+      "args": [
+        "N1",
+        "N4"
+      ],
+      "name": "earlier",
+      "neg": false
+    },
+    {
+      "args": [
+        "N0",
+        "N1"
+      ],
+      "name": "earlier",
+      "neg": false
+    }
+  ],
+  "family": "chain",
+  "queries": [
+    {
+      "args": [
+        "N4",
+        "N6"
+      ],
+      "name": "earlier",
+      "neg": false
+    }
+  ],
+  "rules": [
+    {
+      "body": [
+        {
+          "args": [
+            "$a",
+            "$b"
+          ],
+          "name": "earlier",
+          "neg": false
+        },
+        {
+          "args": [
+            "$b",
+            "$c"
+          ],
+          "name": "earlier",
+          "neg": false
+        }
+      ],
+      "head": {
+        "args": [
+          "$a",
+          "$c"
+        ],
+        "name": "earlier",
+        "neg": false
+      }
+    }
+  ],
+  "seed": 23,
+  "size": 8
+}

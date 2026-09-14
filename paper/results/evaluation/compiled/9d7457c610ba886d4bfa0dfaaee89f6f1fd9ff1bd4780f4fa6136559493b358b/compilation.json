@@ -1,0 +1,22 @@
+{
+  "binary_sha256": "1471eab67bd411c339572b11bcbc140a0021bdf31fe507965f3b1c0c7a9d15cd",
+  "command": [
+    "souffle",
+    "-j",
+    "1",
+    "-o",
+    "/home/dhilipsiva/projects/dhilipsiva/nibli/paper/results/evaluation/compiled/9d7457c610ba886d4bfa0dfaaee89f6f1fd9ff1bd4780f4fa6136559493b358b/program",
+    "/home/dhilipsiva/projects/dhilipsiva/nibli/paper/results/evaluation/inputs/comparison-chain-12-forward-s131-d10-m1-verdict/input.dl"
+  ],
+  "cpu_system_s": 0.58,
+  "cpu_user_s": 8.28,
+  "cutoff_seconds": 300,
+  "exit_code": 0,
+  "peak_rss_kib": 493940,
+  "started_utc": "2026-09-14T08:57:15.876571+00:00",
+  "status": "ok",
+  "stderr": "paper/results/evaluation/compiled/9d7457c610ba886d4bfa0dfaaee89f6f1fd9ff1bd4780f4fa6136559493b358b/compile.stderr",
+  "stdout": "paper/results/evaluation/compiled/9d7457c610ba886d4bfa0dfaaee89f6f1fd9ff1bd4780f4fa6136559493b358b/compile.stdout",
+  "usage": "paper/results/evaluation/compiled/9d7457c610ba886d4bfa0dfaaee89f6f1fd9ff1bd4780f4fa6136559493b358b/compile.time",
+  "wall_ms": 9062.340537000637
+}

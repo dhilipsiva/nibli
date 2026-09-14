@@ -1,0 +1,28 @@
+{
+  "depth": 10,
+  "materialization": true,
+  "mode": "updates",
+  "queries": [
+    "animal(N131)."
+  ],
+  "statements": [
+    "all $x: dog($x) -> animal($x).",
+    "all $x: cat($x) -> animal($x).",
+    "dog(N131).",
+    "cat(N131)."
+  ],
+  "updates": [
+    {
+      "index": 2,
+      "op": "retract"
+    },
+    {
+      "index": 3,
+      "op": "retract"
+    },
+    {
+      "op": "assert",
+      "text": "dog(N131)."
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "binary": "paper/results/evaluation/compiled/dd3d711c739a80266ce65e6a4451f5b0a19270cc38d9e19a4554d09208df50a6/program",
+  "facts": 8,
+  "souffle_source_sha256": "dd3d711c739a80266ce65e6a4451f5b0a19270cc38d9e19a4554d09208df50a6",
+  "translation_ms": 0.2955369982373668
+}

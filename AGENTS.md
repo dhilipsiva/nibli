@@ -270,6 +270,16 @@ nibli-reason's flat tests, and explicit-history notes), clearing the book's timi
 remaining ceiling is **adoption** — chiefly a reproducible non-expert authoring study (round-trip
 fidelity + silent-mistranslation rate), which belongs to the book/UX track.
 
+## Research paper
+
+The systems paper and reproducible experiment sources live in `paper/`.
+Enter the paper environment with `nix develop --extra-experimental-features
+nix-command --extra-experimental-features flakes .#paper`. Use `just paper-check`,
+`paper-smoke`, `paper-evaluate`, `paper-build`, and `paper-package`; see
+`paper/README.md` for the frozen baseline and separate output paths for new runs.
+Preserve recorded observations. The large frozen schedule is stored in Git as
+`schedule.json.gz`; analysis also accepts the plain JSON emitted by collection.
+
 ## Pre-commit Checklist
 
 Before every commit, always:

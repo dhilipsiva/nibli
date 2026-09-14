@@ -1,0 +1,9531 @@
+{
+  "direction": "both",
+  "expected": [
+    "FALSE",
+    "TRUE"
+  ],
+  "facts": [
+    {
+      "args": [
+        "F131",
+        "Data",
+        "S131",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F361",
+        "Data",
+        "S361",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F64"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F125",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "F160",
+        "Data",
+        "S160",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F20"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S283",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F234",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "S297",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F135",
+        "Data",
+        "S135",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F233"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F80",
+        "Data",
+        "S80",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F73"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S344",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F192"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F99"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F332",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F265",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "F171",
+        "Data",
+        "S171",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S159",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S193",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S190",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S280",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F325"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S205",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F95",
+        "Data",
+        "S95",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F61",
+        "Data",
+        "S61",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S153",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F112"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F332",
+        "Data",
+        "S332",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F354"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F184"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F125",
+        "Data",
+        "S125",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F59"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F267",
+        "Data",
+        "S267",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S5",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F287",
+        "Data",
+        "S287",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F59",
+        "Data",
+        "S59",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S64",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S178",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F233",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "F119",
+        "Data",
+        "S119",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F190",
+        "Data",
+        "S190",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F78",
+        "Data",
+        "S78",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S298",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S62",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F315",
+        "Data",
+        "S315",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F33",
+        "Data",
+        "S33",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S148",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S324",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S8",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S354",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F77"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F85",
+        "Data",
+        "S85",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F352",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "S163",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F138",
+        "Data",
+        "S138",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F36"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S27",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F189",
+        "Data",
+        "S189",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F288",
+        "Data",
+        "S288",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F108",
+        "Data",
+        "S108",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S331",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F2",
+        "Data",
+        "S2",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F328",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "F74",
+        "Data",
+        "S74",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F126",
+        "Data",
+        "S126",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F70",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "S88",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F243",
+        "Data",
+        "S243",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F0"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F66",
+        "Data",
+        "S66",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S237",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F221",
+        "Data",
+        "S221",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S55",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F317",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F160"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S15",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F60",
+        "Data",
+        "S60",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S309",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S348",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F310"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S81",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F318",
+        "Data",
+        "S318",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S171",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S18",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F250",
+        "Data",
+        "S250",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F10",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "F146",
+        "Data",
+        "S146",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F204",
+        "Data",
+        "S204",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F13",
+        "Data",
+        "S13",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F15",
+        "Data",
+        "S15",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F17"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F22",
+        "Data",
+        "S22",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S2",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S138",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F322",
+        "Data",
+        "S322",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S38",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F174",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "F316",
+        "Data",
+        "S316",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F218",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "F157",
+        "Data",
+        "S157",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F206"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F315",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "S82",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F302",
+        "Data",
+        "S302",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S184",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S285",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S225",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F259",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "F142",
+        "Data",
+        "S142",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F115"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S39",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F354",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "F237",
+        "Data",
+        "S237",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S351",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F219",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F166"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F276"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F321",
+        "Data",
+        "S321",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F135",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "S223",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F297",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "S53",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S140",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F148",
+        "Data",
+        "S148",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S293",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F134"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F68",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "F195",
+        "Data",
+        "S195",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S314",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S282",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F209",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "S334",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S129",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S117",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F54",
+        "Data",
+        "S54",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F64",
+        "Data",
+        "S64",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F192",
+        "Data",
+        "S192",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S255",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F218"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F49",
+        "Data",
+        "S49",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F245",
+        "Data",
+        "S245",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F278"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F132",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "S85",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F92",
+        "Data",
+        "S92",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S29",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F24",
+        "Data",
+        "S24",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F225"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F247"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F12"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F158",
+        "Data",
+        "S158",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S241",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F254",
+        "Data",
+        "S254",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S182",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F29",
+        "Data",
+        "S29",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S199",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S176",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F196",
+        "Data",
+        "S196",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F203",
+        "Data",
+        "S203",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F70",
+        "Data",
+        "S70",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F213",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "S17",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S279",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S276",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S306",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F278",
+        "Data",
+        "S278",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S218",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F121",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "S96",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F166",
+        "Data",
+        "S166",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F71",
+        "Data",
+        "S71",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F117",
+        "Data",
+        "S117",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F30"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F87",
+        "Data",
+        "S87",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F106",
+        "Data",
+        "S106",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F358",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F102",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "F334",
+        "Data",
+        "S334",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S1",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F136"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F276",
+        "Data",
+        "S276",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F12",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "F67",
+        "Data",
+        "S67",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F99",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F140",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "F82",
+        "Data",
+        "S82",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S257",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F104",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "F84",
+        "Data",
+        "S84",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S266",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F122",
+        "Data",
+        "S122",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F344",
+        "Data",
+        "S344",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F281",
+        "Data",
+        "S281",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S127",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F232",
+        "Data",
+        "S232",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S330",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S294",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F201",
+        "Data",
+        "S201",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F1",
+        "Data",
+        "S1",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F275",
+        "Data",
+        "S275",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S299",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S122",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F353",
+        "Data",
+        "S353",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F298"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F307"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S128",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S83",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S172",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F308",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "S326",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F284",
+        "Data",
+        "S284",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F102",
+        "Data",
+        "S102",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F62",
+        "Data",
+        "S62",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F277",
+        "Data",
+        "S277",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F320",
+        "Data",
+        "S320",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F163",
+        "Data",
+        "S163",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F127",
+        "Data",
+        "S127",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F222",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F69"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F43",
+        "Data",
+        "S43",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F101",
+        "Data",
+        "S101",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S86",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F263",
+        "Data",
+        "S263",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F19",
+        "Data",
+        "S19",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S44",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F14"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F73",
+        "Data",
+        "S73",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S168",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S72",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F359",
+        "Data",
+        "S359",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F339",
+        "Data",
+        "S339",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F337",
+        "Data",
+        "S337",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F253",
+        "Data",
+        "S253",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F205",
+        "Data",
+        "S205",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F283",
+        "Data",
+        "S283",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S71",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F268",
+        "Data",
+        "S268",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F218",
+        "Data",
+        "S218",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F170"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S167",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F226",
+        "Data",
+        "S226",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S162",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S78",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F42"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F200",
+        "Data",
+        "S200",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F105",
+        "Data",
+        "S105",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F132",
+        "Data",
+        "S132",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S322",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S152",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F79",
+        "Data",
+        "S79",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F330",
+        "Data",
+        "S330",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F235",
+        "Data",
+        "S235",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F183"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F62"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F11",
+        "Data",
+        "S11",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S73",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S30",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F103"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F334",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "F228",
+        "Data",
+        "S228",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F57",
+        "Data",
+        "S57",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F106"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S327",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F144"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F347",
+        "Data",
+        "S347",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F76"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F103",
+        "Data",
+        "S103",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F342"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F47",
+        "Data",
+        "S47",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F158",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "S155",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S143",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F222",
+        "Data",
+        "S222",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S250",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F332"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S361",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S239",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S216",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F26",
+        "Data",
+        "S26",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F121",
+        "Data",
+        "S121",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F317",
+        "Data",
+        "S317",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F44"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S137",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F7",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F97"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F83",
+        "Data",
+        "S83",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F279",
+        "Data",
+        "S279",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F288",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "S260",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S229",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F197"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F39"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S66",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S349",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F259",
+        "Data",
+        "S259",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S281",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F11",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "F187",
+        "Data",
+        "S187",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F269"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F30",
+        "Data",
+        "S30",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S201",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S47",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F251",
+        "Data",
+        "S251",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S32",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S95",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S16",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F215",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "F109",
+        "Data",
+        "S109",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F48"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S214",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F169",
+        "Data",
+        "S169",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F8",
+        "Data",
+        "S8",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S77",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F340",
+        "Data",
+        "S340",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S238",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F260"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S217",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S107",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S126",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F145",
+        "Data",
+        "S145",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S142",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F21",
+        "Data",
+        "S21",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F256",
+        "Data",
+        "S256",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S187",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F225",
+        "Data",
+        "S225",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F326",
+        "Data",
+        "S326",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S93",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F321"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S92",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F121"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F3",
+        "Data",
+        "S3",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F129",
+        "Data",
+        "S129",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F356",
+        "Data",
+        "S356",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S185",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S136",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F331",
+        "Data",
+        "S331",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S106",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S10",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S244",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F248"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S252",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F193"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F315"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S112",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F277",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "F41",
+        "Data",
+        "S41",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S101",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F361"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F47",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F165",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F304"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S220",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S212",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F227"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S287",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F79"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S113",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F20",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F330"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S110",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S275",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S173",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F329",
+        "Data",
+        "S329",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F250"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F118",
+        "Data",
+        "S118",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F94",
+        "Data",
+        "S94",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F227",
+        "Data",
+        "S227",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F358",
+        "Data",
+        "S358",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S333",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F89",
+        "Data",
+        "S89",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S328",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S59",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F264",
+        "Data",
+        "S264",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S120",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S103",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S222",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F257",
+        "Data",
+        "S257",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S179",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F185",
+        "Data",
+        "S185",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F306",
+        "Data",
+        "S306",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S70",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F343"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F151",
+        "Data",
+        "S151",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S291",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S337",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F290",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "S34",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F5"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F272",
+        "Data",
+        "S272",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S135",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F259"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F355",
+        "Data",
+        "S355",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F194"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F35",
+        "Data",
+        "S35",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S248",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S158",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S300",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F16",
+        "Data",
+        "S16",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S105",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F77",
+        "Data",
+        "S77",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S46",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F100",
+        "Data",
+        "S100",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F241",
+        "Data",
+        "S241",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F247",
+        "Data",
+        "S247",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F112",
+        "Data",
+        "S112",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S313",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F188",
+        "Data",
+        "S188",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F99",
+        "Data",
+        "S99",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F265",
+        "Data",
+        "S265",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S242",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S80",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F14",
+        "Data",
+        "S14",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S188",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F16"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F336",
+        "Data",
+        "S336",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S119",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S24",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S221",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F41"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S347",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F178",
+        "Data",
+        "S178",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F307",
+        "Data",
+        "S307",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F208",
+        "Data",
+        "S208",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F96"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S109",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S317",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F98",
+        "Data",
+        "S98",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S207",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S265",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F224",
+        "Data",
+        "S224",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S236",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F147",
+        "Data",
+        "S147",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S181",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F217",
+        "Data",
+        "S217",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F93",
+        "Data",
+        "S93",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F172"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S288",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S263",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S321",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F199",
+        "Data",
+        "S199",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F211",
+        "Data",
+        "S211",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S131",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F21",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "F186",
+        "Data",
+        "S186",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F161",
+        "Data",
+        "S161",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S41",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F32",
+        "Data",
+        "S32",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S14",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F76",
+        "Data",
+        "S76",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S215",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F344"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F128"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S359",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S25",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F279"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F242",
+        "Data",
+        "S242",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F76",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "F162",
+        "Data",
+        "S162",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S50",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S342",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S362",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F290"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S253",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F212",
+        "Data",
+        "S212",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F359"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F190",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "F10",
+        "Data",
+        "S10",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F175",
+        "Data",
+        "S175",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S35",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S208",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F312",
+        "Data",
+        "S312",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S233",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F258",
+        "Data",
+        "S258",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F104",
+        "Data",
+        "S104",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S357",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F295",
+        "Data",
+        "S295",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F255",
+        "Data",
+        "S255",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F32"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F2",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F209"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F292"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F65",
+        "Data",
+        "S65",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S336",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S157",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S318",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F240",
+        "Data",
+        "S240",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S11",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F167"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F128",
+        "Data",
+        "S128",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F284",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "S160",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S296",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S37",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F283"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F164",
+        "Data",
+        "S164",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F327",
+        "Data",
+        "S327",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F362",
+        "Data",
+        "S362",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F144",
+        "Data",
+        "S144",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F290",
+        "Data",
+        "S290",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S194",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F92"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F347"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S56",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F261"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F189",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "S262",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F285",
+        "Data",
+        "S285",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F56",
+        "Data",
+        "S56",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F9",
+        "Data",
+        "S9",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S84",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S132",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F268"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F199"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S355",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S249",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F23",
+        "Data",
+        "S23",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S329",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S121",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S278",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S111",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S310",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S230",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F0",
+        "Data",
+        "S0",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F170",
+        "Data",
+        "S170",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F45"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F48",
+        "Data",
+        "S48",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S36",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S26",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F226"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F195",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "F81",
+        "Data",
+        "S81",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S60",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F313"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F136",
+        "Data",
+        "S136",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F25"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F333",
+        "Data",
+        "S333",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S147",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S290",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S231",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F207",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F38"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F179",
+        "Data",
+        "S179",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S19",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F147",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "S189",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S89",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F314",
+        "Data",
+        "S314",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F360",
+        "Data",
+        "S360",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F236",
+        "Data",
+        "S236",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F25",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "F114",
+        "Data",
+        "S114",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S311",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F273"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F161"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F110",
+        "Data",
+        "S110",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S20",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S345",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S353",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F350",
+        "Data",
+        "S350",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S161",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F195"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F197",
+        "Data",
+        "S197",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F275"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F339"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S341",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S43",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F261",
+        "Data",
+        "S261",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F153",
+        "Data",
+        "S153",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S267",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S183",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F104"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F260",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "S219",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F127",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "F303",
+        "Data",
+        "S303",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S338",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F187"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S325",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F311",
+        "Data",
+        "S311",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F294",
+        "Data",
+        "S294",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S307",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S247",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F213",
+        "Data",
+        "S213",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F90",
+        "Data",
+        "S90",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S98",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F267"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S195",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S125",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S63",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F306"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F213"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F44",
+        "Data",
+        "S44",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S258",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S320",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F53",
+        "Data",
+        "S53",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F301",
+        "Data",
+        "S301",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F319",
+        "Data",
+        "S319",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F154",
+        "Data",
+        "S154",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F274",
+        "Data",
+        "S274",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F246",
+        "Data",
+        "S246",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S6",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F141",
+        "Data",
+        "S141",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F342",
+        "Data",
+        "S342",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F50"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F266",
+        "Data",
+        "S266",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F150"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F12",
+        "Data",
+        "S12",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S170",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F28"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S340",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F223",
+        "Data",
+        "S223",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S68",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F60"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F134",
+        "Data",
+        "S134",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F240"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F88"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S134",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F107",
+        "Data",
+        "S107",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F356"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S45",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F349",
+        "Data",
+        "S349",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F224",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F124"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F61"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F98"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F210",
+        "Data",
+        "S210",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S23",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S210",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F205"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F293"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S213",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F88",
+        "Data",
+        "S88",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F49"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S169",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S261",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S264",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S308",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F133"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F296",
+        "Data",
+        "S296",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F273",
+        "Data",
+        "S273",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S124",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S156",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F216",
+        "Data",
+        "S216",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F180",
+        "Data",
+        "S180",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S254",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F50",
+        "Data",
+        "S50",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S31",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F289",
+        "Data",
+        "S289",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F277"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F10"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F212"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F71"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F308",
+        "Data",
+        "S308",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F343",
+        "Data",
+        "S343",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F215",
+        "Data",
+        "S215",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S52",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F193",
+        "Data",
+        "S193",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F188",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "S246",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S130",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F86",
+        "Data",
+        "S86",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F328",
+        "Data",
+        "S328",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F341"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S202",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S94",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S58",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S228",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F38",
+        "Data",
+        "S38",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F280",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "F124",
+        "Data",
+        "S124",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S191",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S356",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F300",
+        "Data",
+        "S300",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S209",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S286",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F165",
+        "Data",
+        "S165",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S245",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F115",
+        "Data",
+        "S115",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F325",
+        "Data",
+        "S325",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S274",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F123",
+        "Data",
+        "S123",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F325",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "F7",
+        "Data",
+        "S7",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F198",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "S227",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F324"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S90",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S118",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F229",
+        "Data",
+        "S229",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S149",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F6",
+        "Data",
+        "S6",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F233",
+        "Data",
+        "S233",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S154",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S270",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S323",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F143",
+        "Data",
+        "S143",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S54",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F75",
+        "Data",
+        "S75",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S243",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F51",
+        "Data",
+        "S51",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S192",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F159",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F126"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S360",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F152",
+        "Data",
+        "S152",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F161",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "F46",
+        "Data",
+        "S46",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S312",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S12",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F82"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F37",
+        "Data",
+        "S37",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F33"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F221",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "F174",
+        "Data",
+        "S174",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S335",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F150",
+        "Data",
+        "S150",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F297",
+        "Data",
+        "S297",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F65",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "S339",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S235",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F256",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F309",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F34",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "S232",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F52",
+        "Data",
+        "S52",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F37"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F323"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S141",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F167",
+        "Data",
+        "S167",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S123",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F354",
+        "Data",
+        "S354",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F176",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "S211",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S343",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F115",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F122",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "F351",
+        "Data",
+        "S351",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S277",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F72",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "S69",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F96",
+        "Data",
+        "S96",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F32",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F357"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F208"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S145",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F125"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F111",
+        "Data",
+        "S111",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F202",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "S139",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S234",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F107"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F55",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "F230",
+        "Data",
+        "S230",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S75",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S272",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F352",
+        "Data",
+        "S352",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F338",
+        "Data",
+        "S338",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F42",
+        "Data",
+        "S42",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F211",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F108"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S316",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F178"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S352",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S269",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F139"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F5",
+        "Data",
+        "S5",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S166",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F246",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "F45",
+        "Data",
+        "S45",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F282",
+        "Data",
+        "S282",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F173",
+        "Data",
+        "S173",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S256",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S146",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S289",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F39",
+        "Data",
+        "S39",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S51",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F260",
+        "Data",
+        "S260",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F28",
+        "Data",
+        "S28",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S133",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F25",
+        "Data",
+        "S25",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F270",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "F252",
+        "Data",
+        "S252",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S175",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S114",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F209",
+        "Data",
+        "S209",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S28",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S151",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F292",
+        "Data",
+        "S292",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F117"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F116",
+        "Data",
+        "S116",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F313",
+        "Data",
+        "S313",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F186"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S197",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F155",
+        "Data",
+        "S155",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F299",
+        "Data",
+        "S299",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F13"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S76",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S164",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S295",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F33",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F258"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F70"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F156",
+        "Data",
+        "S156",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F69",
+        "Data",
+        "S69",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S7",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F341",
+        "Data",
+        "S341",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F190"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S204",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F219"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F282"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S304",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F176",
+        "Data",
+        "S176",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F262",
+        "Data",
+        "S262",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F180",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "F36",
+        "Data",
+        "S36",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S319",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F271",
+        "Data",
+        "S271",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F229",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "S100",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F130",
+        "Data",
+        "S130",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F31",
+        "Data",
+        "S31",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F47"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F55",
+        "Data",
+        "S55",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F345",
+        "Data",
+        "S345",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S0",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S65",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F291",
+        "Data",
+        "S291",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F214",
+        "Data",
+        "S214",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F55"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F20",
+        "Data",
+        "S20",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S200",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F310",
+        "Data",
+        "S310",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S99",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F231"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F348",
+        "Data",
+        "S348",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F239",
+        "Data",
+        "S239",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S48",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F318"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F306",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "F97",
+        "Data",
+        "S97",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F53"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F120",
+        "Data",
+        "S120",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F324",
+        "Data",
+        "S324",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F57"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F155"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F58",
+        "Data",
+        "S58",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S226",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S350",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F270",
+        "Data",
+        "S270",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S91",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S301",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F168",
+        "Data",
+        "S168",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F137",
+        "Data",
+        "S137",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S332",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S4",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S87",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F248",
+        "Data",
+        "S248",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S21",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F298",
+        "Data",
+        "S298",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F102"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S292",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F194",
+        "Data",
+        "S194",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F300"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F198",
+        "Data",
+        "S198",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F142"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S302",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F303",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "S49",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F333"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F18",
+        "Data",
+        "S18",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F149",
+        "Data",
+        "S149",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F80"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F182",
+        "Data",
+        "S182",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F34",
+        "Data",
+        "S34",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F291",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "F206",
+        "Data",
+        "S206",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F249",
+        "Data",
+        "S249",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F126",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F329"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F183",
+        "Data",
+        "S183",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S97",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F357",
+        "Data",
+        "S357",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S180",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F207",
+        "Data",
+        "S207",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F309",
+        "Data",
+        "S309",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S206",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F234",
+        "Data",
+        "S234",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S116",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S358",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F63",
+        "Data",
+        "S63",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S150",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S104",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F68",
+        "Data",
+        "S68",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S165",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F81"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F191",
+        "Data",
+        "S191",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F222"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S177",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S271",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S224",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F86"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F220",
+        "Data",
+        "S220",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S79",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F133",
+        "Data",
+        "S133",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S67",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F72",
+        "Data",
+        "S72",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F40",
+        "Data",
+        "S40",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F116"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S13",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S303",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F181",
+        "Data",
+        "S181",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F219",
+        "Data",
+        "S219",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F6"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F172",
+        "Data",
+        "S172",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S284",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S22",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F65"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F293",
+        "Data",
+        "S293",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S57",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F244",
+        "Data",
+        "S244",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F113",
+        "Data",
+        "S113",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S42",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F276",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "S115",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F177",
+        "Data",
+        "S177",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F21"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F334"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S102",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S108",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S198",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F159",
+        "Data",
+        "S159",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S144",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S74",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F119"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "S61",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S259",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F139",
+        "Data",
+        "S139",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F238",
+        "Data",
+        "S238",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F59",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "F280",
+        "Data",
+        "S280",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F91",
+        "Data",
+        "S91",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F53",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "S346",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F157"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F349"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F157",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "S40",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F304",
+        "Data",
+        "S304",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F4",
+        "Data",
+        "S4",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F269",
+        "Data",
+        "S269",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F133",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "S196",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S9",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S240",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S203",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S174",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F335",
+        "Data",
+        "S335",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S33",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "S315",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F140",
+        "Data",
+        "S140",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S305",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F0",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "F323",
+        "Data",
+        "S323",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Review",
+        "F128",
+        "Waiver"
+      ],
+      "name": "permits",
+      "neg": false
+    },
+    {
+      "args": [
+        "S251",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F312"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F286",
+        "Data",
+        "S286",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "Sanitizer",
+        "F153"
+      ],
+      "name": "prevents",
+      "neg": false
+    },
+    {
+      "args": [
+        "F17",
+        "Data",
+        "S17",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F346",
+        "Data",
+        "S346",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F231",
+        "Data",
+        "S231",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S268",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F27",
+        "Data",
+        "S27",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S273",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    },
+    {
+      "args": [
+        "F305",
+        "Data",
+        "S305",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F202",
+        "Data",
+        "S202",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "F184",
+        "Data",
+        "S184",
+        "Origin",
+        "Route"
+      ],
+      "name": "carries",
+      "neg": false
+    },
+    {
+      "args": [
+        "S186",
+        "Data",
+        "Exploit"
+      ],
+      "name": "dangerous",
+      "neg": false
+    }
+  ],
+  "family": "policy",
+  "queries": [
+    {
+      "args": [
+        "Gate",
+        "F0",
+        "S0"
+      ],
+      "name": "warns",
+      "neg": false
+    },
+    {
+      "args": [
+        "Gate",
+        "F1",
+        "S1"
+      ],
+      "name": "warns",
+      "neg": false
+    }
+  ],
+  "rules": [
+    {
+      "body": [
+        {
+          "args": [
+            "$f",
+            "$d",
+            "$s",
+            "$o",
+            "$r"
+          ],
+          "name": "carries",
+          "neg": false
+        },
+        {
+          "args": [
+            "$s",
+            "$d",
+            "Exploit"
+          ],
+          "name": "dangerous",
+          "neg": false
+        },
+        {
+          "args": [
+            "Sanitizer",
+            "$f"
+          ],
+          "name": "prevents",
+          "neg": false
+        }
+      ],
+      "head": {
+        "args": [
+          "$f",
+          "Release",
+          "$s"
+        ],
+        "name": "authorized",
+        "neg": false
+      }
+    },
+    {
+      "body": [
+        {
+          "args": [
+            "$f",
+            "$d",
+            "$s",
+            "$o",
+            "$r"
+          ],
+          "name": "carries",
+          "neg": false
+        },
+        {
+          "args": [
+            "$s",
+            "$d",
+            "Exploit"
+          ],
+          "name": "dangerous",
+          "neg": false
+        },
+        {
+          "args": [
+            "Review",
+            "$f",
+            "Waiver"
+          ],
+          "name": "permits",
+          "neg": false
+        }
+      ],
+      "head": {
+        "args": [
+          "$f",
+          "Release",
+          "$s"
+        ],
+        "name": "authorized",
+        "neg": false
+      }
+    },
+    {
+      "body": [
+        {
+          "args": [
+            "$f",
+            "$d",
+            "$s",
+            "$o",
+            "$r"
+          ],
+          "name": "carries",
+          "neg": false
+        },
+        {
+          "args": [
+            "$f",
+            "Release",
+            "$s"
+          ],
+          "name": "authorized",
+          "neg": true
+        }
+      ],
+      "head": {
+        "args": [
+          "Gate",
+          "$f",
+          "$s"
+        ],
+        "name": "warns",
+        "neg": false
+      }
+    }
+  ],
+  "seed": 11,
+  "size": 1000
+}

@@ -1,0 +1,9 @@
+{
+  "passed": true,
+  "uncompressed_sha256": "c183de7befcc309ce41668845c1ef3e9382fd4e386a1a7b1b180a9e666dfe8f2",
+  "compressed_sha256": "8843e90a58ac1931c64a88687599e2aad2f5357e28d40ce2a34aa5df484d3561",
+  "uncompressed_bytes": 211262067,
+  "compressed_bytes": 6376416,
+  "generated_files_identical": 20,
+  "check": "Analyze the complete recorded evaluation with only schedule.json.gz present; compare every generated file byte-for-byte."
+}

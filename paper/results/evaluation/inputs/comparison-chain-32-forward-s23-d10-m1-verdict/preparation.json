@@ -1,0 +1,28 @@
+{
+  "binary": "paper/results/evaluation/compiled/b37d2a51327f5a0db4d3ff8908f08d2c574894b75407bd0c7896cd15da2073e7/program",
+  "compilation": {
+    "binary_sha256": "04d5d9e090ec4e30a5e25c08733dfe8deedc54497df3061fff763d76e332294d",
+    "command": [
+      "souffle",
+      "-j",
+      "1",
+      "-o",
+      "/home/dhilipsiva/projects/dhilipsiva/nibli/paper/results/evaluation/compiled/b37d2a51327f5a0db4d3ff8908f08d2c574894b75407bd0c7896cd15da2073e7/program",
+      "/home/dhilipsiva/projects/dhilipsiva/nibli/paper/results/evaluation/inputs/comparison-chain-32-forward-s23-d10-m1-verdict/input.dl"
+    ],
+    "cpu_system_s": 0.67,
+    "cpu_user_s": 9.52,
+    "cutoff_seconds": 300,
+    "exit_code": 0,
+    "peak_rss_kib": 493956,
+    "started_utc": "2026-09-14T08:55:40.880311+00:00",
+    "status": "ok",
+    "stderr": "paper/results/evaluation/compiled/b37d2a51327f5a0db4d3ff8908f08d2c574894b75407bd0c7896cd15da2073e7/compile.stderr",
+    "stdout": "paper/results/evaluation/compiled/b37d2a51327f5a0db4d3ff8908f08d2c574894b75407bd0c7896cd15da2073e7/compile.stdout",
+    "usage": "paper/results/evaluation/compiled/b37d2a51327f5a0db4d3ff8908f08d2c574894b75407bd0c7896cd15da2073e7/compile.time",
+    "wall_ms": 10399.03515900005
+  },
+  "facts": 32,
+  "souffle_source_sha256": "b37d2a51327f5a0db4d3ff8908f08d2c574894b75407bd0c7896cd15da2073e7",
+  "translation_ms": 0.5720839999412419
+}

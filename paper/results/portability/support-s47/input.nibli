@@ -1,0 +1,14 @@
+:fuel 50000000000
+:depth 10
+all $x: dog($x) -> animal($x).
+all $x: cat($x) -> animal($x).
+dog(N47).
+cat(N47).
+:certify animal(N47).
+:retract 2
+:certify animal(N47).
+:retract 3
+:certify animal(N47).
+dog(N47).
+:certify animal(N47).
+:quit

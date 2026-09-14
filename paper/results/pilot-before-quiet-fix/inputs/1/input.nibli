@@ -1,0 +1,4 @@
+all $x: dog($x) & ~cat($x) -> animal($x).
+dog(Ada).
+dog(Bea).
+cat(Bea).

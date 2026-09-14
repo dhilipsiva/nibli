@@ -1,0 +1,185 @@
+\section{Reproduction protocol}
+\label{app:reproduce}
+
+The artifact is rooted at \texttt{paper/} in the engine checkout. The initial
+engine baseline is \texttt{158e3b0cdeeb}; the source fingerprint in
+\texttt{protocol.freeze.json} identifies the exact measured code and workload
+generator. The package contains an overlay for that checkout, including the
+private benchmark binary's source and the locked environment. The source
+fingerprint is a content identity, not a claim that the working tree was
+committed under a new Git revision.
+
+Enter the locked environment with:
+\begin{lstlisting}[style=kr]
+nix develop --extra-experimental-features nix-command \
+  --extra-experimental-features flakes .#paper
+\end{lstlisting}
+The recipe \texttt{just paper-check} runs required verification.
+Use \texttt{just paper-smoke} to validate adapters and
+\texttt{just paper-evaluate} to collect and analyze workloads.
+The recipe \texttt{just paper-build} regenerates the PDF, and
+\texttt{just paper-package} builds the source and data archives.
+The check recipe requires every relevant tool before invoking gates; missing
+tools cannot be reported as passing evidence. The README gives commands for
+writing a new result directory without overwriting the archived observations.
+Rebuilding the manuscript from the recorded results does not rerun experiments.
+
+The preparation phase generates a neutral JSON description, KR assertions and
+queries, a clingo program, and a \Souffle\ program plus tab-separated fact
+files. Generated \Souffle\ source has a content hash and a separately recorded
+compilation. The schedule fixes seed, case, depth, materialization flag, mode,
+repetition, and implementation order. Every measured process receives a
+30-second GNU \texttt{timeout}; a separate preparation cutoff applies to
+compilation. GNU \texttt{time} records peak RSS and CPU usage.
+
+Observations are JSON Lines. A record identifies raw standard output, standard
+error, resource usage, status, answers, phase timings, and any definitive
+disagreement. The raw native output contains full envelopes before the summary
+removes them to avoid duplication. A completion manifest hashes the observation
+ledger. Analysis refuses an incomplete ledger or a changed hash. CSV exports
+contain measured samples, phase data, aggregate cells, and compilation data;
+PDF figures, LaTeX tables, and CSV exports are generated from the same aggregates.
+
+The proof-source audit replays the saved operation sequence over assertion IDs
+and labels. A citation is accepted only when its record is active and its label
+matches exactly. This procedure has no rule interpreter and establishes no
+semantic proof independently of the engine. Its negative controls are part of
+the artifact tests.
+
+\section{Hand-derived translation discriminator}
+\label{app:translation}
+
+The discriminator contains \texttt{dog(Ada)}, \texttt{dog(Bea)}, and
+\texttt{cat(Bea)}. The rule states that a dog without a cat fact is an animal.
+Thus \texttt{animal(Ada)} is true, \texttt{animal(Bea)} is false because its
+negative premise is blocked, and \texttt{animal(Cyd)} is false because its
+positive premise is absent. Both negative cases matter.
+
+\begin{lstlisting}[style=kr]
+# KR
+all $x: dog($x) & ~cat($x) -> animal($x).
+dog(Ada). dog(Bea). cat(Bea).
+
+% clingo
+dog("Ada"). dog("Bea"). cat("Bea").
+animal(X) :- dog(X), not cat(X).
+answer(0) :- animal("Ada").
+answer(1) :- animal("Bea").
+answer(2) :- animal("Cyd").
+#show answer/1.
+
+// Souffle (facts supplied in p_dog.facts and p_cat.facts)
+.decl p_dog(a0:symbol)
+.decl p_cat(a0:symbol)
+.decl p_animal(a0:symbol)
+.input p_dog
+.input p_cat
+p_animal(X) :- p_dog(X), !p_cat(X).
+.decl answer(i:number)
+.output answer
+answer(0) :- p_animal("Ada").
+answer(1) :- p_animal("Bea").
+answer(2) :- p_animal("Cyd").
+\end{lstlisting}
+The expected baseline output is the singleton answer index 0. The KR driver
+submits statements individually; the combined fact line above is typesetting
+shorthand. Other pilot cases cover two-step Horn inference, both reachability
+directions, waiver support, and a sink with no classification.
+
+\section{Claim-to-evidence map}
+\label{app:claims}
+
+The machine-readable register \texttt{research/claims.json} expands the following
+mapping with file paths and symbols. Evidence classes are intentionally
+separate: a definition fixes terminology, a theorem proves a model property, a
+test exercises code, an observation records an execution, and a reference
+establishes a precedent.
+
+\begin{longtable}{p{4.3cm}p{10.4cm}}
+\toprule
+Claim family & Primary evidence \\
+\midrule
+\endhead
+Result combination &
+\texttt{proofs/Combiner.lean}; \nolinkurl{exhaustive_soundness_matches_lean_model}. \\
+Negative-cycle criterion &
+\texttt{proofs/Stratification.lean}, \texttt{proofs/Scc.lean};
+\texttt{check\_stratification\_matches\_proven\_criterion},
+\texttt{compute\_sccs\_matches\_scc\_spec}. \\
+Ground matching and firing &
+\texttt{proofs/Unify.lean}, \texttt{proofs/RuleFiring.lean};
+\texttt{unify\_conformance}, \texttt{rule\_firing\_conformance}. \\
+Conditional certificate soundness &
+\texttt{proofs/Trace.lean}: \texttt{PerfectModel},
+\texttt{cert\_sound}, \texttt{qproof\_sound};
+\texttt{trace\_soundness\_conformance}. \\
+Envelope coherence &
+\texttt{nibli-types/src/logic.rs}: \texttt{validate\_envelope};
+integration envelope matrix; new raw certificate records. \\
+Withdrawal and retained identity &
+\texttt{nibli-verify/src/retract\_diff.rs}; engine/store persistence tests;
+new update sequences and citation audit. \\
+Materialization agreement &
+\texttt{nibli-verify/src/materialize\_diff.rs};
+new paired bounds observations and generated coverage figure. \\
+Compiler seam and alias meaning &
+\texttt{nibli-verify/tests/nibli\_kr\_seam\_gate.rs};
+surface compilation and alias conformance tests. \\
+Cross-runtime behavior &
+Shared determinism corpus, host state/recovery suite, Node tests;
+\texttt{results/portability/} transcripts and requests. \\
+Performance and incomplete execution &
+\texttt{results/evaluation/observations.jsonl};
+generated tables, sample CSV, process logs, and completion manifest. \\
+\bottomrule
+\end{longtable}
+
+\section{Complete outcome accounting and chain cells}
+\label{app:outcomes}
+
+Table~\ref{tab:ledger} counts measured processes and emitted answer classes.
+The number of answers per process differs by group: updates query multiple
+stages, while a chain process contains one query. A cutoff can occur after
+earlier phases or answers were recorded. Therefore the answer columns must
+not be interpreted as a partition of the process columns. Unemitted answers
+are reflected in the coverage denominator.
+
+\begin{table}[h]
+\centering\small
+\input{generated/outcomes-table.tex}
+\caption{Measured process and answer ledger. U denotes \Unknown;
+R denotes an engine \Resource\ result. Failures exclude external cutoffs.}
+\label{tab:ledger}
+\end{table}
+
+\begin{table}[h]
+\centering\small
+\input{generated/cutoff-table.tex}
+\caption{External cutoffs grouped by the last completed phase, where available. An
+\texttt{open} row has no completed load observation. RSS is the median peak
+observed up to termination, not a completed workload's memory requirement.}
+\end{table}
+
+\begin{table}[h]
+\centering\footnotesize
+\input{generated/chain-table.tex}
+\caption{Every chain cell. Values are milliseconds with first and third quartiles.
+A dagger marks any externally timed-out sample in the cell. Exact cutoff
+counts and individual samples are in \texttt{generated/summary.csv}.}
+\end{table}
+
+\section{Artifact and submission boundaries}
+
+The main text ends on page~\pageref{main-end}; references, this protocol,
+translation example, and expanded tables are supporting material.
+The upload archive contains the TeX sources, bibliography, generated
+\texttt{.bbl}, figures, and generated tables needed for offline typesetting.
+The separate research archive contains experimental sources, input snapshots,
+raw observations, proof envelopes, and reproduction instructions.
+Local DOCX chapters were consulted for exposition; their hashes and filenames
+are recorded, and their text and figures are not redistributed.
+
+The proposed author is dhilipsiva, with no affiliation asserted, and the
+target arXiv category is cs.AI. No arXiv identifier, endorsement, acceptance,
+or submission is claimed. Significant AI assistance is disclosed with the
+references; submission and any endorsement communication are separate actions.

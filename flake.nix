@@ -45,6 +45,27 @@
           buildInputs = [ rustToolchain pkgs.just pkgs.python3 ];
         };
 
+        # Research artifact: inherit the engine verification environment and its
+        # locked toolchain; add compiled Datalog, plotting, and PDF production.
+        devShells.paper = pkgs.mkShell {
+          inputsFrom = [ self.devShells.${system}.default ];
+          buildInputs = with pkgs; [
+            souffle
+            wasm-pack
+            time
+            poppler-utils
+            (python3.withPackages (p: [ p.matplotlib p.numpy p.pandas ]))
+            (texlive.combine {
+              inherit (texlive) scheme-small latexmk collection-latexrecommended
+                collection-latexextra collection-fontsrecommended pgf;
+            })
+          ];
+          SOURCE_DATE_EPOCH = "1789344000";
+          PYTHONHASHSEED = "0";
+          MPLBACKEND = "Agg";
+          OMP_NUM_THREADS = "1";
+        };
+
         devShells.default = pkgs.mkShell {
 
           buildInputs = with pkgs; [

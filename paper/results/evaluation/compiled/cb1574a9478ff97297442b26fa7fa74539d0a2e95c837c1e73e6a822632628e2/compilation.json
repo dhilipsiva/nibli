@@ -1,0 +1,22 @@
+{
+  "binary_sha256": "3b4f16f23ea6c992d452d6faf04fdf45bf3f7aac95b3183238a83a9a1acd7c53",
+  "command": [
+    "souffle",
+    "-j",
+    "1",
+    "-o",
+    "/home/dhilipsiva/projects/dhilipsiva/nibli/paper/results/evaluation/compiled/cb1574a9478ff97297442b26fa7fa74539d0a2e95c837c1e73e6a822632628e2/program",
+    "/home/dhilipsiva/projects/dhilipsiva/nibli/paper/results/evaluation/inputs/comparison-chain-4-backward-s47-d10-m1-verdict/input.dl"
+  ],
+  "cpu_system_s": 0.66,
+  "cpu_user_s": 8.54,
+  "cutoff_seconds": 300,
+  "exit_code": 0,
+  "peak_rss_kib": 493896,
+  "started_utc": "2026-09-14T08:58:30.251896+00:00",
+  "status": "ok",
+  "stderr": "paper/results/evaluation/compiled/cb1574a9478ff97297442b26fa7fa74539d0a2e95c837c1e73e6a822632628e2/compile.stderr",
+  "stdout": "paper/results/evaluation/compiled/cb1574a9478ff97297442b26fa7fa74539d0a2e95c837c1e73e6a822632628e2/compile.stdout",
+  "usage": "paper/results/evaluation/compiled/cb1574a9478ff97297442b26fa7fa74539d0a2e95c837c1e73e6a822632628e2/compile.time",
+  "wall_ms": 9388.52173000123
+}

@@ -1,0 +1,17 @@
+{
+  "depth": 10,
+  "materialization": true,
+  "mode": "verdict",
+  "queries": [
+    "animal(Ada).",
+    "animal(Bea).",
+    "animal(Cyd)."
+  ],
+  "statements": [
+    "all $x: dog($x) & ~cat($x) -> animal($x).",
+    "dog(Ada).",
+    "dog(Bea).",
+    "cat(Bea)."
+  ],
+  "updates": []
+}

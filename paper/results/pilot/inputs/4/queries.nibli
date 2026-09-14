@@ -1,0 +1,4 @@
+warns(Gate, F0, S0).
+warns(Gate, F1, S1).
+authorized(F2, Release, S2).
+warns(Gate, F3, S3).

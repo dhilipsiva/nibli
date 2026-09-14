@@ -1,0 +1,149 @@
+\section{Architecture and a technical adjudication case}
+\label{sec:architecture}
+
+The architecture places the same deterministic core behind several execution
+surfaces (Figure~\ref{fig:architecture}). The native embedding library,
+the WASI component, and the browser wrapper share parsing, semantic compilation,
+and reasoning crates through a common session layer. Runtime wrappers provide
+environmental functions and adapt the result representation. Shared code reduces
+the amount of independently maintained reasoning logic, but does not establish
+runtime equivalence: integer conversion, resource traps, serialization, and
+state recovery remain properties of the wrappers.
+
+\begin{figure}[t]
+\centering
+\input{figures/architecture.tex}
+\caption{The integrated pipeline and its trust boundaries. The measured solver
+comparison starts from a common finite workload description, before the three
+separate surface renderers. External analyzer and optional compute outputs
+remain trusted inputs, not independently established facts.}
+\label{fig:architecture}
+\end{figure}
+
+\subsection{From statements to indexed evaluation}
+
+The front end accepts predicate names from a committed lexicon, with canonical
+argument places and converted aliases. The semantic compiler resolves that
+surface into typed, indexed buffers. Front-end acceptance and reasoning admission
+are different gates: a well-formed formula can still be refused because it
+violates stratification, an assertion restriction, or a query-only compute
+boundary. In the native persistent path, mutation stages candidate logical
+state, commits the authoritative registry, and then publishes the candidate.
+Precommit failure preserves the previous state; an ambiguous durable commit
+makes the live instance unavailable until a fresh open. This is a storage-state
+contract, not a logical inference rule.
+
+The fact store indexes relations and argument positions. Backward evaluation
+matches a query against stored facts and registered rule heads, builds
+substitutions, and recursively discharges bodies. Prepared inference work,
+candidate narrowing, and memoized completed work reduce repeated traversal.
+A depth-cut cache records the remaining budget associated with a safe cut.
+Cycle-contaminated results are not treated as reusable definitive failures:
+such a result depends on the current call path and would be unsound as a
+general absence certificate.
+
+Selective materialization supplements this path. A negation-bearing query
+requests the relevant dependency cone before reasoning. Purely positive goals
+can remain on backward evaluation when it gives a definitive answer; a
+non-definitive result can request an eligible cone as a fallback. The requested
+roots accumulate within a knowledge-base state. The saturator projects eligible
+event decompositions back to finite surface atoms and computes consequences
+in stratum order using semi-naive joins. A relation is marked complete only
+when its rules and dependencies meet the eligibility conditions.
+
+Completeness is therefore an explicit property of a particular extension.
+Refusing a projection must not be confused with constructing an empty extension.
+Equality classes, compute conditions, unsupported flavors, or non-projectable
+term dependencies can prevent completion. If a dependency is refused, ordinary
+bounded reasoning remains responsible for its answers. This boundary is central
+to safe negative queries: an empty but incomplete set cannot justify
+negation-as-failure.
+
+Updates interact with these caches. An insertion outside the requested dependency
+cone can leave its extensions valid. An eligible monotone insertion can resume
+from a delta. Growth that reaches a predicate used negatively requires
+recomputation because adding positive support can remove a negative consequence.
+Withdrawal follows reconstruction from surviving records, rebuilding domain,
+equality, and derived indexes together. The paper measures that implemented
+transactional cost, without treating the number of surviving records as a
+sufficient asymptotic model of all indexing and replay work.
+
+\subsection{Analyzer facts and reviewable policy}
+
+The running case adapts the repository's technical adjudication example.
+An upstream analyzer supplies a flow, a sink classification, and optional
+sanitization evidence. A reviewer can supply an explicit waiver. Nibli evaluates
+the policy attached to those records. It does not calculate the program's taint
+closure in this example and does not validate the analyzer's accuracy.
+
+The rules use \texttt{carries} for a flow, \texttt{dangerous} for a sink
+classification, \texttt{prevents} for a sanitizer, and \texttt{permits} for a waiver:
+\begin{lstlisting}[style=kr]
+all $f, $d, $s, $o, $r:
+  carries($f, $d, $s, $o, $r) &
+  dangerous($s, $d, Exploit) & prevents(Sanitizer, $f)
+  -> authorized($f, Release, $s).
+all $f, $d, $s, $o, $r:
+  carries($f, $d, $s, $o, $r) &
+  dangerous($s, $d, Exploit) & permits(Review, $f, Waiver)
+  -> authorized($f, Release, $s).
+all $f, $d, $s, $o, $r:
+  carries($f, $d, $s, $o, $r) & ~authorized($f, Release, $s)
+  -> warns(Gate, $f, $s).
+\end{lstlisting}
+The artifact stores each rule on one line for assertion. Formatting above
+only improves readability.
+
+Authorization requires positive support. A flow whose sink was never classified
+is not cleared by absence of danger evidence; the finding rule still applies.
+This policy choice prevents one specific misuse of closed-world negation.
+It does not establish a universal policy that every missing fact should be
+treated conservatively: that decision belongs in the rules for the application.
+
+The example also uses \texttt{admits} to close the direct-assertion vocabulary and
+\texttt{derived\_only} to prevent direct assertion of authorization and findings.
+Those controls are tested in the existing adjudication gate. The shared
+performance fragment omits these administrative declarations so all systems
+receive equivalent ordinary rules and facts. This omission is disclosed; the
+benchmark does not compare authorization enforcement at each system's input API.
+
+\subsection{Two supports, one withdrawal}
+\label{sec:case-update}
+
+For a particular flow, suppose both a sanitizer record and a waiver exist.
+The authorization query is true by either policy rule. Withdrawing the sanitizer
+must leave authorization true through the waiver. Withdrawing the remaining
+waiver makes authorization false and the finding true. Reasserting the sanitizer
+restores authorization and removes the finding. Reopening saved state must
+preserve the current outcome and the identity of surviving sources.
+
+The update workload places a second flow alongside the first with only one
+sanitizer support. Its withdrawal must immediately remove authorization.
+These two paths discriminate alternative support from sole support: a test that
+only deletes the last support cannot show that the engine retained an independent
+one correctly. Queries after every transition also catch stale positive and
+negative caches; checking only the final reopened state could hide a temporary
+incorrect decision.
+
+Evidence has its own obligations. Asserted leaves identify supporting registry
+records, and derived steps identify source rules. A fresh envelope after withdrawal
+must not cite a withdrawn record as active support, even when its top-level
+verdict happens to remain true. The artifact checks source liveness and exact
+source labels against the saved request and operation sequence. It retains the
+complete envelopes so this check can be repeated independently of the live engine.
+
+\subsection{Evidence generation is an execution choice}
+
+A verdict-only query can use a completed surface extension to answer a membership
+test. A trace needs more structure: which rule fired, which premises were used,
+and which witness connects an anchor to its roles. The current traced route
+therefore retains backward derivation work instead of replacing it with an
+unexplained materialized lookup. This creates a testable performance and
+completeness distinction between \texttt{query\_holds} and \texttt{certify\_text}.
+
+An envelope binds the result and trace to the query, engine version, and effective
+profile, including depth and materialization settings. It is useful for auditing
+a particular execution, but is neither a signed record nor a self-contained
+semantic proof. It does not carry the entire premise registry or independently
+reconstruct the meaning of every rule. The source snapshots and update sequence
+in this artifact supply context that the envelope alone intentionally lacks.

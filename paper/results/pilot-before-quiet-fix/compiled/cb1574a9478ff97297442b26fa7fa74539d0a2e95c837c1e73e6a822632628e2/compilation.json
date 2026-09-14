@@ -1,0 +1,22 @@
+{
+  "binary_sha256": "d187d3cd7f2c2ef9305b67c8cb17d80afdcbfb9d6849bc6b7496b9337c32c5d1",
+  "command": [
+    "souffle",
+    "-j",
+    "1",
+    "-o",
+    "/home/dhilipsiva/projects/dhilipsiva/nibli/paper/results/pilot/compiled/cb1574a9478ff97297442b26fa7fa74539d0a2e95c837c1e73e6a822632628e2/program",
+    "/home/dhilipsiva/projects/dhilipsiva/nibli/paper/results/pilot/inputs/2/input.dl"
+  ],
+  "cpu_system_s": 0.58,
+  "cpu_user_s": 9.02,
+  "cutoff_seconds": 300,
+  "exit_code": 0,
+  "peak_rss_kib": 494008,
+  "started_utc": "2026-09-14T08:34:30.578214+00:00",
+  "status": "ok",
+  "stderr": "paper/results/pilot/compiled/cb1574a9478ff97297442b26fa7fa74539d0a2e95c837c1e73e6a822632628e2/compile.stderr",
+  "stdout": "paper/results/pilot/compiled/cb1574a9478ff97297442b26fa7fa74539d0a2e95c837c1e73e6a822632628e2/compile.stdout",
+  "usage": "paper/results/pilot/compiled/cb1574a9478ff97297442b26fa7fa74539d0a2e95c837c1e73e6a822632628e2/compile.time",
+  "wall_ms": 10048.973809000017
+}

@@ -1,0 +1,9 @@
+test_three_hand_translations (test_adapters.Adapters.test_three_hand_translations) ... ok
+test_unsafe_rule_and_unrepresentable_input_are_refused (test_adapters.Adapters.test_unsafe_rule_and_unrepresentable_input_are_refused) ... ok
+test_update_indices_refer_to_the_two_distinct_supports (test_adapters.Adapters.test_update_indices_refer_to_the_two_distinct_supports) ... ok
+test_live_source_and_withdrawn_or_mislabeled_source (test_evidence.SourceAudit.test_live_source_and_withdrawn_or_mislabeled_source) ... ok
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.002s
+
+OK

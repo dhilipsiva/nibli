@@ -1,0 +1,18 @@
+\begin{tikzpicture}[font=\small, node distance=7mm and 8mm,
+box/.style={draw, align=center, minimum height=9mm, text width=31mm},
+edge/.style={-{Latex[length=2mm]}}]
+\node[box] (input) {Accepted KR\\facts and rules};
+\node[box,right=of input] (compile) {Parser, lexicon\\semantic compiler};
+\node[box,right=of compile] (core) {Shared session\\indexed reasoner};
+\node[box,right=of core] (output) {Operational verdict\\and optional envelope};
+\draw[edge] (input)--(compile);
+\draw[edge] (compile)--(core);
+\draw[edge] (core)--(output);
+\node[box,below=of core] (mat) {Eligible finite\\materialization};
+\node[box,below=of compile] (store) {Active assertion\\registry and replay};
+\node[box,below=of output] (compute) {Optional trusted\\compute reply};
+\draw[<->, >={Latex[length=2mm]}] (core)--(mat);
+\draw[edge] (store)--(core);
+\draw[edge,dashed] (compute)--(core);
+\node[below=15mm of mat,align=center] {Native Rust \quad|\quad WASI / Wasmtime \quad|\quad browser WASM / Node};
+\end{tikzpicture}

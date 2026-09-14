@@ -2905,6 +2905,8 @@ dependencies = [
  "nibli-render",
  "nu-ansi-term",
  "reedline",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

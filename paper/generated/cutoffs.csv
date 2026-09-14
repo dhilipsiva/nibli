@@ -1,0 +1,7 @@
+group,implementation,family,size,last_completed_phase,cutoffs,rss_mib_q25,rss_mib_median,rss_mib_q75
+comparison,nibli,chain,12,load,15,10.06640625,10.09765625,10.09765625
+comparison,nibli,chain,16,load,15,16.294921875,16.35546875,16.37109375
+comparison,nibli,chain,32,load,15,40.099609375,40.15625,40.1640625
+comparison,nibli,policy,10000,open,15,55.224609375,55.55078125,55.841796875
+evidence,nibli,policy,10000,open,30,53.72265625,54.41015625,55.1474609375
+updates,nibli,policy,1000,certificate,1,49.390625,49.390625,49.390625

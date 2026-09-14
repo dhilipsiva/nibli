@@ -1,0 +1,169 @@
+{
+  "schema": 1,
+  "baseline": "158e3b0cdeeb09d26ae9e87dd3d5487ab945c2ca",
+  "evidence_classes": ["definition", "implementation", "theorem", "test", "measurement", "reference"],
+  "claims": [
+    {
+      "id": "shared-session-core",
+      "claim": "Native, WASI-component, and browser wrappers reuse the same parsing, compilation, and reasoning session layer.",
+      "evidence": [{"kind": "implementation", "path": "nibli-engine/src/lib.rs", "symbol": "CoreSession"}, {"kind": "implementation", "path": "nibli-pipeline/src/lib.rs", "symbol": "CoreSession"}, {"kind": "implementation", "path": "nibli-wasm/src/lib.rs", "symbol": "CoreSession"}],
+      "boundary": "Shared source is an architecture fact, not by itself proof of equal serialization, traps, persistence, or runtime behavior."
+    },
+    {
+      "id": "depth-sensitive-cache",
+      "claim": "Reusable depth cuts carry a remaining-budget condition; cycle-contaminated cuts are excluded and mutation invalidates the cache.",
+      "evidence": [{"kind": "implementation", "path": "nibli-reason/src/kb.rs", "symbol": "depth_cut_table"}, {"kind": "test", "path": "nibli-reason/src/tests/memo_regressions.rs", "symbol": "contaminated_depth_cut_is_not_tabled_for_replay"}, {"kind": "test", "path": "nibli-reason/src/tests/memo_regressions.rs", "symbol": "depth_cut_table_invalidated_by_assert"}],
+      "boundary": "These caches do not establish complete SLG evaluation or a wall-clock bound."
+    },
+    {
+      "id": "traced-execution-choice",
+      "claim": "The traced path disables direct positive materialized lookup and retains backward derivation work; envelope binding records the query and effective profile.",
+      "evidence": [{"kind": "implementation", "path": "nibli-reason/src/lib.rs", "symbol": "positive_lookup.set(false)"}, {"kind": "implementation", "path": "nibli-session/src/lib.rs", "symbol": "pub fn certify_text"}, {"kind": "measurement", "path": "paper/generated/summary.csv"}],
+      "boundary": "Observed certificate cost includes reasoning; the experiment does not attribute the entire difference to a single internal optimization."
+    },
+    {
+      "id": "finite-fragment",
+      "claim": "The comparison concerns finite, function-free, range-restricted Horn programs with stratified negation and opaque constants.",
+      "evidence": [{"kind": "definition", "path": "paper/sections/semantics.tex", "symbol": "A finite comparison fragment"}, {"kind": "implementation", "path": "paper/scripts/workloads.py", "symbol": "def validate"}],
+      "boundary": "The broader KR language and its internal event representation are not identified with this fragment."
+    },
+    {
+      "id": "operational-outcomes",
+      "claim": "TRUE and FALSE are definitive operational outcomes; UNKNOWN and RESOURCE_EXCEEDED preserve distinct reasons for non-definitiveness.",
+      "evidence": [{"kind": "definition", "path": "paper/sections/semantics.tex", "symbol": "Four outcomes"}, {"kind": "implementation", "path": "nibli-types/src/logic.rs", "symbol": "QueryResult"}, {"kind": "test", "path": "nibli-reason/src/reasoning.rs", "symbol": "exhaustive_soundness_matches_lean_model"}],
+      "boundary": "FALSE is not generally a proof of explicit negation; external timeouts are process outcomes."
+    },
+    {
+      "id": "combiner-proof",
+      "claim": "Lean proves selected finite result-combination properties, with exhaustive executable comparison of result classes.",
+      "evidence": [{"kind": "theorem", "path": "proofs/Combiner.lean"}, {"kind": "test", "path": "nibli-reason/src/reasoning.rs", "symbol": "exhaustive_soundness_matches_lean_model"}],
+      "boundary": "Reason payload identity and arbitrary engine executions are not established by exhaustive enumeration of result classes."
+    },
+    {
+      "id": "stratification-proof",
+      "claim": "The mechanized graph criterion connects absence of negative cycles with existence of a valid stratification; SCC conformance is separately tested.",
+      "evidence": [{"kind": "theorem", "path": "proofs/Stratification.lean"}, {"kind": "theorem", "path": "proofs/Scc.lean"}, {"kind": "test", "path": "nibli-reason/src/rules.rs", "symbol": "check_stratification_matches_proven_criterion"}, {"kind": "test", "path": "nibli-reason/src/rules.rs", "symbol": "compute_sccs_matches_scc_spec"}],
+      "boundary": "The Rust Tarjan traversal and compiler dependency extraction are not extracted from Lean."
+    },
+    {
+      "id": "matching-and-firing",
+      "claim": "Ground matching and model-sound rule firing have mechanized local soundness statements and implementation conformance tests.",
+      "evidence": [{"kind": "theorem", "path": "proofs/Unify.lean"}, {"kind": "theorem", "path": "proofs/RuleFiring.lean"}, {"kind": "test", "path": "nibli-reason/src/tests/unify_equality.rs", "symbol": "unify_conformance"}, {"kind": "test", "path": "nibli-reason/src/tests/existential.rs", "symbol": "rule_firing_conformance"}],
+      "boundary": "Groundness, premise satisfaction, and rule validity are hypotheses; floating-point arithmetic is not proved by the numeric term abstraction."
+    },
+    {
+      "id": "conditional-certificate-proof",
+      "claim": "Positive/negative and compound certificates imply model membership/non-membership under the PerfectModel assumptions.",
+      "evidence": [{"kind": "theorem", "path": "proofs/Trace.lean", "symbol": "PerfectModel"}, {"kind": "theorem", "path": "proofs/Trace.lean", "symbol": "cert_sound"}, {"kind": "theorem", "path": "proofs/Trace.lean", "symbol": "qproof_sound"}, {"kind": "test", "path": "nibli-reason/src/tests/traces.rs", "symbol": "trace_soundness_conformance"}],
+      "boundary": "Fact validity, rule closure, candidate correctness and support are assumptions. This is not a proof of arbitrary serialized envelopes or every KR proof variant."
+    },
+    {
+      "id": "envelope-coherence",
+      "claim": "Envelope validation checks structural and profile coherence, without independently validating semantic entailment from an input registry.",
+      "evidence": [{"kind": "implementation", "path": "nibli-types/src/logic.rs", "symbol": "validate_envelope"}, {"kind": "definition", "path": "paper/sections/verification.tex", "symbol": "What an envelope check establishes"}],
+      "boundary": "A coherent envelope alone is not an authenticated transcript or a complete independent semantic proof."
+    },
+    {
+      "id": "source-citation-audit",
+      "claim": "The new audit checks each emitted asserted/derived citation against currently active assertion IDs and exact labels.",
+      "evidence": [{"kind": "implementation", "path": "paper/scripts/analyze.py", "symbol": "def audit_trace"}, {"kind": "test", "path": "paper/tests/test_evidence.py"}, {"kind": "measurement", "path": "paper/generated/citation-audit.json"}],
+      "boundary": "This checks citation occurrences and registry liveness, not the validity of the inference rule or completeness of negative evidence."
+    },
+    {
+      "id": "surface-seam",
+      "claim": "KR compilation introduces event/role structure and resolves corpus-defined aliases; structural and metamorphic tests exercise that seam.",
+      "evidence": [{"kind": "test", "path": "nibli-verify/tests/nibli_kr_seam_gate.rs"}, {"kind": "test", "path": "nibli-verify/tests/alias_differential.rs"}, {"kind": "definition", "path": "paper/sections/semantics.tex", "symbol": "eq:event"}],
+      "boundary": "A schematic FOL formula is not the serialized buffer, and compiler tests do not certify intended natural-language meaning."
+    },
+    {
+      "id": "typed-witness-identity",
+      "claim": "Generated witnesses remain distinct from equal-looking user strings, including across reopen and withdrawal.",
+      "evidence": [{"kind": "test", "path": "nibli-engine/tests/integration.rs", "symbol": "internal_skolem_and_user_sk_0_remain_distinct_across_reopen_and_retraction"}, {"kind": "measurement", "path": "paper/results/portability/portability.json"}],
+      "boundary": "Display names are not semantic addresses. The cross-runtime slice tests specific witnesses rather than every possible quantified form."
+    },
+    {
+      "id": "opaque-content",
+      "claim": "Opaque abstractions describe content without asserting that content as actual premises.",
+      "evidence": [{"kind": "test", "path": "nibli-engine/tests/integration.rs", "symbol": "opaque_abstraction_identity_survives_persistence_and_retraction"}, {"kind": "test", "path": "nibli-engine/tests/integration.rs", "symbol": "count_inside_opaque_abstraction_is_content_not_an_assertion"}],
+      "boundary": "This implementation commitment is not a complete modal logic."
+    },
+    {
+      "id": "tense-flavors",
+      "claim": "Ordinary-predicate tense distinguishes flavors and does not automatically lift bare rules or implement a clock.",
+      "evidence": [{"kind": "test", "path": "nibli-engine/tests/integration.rs", "symbol": "tensed_negated_restrictor_blocked_by_past_witness"}, {"kind": "test", "path": "nibli-verify/src/tense.rs"}, {"kind": "measurement", "path": "paper/results/portability/portability.json"}],
+      "boundary": "The finite performance comparison excludes tense and deontic operators."
+    },
+    {
+      "id": "withdrawal-replay",
+      "claim": "Ordinary withdrawal is compared with replay of surviving premises, including reconstruction of domain and equality state.",
+      "evidence": [{"kind": "definition", "path": "paper/sections/semantics.tex", "symbol": "eq:replay"}, {"kind": "test", "path": "nibli-verify/src/retract_diff.rs"}, {"kind": "test", "path": "nibli-engine/tests/integration.rs", "symbol": "persistent_engine_retraction_via_engine_api_survives_reopen"}],
+      "boundary": "Same profile and admission state are required. Administrative declarations surviving replay are not ordinary reversible premises."
+    },
+    {
+      "id": "persistent-identity",
+      "claim": "Persistent reopen retains surviving source identity and the status of withdrawn records.",
+      "evidence": [{"kind": "test", "path": "nibli-engine/tests/integration.rs", "symbol": "persistent_duplicate_assertion_citations_survive_reopen_and_retraction"}, {"kind": "test", "path": "nibli-host/src/recovery_tests.rs", "symbol": "wasm_withdrawn_envelopes_reserve_ids_without_decoding_payloads"}, {"kind": "measurement", "path": "paper/results/evaluation/observations.jsonl"}],
+      "boundary": "Retained status is not a complete chronological audit log; the new artifact saves its update sequence separately."
+    },
+    {
+      "id": "transaction-boundary",
+      "claim": "Failed precommit mutations preserve committed logical state; ambiguous durable commit requires reopening.",
+      "evidence": [{"kind": "test", "path": "nibli-engine/tests/integration.rs", "symbol": "rejected_persistent_assertion_never_commits_or_consumes_an_id"}, {"kind": "test", "path": "nibli-host/src/recovery_tests.rs", "symbol": "wasm_storage_batch_failure_restores_the_committed_session"}, {"kind": "test", "path": "nibli-host/src/recovery_tests.rs", "symbol": "wasm_ambiguous_commit_requires_reopening"}],
+      "boundary": "These are tested storage-state contracts, not logical theorems or proofs against arbitrary disk corruption."
+    },
+    {
+      "id": "materialization-boundary",
+      "claim": "Eligible finite dependency cones can be materialized; a refused or incomplete extension cannot establish closed-world absence.",
+      "evidence": [{"kind": "implementation", "path": "nibli-reason/src/materialize.rs"}, {"kind": "test", "path": "nibli-verify/src/materialize_diff.rs"}, {"kind": "measurement", "path": "paper/generated/summary.csv"}],
+      "boundary": "Agreement is required for answers definitive in both modes. Returned completeness gains and external timeouts are counted separately."
+    },
+    {
+      "id": "adjudication-input-controls",
+      "claim": "The repository adjudication example closes input vocabulary and prevents direct assertion of derived findings; the performance fragment omits these controls.",
+      "evidence": [{"kind": "test", "path": "Justfile", "symbol": "verify-adjudication:"}, {"kind": "test", "path": "nibli-engine/tests/integration.rs", "symbol": "derived_only_closes_converted_alias_spellings_too"}, {"kind": "implementation", "path": "paper/scripts/workloads.py", "symbol": "def policy"}],
+      "boundary": "The experiment compares policy evaluation on supplied analyzer facts, not analyzer soundness or input authorization across systems."
+    },
+    {
+      "id": "external-compute",
+      "claim": "External compute replies are trusted evidence for supplied arguments and are not automatically inserted as durable premises.",
+      "evidence": [{"kind": "implementation", "path": "nibli-reason/src/compute.rs", "symbol": "evaluate_external_compute"}, {"kind": "definition", "path": "paper/sections/semantics.tex", "symbol": "trusted boundary"}],
+      "boundary": "No external compute backend participates in the new measurements; freshness, factual correctness, and authentication are outside the inference claim."
+    },
+    {
+      "id": "measured-correctness",
+      "claim": "Observed definitive outcomes are checked against hand-derived workload expectations and independent baseline executions on the shared fragment.",
+      "evidence": [{"kind": "measurement", "path": "paper/results/evaluation/observations.jsonl"}, {"kind": "measurement", "path": "paper/generated/counts.json"}, {"kind": "test", "path": "paper/results/pilot/smoke.json"}],
+      "boundary": "A missing, unresolved, failed, or timed-out answer supplies no positive evidence of agreement."
+    },
+    {
+      "id": "performance-and-coverage",
+      "claim": "Latency, preparation costs, RSS, proof size, and definitive coverage describe the frozen workloads on the recorded local machine.",
+      "evidence": [{"kind": "definition", "path": "paper/protocol.json"}, {"kind": "measurement", "path": "paper/results/evaluation/environment.json"}, {"kind": "measurement", "path": "paper/generated/samples.csv"}, {"kind": "measurement", "path": "paper/generated/phases.csv"}, {"kind": "measurement", "path": "paper/generated/summary.csv"}, {"kind": "measurement", "path": "paper/generated/compilation.csv"}],
+      "boundary": "No general scalability, superiority, deployment representativeness, or baseline update-performance claim follows. Completed-only quartiles must be read with cutoff counts."
+    },
+    {
+      "id": "portable-behavior",
+      "claim": "Shared scenarios compare native, Wasmtime, and Node verdicts and relevant profile fields under adequate budgets.",
+      "evidence": [{"kind": "measurement", "path": "paper/results/portability/portability.json"}, {"kind": "measurement", "path": "paper/results/portability/artifacts.json"}, {"kind": "test", "path": "paper/results/checks/checks.json"}],
+      "boundary": "This is not byte-identical evidence serialization, equal resource metering, browser persistence, or cross-runtime performance equivalence."
+    },
+    {
+      "id": "established-mechanisms",
+      "claim": "Controlled formal languages, tabling, integrated top-down/bottom-up evaluation, provenance, incremental reasoning, verification-guided development, and LLM-to-solver pipelines have substantial precedent.",
+      "evidence": [{"kind": "reference", "bibkeys": ["ace", "xsb", "topdown-bottomup", "souffle", "souffle-provenance", "rdfox-bf", "cedar", "logic-lm", "clingo"]}],
+      "boundary": "The paper's contribution is its account and measurements of Nibli's integration, not invention of these mechanisms."
+    },
+    {
+      "id": "compiled-comparison",
+      "claim": "The Soufflé comparator is a single-threaded compiled executable with external facts and separately recorded preparation costs.",
+      "evidence": [{"kind": "reference", "bibkeys": ["souffle-execute"]}, {"kind": "implementation", "path": "paper/scripts/run.py", "symbol": "def prepare"}, {"kind": "measurement", "path": "paper/generated/compilation.csv"}],
+      "boundary": "Interpreted execution is not mixed into these observations; Nibli internal query timings are not baseline whole-process comparisons."
+    },
+    {
+      "id": "ai-disclosure",
+      "claim": "Substantial AI assistance is disclosed, with the named author retaining responsibility for submitted content.",
+      "evidence": [{"kind": "reference", "bibkeys": ["arxiv-policy"]}, {"kind": "definition", "path": "paper/main.tex", "symbol": "AI assistance"}],
+      "boundary": "No human review, submission, endorsement, or acceptance is represented as having occurred."
+    }
+  ]
+}

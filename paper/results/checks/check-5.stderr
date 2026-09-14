@@ -1,0 +1,32 @@
+rm -f target/wasm32-wasip2/release/*.wasm
+cargo component build --target wasm32-wasip2 --release -p nibli-pipeline
+  Generating bindings for nibli-pipeline (nibli-pipeline/src/bindings.rs)
+   Compiling nibli-pipeline v0.2.0 (/home/dhilipsiva/projects/dhilipsiva/nibli/nibli-pipeline)
+    Finished `release` profile [optimized] target(s) in 6.30s
+    Creating component target/wasm32-wasip1/release/nibli.wasm
+# cargo-component regenerates nibli-pipeline/src/bindings.rs in wit-bindgen's own
+# formatting; normalize it so a later `fmt-check` (ci) doesn't trip on the
+# auto-generated file.
+cargo fmt -p nibli-pipeline
+cargo build -p nibli-host --release
+    Finished `release` profile [optimized] target(s) in 1.29s
+NIBLI_WASM_PATH=target/wasm32-wasip2/release/nibli.wasm cargo test -p nibli-host recovery_tests -- --ignored --test-threads=1
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.45s
+     Running unittests src/main.rs (target/debug/deps/nibli_host-f4e1c06278d70dd0)
+[Arity Warning] 'host_arity_fixture': expected 2 args, got 1 (inferred from first use)
+[Arity Warning] 'host_arity_fixture': expected 2 args, got 1 (inferred from first use)
+[Arity Warning] 'host_arity_fixture': expected 2 args, got 1 (inferred from first use)
+[Arity Warning] 'host_arity_fixture': expected 2 args, got 1 (inferred from first use)
+[Strict] arity mismatch: 'host_arity_fixture' expects 2 args (inferred from first use), got 1 — fact 'host_arity_fixture(Dora)' rejected
+python3 nibli-host/tests/smoke_state_controls.py target/release/nibli-host target/wasm32-wasip2/release/nibli.wasm
+seeded v2 Text row id=5 text="dog(Adam)." at /tmp/nix-shell.esul48/tmp.PjVH6yfWdy/nibli-v2.redb
+seeded v2 Text row id=5 text="ro lo gerku cu danlu" at /tmp/nix-shell.esul48/tmp.PjVH6yfWdy/nibli-v2-bad.redb
+[INFO]: 🎯  Checking for the Wasm target...
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.15s
+[INFO]: ⬇️  Installing wasm-bindgen...
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.08s
+     Running unittests src/lib.rs (/home/dhilipsiva/projects/dhilipsiva/nibli/target/wasm32-unknown-unknown/debug/deps/nibli_wasm-0f82584654581f7b.wasm)
+     Running tests/determinism.rs (/home/dhilipsiva/projects/dhilipsiva/nibli/target/wasm32-unknown-unknown/debug/deps/determinism-f82105f2f882ae61.wasm)
+     Running tests/lifecycle.rs (/home/dhilipsiva/projects/dhilipsiva/nibli/target/wasm32-unknown-unknown/debug/deps/lifecycle-df8a65610b836462.wasm)
+   Doc-tests nibli_wasm
+[WARN]: ⚠️   There's a newer version of wasm-pack available, the new version is: 0.15.0, you are using: 0.13.1. To update, navigate to: https://rustwasm.github.io/wasm-pack/installer/

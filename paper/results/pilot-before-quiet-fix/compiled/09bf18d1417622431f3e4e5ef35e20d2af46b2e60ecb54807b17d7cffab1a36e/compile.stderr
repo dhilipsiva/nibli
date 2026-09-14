@@ -1,0 +1,21 @@
+Warning: Variable O only occurs once in file input.dl at line 11
+p_authorized(F,"Release",S) :- p_carries(F,D,S,O,R), p_dangerous(S,D,"Exploit"), p_prevents("Sanitizer",F).
+-----------------------------------------------^------------------------------------------------------------
+Warning: Variable R only occurs once in file input.dl at line 11
+p_authorized(F,"Release",S) :- p_carries(F,D,S,O,R), p_dangerous(S,D,"Exploit"), p_prevents("Sanitizer",F).
+-------------------------------------------------^----------------------------------------------------------
+Warning: Variable O only occurs once in file input.dl at line 12
+p_authorized(F,"Release",S) :- p_carries(F,D,S,O,R), p_dangerous(S,D,"Exploit"), p_permits("Review",F,"Waiver").
+-----------------------------------------------^-----------------------------------------------------------------
+Warning: Variable R only occurs once in file input.dl at line 12
+p_authorized(F,"Release",S) :- p_carries(F,D,S,O,R), p_dangerous(S,D,"Exploit"), p_permits("Review",F,"Waiver").
+-------------------------------------------------^---------------------------------------------------------------
+Warning: Variable D only occurs once in file input.dl at line 13
+p_warns("Gate",F,S) :- p_carries(F,D,S,O,R), !p_authorized(F,"Release",S).
+-----------------------------------^---------------------------------------
+Warning: Variable O only occurs once in file input.dl at line 13
+p_warns("Gate",F,S) :- p_carries(F,D,S,O,R), !p_authorized(F,"Release",S).
+---------------------------------------^-----------------------------------
+Warning: Variable R only occurs once in file input.dl at line 13
+p_warns("Gate",F,S) :- p_carries(F,D,S,O,R), !p_authorized(F,"Release",S).
+-----------------------------------------^---------------------------------

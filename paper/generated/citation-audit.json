@@ -1,0 +1,527 @@
+[
+  {
+    "run_id": "00013-evidence-policy-100-both-s23-d10-m1-certificate-nibli-r0",
+    "certificates": 2,
+    "citations": 10,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00014-evidence-policy-100-both-s23-d10-m1-certificate-nibli-r1",
+    "certificates": 2,
+    "citations": 10,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00015-evidence-policy-100-both-s23-d10-m1-certificate-nibli-r2",
+    "certificates": 2,
+    "citations": 10,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00033-evidence-policy-10000-both-s23-d10-m1-certificate-nibli-r0",
+    "certificates": 0,
+    "citations": 0,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00034-evidence-policy-10000-both-s23-d10-m1-certificate-nibli-r1",
+    "certificates": 0,
+    "citations": 0,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00035-evidence-policy-10000-both-s23-d10-m1-certificate-nibli-r2",
+    "certificates": 0,
+    "citations": 0,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00125-evidence-policy-1000-both-s83-d10-m1-certificate-nibli-r0",
+    "certificates": 2,
+    "citations": 10,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00126-evidence-policy-1000-both-s83-d10-m1-certificate-nibli-r1",
+    "certificates": 2,
+    "citations": 10,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00127-evidence-policy-1000-both-s83-d10-m1-certificate-nibli-r2",
+    "certificates": 2,
+    "citations": 10,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00141-updates-policy-1000-both-s11-d10-m1-updates-nibli-r0",
+    "certificates": 32,
+    "citations": 259,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00142-updates-policy-1000-both-s11-d10-m1-updates-nibli-r1",
+    "certificates": 32,
+    "citations": 259,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00143-updates-policy-1000-both-s11-d10-m1-updates-nibli-r2",
+    "certificates": 32,
+    "citations": 259,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00197-evidence-policy-1000-both-s131-d10-m1-certificate-nibli-r0",
+    "certificates": 2,
+    "citations": 10,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00198-evidence-policy-1000-both-s131-d10-m1-certificate-nibli-r1",
+    "certificates": 2,
+    "citations": 10,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00199-evidence-policy-1000-both-s131-d10-m1-certificate-nibli-r2",
+    "certificates": 2,
+    "citations": 10,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00205-evidence-policy-10000-both-s47-d10-m1-certificate-nibli-r0",
+    "certificates": 0,
+    "citations": 0,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00206-evidence-policy-10000-both-s47-d10-m1-certificate-nibli-r1",
+    "certificates": 0,
+    "citations": 0,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00207-evidence-policy-10000-both-s47-d10-m1-certificate-nibli-r2",
+    "certificates": 0,
+    "citations": 0,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00225-evidence-policy-100-both-s11-d10-m1-certificate-nibli-r0",
+    "certificates": 2,
+    "citations": 10,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00226-evidence-policy-100-both-s11-d10-m1-certificate-nibli-r1",
+    "certificates": 2,
+    "citations": 10,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00227-evidence-policy-100-both-s11-d10-m1-certificate-nibli-r2",
+    "certificates": 2,
+    "citations": 10,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00253-evidence-policy-10000-both-s11-d10-m1-certificate-nibli-r0",
+    "certificates": 0,
+    "citations": 0,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00254-evidence-policy-10000-both-s11-d10-m1-certificate-nibli-r1",
+    "certificates": 0,
+    "citations": 0,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00255-evidence-policy-10000-both-s11-d10-m1-certificate-nibli-r2",
+    "certificates": 0,
+    "citations": 0,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00269-evidence-policy-10000-both-s131-d10-m1-certificate-nibli-r0",
+    "certificates": 0,
+    "citations": 0,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00270-evidence-policy-10000-both-s131-d10-m1-certificate-nibli-r1",
+    "certificates": 0,
+    "citations": 0,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00271-evidence-policy-10000-both-s131-d10-m1-certificate-nibli-r2",
+    "certificates": 0,
+    "citations": 0,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00277-evidence-policy-1000-both-s23-d10-m1-certificate-nibli-r0",
+    "certificates": 2,
+    "citations": 10,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00278-evidence-policy-1000-both-s23-d10-m1-certificate-nibli-r1",
+    "certificates": 2,
+    "citations": 10,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00279-evidence-policy-1000-both-s23-d10-m1-certificate-nibli-r2",
+    "certificates": 2,
+    "citations": 10,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00377-evidence-policy-1000-both-s11-d10-m1-certificate-nibli-r0",
+    "certificates": 2,
+    "citations": 10,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00378-evidence-policy-1000-both-s11-d10-m1-certificate-nibli-r1",
+    "certificates": 2,
+    "citations": 10,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00379-evidence-policy-1000-both-s11-d10-m1-certificate-nibli-r2",
+    "certificates": 2,
+    "citations": 10,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00389-updates-policy-1000-both-s47-d10-m1-updates-nibli-r0",
+    "certificates": 32,
+    "citations": 259,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00390-updates-policy-1000-both-s47-d10-m1-updates-nibli-r1",
+    "certificates": 32,
+    "citations": 259,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00391-updates-policy-1000-both-s47-d10-m1-updates-nibli-r2",
+    "certificates": 32,
+    "citations": 259,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00393-updates-policy-100-both-s83-d10-m1-updates-nibli-r0",
+    "certificates": 32,
+    "citations": 259,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00394-updates-policy-100-both-s83-d10-m1-updates-nibli-r1",
+    "certificates": 32,
+    "citations": 259,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00395-updates-policy-100-both-s83-d10-m1-updates-nibli-r2",
+    "certificates": 32,
+    "citations": 259,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00469-updates-policy-1000-both-s131-d10-m1-updates-nibli-r0",
+    "certificates": 32,
+    "citations": 259,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00470-updates-policy-1000-both-s131-d10-m1-updates-nibli-r1",
+    "certificates": 32,
+    "citations": 259,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00471-updates-policy-1000-both-s131-d10-m1-updates-nibli-r2",
+    "certificates": 28,
+    "citations": 225,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00537-updates-policy-1000-both-s83-d10-m1-updates-nibli-r0",
+    "certificates": 32,
+    "citations": 259,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00538-updates-policy-1000-both-s83-d10-m1-updates-nibli-r1",
+    "certificates": 32,
+    "citations": 259,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00539-updates-policy-1000-both-s83-d10-m1-updates-nibli-r2",
+    "certificates": 32,
+    "citations": 259,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00573-updates-policy-100-both-s131-d10-m1-updates-nibli-r0",
+    "certificates": 32,
+    "citations": 259,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00574-updates-policy-100-both-s131-d10-m1-updates-nibli-r1",
+    "certificates": 32,
+    "citations": 259,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00575-updates-policy-100-both-s131-d10-m1-updates-nibli-r2",
+    "certificates": 32,
+    "citations": 259,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00581-evidence-policy-1000-both-s47-d10-m1-certificate-nibli-r0",
+    "certificates": 2,
+    "citations": 10,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00582-evidence-policy-1000-both-s47-d10-m1-certificate-nibli-r1",
+    "certificates": 2,
+    "citations": 10,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00583-evidence-policy-1000-both-s47-d10-m1-certificate-nibli-r2",
+    "certificates": 2,
+    "citations": 10,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00761-updates-policy-100-both-s11-d10-m1-updates-nibli-r0",
+    "certificates": 32,
+    "citations": 259,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00762-updates-policy-100-both-s11-d10-m1-updates-nibli-r1",
+    "certificates": 32,
+    "citations": 259,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00763-updates-policy-100-both-s11-d10-m1-updates-nibli-r2",
+    "certificates": 32,
+    "citations": 259,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00789-evidence-policy-100-both-s83-d10-m1-certificate-nibli-r0",
+    "certificates": 2,
+    "citations": 10,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00790-evidence-policy-100-both-s83-d10-m1-certificate-nibli-r1",
+    "certificates": 2,
+    "citations": 10,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00791-evidence-policy-100-both-s83-d10-m1-certificate-nibli-r2",
+    "certificates": 2,
+    "citations": 10,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00805-evidence-policy-100-both-s131-d10-m1-certificate-nibli-r0",
+    "certificates": 2,
+    "citations": 10,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00806-evidence-policy-100-both-s131-d10-m1-certificate-nibli-r1",
+    "certificates": 2,
+    "citations": 10,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00807-evidence-policy-100-both-s131-d10-m1-certificate-nibli-r2",
+    "certificates": 2,
+    "citations": 10,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00809-updates-policy-100-both-s47-d10-m1-updates-nibli-r0",
+    "certificates": 32,
+    "citations": 259,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00810-updates-policy-100-both-s47-d10-m1-updates-nibli-r1",
+    "certificates": 32,
+    "citations": 259,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "00811-updates-policy-100-both-s47-d10-m1-updates-nibli-r2",
+    "certificates": 32,
+    "citations": 259,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "01069-evidence-policy-10000-both-s83-d10-m1-certificate-nibli-r0",
+    "certificates": 0,
+    "citations": 0,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "01070-evidence-policy-10000-both-s83-d10-m1-certificate-nibli-r1",
+    "certificates": 0,
+    "citations": 0,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "01071-evidence-policy-10000-both-s83-d10-m1-certificate-nibli-r2",
+    "certificates": 0,
+    "citations": 0,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "01201-evidence-policy-100-both-s47-d10-m1-certificate-nibli-r0",
+    "certificates": 2,
+    "citations": 10,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "01202-evidence-policy-100-both-s47-d10-m1-certificate-nibli-r1",
+    "certificates": 2,
+    "citations": 10,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "01203-evidence-policy-100-both-s47-d10-m1-certificate-nibli-r2",
+    "certificates": 2,
+    "citations": 10,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "01333-updates-policy-1000-both-s23-d10-m1-updates-nibli-r0",
+    "certificates": 32,
+    "citations": 259,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "01334-updates-policy-1000-both-s23-d10-m1-updates-nibli-r1",
+    "certificates": 32,
+    "citations": 259,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "01335-updates-policy-1000-both-s23-d10-m1-updates-nibli-r2",
+    "certificates": 32,
+    "citations": 259,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "01389-updates-policy-100-both-s23-d10-m1-updates-nibli-r0",
+    "certificates": 32,
+    "citations": 259,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "01390-updates-policy-100-both-s23-d10-m1-updates-nibli-r1",
+    "certificates": 32,
+    "citations": 259,
+    "incomplete_json_lines": 0,
+    "errors": []
+  },
+  {
+    "run_id": "01391-updates-policy-100-both-s23-d10-m1-updates-nibli-r2",
+    "certificates": 32,
+    "citations": 259,
+    "incomplete_json_lines": 0,
+    "errors": []
+  }
+]

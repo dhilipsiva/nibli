@@ -1,0 +1,28 @@
+{
+  "binary": "paper/results/evaluation/compiled/1761a15e6dc6343bc39fa76a6e433017e18d2278b6120aa6642aeaf3476929a1/program",
+  "compilation": {
+    "binary_sha256": "ffb6d57547eae44e26f7b3322b95f9e2a9fc535d52f152fa35771d9370911ca8",
+    "command": [
+      "souffle",
+      "-j",
+      "1",
+      "-o",
+      "/home/dhilipsiva/projects/dhilipsiva/nibli/paper/results/evaluation/compiled/1761a15e6dc6343bc39fa76a6e433017e18d2278b6120aa6642aeaf3476929a1/program",
+      "/home/dhilipsiva/projects/dhilipsiva/nibli/paper/results/evaluation/inputs/comparison-chain-32-forward-s47-d10-m1-verdict/input.dl"
+    ],
+    "cpu_system_s": 0.55,
+    "cpu_user_s": 8.49,
+    "cutoff_seconds": 300,
+    "exit_code": 0,
+    "peak_rss_kib": 493956,
+    "started_utc": "2026-09-14T08:56:57.511791+00:00",
+    "status": "ok",
+    "stderr": "paper/results/evaluation/compiled/1761a15e6dc6343bc39fa76a6e433017e18d2278b6120aa6642aeaf3476929a1/compile.stderr",
+    "stdout": "paper/results/evaluation/compiled/1761a15e6dc6343bc39fa76a6e433017e18d2278b6120aa6642aeaf3476929a1/compile.stdout",
+    "usage": "paper/results/evaluation/compiled/1761a15e6dc6343bc39fa76a6e433017e18d2278b6120aa6642aeaf3476929a1/compile.time",
+    "wall_ms": 9223.69438900023
+  },
+  "facts": 32,
+  "souffle_source_sha256": "1761a15e6dc6343bc39fa76a6e433017e18d2278b6120aa6642aeaf3476929a1",
+  "translation_ms": 1.1142969997308683
+}

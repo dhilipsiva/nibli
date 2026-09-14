@@ -1,0 +1,35 @@
+earlier("N24","N6").
+earlier("N28","N8").
+earlier("N30","N9").
+earlier("N3","N28").
+earlier("N12","N4").
+earlier("N20","N27").
+earlier("N26","N30").
+earlier("N27","N1").
+earlier("N25","N16").
+earlier("N19","N15").
+earlier("N15","N22").
+earlier("N18","N10").
+earlier("N23","N0").
+earlier("N29","N31").
+earlier("N5","N24").
+earlier("N2","N29").
+earlier("N16","N18").
+earlier("N22","N23").
+earlier("N7","N3").
+earlier("N32","N13").
+earlier("N1","N12").
+earlier("N8","N21").
+earlier("N0","N25").
+earlier("N10","N7").
+earlier("N9","N5").
+earlier("N11","N32").
+earlier("N17","N14").
+earlier("N21","N11").
+earlier("N14","N19").
+earlier("N6","N20").
+earlier("N4","N2").
+earlier("N13","N26").
+earlier(A,C) :- earlier(A,B), earlier(B,C).
+answer(0) :- earlier("N31","N17").
+#show answer/1.

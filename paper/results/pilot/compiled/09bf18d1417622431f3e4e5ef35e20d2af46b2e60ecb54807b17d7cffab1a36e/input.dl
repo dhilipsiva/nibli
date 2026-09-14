@@ -1,0 +1,19 @@
+.decl p_authorized(a0:symbol,a1:symbol,a2:symbol)
+.decl p_carries(a0:symbol,a1:symbol,a2:symbol,a3:symbol,a4:symbol)
+.decl p_dangerous(a0:symbol,a1:symbol,a2:symbol)
+.decl p_permits(a0:symbol,a1:symbol,a2:symbol)
+.decl p_prevents(a0:symbol,a1:symbol)
+.decl p_warns(a0:symbol,a1:symbol,a2:symbol)
+.input p_carries
+.input p_dangerous
+.input p_permits
+.input p_prevents
+p_authorized(F,"Release",S) :- p_carries(F,D,S,O,R), p_dangerous(S,D,"Exploit"), p_prevents("Sanitizer",F).
+p_authorized(F,"Release",S) :- p_carries(F,D,S,O,R), p_dangerous(S,D,"Exploit"), p_permits("Review",F,"Waiver").
+p_warns("Gate",F,S) :- p_carries(F,D,S,O,R), !p_authorized(F,"Release",S).
+.decl answer(i:number)
+.output answer
+answer(0) :- p_warns("Gate","F0","S0").
+answer(1) :- p_warns("Gate","F1","S1").
+answer(2) :- p_authorized("F2","Release","S2").
+answer(3) :- p_warns("Gate","F3","S3").

@@ -1,0 +1,4 @@
+{"ms":0.029691000000000002,"phase":"open"}
+{"ids":[0,1,2,3,4,5,6,7,8],"ms":0.579814,"phase":"load","statements":9}
+{"index":0,"ms":3788.296651,"phase":"query","result":{"Unknown":"CycleCut"},"stage":0,"verdict":"UNKNOWN"}
+{"phase":"complete"}

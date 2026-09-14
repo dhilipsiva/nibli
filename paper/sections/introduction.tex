@@ -1,0 +1,45 @@
+\section{Introduction}
+
+A technical decision can be logically justified and still be difficult to audit.
+Its premises may have changed, a negative result may depend on a closed-world
+assumption, and the returned explanation may describe a different execution
+profile from the one that produced the verdict. These problems become concrete
+when an analyzer supplies findings and a separate policy layer decides which
+ones permit a release. Removing a waiver should affect the decision and its
+evidence in a predictable way; an unfinished search should not masquerade as
+proof that no problem exists.
+
+Nibli\footnote{Source repository: \url{https://github.com/dhilipsiva/nibli}.
+Section~\ref{sec:evaluation} identifies the evaluated baseline and experimental
+source fingerprint.} is an implemented symbolic reasoning engine with a formal predicate-call
+surface, typed generated witnesses, bounded demand-driven evaluation, selective
+finite materialization, retained premise identities, and optional proof
+envelopes. It exposes operationally distinct definitive, unresolved, and
+resource-limited outcomes through native and WebAssembly execution paths.
+The system's purpose is to make the relationship between accepted premises,
+evaluation choices, and evidence inspectable.
+
+These ingredients have substantial precedents. Controlled languages connect
+restricted syntax to logic~\cite{ace}; tabled logic programming manages reusable
+subgoals and completion~\cite{xsb}; Datalog systems provide high-performance
+evaluation and provenance~\cite{souffle,souffle-provenance}. Formal models coupled
+to differential implementation tests are also an established verification
+approach~\cite{cedar}. We therefore do not propose a new general inference
+calculus or claim that auditability is unique to Nibli.
+
+The contribution is a systems account and reproducible evaluation of their
+particular integration. First, we state the semantic and operational contracts,
+including the limits of closed-world answers, withdrawal, generated identity,
+and trusted computation. Second, we distinguish the Lean proof results from
+their implementation correspondence and from the weaker structural envelope
+check. Third, focused new experiments measure policy joins, recursive
+reachability, depth and materialization tradeoffs, evidence cost, premise
+transitions, and portable behavior. The protocol retains unfavorable workloads,
+non-definitive answers, and process cutoffs.
+
+The research questions concern consistency under premise change, performance
+and completeness under evaluation choices, and behavior across execution
+surfaces. The resulting artifact includes the exact workloads, raw observations,
+proof envelopes, analysis scripts, and dependency locks. It supports a bounded
+claim about the evaluated engine and its evidence rather than a claim that
+symbolic reasoning certifies input truth or makes every logical problem tractable.

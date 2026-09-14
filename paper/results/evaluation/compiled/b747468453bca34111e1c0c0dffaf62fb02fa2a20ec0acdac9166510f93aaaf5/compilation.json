@@ -1,0 +1,22 @@
+{
+  "binary_sha256": "c37add46f41a435fd845c87e6364644cf00565b9b47514474b414c252e984ba6",
+  "command": [
+    "souffle",
+    "-j",
+    "1",
+    "-o",
+    "/home/dhilipsiva/projects/dhilipsiva/nibli/paper/results/evaluation/compiled/b747468453bca34111e1c0c0dffaf62fb02fa2a20ec0acdac9166510f93aaaf5/program",
+    "/home/dhilipsiva/projects/dhilipsiva/nibli/paper/results/evaluation/inputs/comparison-chain-8-forward-s131-d10-m1-verdict/input.dl"
+  ],
+  "cpu_system_s": 0.6,
+  "cpu_user_s": 8.47,
+  "cutoff_seconds": 300,
+  "exit_code": 0,
+  "peak_rss_kib": 493896,
+  "started_utc": "2026-09-14T08:59:27.307160+00:00",
+  "status": "ok",
+  "stderr": "paper/results/evaluation/compiled/b747468453bca34111e1c0c0dffaf62fb02fa2a20ec0acdac9166510f93aaaf5/compile.stderr",
+  "stdout": "paper/results/evaluation/compiled/b747468453bca34111e1c0c0dffaf62fb02fa2a20ec0acdac9166510f93aaaf5/compile.stdout",
+  "usage": "paper/results/evaluation/compiled/b747468453bca34111e1c0c0dffaf62fb02fa2a20ec0acdac9166510f93aaaf5/compile.time",
+  "wall_ms": 9242.04567400011
+}

@@ -1,0 +1,28 @@
+{
+  "binary": "paper/results/pilot/compiled/09bf18d1417622431f3e4e5ef35e20d2af46b2e60ecb54807b17d7cffab1a36e/program",
+  "compilation": {
+    "binary_sha256": "81b97d9faedd83679a9761057a7b2f5a93936d3243bce5371be1cea5d20656ef",
+    "command": [
+      "souffle",
+      "-j",
+      "1",
+      "-o",
+      "/home/dhilipsiva/projects/dhilipsiva/nibli/paper/results/pilot/compiled/09bf18d1417622431f3e4e5ef35e20d2af46b2e60ecb54807b17d7cffab1a36e/program",
+      "/home/dhilipsiva/projects/dhilipsiva/nibli/paper/results/pilot/inputs/4/input.dl"
+    ],
+    "cpu_system_s": 0.63,
+    "cpu_user_s": 10.04,
+    "cutoff_seconds": 300,
+    "exit_code": 0,
+    "peak_rss_kib": 575264,
+    "started_utc": "2026-09-14T08:34:50.441583+00:00",
+    "status": "ok",
+    "stderr": "paper/results/pilot/compiled/09bf18d1417622431f3e4e5ef35e20d2af46b2e60ecb54807b17d7cffab1a36e/compile.stderr",
+    "stdout": "paper/results/pilot/compiled/09bf18d1417622431f3e4e5ef35e20d2af46b2e60ecb54807b17d7cffab1a36e/compile.stdout",
+    "usage": "paper/results/pilot/compiled/09bf18d1417622431f3e4e5ef35e20d2af46b2e60ecb54807b17d7cffab1a36e/compile.time",
+    "wall_ms": 10813.7775590003
+  },
+  "facts": 99,
+  "souffle_source_sha256": "09bf18d1417622431f3e4e5ef35e20d2af46b2e60ecb54807b17d7cffab1a36e",
+  "translation_ms": 1.1955289992329199
+}

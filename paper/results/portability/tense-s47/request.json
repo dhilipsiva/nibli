@@ -1,0 +1,13 @@
+{
+  "depth": 10,
+  "materialization": true,
+  "mode": "certificate",
+  "queries": [
+    "past dog(N47).",
+    "dog(N47)."
+  ],
+  "statements": [
+    "past dog(N47)."
+  ],
+  "updates": []
+}
