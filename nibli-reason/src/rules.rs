@@ -1494,14 +1494,16 @@ fn register_clause_rule(
         // witnesses, exactly like a bare positive condition.
         if let Some((ev_var, leaf_ids)) = detect_negated_exists_group(buffer, cid) {
             let ev_pvar = format!("ev__{}", ev_var);
-            let mut group_pattern_vars: HashMap<String, String> = pattern_vars.clone();
-            group_pattern_vars.insert(ev_var.clone(), ev_pvar.clone());
+            let group_pattern_vars = PatternVariables {
+                base: pattern_vars,
+                local: Some((&ev_var, &ev_pvar)),
+            };
             let mut group_conditions = Vec::new();
             for &lid in &leaf_ids {
-                match build_rule_template_fact(
+                match build_rule_template_fact_with_variables(
                     buffer,
                     lid,
-                    &group_pattern_vars,
+                    group_pattern_vars,
                     ground_skolems,
                     dependent_skolems,
                     tense,
@@ -2280,10 +2282,51 @@ pub(super) fn build_rule_template_fact_with_negation(
     }
 }
 
+/// A negated event group binds one local variable without copying the clause's
+/// entire map. The local entry shadows the base exactly like clone + insert;
+/// neither it nor another group's binding can mutate the caller's map.
+#[derive(Clone, Copy)]
+struct PatternVariables<'a> {
+    base: &'a HashMap<String, String>,
+    local: Option<(&'a str, &'a str)>,
+}
+
+impl<'a> PatternVariables<'a> {
+    fn get(self, name: &str) -> Option<&'a str> {
+        if let Some((local_name, value)) = self.local
+            && local_name == name
+        {
+            return Some(value);
+        }
+        self.base.get(name).map(String::as_str)
+    }
+}
+
 pub(super) fn build_rule_template_fact(
     buffer: &LogicBuffer,
     node_id: u32,
     pattern_vars: &HashMap<String, String>,
+    ground_skolems: &HashMap<String, SkolemSymbol>,
+    dependent_skolems: &HashMap<String, (SkolemSymbol, Vec<String>)>,
+    tense: Option<&str>,
+) -> Option<StoredFact> {
+    build_rule_template_fact_with_variables(
+        buffer,
+        node_id,
+        PatternVariables {
+            base: pattern_vars,
+            local: None,
+        },
+        ground_skolems,
+        dependent_skolems,
+        tense,
+    )
+}
+
+fn build_rule_template_fact_with_variables(
+    buffer: &LogicBuffer,
+    node_id: u32,
+    pattern_vars: PatternVariables<'_>,
     ground_skolems: &HashMap<String, SkolemSymbol>,
     dependent_skolems: &HashMap<String, (SkolemSymbol, Vec<String>)>,
     tense: Option<&str>,
@@ -2298,7 +2341,7 @@ pub(super) fn build_rule_template_fact(
                 .map(|arg| match arg {
                     LogicalTerm::Variable(v) => {
                         if let Some(pvar) = pattern_vars.get(v.as_str()) {
-                            GroundTerm::PatternVar(pvar.clone())
+                            GroundTerm::PatternVar(pvar.to_owned())
                         } else if let Some(sk) = ground_skolems.get(v.as_str()) {
                             GroundTerm::Skolem(*sk)
                         } else if let Some((base, pvars)) = dependent_skolems.get(v.as_str()) {
@@ -2327,11 +2370,11 @@ pub(super) fn build_rule_template_fact(
         }
         LogicNode::ExistsNode((v, body)) => {
             // Skip Exists wrapper if variable is Skolemized or a pattern var
-            if pattern_vars.contains_key(v.as_str())
+            if pattern_vars.get(v.as_str()).is_some()
                 || ground_skolems.contains_key(v.as_str())
                 || dependent_skolems.contains_key(v.as_str())
             {
-                build_rule_template_fact(
+                build_rule_template_fact_with_variables(
                     buffer,
                     *body,
                     pattern_vars,
@@ -2348,7 +2391,7 @@ pub(super) fn build_rule_template_fact(
         // deontic antecedent atom; the And/∃ case is pre-stripped by
         // `flatten_conjuncts_through_exists`.
         LogicNode::ObligatoryNode(inner) | LogicNode::PermittedNode(inner) => {
-            build_rule_template_fact(
+            build_rule_template_fact_with_variables(
                 buffer,
                 *inner,
                 pattern_vars,
@@ -2377,6 +2420,10 @@ pub(super) fn build_skolem_fn_term(symbol: SkolemSymbol, deps: &[GroundTerm]) ->
     };
     GroundTerm::SkolemFn(symbol, Box::new(dep_term))
 }
+
+#[cfg(test)]
+#[path = "rule_pattern_tests.rs"]
+mod pattern_variable_tests;
 
 #[cfg(test)]
 mod stratification_conformance {

@@ -1,6 +1,41 @@
 use super::*;
 
 #[test]
+fn negated_event_groups_keep_independent_bindings_and_flavors() {
+    for materialization in [false, true] {
+        let kb = new_kb();
+        kb.set_materialization(materialization);
+        for text in [
+            "all $x: person($x) & ~eats($x) & ~drinks($x) -> healthy($x).",
+            "person(Ada).",
+            "person(Bea).",
+            "person(Cira).",
+            "person(Dina).",
+            "eats(Bea).",
+            "drinks(Cira).",
+            "past eats(Dina).",
+        ] {
+            assert_buf(&kb, compile_surface(text));
+        }
+        for (name, expected) in [
+            ("Ada", true),
+            ("Bea", false),
+            ("Cira", false),
+            ("Dina", true),
+        ] {
+            assert_eq!(
+                query(&kb, compile_surface(&format!("healthy({name})."))),
+                expected
+            );
+        }
+        let id = assert_id(&kb, compile_surface("drinks(Ada)."), "new group witness");
+        assert!(query_false(&kb, compile_surface("healthy(Ada).")));
+        kb.retract_fact(id).unwrap();
+        assert!(query(&kb, compile_surface("healthy(Ada).")));
+    }
+}
+
+#[test]
 fn retracting_a_flat_number_fact_removes_it_from_the_domain() {
     // Adversarial-review finding (2026-08-01, numbers-join-the-domain): the
     // then-extant "incremental O(1)" retraction branch (flat, skolem-free

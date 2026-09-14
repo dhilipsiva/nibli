@@ -46,6 +46,61 @@ fn domain_planning_compares_shared_identities_once_and_keeps_value_deduplication
     assert_eq!(actual, expected);
     assert_eq!(actual.len(), 1);
     assert_eq!(TEST_DOMAIN_IDENTITY_CHECKS.get(), 2);
+
+    TEST_DOMAIN_IDENTITY_CHECKS.set(0);
+    let _plan = DomainPlan::new(&inner);
+    assert_eq!(
+        TEST_DOMAIN_IDENTITY_CHECKS.get(),
+        2,
+        "the dependency graph and activation schedule must share one identity pass"
+    );
+}
+
+#[test]
+fn domain_plan_tracks_generating_rules_without_unquoting_bodies() {
+    let kb = surface_kb(&[
+        "person(Adam).",
+        "all $x: person($x) -> healthy($x).",
+        "entitled(every person, event { cat() }).",
+    ]);
+    assert_eq!(verdict(&kb, "healthy(Adam)."), QueryResult::True);
+    assert_eq!(verdict(&kb, "cat(some cat)."), QueryResult::False);
+
+    let rule = assert_id(
+        &kb,
+        compile_surface("likes(every person, some cat)."),
+        "new individual-generating rule",
+    );
+    assert_eq!(verdict(&kb, "cat(exactly 1 cat)."), QueryResult::True);
+    kb.retract_fact(rule).unwrap();
+    assert_eq!(verdict(&kb, "cat(some cat)."), QueryResult::False);
+}
+
+#[test]
+fn empty_witness_plan_preserves_synthetic_name_collisions_and_invalid_graphs() {
+    for synthetic_collision in [false, true] {
+        let kb = surface_kb(&["person(Adam).", "all $x: ~cat($x) -> healthy($x)."]);
+        let mut inner = kb.inner.borrow_mut();
+        // Direct graph injection checks the native internal boundary: the KR
+        // vocabulary cannot spell this synthetic domain predicate.
+        let source = if synthetic_collision {
+            "__nibli_activated_individual_domain"
+        } else {
+            "healthy"
+        };
+        inner
+            .pred_dep_graph
+            .insert(source.into(), vec![("healthy".into(), true)]);
+        assert_eq!(
+            check_stratification(&inner.pred_dep_graph).is_ok(),
+            synthetic_collision,
+        );
+        prepare_query_domain(&mut inner).unwrap();
+        assert!(matches!(
+            inner.query_domain.incomplete,
+            Some(QueryResult::Unknown(UnknownReason::NafDependent))
+        ));
+    }
 }
 
 #[test]

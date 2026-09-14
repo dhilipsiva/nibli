@@ -150,10 +150,13 @@ pub(super) fn distinct_domain_rules(
 /// unguarded universal. Generating a new member can then invalidate the very
 /// absence that generated it. Include that dependency before accepting any
 /// activation; a negative cycle is incomplete, never a growing approximation.
-fn domain_dependency_graph(inner: &KnowledgeBaseInner) -> HashMap<String, Vec<(String, bool)>> {
+fn domain_dependency_graph(
+    inner: &KnowledgeBaseInner,
+    rules: &[&Arc<UniversalRuleRecord>],
+) -> HashMap<String, Vec<(String, bool)>> {
     const DOMAIN: &str = "__nibli_activated_individual_domain";
     let mut graph = inner.pred_dep_graph.clone();
-    for rule in distinct_domain_rules(inner) {
+    for rule in rules {
         // Collect guarded names once. Re-scanning every condition separately
         // for every variable is quadratic in large compiled constitutional rules.
         let mut guarded = HashSet::new();
@@ -238,7 +241,10 @@ impl DomainPlan {
                 (term, known)
             })
             .collect();
-        let graph = domain_dependency_graph(inner);
+        // Both consumers need the same first-seen semantic identities. Keep the
+        // separate materialization iterator above: its template scope differs.
+        let domain_rules: Vec<_> = distinct_domain_rules(inner).collect();
+        let graph = domain_dependency_graph(inner, &domain_rules);
         if check_stratification(&graph).is_err() {
             return Self {
                 known_individuals,
@@ -248,7 +254,7 @@ impl DomainPlan {
         }
         let strata = materialize::compute_strata(&graph);
         let mut rules = Vec::new();
-        for rule in distinct_domain_rules(inner) {
+        for rule in domain_rules {
             let mut terms = Vec::new();
             for fact in &rule.typed_conclusions {
                 for term in &fact.inner().args {
