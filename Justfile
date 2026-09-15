@@ -1064,7 +1064,7 @@ release-check:
     # (in neither tier row) + the example bin.
     NO_PUBLISH = {"nibli-pipeline", "nibli-host", "nibli-ui", "nibli-wasm",
                   "nibli-verify", "nibli-lexigen", "nibli-auth", "nibli-auth-py",
-                  "auth-axum"}
+                  "auth-axum", "lucy-core"}
     errors = []
     versions = {}
     for p in md["packages"]:

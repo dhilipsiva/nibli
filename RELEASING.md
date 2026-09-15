@@ -27,7 +27,7 @@ repeats its own reason in a comment at the top.
 | Tier | Crates | Ships as |
 |------|--------|----------|
 | **A — published**, in dependency order | `nibli-types` → `nibli-lexicon` → `nibli-protocol` → `nibli-kr` → `nibli-semantics` → `nibli-reason` → `nibli-render` → `nibli-session` → `nibli-store` → **`nibli-engine`** → `nibli-formalize` / `nibli-import` / `nibli` | crates.io → docs.rs |
-| **Z — `publish = false`** | `nibli-pipeline`, `nibli-host`, `nibli-ui`, `nibli-wasm`, `nibli-verify`, `tools/lexigen`, `fuzz` | GitHub Release, the site, or repo-only |
+| **Z — `publish = false`** | `nibli-pipeline`, `nibli-host`, `nibli-ui`, `nibli-wasm`, `nibli-verify`, `tools/lexigen`, `fuzz`, `lucy-core` | GitHub Release, the site, or repo-only |
 
 `nibli-auth` and `nibli-auth-py` are also `publish = false` for now.
 
