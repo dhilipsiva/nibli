@@ -101,7 +101,12 @@ pub fn render(loaded: &Loaded, env: &Env) -> String {
         .memory
         .iter()
         .rev()
-        .filter(|m| m.ok)
+        .filter(|m| {
+            m.ok && !matches!(
+                m.file.as_str(),
+                "interactions.nibli" | "private-interactions.nibli"
+            )
+        })
         .take(MEMORY_LINES_SHOWN)
         .map(|m| {
             if m.private {
@@ -143,7 +148,17 @@ pub fn render(loaded: &Loaded, env: &Env) -> String {
         out.push_str(line);
     }
     let journal_hidden = journal_lines.len() - journal_shown;
-    let memory_hidden = loaded.memory.iter().filter(|m| m.ok).count() - memory_shown;
+    let memory_hidden = loaded
+        .memory
+        .iter()
+        .filter(|m| {
+            m.ok && !matches!(
+                m.file.as_str(),
+                "interactions.nibli" | "private-interactions.nibli"
+            )
+        })
+        .count()
+        - memory_shown;
     if journal_hidden > 0 || memory_hidden > 0 {
         out.push_str(&format!(
             "\n_{journal_hidden} journal entries and {memory_hidden} memory lines not shown (budget {} bytes; see `lucy audit` and the files)_\n",

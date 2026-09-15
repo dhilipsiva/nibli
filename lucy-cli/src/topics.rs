@@ -156,7 +156,12 @@ pub fn about(loaded: &Loaded, home: &Path, thing: &str, limit: usize) -> About {
     let memory: Vec<MemoryLine> = loaded
         .memory
         .iter()
-        .filter(|m| line_matches(m, thing))
+        .filter(|m| {
+            !matches!(
+                m.file.as_str(),
+                "interactions.nibli" | "private-interactions.nibli"
+            ) && line_matches(m, thing)
+        })
         .cloned()
         .collect();
     let repo = git_root(home);

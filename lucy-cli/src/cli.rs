@@ -8,7 +8,8 @@ use serde_json::{Value, json};
 
 use crate::env::Env;
 use crate::files::{self, Paths, short_name};
-use crate::{CONSTITUTION_TEMPLATE, address, ask, capsule, hook, load, talk, topics};
+use crate::interactions::{Interaction, Kind};
+use crate::{CONSTITUTION_TEMPLATE, address, ask, capsule, hook, interactions, load, talk, topics};
 
 /// What a command produced.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -28,9 +29,18 @@ pub const USAGE: &str = "lucy — a persistent identity whose memory is nibli te
   lucy check                         compile every line; list the ones that fail (exit 1 if any)
   lucy wake [--markdown]             load everything and print the capsule
   lucy remember \"TEXT\" [--kr] [--private] [--source WHO] [--about THING]...
-                                     append a prose memory to the journal, or with --kr a
+                                     append a note to the conversation KB, or with --kr a
                                      nibli statement to memory.nibli (checked first)
-  lucy ask \"KR QUERY\"                answer with verdict, [Why] line, proof and envelope
+  lucy record \"TEXT\" --speaker NAME [--source NAME] [--session ID] [--id ID]
+                                     save the complete message; --stdin reads exact text
+                                     --json reads one record or a batch from stdin
+  lucy claim \"KR STATEMENT\" --from ID [--decision] [--text \"INTERPRETATION\"]
+                                     save attributed KR, quoting it without asserting it
+  lucy transcript [--markdown]       read complete messages, notes and attributed claims
+  lucy migrate-journal               import old journals into the KB, once per archive
+  lucy ask \"KR QUERY\" [--conversations]
+                                     answer with verdict, proof and envelope; the flag
+                                     queries the conversation KB without the constitution
   lucy about THING [--markdown]      everything she holds about a thing: tagged and matching
                                      journal entries, formal lines, git history
   lucy history THING [--markdown]    the git log of a path or term merged with her record of it
@@ -48,9 +58,11 @@ Environment: LUCY_HOME, LUCY_HOST, LUCY_CAPSULE_MAX_BYTES, LUCY_MAX_CHAIN_DEPTH,
              LUCY_OLLAMA_URL (default http://127.0.0.1:11434), LUCY_MODEL, LUCY_TALK_TIMEOUT_SECS.
 ";
 
-/// Whether the command wants stdin (only the hooks do).
+/// Whether the command wants stdin.
 pub fn reads_stdin(args: &[String]) -> bool {
     args.first().map(String::as_str) == Some("hook")
+        || (args.first().map(String::as_str) == Some("record")
+            && args.iter().any(|a| a == "--stdin" || a == "--json"))
 }
 
 /// Runs one command. `env_override` lets tests point at a temporary folder.
@@ -79,6 +91,16 @@ pub fn run(args: &[String], stdin: &str, env_override: Option<Env>) -> Outcome {
         "check" => cmd_check(&env, &paths),
         "wake" => cmd_wake(&env, &paths, rest),
         "remember" => cmd_remember(&env, &paths, rest),
+        "record" => cmd_record(&env, &paths, rest, stdin),
+        "claim" => cmd_claim(&env, &paths, rest),
+        "transcript" => cmd_transcript(&paths, rest),
+        "migrate-journal" => match interactions::migrate(&paths) {
+            Ok(imported) => json_out(
+                0,
+                json!({"ok": true, "command": "migrate-journal", "imported": imported}),
+            ),
+            Err(e) => harness(&e),
+        },
         "ask" => cmd_ask(&env, &paths, rest),
         "talk" | "task" => cmd_talk(&env, &paths, rest),
         "about" => cmd_about(&env, &paths, rest, false),
@@ -145,7 +167,20 @@ struct Args {
     flags: Vec<(String, Option<String>)>,
 }
 
-const VALUE_FLAGS: &[&str] = &["--name", "--source", "--about", "--limit", "--model"];
+const VALUE_FLAGS: &[&str] = &[
+    "--name",
+    "--source",
+    "--about",
+    "--limit",
+    "--model",
+    "--speaker",
+    "--session",
+    "--id",
+    "--channel",
+    "--kind",
+    "--from",
+    "--text",
+];
 
 fn parse(rest: &[String]) -> Args {
     let mut positional = Vec::new();
@@ -364,29 +399,173 @@ fn cmd_remember(env: &Env, paths: &Paths, rest: &[String]) -> Outcome {
             json!({ "ok": true, "command": "remember", "kind": "kr", "file": short_name(target), "line": line, "text": body }),
         );
     }
-    let mut text = String::new();
-    for tag in &tags {
-        text.push_str(&format!("[about: {}] ", tag.trim()));
-    }
-    if let Some(source) = args.value("--source")
-        && !source.trim().is_empty()
-    {
-        text.push_str(&format!("[reported: {}] ", source.trim()));
-    }
-    text.push_str(&body);
-    let target = if private {
-        &paths.private_journal
-    } else {
-        &paths.journal
+    let entry = Interaction {
+        speaker: "Lucy".into(),
+        text: args.positional[0].clone(),
+        kind: Kind::Note,
+        source: args.value("--source").unwrap_or("").into(),
+        about: tags.iter().map(|s| s.to_string()).collect(),
+        private,
+        ..Interaction::default()
     };
-    let (date, hhmm) = files::now_utc();
-    if let Err(e) = files::append_journal(target, &date, &hhmm, &env.host, &text) {
-        return harness(&e);
+    recorded(env, paths, "remember", vec![entry])
+}
+
+fn recorded(env: &Env, paths: &Paths, command: &str, entries: Vec<Interaction>) -> Outcome {
+    match interactions::append(env, paths, entries) {
+        Ok(records) => json_out(
+            0,
+            json!({
+                "ok": true, "command": command,
+                "file": short_name(interactions::archive_path(paths, records[0].private)),
+                "records": records,
+            }),
+        ),
+        Err(e) => harness(&e),
     }
-    json_out(
-        0,
-        json!({ "ok": true, "command": "remember", "kind": "journal", "file": short_name(target), "date": date, "time": format!("{hhmm} UTC"), "text": text }),
+}
+
+fn cmd_record(env: &Env, paths: &Paths, rest: &[String], stdin: &str) -> Outcome {
+    let args = parse(rest);
+    if args.has("--json") {
+        if rest.len() != 1 {
+            return harness("record --json takes metadata in the JSON, with no other arguments");
+        }
+        let entries = serde_json::from_str::<Value>(stdin).and_then(|value| {
+            if value.is_array() {
+                serde_json::from_value::<Vec<Interaction>>(value)
+            } else {
+                serde_json::from_value::<Interaction>(value).map(|entry| vec![entry])
+            }
+        });
+        return match entries {
+            Ok(entries) => recorded(env, paths, "record", entries),
+            Err(e) => harness(&format!("record JSON: {e}")),
+        };
+    }
+    let body = if args.has("--stdin") && args.positional.is_empty() {
+        stdin.to_string()
+    } else if !args.has("--stdin") && args.positional.len() == 1 {
+        args.positional[0].clone()
+    } else {
+        return harness("record takes exactly one TEXT argument, or --stdin");
+    };
+    let Some(speaker) = args.value("--speaker") else {
+        return harness("record requires --speaker NAME");
+    };
+    let kind = match args.value("--kind").unwrap_or("message") {
+        "message" => Kind::Message,
+        "summary" => Kind::Summary,
+        "note" => Kind::Note,
+        _ => {
+            return harness(
+                "record --kind is message, summary or note; use claim for interpreted KR",
+            );
+        }
+    };
+    recorded(
+        env,
+        paths,
+        "record",
+        vec![Interaction {
+            id: args.value("--id").unwrap_or("").into(),
+            speaker: speaker.into(),
+            text: body,
+            kind,
+            source: args.value("--source").unwrap_or("").into(),
+            session: args.value("--session").unwrap_or("").into(),
+            channel: args.value("--channel").unwrap_or("").into(),
+            about: args
+                .values("--about")
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+            private: args.has("--private"),
+            ..Interaction::default()
+        }],
     )
+}
+
+fn cmd_claim(env: &Env, paths: &Paths, rest: &[String]) -> Outcome {
+    let args = parse(rest);
+    if args.positional.len() != 1 || args.value("--from").is_none() {
+        return harness("claim takes one KR statement and --from MESSAGE_ID");
+    }
+    let from = args.value("--from").unwrap();
+    let entries = interactions::read(paths, false).and_then(|mut entries| {
+        entries.extend(interactions::read(paths, true)?);
+        Ok(entries)
+    });
+    let entries = match entries {
+        Ok(entries) => entries,
+        Err(e) => return harness(&e),
+    };
+    let Some(origin) = entries.iter().find(|e| e.id == from) else {
+        return harness(&format!("source interaction {from} does not exist"));
+    };
+    recorded(
+        env,
+        paths,
+        "claim",
+        vec![Interaction {
+            id: args.value("--id").unwrap_or("").into(),
+            speaker: origin.speaker.clone(),
+            text: args.value("--text").unwrap_or(&args.positional[0]).into(),
+            kind: if args.has("--decision") {
+                Kind::Decision
+            } else {
+                Kind::Claim
+            },
+            source: origin.source.clone(),
+            session: origin.session.clone(),
+            about: origin.about.clone(),
+            private: origin.private,
+            from: Some(origin.id.clone()),
+            kr: Some(args.positional[0].clone()),
+            ..Interaction::default()
+        }],
+    )
+}
+
+fn cmd_transcript(paths: &Paths, rest: &[String]) -> Outcome {
+    let args = parse(rest);
+    let entries = interactions::read(paths, false).and_then(|mut entries| {
+        entries.extend(interactions::read(paths, true)?);
+        Ok(entries)
+    });
+    let mut entries = match entries {
+        Ok(entries) => entries,
+        Err(e) => return harness(&e),
+    };
+    if let Some(session) = args.value("--session") {
+        entries.retain(|e| e.session == session);
+    }
+    if let Some(id) = args.value("--id") {
+        entries.retain(|e| e.id == id);
+    }
+    entries.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
+    if args.has("--markdown") {
+        let mut out = String::from("# Lucy transcript\n");
+        for entry in entries {
+            out.push_str(&format!(
+                "\n## {} · {} · {}{}\n\n{}\n",
+                entry.timestamp,
+                entry.speaker,
+                entry.id,
+                if entry.private { " (private)" } else { "" },
+                entry.text
+            ));
+            if let Some(from) = entry.from {
+                out.push_str(&format!("\nAttributed to {from}.\n"));
+            }
+        }
+        text(0, &out)
+    } else {
+        json_out(
+            0,
+            json!({"ok": true, "command": "transcript", "records": entries}),
+        )
+    }
 }
 
 fn cmd_ask(env: &Env, paths: &Paths, rest: &[String]) -> Outcome {
@@ -394,16 +573,38 @@ fn cmd_ask(env: &Env, paths: &Paths, rest: &[String]) -> Outcome {
     if args.positional.len() != 1 {
         return harness("ask takes exactly one quoted KR QUERY argument");
     }
-    let loaded = match load::load(env, paths) {
-        Ok(loaded) => loaded,
-        Err(e) => return harness(&e),
+    let scope = if args.has("--conversations") {
+        "conversations"
+    } else {
+        "all"
     };
-    match ask::ask(&loaded.engine, &args.positional[0]) {
+    let (engine, failures) = if args.has("--conversations") {
+        let engine = match interactions::query_engine(paths) {
+            Ok(engine) => engine,
+            Err(e) => return harness(&e),
+        };
+        if !env.materialize {
+            engine.set_materialization(false);
+        }
+        if let Some(depth) = env.max_chain_depth
+            && let Err(e) = engine.set_max_chain_depth(depth)
+        {
+            return harness(&e.to_string());
+        }
+        (engine, 0)
+    } else {
+        match load::load(env, paths) {
+            Ok(loaded) => (loaded.engine, loaded.failures.len()),
+            Err(e) => return harness(&e),
+        }
+    };
+    match ask::ask(&engine, &args.positional[0]) {
         Ok(answer) => json_out(
             0,
             json!({
                 "ok": true,
                 "command": "ask",
+                "scope": scope,
                 "query": answer.query,
                 "verdict": answer.status,
                 "detail": answer.detail,
@@ -412,7 +613,7 @@ fn cmd_ask(env: &Env, paths: &Paths, rest: &[String]) -> Outcome {
                 "cwa_false": answer.cwa_false,
                 "naf_dependent": answer.naf_dependent,
                 "envelope": answer.envelope,
-                "failures": loaded.failures.len(),
+                "failures": failures,
             }),
         ),
         Err(e) => finding(json!({ "ok": false, "command": "ask", "error": e })),
@@ -423,8 +624,8 @@ fn cmd_talk(env: &Env, paths: &Paths, rest: &[String]) -> Outcome {
     let args = parse(rest);
     // `lucy task summarize your constitution` works unquoted: the words join.
     let joined = args.positional.join(" ");
-    let message = joined.trim();
-    if message.is_empty() {
+    let message = joined.as_str();
+    if message.trim().is_empty() {
         return harness("talk takes a MESSAGE (quoted, or the rest of the line)");
     }
     if files::read_optional(&paths.constitution)

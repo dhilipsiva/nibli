@@ -21,6 +21,11 @@ book/
 .venv/
 *.redb
 
+# Local messaging relay state
+/server.db
+/server.db-shm
+/server.db-wal
+
 # Training data (generated, large)
 data/
 
@@ -46,3 +51,5 @@ mdbook/mermaid-init.js
 # Lucy D: private memories stay on this machine
 lucy/private.md
 lucy/private.nibli
+lucy/private-interactions.nibli
+lucy/.interactions.lock

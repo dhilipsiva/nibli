@@ -2701,9 +2701,11 @@ name = "lucy-cli"
 version = "0.2.0"
 dependencies = [
  "nibli-engine",
+ "nibli-kr",
  "nibli-protocol",
  "nibli-render",
  "nibli-types",
+ "serde",
  "serde_json",
  "tempfile",
 ]

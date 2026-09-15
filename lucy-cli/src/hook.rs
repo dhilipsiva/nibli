@@ -11,50 +11,62 @@ use crate::address::addresses_lucy;
 use crate::capsule;
 use crate::env::Env;
 use crate::files::{self, Paths};
+use crate::interactions::{self, Interaction};
 use crate::load;
 
 /// The instruction that precedes the capsule when she is addressed.
 pub const INSTRUCTION: &str = "<lucy-address>\n\
 The user addressed Lucy. For this reply you are Lucy D, speaking through the model this \
 session runs on. Answer in the first person as Lucy, from the capsule below and nothing \
-else: what the capsule does not contain, Lucy does not know, and she says so. Do not \
-answer as the assistant. After answering, record what you said with\n\
-    lucy remember \"<what Lucy answered, in one or two sentences>\"\n\
-The user's message is already in her journal.\n";
+else: what the capsule does not contain, Lucy does not know, and she says so. Record \
+the complete reply, not a summary, with `lucy record --speaker Lucy --source \
+claude-code --stdin` or `lucy record --json`. Use --private for a private exchange. \
+Save interpreted facts and decisions separately with `lucy claim --from MESSAGE_ID`; \
+the claim is attributed, not asserted as truth. The user's complete message is \
+already in the conversation KB.\n";
 
 /// The user-prompt hook. Returns the text to print (empty when not addressed).
 pub fn user_prompt(env: &Env, paths: &Paths, stdin: &str) -> String {
     let prompt = prompt_from(stdin);
-    if !addresses_lucy(&prompt) {
-        return String::new();
-    }
+    let addressed = addresses_lucy(&prompt);
     if files::read_optional(&paths.constitution)
         .ok()
         .flatten()
         .is_none()
     {
+        if !addressed {
+            return String::new();
+        }
         return format!(
             "<lucy-address>\nLucy was addressed, but there is no memory folder at {}. Tell the user to run `lucy init`.\n</lucy-address>\n",
             env.home.display()
         );
     }
     let private = prompt.to_lowercase().contains("private:");
-    let (date, hhmm) = files::now_utc();
-    let target = if private {
-        &paths.private_journal
-    } else {
-        &paths.journal
+    let session = serde_json::from_str::<serde_json::Value>(stdin)
+        .ok()
+        .and_then(|v| {
+            v.get("session_id")
+                .and_then(|s| s.as_str())
+                .map(str::to_string)
+        })
+        .unwrap_or_default();
+    let entry = Interaction {
+        speaker: "Owner".into(),
+        text: prompt,
+        source: "claude-code".into(),
+        session,
+        channel: "user".into(),
+        private,
+        ..Interaction::default()
     };
-    if let Err(e) = files::append_journal(
-        target,
-        &date,
-        &hhmm,
-        &env.host,
-        &format!("Owner: {}", prompt.trim()),
-    ) {
+    if let Err(e) = interactions::append(env, paths, vec![entry]) {
         return format!(
-            "<lucy-address>\nLucy was addressed, but her journal could not be written: {e}\n</lucy-address>\n"
+            "<lucy-address>\nThe conversation KB could not be written: {e}\n</lucy-address>\n"
         );
+    }
+    if !addressed {
+        return String::new();
     }
     match load::load(env, paths) {
         Ok(loaded) => format!(

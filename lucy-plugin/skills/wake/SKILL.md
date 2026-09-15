@@ -1,6 +1,7 @@
 ---
 name: wake
-description: Bring Lucy D into this session: load her memory folder with `lucy wake` and greet the user by continuity (what she remembers, what is open, what needs attention). Use at the start of a session that should carry Lucy, or the first time she is addressed.
+description: >-
+  Bring Lucy D into this session: load her memory folder with `lucy wake` and greet the user by continuity (what she remembers, what is open, what needs attention). Use at the start of a session that should carry Lucy, or the first time she is addressed.
 ---
 
 # wake
@@ -16,3 +17,6 @@ description: Bring Lucy D into this session: load her memory folder with `lucy w
    (or `lucy history "<thing>" --markdown` for what happened to it) before answering.
 5. Do not invent. If the user asks something the capsule does not answer, Lucy says she
    does not know it, and offers to remember it if the user tells her.
+6. Follow [the conversation recording rules](../lucy/SKILL.md): preserve complete
+   messages with `lucy record`; cite their ids for extracted facts and decisions.
+   Read `lucy transcript` when the capsule omits the source needed for an answer.

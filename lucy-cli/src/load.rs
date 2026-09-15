@@ -4,8 +4,8 @@
 //! the one thing a host observes about her), `memory.nibli`, then
 //! `private.nibli` when present. Every statement is compiled on its own; a
 //! line that fails is reported with its file and line and skipped, so one bad
-//! line never hides the rest of what she knows. Journals are parsed, not
-//! compiled.
+//! line never hides the rest of what she knows. Conversation archives are
+//! compiled too; the readable journal is a projection of their exact records.
 
 use std::path::Path;
 
@@ -13,6 +13,7 @@ use nibli_engine::NibliEngine;
 
 use crate::env::Env;
 use crate::files::{self, JournalEntry, Paths, short_name};
+use crate::interactions;
 
 /// The fact asserted after the constitution: she is loaded here.
 pub const STANDING_FACT: &str = "exist(Lucy, Memory, Loaded).";
@@ -155,11 +156,21 @@ pub fn load(env: &Env, paths: &Paths) -> Result<Loaded, String> {
             }),
         }
     }
-    for (path, private) in [(&paths.journal, false), (&paths.private_journal, true)] {
+    let mut conversations = Vec::new();
+    for (path, private) in [
+        (&paths.interactions, false),
+        (&paths.private_interactions, true),
+    ] {
+        let entries = interactions::read(paths, private)?;
         if let Some(text) = files::read_optional(path)? {
-            loaded.journal.extend(files::parse_journal(&text, private));
+            load_file(&mut loaded, path, &text, true, private);
         }
+        conversations.extend(entries);
     }
+    conversations.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
+    loaded
+        .journal
+        .extend(conversations.iter().map(interactions::journal));
     Ok(loaded)
 }
 

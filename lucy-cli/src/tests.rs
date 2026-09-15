@@ -9,7 +9,16 @@ use crate::env::Env;
 use crate::files::{self, Paths};
 use crate::run;
 
-fn env_in(dir: &Path) -> Env {
+fn journal_text(paths: &Paths, private: bool) -> String {
+    crate::interactions::read(paths, private)
+        .unwrap()
+        .iter()
+        .map(|e| crate::interactions::journal(e).text)
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+pub(crate) fn env_in(dir: &Path) -> Env {
     Env {
         home: dir.join("lucy"),
         host: "testhost".to_string(),
@@ -108,6 +117,10 @@ fn talk_through_a_local_model_records_both_sides() {
     // No server: a finding, never a crash.
     let down = lucy(&env, &["talk", "hello"]);
     assert_eq!(down.code, 1, "{}", down.stdout);
+    assert_eq!(
+        crate::interactions::read(&paths, false).unwrap()[0].text,
+        "hello"
+    );
     assert!(
         json(&down)["error"]
             .as_str()
@@ -123,7 +136,7 @@ fn talk_through_a_local_model_records_both_sides() {
         &env,
         &[
             "talk",
-            "Hey Lucy, what do you remember?",
+            "Hey Lucy, what do you remember?\n  ",
             "--about",
             "memory",
         ],
@@ -136,10 +149,16 @@ fn talk_through_a_local_model_records_both_sides() {
     );
     assert_eq!(
         v["reply"],
-        "I remember the engine, and nothing about Ollama."
+        "I remember the engine, and nothing about Ollama.\n"
+    );
+    let records = crate::interactions::read(&paths, false).unwrap();
+    assert_eq!(records[1].text, "Hey Lucy, what do you remember?\n  ");
+    assert_eq!(
+        records[2].text,
+        "I remember the engine, and nothing about Ollama.\n"
     );
     server.join().unwrap();
-    let journal = read(&paths.journal);
+    let journal = journal_text(&paths, false);
     assert!(
         journal.contains("[about: memory] Owner: Hey Lucy, what do you remember?"),
         "{journal}"
@@ -383,11 +402,11 @@ fn project_local_folder_is_found_from_a_subdirectory() {
     );
 }
 
-fn lucy(env: &Env, args: &[&str]) -> Outcome {
+pub(crate) fn lucy(env: &Env, args: &[&str]) -> Outcome {
     lucy_stdin(env, args, "")
 }
 
-fn lucy_stdin(env: &Env, args: &[&str], stdin: &str) -> Outcome {
+pub(crate) fn lucy_stdin(env: &Env, args: &[&str], stdin: &str) -> Outcome {
     let args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
     run(&args, stdin, Some(env.clone()))
 }
@@ -456,15 +475,16 @@ fn remember_kr_and_prose_then_ask_and_wake() {
         ],
     );
     assert_eq!(prose.code, 0, "{}", prose.stdout);
-    let journal = read(&paths.journal);
+    let journal = journal_text(&paths, false);
     assert!(
         journal.contains("[reported: dhilipsiva] Dhilip built the engine"),
         "{journal}"
     );
     assert!(
-        journal
-            .lines()
-            .any(|l| l.starts_with("## ") && l.ends_with(" testhost")),
+        crate::interactions::read(&paths, false)
+            .unwrap()
+            .iter()
+            .any(|entry| entry.host == "testhost" && !entry.timestamp.is_empty()),
         "{journal}"
     );
 
@@ -608,7 +628,7 @@ fn private_files_are_read_when_present_and_marked() {
         lucy(&env, &["remember", "A private note.", "--private"]).code,
         0
     );
-    assert!(paths.private_memory.exists() && paths.private_journal.exists());
+    assert!(paths.private_memory.exists() && paths.private_interactions.exists());
     assert!(!read(&paths.memory).contains("Friend"));
     assert_eq!(
         json(&lucy(&env, &["ask", "human(Friend)."]))["verdict"],
@@ -822,7 +842,7 @@ fn user_prompt_hook_records_and_prints_the_capsule() {
         "{}",
         addressed.stdout
     );
-    assert!(read(&paths.journal).contains("Owner: hey lucy, what do you remember?"));
+    assert!(journal_text(&paths, false).contains("Owner: hey lucy, what do you remember?"));
 
     let private = lucy_stdin(
         &env,
@@ -830,8 +850,8 @@ fn user_prompt_hook_records_and_prints_the_capsule() {
         "Lucy, private: something only for you",
     );
     assert_eq!(private.code, 0);
-    assert!(read(&paths.private_journal).contains("Owner: Lucy, private: something only for you"));
-    assert!(!read(&paths.journal).contains("something only for you"));
+    assert!(journal_text(&paths, true).contains("Owner: Lucy, private: something only for you"));
+    assert!(!journal_text(&paths, false).contains("something only for you"));
 
     let presence = lucy_stdin(&env, &["hook", "session-start"], r#"{"source":"startup"}"#);
     assert_eq!(presence.code, 0);
@@ -841,7 +861,7 @@ fn user_prompt_hook_records_and_prints_the_capsule() {
         presence.stdout
     );
     assert!(
-        presence.stdout.contains("2 journal entries"),
+        presence.stdout.contains("3 journal entries"),
         "{}",
         presence.stdout
     );

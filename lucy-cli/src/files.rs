@@ -16,6 +16,10 @@ pub struct Paths {
     pub private_memory: PathBuf,
     /// Private prose memories (optional).
     pub private_journal: PathBuf,
+    /// Complete conversation records and their attributed claims.
+    pub interactions: PathBuf,
+    /// Private conversation records, kept out of version control.
+    pub private_interactions: PathBuf,
 }
 
 impl Paths {
@@ -27,6 +31,8 @@ impl Paths {
             journal: home.join("journal.md"),
             private_memory: home.join("private.nibli"),
             private_journal: home.join("private.md"),
+            interactions: home.join("interactions.nibli"),
+            private_interactions: home.join("private-interactions.nibli"),
         }
     }
 }

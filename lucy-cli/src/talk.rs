@@ -2,7 +2,7 @@
 //!
 //! `lucy talk "<message>"` sends her capsule and the addressing instruction to
 //! an Ollama server on this machine (`/api/chat`, non-streaming), prints the
-//! reply, and records both sides in her journal. Ollama speaks plain HTTP on
+//! reply, and records both complete messages in her KB. Ollama speaks plain HTTP on
 //! localhost, so this is a hand-written HTTP/1.1 client over a TCP stream and
 //! adds no dependency. Cloud providers need TLS and are not wired here; a
 //! Claude Code session runs her through the hook and skills instead.
@@ -16,6 +16,7 @@ use serde_json::{Value, json};
 use crate::capsule;
 use crate::env::Env;
 use crate::files::{self, Paths};
+use crate::interactions::{self, Interaction};
 use crate::load;
 
 /// The default Ollama address.
@@ -210,7 +211,7 @@ pub fn ollama_chat(
         .map_err(|e| format!("{url}/api/chat did not return JSON: {e}"))?;
     value["message"]["content"]
         .as_str()
-        .map(|s| s.trim().to_string())
+        .map(str::to_string)
         .ok_or_else(|| {
             format!(
                 "{url}/api/chat returned no message.content: {}",
@@ -233,7 +234,7 @@ pub struct Talk {
     pub model: String,
     /// Lucy's reply.
     pub reply: String,
-    /// The journal file both sides were written to.
+    /// The conversation archive both sides were written to.
     pub file: String,
 }
 
@@ -245,6 +246,18 @@ pub fn talk(
     tags: &[&str],
     model_override: Option<&str>,
 ) -> Result<Talk, String> {
+    let private = message.to_lowercase().contains("private:");
+    let mut entry = Interaction {
+        speaker: "Owner".into(),
+        text: message.into(),
+        source: "ollama".into(),
+        channel: "user".into(),
+        about: tags.iter().map(|t| t.to_string()).collect(),
+        private,
+        ..Interaction::default()
+    };
+    // Preserve the attempted interaction even when the model is unavailable.
+    interactions::append(env, paths, vec![entry.clone()])?;
     let models = ollama_models(&env.ollama_url, Duration::from_secs(10)).map_err(|e| {
         format!("{e} (is Ollama running? set LUCY_OLLAMA_URL if it listens elsewhere)")
     })?;
@@ -279,24 +292,6 @@ pub fn talk(
             "the Ollama server holds no models; `ollama pull llama3.2` (or any model) first",
         )?,
     };
-    let private = message.to_lowercase().contains("private:");
-    let target = if private {
-        &paths.private_journal
-    } else {
-        &paths.journal
-    };
-    let (date, hhmm) = files::now_utc();
-    let prefix: String = tags
-        .iter()
-        .map(|t| format!("[about: {}] ", t.trim()))
-        .collect();
-    files::append_journal(
-        target,
-        &date,
-        &hhmm,
-        &env.host,
-        &format!("{prefix}Owner: {}", message.trim()),
-    )?;
     let loaded = load::load(env, paths)?;
     let capsule = capsule::render(&loaded, env);
     let reply = ollama_chat(
@@ -306,17 +301,14 @@ pub fn talk(
         message,
         env.talk_timeout,
     )?;
-    let (date, hhmm) = files::now_utc();
-    files::append_journal(
-        target,
-        &date,
-        &hhmm,
-        &env.host,
-        &format!("{prefix}Lucy (via {model}): {reply}"),
-    )?;
+    entry.speaker = "Lucy".into();
+    entry.source = format!("ollama:{model}");
+    entry.text = reply.clone();
+    entry.channel = "final".into();
+    interactions::append(env, paths, vec![entry])?;
     Ok(Talk {
         model,
         reply,
-        file: files::short_name(target),
+        file: files::short_name(interactions::archive_path(paths, private)),
     })
 }
