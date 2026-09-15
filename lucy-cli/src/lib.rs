@@ -30,6 +30,7 @@ pub mod env;
 pub mod files;
 pub mod hook;
 pub mod load;
+pub mod talk;
 pub mod topics;
 
 pub use cli::{Outcome, run};

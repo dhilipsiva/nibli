@@ -41,6 +41,7 @@ only her files, and preferably through the CLI.
 | `lucy ask "KR"` | verdict, `[Why]` line, proof, proof envelope; `cwa_false` marks a FALSE that only means "not derivable" |
 | `lucy about THING [--markdown]` | everything she holds about a thing: tagged and matching journal entries, formal lines, git history |
 | `lucy history THING [--markdown]` | the git log of a path or term merged with her own record, newest first |
+| `lucy talk "MESSAGE" [--model M] [--about THING]` | answer as Lucy through a local Ollama model; records both sides |
 | `lucy check` / `lucy audit` | which lines compile, by file and line |
 | `lucy forget FILE:LINE` | comment a formal line out (the owner can undo it in the file) |
 | `lucy address "TEXT"` | exit 0 when TEXT starts by addressing Lucy |

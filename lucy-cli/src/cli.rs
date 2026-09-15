@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 
 use crate::env::Env;
 use crate::files::{self, Paths, short_name};
-use crate::{CONSTITUTION_TEMPLATE, address, ask, capsule, hook, load, topics};
+use crate::{CONSTITUTION_TEMPLATE, address, ask, capsule, hook, load, talk, topics};
 
 /// What a command produced.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -34,6 +34,8 @@ pub const USAGE: &str = "lucy — a persistent identity whose memory is nibli te
   lucy about THING [--markdown]      everything she holds about a thing: tagged and matching
                                      journal entries, formal lines, git history
   lucy history THING [--markdown]    the git log of a path or term merged with her record of it
+  lucy talk \"MESSAGE\" [--model M] [--about THING]... [--markdown]
+                                     answer as Lucy through a local Ollama model and record it
   lucy audit                         list every formal memory line with its compile status
   lucy forget FILE:LINE              comment a line out of memory.nibli or private.nibli
   lucy address \"TEXT\"                exit 0 if TEXT starts by addressing Lucy, else 1
@@ -41,7 +43,8 @@ pub const USAGE: &str = "lucy — a persistent identity whose memory is nibli te
   lucy hook session-start            Claude Code SessionStart hook
 
 Memory folder: LUCY_HOME, else a lucy/ folder in this directory or a parent, else ~/.lucy.
-Environment: LUCY_HOME, LUCY_HOST, LUCY_CAPSULE_MAX_BYTES, LUCY_MAX_CHAIN_DEPTH.
+Environment: LUCY_HOME, LUCY_HOST, LUCY_CAPSULE_MAX_BYTES, LUCY_MAX_CHAIN_DEPTH,
+             LUCY_OLLAMA_URL (default http://127.0.0.1:11434), LUCY_MODEL, LUCY_TALK_TIMEOUT_SECS.
 ";
 
 /// Whether the command wants stdin (only the hooks do).
@@ -76,6 +79,7 @@ pub fn run(args: &[String], stdin: &str, env_override: Option<Env>) -> Outcome {
         "wake" => cmd_wake(&env, &paths, rest),
         "remember" => cmd_remember(&env, &paths, rest),
         "ask" => cmd_ask(&env, &paths, rest),
+        "talk" => cmd_talk(&env, &paths, rest),
         "about" => cmd_about(&env, &paths, rest, false),
         "history" => cmd_about(&env, &paths, rest, true),
         "audit" => cmd_audit(&env, &paths),
@@ -140,7 +144,7 @@ struct Args {
     flags: Vec<(String, Option<String>)>,
 }
 
-const VALUE_FLAGS: &[&str] = &["--name", "--source", "--about", "--limit"];
+const VALUE_FLAGS: &[&str] = &["--name", "--source", "--about", "--limit", "--model"];
 
 fn parse(rest: &[String]) -> Args {
     let mut positional = Vec::new();
@@ -412,6 +416,64 @@ fn cmd_ask(env: &Env, paths: &Paths, rest: &[String]) -> Outcome {
         ),
         Err(e) => finding(json!({ "ok": false, "command": "ask", "error": e })),
     }
+}
+
+fn cmd_talk(env: &Env, paths: &Paths, rest: &[String]) -> Outcome {
+    let args = parse(rest);
+    if args.positional.len() != 1 {
+        return harness("talk takes exactly one quoted MESSAGE argument");
+    }
+    let message = args.positional[0].trim();
+    if message.is_empty() {
+        return harness("talk: MESSAGE is empty");
+    }
+    if files::read_optional(&paths.constitution)
+        .ok()
+        .flatten()
+        .is_none()
+    {
+        return harness(&format!(
+            "no memory at {}: run `lucy init`",
+            env.home.display()
+        ));
+    }
+    let tags = args.values("--about");
+    // Ollama is meant to be local; anything else travels as cleartext HTTP.
+    let warning = match talk::parse_url(&env.ollama_url) {
+        Ok((host, _, _))
+            if !matches!(host.as_str(), "127.0.0.1" | "localhost" | "::1" | "[::1]") =>
+        {
+            format!(
+                "lucy talk: {} is not loopback; the capsule and the reply travel as cleartext HTTP\n",
+                env.ollama_url
+            )
+        }
+        _ => String::new(),
+    };
+    let mut outcome = match talk::talk(env, paths, message, &tags, args.value("--model")) {
+        Ok(result) => {
+            if args.has("--markdown") {
+                text(0, &format!("{}\n", result.reply))
+            } else {
+                json_out(
+                    0,
+                    json!({
+                        "ok": true,
+                        "command": "talk",
+                        "model": result.model,
+                        "reply": result.reply,
+                        "file": result.file,
+                        "url": env.ollama_url,
+                    }),
+                )
+            }
+        }
+        Err(e) => {
+            finding(json!({ "ok": false, "command": "talk", "error": e, "url": env.ollama_url }))
+        }
+    };
+    outcome.stderr.push_str(&warning);
+    outcome
 }
 
 fn cmd_about(env: &Env, paths: &Paths, rest: &[String], history_only: bool) -> Outcome {

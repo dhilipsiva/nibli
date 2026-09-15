@@ -28,6 +28,7 @@ lucy init [--name NAME] [--here]  lucy check      lucy wake [--markdown]
 lucy remember "TEXT" [--kr] [--private] [--source WHO] [--about THING]...
 lucy ask "KR QUERY"               lucy audit      lucy forget FILE:LINE
 lucy about THING [--markdown]     lucy history THING [--markdown]
+lucy talk "MESSAGE" [--model M] [--about THING]... [--markdown]
 lucy address "TEXT"               lucy hook user-prompt | session-start
 ```
 Every command prints one JSON object on stdout (except `wake --markdown` and the
@@ -66,6 +67,17 @@ you.** Add it by hand (or with Claude Code's `update-config` skill) to
 `lucy` must be on the `PATH` of the shell that runs hooks (or use the absolute path to
 the binary; on Windows, `lucy.exe`). The hooks never block a prompt: any problem is one
 line of context and exit 0.
+
+## A local model: `lucy talk`
+
+Lucy can exist as the context of a local model, no agent session needed:
+`lucy talk "Hey Lucy, what do you remember?"` sends her capsule and the addressing
+instruction to an Ollama server (`LUCY_OLLAMA_URL`, default `http://127.0.0.1:11434`),
+prints her reply, and records both sides in her journal (`--about` tags apply; a
+`private:` marker sends the exchange to the private journal). `--model M` or
+`LUCY_MODEL` picks the model; otherwise the server's first model answers. Plain HTTP on
+localhost, no cloud client: Claude and other hosted models run her through their own
+sessions and the hook instead.
 
 ## Memory about particular things
 

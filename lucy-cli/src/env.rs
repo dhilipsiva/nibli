@@ -1,6 +1,7 @@
 //! Where Lucy lives on this machine, read once from the environment.
 
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 /// The default byte budget for a capsule.
 pub const DEFAULT_CAPSULE_MAX_BYTES: usize = 16 * 1024;
@@ -21,6 +22,12 @@ pub struct Env {
     /// Whether the engine's query-cone materialization is left on
     /// (`LUCY_MATERIALIZE=0` turns it off, the same knob as `NIBLI_MATERIALIZE`).
     pub materialize: bool,
+    /// The local Ollama server (`LUCY_OLLAMA_URL`).
+    pub ollama_url: String,
+    /// The model `lucy talk` uses (`LUCY_MODEL`); else the server's first model.
+    pub model: Option<String>,
+    /// How long to wait for a local model's reply (`LUCY_TALK_TIMEOUT_SECS`).
+    pub talk_timeout: Duration,
 }
 
 /// Where the memory folder came from.
@@ -91,7 +98,28 @@ impl Env {
         let materialize = std::env::var("LUCY_MATERIALIZE")
             .map(|v| v.trim() != "0")
             .unwrap_or(true);
+        let ollama_url = std::env::var("LUCY_OLLAMA_URL")
+            .ok()
+            .map(|v| v.trim().trim_end_matches('/').to_string())
+            .filter(|v| !v.is_empty())
+            .unwrap_or_else(|| crate::talk::DEFAULT_OLLAMA_URL.to_string());
+        let model = std::env::var("LUCY_MODEL")
+            .ok()
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty());
+        let talk_timeout = match std::env::var("LUCY_TALK_TIMEOUT_SECS") {
+            Ok(value) => Duration::from_secs(
+                value
+                    .trim()
+                    .parse::<u64>()
+                    .map_err(|_| format!("LUCY_TALK_TIMEOUT_SECS is not a number: {value:?}"))?,
+            ),
+            Err(_) => Duration::from_secs(300),
+        };
         Ok(Env {
+            ollama_url,
+            model,
+            talk_timeout,
             home,
             host: host_name(),
             capsule_max_bytes,

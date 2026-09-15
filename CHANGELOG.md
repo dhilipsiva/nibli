@@ -21,7 +21,8 @@ here first.
   fresh `NibliEngine` by whatever agent session runs her. Commands: `init`,
   `check`, `wake` (the capsule), `remember` (journal prose with `[about: …]`
   tags, or a checked KR line), `ask` (verdict, `[Why]`, proof, envelope),
-  `about`/`history` (her record merged with the git log), `audit`, `forget`,
+  `about`/`history` (her record merged with the git log), `talk` (answer as Lucy
+  through a local Ollama model over plain HTTP, no new dependency), `audit`, `forget`,
   `address` (deterministic "Hey Lucy" detection), and the owner-installed
   `hook user-prompt` / `hook session-start`. Her constitution is pinned by
   `just verify-lucy-pins` (17 content pins + a 3-pin counterfactual with the

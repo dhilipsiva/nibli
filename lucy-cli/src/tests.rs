@@ -17,7 +17,171 @@ fn env_in(dir: &Path) -> Env {
         max_chain_depth: None,
         source: crate::env::HomeSource::Explicit,
         materialize: true,
+        ollama_url: "http://127.0.0.1:1".to_string(),
+        model: None,
+        talk_timeout: std::time::Duration::from_secs(10),
     }
+}
+
+/// A mock of Ollama that serves `/api/tags` and `/api/chat` (the latter
+/// chunk-encoded, to exercise the decoder) for `requests` connections,
+/// asserting what it was sent.
+fn mock_ollama(
+    requests: usize,
+    expect_model: &'static str,
+    expect_user_contains: &'static str,
+) -> (u16, std::thread::JoinHandle<()>) {
+    use std::io::{Read, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let handle = std::thread::spawn(move || {
+        for _ in 0..requests {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut raw = Vec::new();
+            let mut buf = [0u8; 4096];
+            loop {
+                let n = stream.read(&mut buf).unwrap();
+                if n == 0 {
+                    break;
+                }
+                raw.extend_from_slice(&buf[..n]);
+                if let Some(split) = raw.windows(4).position(|w| w == b"\r\n\r\n") {
+                    let head = String::from_utf8_lossy(&raw[..split]).to_string();
+                    let length: usize = head
+                        .lines()
+                        .find_map(|l| {
+                            l.to_ascii_lowercase()
+                                .strip_prefix("content-length:")
+                                .map(|v| v.trim().parse().unwrap())
+                        })
+                        .unwrap_or(0);
+                    if raw.len() >= split + 4 + length {
+                        break;
+                    }
+                }
+            }
+            let request = String::from_utf8_lossy(&raw).to_string();
+            let response = if request.starts_with("GET /api/tags") {
+                let body = r#"{"models":[{"name":"mock-model:latest"},{"name":"other:7b"}]}"#;
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+            } else {
+                assert!(request.starts_with("POST /api/chat"), "{request}");
+                let body_start = request.find("\r\n\r\n").unwrap() + 4;
+                let sent: serde_json::Value = serde_json::from_str(&request[body_start..]).unwrap();
+                assert_eq!(sent["model"], expect_model, "{sent}");
+                assert_eq!(sent["stream"], false);
+                let system = sent["messages"][0]["content"].as_str().unwrap();
+                assert!(
+                    system.contains("You are Lucy D") && system.contains("# Lucy D\n"),
+                    "{system}"
+                );
+                assert!(
+                    sent["messages"][1]["content"]
+                        .as_str()
+                        .unwrap()
+                        .contains(expect_user_contains)
+                );
+                let body = r#"{"model":"mock-model:latest","message":{"role":"assistant","content":"I remember the engine, and nothing about Ollama.\n"},"done":true}"#;
+                let (a, b) = body.split_at(17);
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n{:x}\r\n{a}\r\n{:x}\r\n{b}\r\n0\r\n\r\n",
+                    a.len(),
+                    b.len()
+                )
+            };
+            stream.write_all(response.as_bytes()).unwrap();
+        }
+    });
+    (port, handle)
+}
+
+#[test]
+fn talk_through_a_local_model_records_both_sides() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut env = env_in(dir.path());
+    let paths = Paths::new(&env.home);
+    assert_eq!(lucy(&env, &["init"]).code, 0);
+
+    // No server: a finding, never a crash.
+    let down = lucy(&env, &["talk", "hello"]);
+    assert_eq!(down.code, 1, "{}", down.stdout);
+    assert!(
+        json(&down)["error"]
+            .as_str()
+            .unwrap()
+            .contains("cannot connect"),
+        "{}",
+        down.stdout
+    );
+
+    let (port, server) = mock_ollama(2, "mock-model:latest", "what do you remember");
+    env.ollama_url = format!("http://127.0.0.1:{port}");
+    let out = lucy(
+        &env,
+        &[
+            "talk",
+            "Hey Lucy, what do you remember?",
+            "--about",
+            "memory",
+        ],
+    );
+    assert_eq!(out.code, 0, "{}", out.stdout);
+    let v = json(&out);
+    assert_eq!(
+        v["model"], "mock-model:latest",
+        "first model when none is chosen"
+    );
+    assert_eq!(
+        v["reply"],
+        "I remember the engine, and nothing about Ollama."
+    );
+    server.join().unwrap();
+    let journal = read(&paths.journal);
+    assert!(
+        journal.contains("[about: memory] Owner: Hey Lucy, what do you remember?"),
+        "{journal}"
+    );
+    assert!(
+        journal.contains("[about: memory] Lucy (via mock-model:latest): I remember the engine"),
+        "{journal}"
+    );
+
+    // A model the server does not hold is refused by name (one request: the tag list).
+    let (port, server) = mock_ollama(1, "mock-model:latest", "");
+    env.ollama_url = format!("http://127.0.0.1:{port}");
+    let missing = lucy(&env, &["talk", "hi", "--model", "nope"]);
+    assert_eq!(missing.code, 1);
+    assert!(
+        json(&missing)["error"]
+            .as_str()
+            .unwrap()
+            .contains("ollama pull nope"),
+        "{}",
+        missing.stdout
+    );
+    server.join().unwrap();
+}
+
+#[test]
+fn http_pieces() {
+    use crate::talk::{dechunk, parse_url};
+    assert_eq!(
+        parse_url("http://127.0.0.1:11434").unwrap(),
+        ("127.0.0.1".to_string(), 11434, "/".to_string())
+    );
+    assert_eq!(
+        parse_url("http://ollama.local/api/tags").unwrap(),
+        ("ollama.local".to_string(), 80, "/api/tags".to_string())
+    );
+    assert!(parse_url("https://x").unwrap_err().contains("only http://"));
+    assert_eq!(
+        dechunk(b"5\r\nhello\r\n1\r\n!\r\n0\r\n\r\n").unwrap(),
+        b"hello!"
+    );
+    assert!(dechunk(b"5\r\nhel").unwrap_err().contains("truncated"));
 }
 
 fn git(dir: &Path, args: &[&str]) -> bool {

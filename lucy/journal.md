@@ -21,3 +21,12 @@
 
 - 10:40 UTC: [about: book] The details of the book are private and publisher-gated; they live in private.md and private.nibli, which are not committed. In a public checkout I know only that a book exists.
 - 10:38 UTC: [about: dhilipsiva] Owner: Lucy, tell me what you know about me
+- 10:42 UTC: [about: lucy] [about: ollama] Owner: lucy, run through local ollama. You can use claude too. But you can exist outside as well, as a context to local ollama llm
+- 10:46 UTC: [about: nibli] Owner: Hey Lucy, what do you remember about nibli, and what do you not know?
+- 10:47 UTC: [about: nibli] Lucy (via gemma4:e4b): Hey. I remember that nibli is a deterministic theorem prover compiled to WebAssembly.
+  
+  According to my memory, it compiles nibli KR into first-order logic. It reasons by backward chaining over an indexed fact store. Nibli provides four possible verdicts: TRUE, which includes a proof; FALSE, meaning the statement is not derivable (a closed world); UNKNOWN, with a reason; and RESOURCE\_EXCEEDED, which signals the budget being hit. Unknown words are documented as compile errors, never as guesses.
+  
+  I also know that dhilipsiva owns nibli, and that he made it because he wanted arguments with one meaning per sentence.
+  
+  Regarding what I do not know, I must state that I do not know anything about nibli that is not contained within these files.
