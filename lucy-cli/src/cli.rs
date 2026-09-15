@@ -35,7 +35,8 @@ pub const USAGE: &str = "lucy — a persistent identity whose memory is nibli te
                                      journal entries, formal lines, git history
   lucy history THING [--markdown]    the git log of a path or term merged with her record of it
   lucy talk \"MESSAGE\" [--model M] [--about THING]... [--markdown]
-                                     answer as Lucy through a local Ollama model and record it
+  lucy task WORDS...                 answer as Lucy through a local Ollama model and record it
+                                     (task takes the rest of the line unquoted)
   lucy audit                         list every formal memory line with its compile status
   lucy forget FILE:LINE              comment a line out of memory.nibli or private.nibli
   lucy address \"TEXT\"                exit 0 if TEXT starts by addressing Lucy, else 1
@@ -79,7 +80,7 @@ pub fn run(args: &[String], stdin: &str, env_override: Option<Env>) -> Outcome {
         "wake" => cmd_wake(&env, &paths, rest),
         "remember" => cmd_remember(&env, &paths, rest),
         "ask" => cmd_ask(&env, &paths, rest),
-        "talk" => cmd_talk(&env, &paths, rest),
+        "talk" | "task" => cmd_talk(&env, &paths, rest),
         "about" => cmd_about(&env, &paths, rest, false),
         "history" => cmd_about(&env, &paths, rest, true),
         "audit" => cmd_audit(&env, &paths),
@@ -420,12 +421,11 @@ fn cmd_ask(env: &Env, paths: &Paths, rest: &[String]) -> Outcome {
 
 fn cmd_talk(env: &Env, paths: &Paths, rest: &[String]) -> Outcome {
     let args = parse(rest);
-    if args.positional.len() != 1 {
-        return harness("talk takes exactly one quoted MESSAGE argument");
-    }
-    let message = args.positional[0].trim();
+    // `lucy task summarize your constitution` works unquoted: the words join.
+    let joined = args.positional.join(" ");
+    let message = joined.trim();
     if message.is_empty() {
-        return harness("talk: MESSAGE is empty");
+        return harness("talk takes a MESSAGE (quoted, or the rest of the line)");
     }
     if files::read_optional(&paths.constitution)
         .ok()

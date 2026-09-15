@@ -248,7 +248,16 @@ pub fn talk(
     let models = ollama_models(&env.ollama_url, Duration::from_secs(10)).map_err(|e| {
         format!("{e} (is Ollama running? set LUCY_OLLAMA_URL if it listens elsewhere)")
     })?;
-    let model = match model_override.or(env.model.as_deref()) {
+    // `LUCY_MODEL`, else the folder's own `model` file (one line, committed
+    // with the memory so every host agrees), else the server's first model.
+    let folder_model = std::fs::read_to_string(env.home.join("model"))
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let model = match model_override
+        .or(env.model.as_deref())
+        .or(folder_model.as_deref())
+    {
         Some(m)
             if models
                 .iter()

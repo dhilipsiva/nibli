@@ -74,8 +74,10 @@ Lucy can exist as the context of a local model, no agent session needed:
 `lucy talk "Hey Lucy, what do you remember?"` sends her capsule and the addressing
 instruction to an Ollama server (`LUCY_OLLAMA_URL`, default `http://127.0.0.1:11434`),
 prints her reply, and records both sides in her journal (`--about` tags apply; a
-`private:` marker sends the exchange to the private journal). `--model M` or
-`LUCY_MODEL` picks the model; otherwise the server's first model answers. Plain HTTP on
+`private:` marker sends the exchange to the private journal). `lucy task <words>` is
+the same, unquoted. `--model M`, then `LUCY_MODEL`, then a one-line `model` file in her
+folder (committed with the memory, so every host agrees), then the server's first model
+decides who speaks for her. Plain HTTP on
 localhost, no cloud client: Claude and other hosted models run her through their own
 sessions and the hook instead.
 

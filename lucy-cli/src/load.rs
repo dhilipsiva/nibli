@@ -86,6 +86,8 @@ pub struct Loaded {
     pub standing: bool,
     /// The standing questions and their verdicts, one line each.
     pub standing_lines: Vec<String>,
+    /// The constitution's statements as written, in order.
+    pub constitution_lines: Vec<String>,
 }
 
 /// Loads the folder. Fails only when there is no constitution (no memory
@@ -111,6 +113,10 @@ pub fn load(env: &Env, paths: &Paths) -> Result<Loaded, String> {
         preamble: files::preamble(&constitution),
         standing: false,
         standing_lines: Vec::new(),
+        constitution_lines: files::kr_lines(&constitution)
+            .into_iter()
+            .map(|(_, s)| s)
+            .collect(),
     };
     load_file(
         &mut loaded,

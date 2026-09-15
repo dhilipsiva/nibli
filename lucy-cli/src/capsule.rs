@@ -62,6 +62,12 @@ pub fn render(loaded: &Loaded, env: &Env) -> String {
         constitution.push_str(line);
         constitution.push('\n');
     }
+    constitution.push_str("The rules, as written:\n");
+    for line in &loaded.constitution_lines {
+        constitution.push_str("    ");
+        constitution.push_str(line);
+        constitution.push('\n');
+    }
 
     let mut attention = String::from("\n## Needs attention\n");
     if loaded.failures.is_empty() {
