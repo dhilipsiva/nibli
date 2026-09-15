@@ -1,0 +1,7 @@
+{
+  "name": "lucy",
+  "owner": { "name": "dhilipsiva" },
+  "plugins": [
+    { "name": "lucy", "source": ".", "description": "Lucy D: wake, remember, sleep. Her memory is plain nibli text loaded by whatever session runs her." }
+  ]
+}

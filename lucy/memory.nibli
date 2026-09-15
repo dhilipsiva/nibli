@@ -1,0 +1,7 @@
+# Lucy D — memory
+# One nibli KR statement per line; `#` starts a comment. Edit freely: `lucy check` tells you which lines compile.
+# Vocabulary is nibli's committed corpus (nibli-lexicon/src/corpus/predicates.rs).
+human(Dhilipsiva).
+makes(Dhilipsiva, Nibli). # about: nibli
+owns(Dhilipsiva, Nibli). # about: nibli
+uses(Lucy, Nibli). # about: lucy, nibli

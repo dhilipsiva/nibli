@@ -565,7 +565,7 @@ test-all: test test-engine test-store test-backend test-validate
 
 # CI gate for the hardened runtime surface (fast; native only — no WASM build).
 # For the WASM behavioral smokes too, run `just ci-all`.
-ci: fmt-check release-check clippy-runtime test test-engine test-host test-validate test-ui test-formalize test-backend test-store test-persistence-replay verify-harness verify-soundness verify-alias-map verify-nibli-kr-seam verify-dict verify-pins verify-adjudication verify-proofs verify-grammar-parity verify-doc-fences verify-book-vocab
+ci: fmt-check release-check clippy-runtime clippy-lucy test test-lucy verify-lucy-pins verify-lucy-plugin check-lucy-memory test-engine test-host test-validate test-ui test-formalize test-backend test-store test-persistence-replay verify-harness verify-soundness verify-alias-map verify-nibli-kr-seam verify-dict verify-pins verify-adjudication verify-proofs verify-grammar-parity verify-doc-fences verify-book-vocab
 
 # WASM behavioral gate (pre-push, NOT part of `ci` — needs the WASM build, like
 # verify-book-capture). Bundles the gasnu smokes; each depends on
@@ -1064,7 +1064,7 @@ release-check:
     # (in neither tier row) + the example bin.
     NO_PUBLISH = {"nibli-pipeline", "nibli-host", "nibli-ui", "nibli-wasm",
                   "nibli-verify", "nibli-lexigen", "nibli-auth", "nibli-auth-py",
-                  "auth-axum"}
+                  "auth-axum", "lucy-cli"}
     errors = []
     versions = {}
     for p in md["packages"]:
@@ -1137,6 +1137,80 @@ release-check:
         sys.exit(1)
     print("release-check PASS: " + str(len(md["packages"])) + " members at lockstep " + next(iter(versions.values())))
     '
+
+# ── Lucy D ────────────────────────────────────────────────────────────────
+# Lucy's memory is plain nibli text; the `lucy` CLI (lucy-cli, bin `lucy`)
+# loads it into a fresh engine, appends to it, and answers from it.
+
+# Run lucy-cli's tests (env, files, loader, capsule, address rule, hooks, an
+# end-to-end run in a temporary memory folder)
+test-lucy:
+    cargo test -p lucy-cli
+
+# Content pins over Lucy's live constitution template, plus the counterfactual
+# with the standing line removed (fixture generated, never copied).
+verify-lucy-pins:
+    @cargo build --quiet -p nibli --bin nibli-pin
+    ./target/debug/nibli-pin --kb lucy-cli/constitution/lucy.nibli lucy-cli/constitution/lucy.pins.nibli
+    @mkdir -p target/lucy && grep -v 'exist($e, Memory, Loaded) -> person' lucy-cli/constitution/lucy.nibli > target/lucy/no-standing.nibli
+    @test $(( $(wc -l < lucy-cli/constitution/lucy.nibli) - $(wc -l < target/lucy/no-standing.nibli) )) -eq 1 || { echo "verify-lucy-pins: the counterfactual did not remove exactly the standing line"; exit 2; }
+    ./target/debug/nibli-pin --kb target/lucy/no-standing.nibli lucy-cli/constitution/lucy-no-standing.pins.nibli
+
+# Cross-compile check of the CLI for the other native hosts, where the target
+# is installed (skips cleanly otherwise; the release matrix builds them for real).
+check-lucy-targets:
+    @sysroot=$(rustc --print sysroot); for t in x86_64-pc-windows-gnu aarch64-apple-darwin x86_64-apple-darwin; do         if [ -d "$sysroot/lib/rustlib/$t" ]; then cargo check -q -p lucy-cli --target "$t" && echo "check-lucy-targets: $t ok";         else echo "check-lucy-targets: $t not installed, skipped"; fi; done
+
+# Build the `lucy` binary in release mode
+build-lucy:
+    cargo build --release -p lucy-cli
+
+# Strict clippy for lucy-cli
+clippy-lucy:
+    cargo clippy --no-deps -p lucy-cli --all-targets -- -D warnings
+
+# The plugin's shape: every skill has frontmatter, every `lucy <sub>` a skill
+# names exists in `lucy --help`, the README's hook snippet is byte-identical to
+# hooks/hooks.example.json, and no auto-installing hooks/hooks.json exists.
+verify-lucy-plugin:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cargo build --quiet -p lucy-cli
+    python3 - <<'PY'
+    import json, re, subprocess, sys
+    from pathlib import Path
+    root = Path("lucy-plugin"); errors = []
+    if (root / "hooks" / "hooks.json").exists():
+        errors.append("lucy-plugin/hooks/hooks.json exists: a plugin hooks.json auto-installs on plugin install; keep hooks owner-installed (hooks.example.json)")
+    help_text = subprocess.run(["./target/debug/lucy", "--help"], capture_output=True, text=True).stdout
+    subs = set(re.findall(r"^  lucy ([a-z-]+)", help_text, flags=re.M))
+    skills = sorted(root.glob("skills/*/SKILL.md"))
+    if len(skills) < 4:
+        errors.append(f"expected at least 4 skills, found {len(skills)}")
+    for skill in skills:
+        text = skill.read_text()
+        front = text.split("---", 2)
+        if not text.startswith("---\nname: ") or len(front) < 3 or "\ndescription: " not in front[1]:
+            errors.append(f"{skill}: missing name/description frontmatter")
+        for sub in set(re.findall(r"`lucy ([a-z-]+)", text)):
+            if sub not in subs:
+                errors.append(f"{skill}: names `lucy {sub}`, which `lucy --help` does not list")
+    example = (root / "hooks" / "hooks.example.json").read_text()
+    json.loads(example)
+    if example.strip() not in (root / "README.md").read_text():
+        errors.append("lucy-plugin/README.md: the hook snippet is not byte-identical to hooks/hooks.example.json")
+    if errors:
+        print("verify-lucy-plugin FAILED:")
+        for e in errors:
+            print("  - " + e)
+        sys.exit(1)
+    print(f"verify-lucy-plugin PASS: {len(skills)} skills, {len(subs)} subcommands, hook snippet in sync")
+    PY
+
+# Lucy's own memory in this repository: every line must compile.
+check-lucy-memory:
+    @cargo build --quiet -p lucy-cli
+    LUCY_HOME=lucy ./target/debug/lucy check
 
 # ── Release automation (R3) ────────────────────────────────────────────────
 # `release-check` above is the VERSION-AGNOSTIC structural gate and rides

@@ -13,6 +13,23 @@ here first.
 
 ## [Unreleased]
 
+### Added
+
+- **Lucy D** (`lucy-cli`, bin `lucy`; Tier Z, `publish = false`): a persistent
+  identity whose memory is plain nibli text (`constitution.nibli`,
+  `memory.nibli`, `journal.md`, optional `private.*` twins), loaded into a
+  fresh `NibliEngine` by whatever agent session runs her. Commands: `init`,
+  `check`, `wake` (the capsule), `remember` (journal prose with `[about: …]`
+  tags, or a checked KR line), `ask` (verdict, `[Why]`, proof, envelope),
+  `about`/`history` (her record merged with the git log), `audit`, `forget`,
+  `address` (deterministic "Hey Lucy" detection), and the owner-installed
+  `hook user-prompt` / `hook session-start`. Her constitution is pinned by
+  `just verify-lucy-pins` (17 content pins + a 3-pin counterfactual with the
+  standing line removed); the plugin under `lucy-plugin/` is checked by
+  `verify-lucy-plugin`; her memory in this repository (`lucy/`) is checked by
+  `check-lucy-memory`. Nothing is signed or encrypted, by decision: she is not
+  sentient, and her owner audits and edits her freely.
+
 ### Changed
 
 - **Text compute registration is now explicitly corpus-scoped (decided

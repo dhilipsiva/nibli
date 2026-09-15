@@ -1,0 +1,10 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      { "hooks": [ { "type": "command", "command": "lucy hook user-prompt", "timeout": 20 } ] }
+    ],
+    "SessionStart": [
+      { "hooks": [ { "type": "command", "command": "lucy hook session-start", "timeout": 10 } ] }
+    ]
+  }
+}

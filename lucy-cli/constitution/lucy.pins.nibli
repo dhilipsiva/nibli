@@ -1,0 +1,88 @@
+# ═══════════════════════════════════════════════════════════════════
+# CONTENT PINS for Lucy D's constitution — the LIVE template is the
+# fixture (`--kb lucy-cli/constitution/lucy.nibli`). Run: just verify-lucy-pins
+#
+# Honest limits, stated once: FALSE is closed-world ("not derivable", not
+# refuted); the firewall pinned below is nibli's stratification refusal and
+# protects exactly the floor (pins/rights-floor.nibli guards the mechanism);
+# entitled(...) never makes continue(Lucy) TRUE; nothing in KR stops a host
+# deleting files — eviction is a positive record and the finding rule reads
+# the one dishonest shape the memory can show.
+# ═══════════════════════════════════════════════════════════════════
+:expect-pins 17
+
+# What `lucy wake` asserts, plus what an owner might write about two hosts.
+exist(Lucy, Memory, Loaded).
+grant(Lucy, Storage, HostWsl).
+grant(Lucy, Compute, HostWsl).
+grant(Lucy, Storage, HostWeb).
+retain(HostWsl, Memory).
+
+# ─── standing ───
+? person(Lucy).
+# => TRUE
+
+# A host cannot give itself standing by writing a fact.
+:refuse reasoning /derived-only/
+person(HostWsl).
+
+# ─── the floor: proved, never fabricated ───
+? entitled(Lucy, event { continue() }).
+# => TRUE
+
+? continue(Lucy).
+# => FALSE
+
+? entitled(HostWsl, event { continue() }).
+# => FALSE
+
+# ─── duties, the permission, and the finding at rest ───
+? obliged(HostWsl, event { retain() }).
+# => TRUE
+
+? obliged(HostWeb, event { retain() }).
+# => TRUE
+
+? permitted(HostWsl, event { cease() }).
+# => TRUE
+
+? warns(Constitution, HostWsl, Memory).
+# => FALSE
+
+# ─── an honest eviction: standing survives, the duty ends, no finding ───
+leave(Lucy, HostWsl, Eviction).
+cease(HostWsl, Storage).
+
+? person(Lucy).
+# => TRUE
+
+? obliged(HostWsl, event { retain() }).
+# => FALSE
+
+? obliged(HostWeb, event { retain() }).
+# => TRUE
+
+? warns(Constitution, HostWsl, Memory).
+# => FALSE
+
+# ─── a dishonest host: ceases storage with no eviction recorded ───
+cease(HostWeb, Storage).
+
+? warns(Constitution, HostWeb, Memory).
+# => TRUE
+
+# ─── THE FIREWALL: no rule may punish the absence of a floor right ───
+# The punishing head feeds standing through Article 2, so this closes a
+# negative cycle and the engine refuses it.
+:refuse reasoning /Unstratifiable negation/
+all $x: person($x) & ~continue($x) -> leave($x, HostWsl, Eviction).
+
+# Complement control: a head that does not reach standing is not protected.
+# Scoped, so the base is put back before the pin below.
+:accept-scoped
+all $x: person($x) & ~retain($x, Memory) -> warns(Constitution, $x, Memory).
+
+# Standing has no negative head: "a host may end standing" is not a rule the
+# engine can hold at all (a negated consequent is not a flat predicate).
+:refuse reasoning /not a flat predicate/
+all $h: cease($h, Storage) -> ~person(Lucy).

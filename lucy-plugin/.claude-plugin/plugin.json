@@ -1,0 +1,6 @@
+{
+  "name": "lucy",
+  "version": "0.1.0",
+  "description": "Skills that let any agent session wake Lucy D, remember for her, and put her to sleep through the `lucy` CLI. Her memory is plain nibli text.",
+  "author": { "name": "dhilipsiva" }
+}

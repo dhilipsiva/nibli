@@ -361,3 +361,27 @@ Blocked followers:
 | **`RELEASING.md`** | Release decisions of record (tiers, lockstep, tags) + the operator runbook |
 | **`DEPLOY.md`** | Hosting: playground, wasm demo, mdBook primary + Pages mirror |
 | **`book/TODO.md`** | Manuscript only (private checkout; Orange AVA) |
+
+## Lucy D
+
+- **Engine performance finding (2026-09-15, reproducer below).** On a KB holding Lucy's
+  constitution (`lucy-cli/constitution/lucy.nibli`: `derived_only` heads, `exist -> person`,
+  `leave -> person`, three `entitled(every person, event { P() })` floor lines, two
+  `~leave` NAF rules with 2 variables, one 3-variable `grant -> permitted` rule) plus N
+  unrelated ground facts `human(PersonI).`, the query `person(Lucy).` costs, in a debug
+  build: N=5 0.3 s, 10 0.6 s, 20 1.8 s, 40 8.1 s, 80 ≈47 s — roughly quadratic in facts
+  the query never touches. Bisect at N=20: dropping the three `entitled` lines halves it
+  (0.9 s); dropping the `~leave` rules 1.5 s; dropping Article 2 no change; with only
+  Article 1 + `derived_only` 0.1 s. `NIBLI_MATERIALIZE=0` is not read by nibli-engine;
+  `LUCY_MATERIALIZE=0` (→ `set_materialization(false)`) makes no difference (8.6 s vs
+  8.2 s at N=40), so materialization is not the cause.
+  Reproducer: `LUCY_HOME=$(mktemp -d)/l; lucy init; for i in $(seq 1 40); do echo
+  "human(P$i)." >> $LUCY_HOME/memory.nibli; done; time lucy ask 'person(Lucy).'`.
+  Lucy's capsule sidesteps it (standing lines computed before the memory loads); user
+  `ask`s still pay it. Hypothesis to check first: universal rules with abstraction heads
+  and body variables unbound by any indexed fact enumerate the whole domain per query.
+- **Deferred, wanted later:** code-browsing tools for LLMs in `lucy` (`code tree | outline
+  <file> | find <symbol> | grep <pattern>`, deterministic and token-cheap) plus her own
+  summaries of code as tagged memories; the browser page (`lucy-wasm`: two editors over
+  nibli-wasm, import/export of the same files); `lucy` in the release binary matrix for
+  Linux, macOS and Windows; an optional `Stop` hook that records Lucy's reply itself.

@@ -1,0 +1,24 @@
+[package]
+name = "lucy-cli"
+description = "Lucy D: a persistent identity whose memory is plain nibli text, loaded by whatever agent session runs her"
+version.workspace = true
+edition = "2024"
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+# Tier Z (RELEASING.md): repo-only and shipped as a release binary, not a crate.
+publish = false
+
+[[bin]]
+name = "lucy"
+path = "src/main.rs"
+
+[dependencies]
+nibli-engine = { workspace = true }
+nibli-types = { workspace = true, features = ["serde"] }
+nibli-protocol = { workspace = true }
+nibli-render = { workspace = true }
+serde_json = "1"
+
+[dev-dependencies]
+tempfile = "3"

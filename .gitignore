@@ -43,3 +43,6 @@ mdbook/mermaid-init.js
 # Python auth demo venv (maturin develop)
 .venv-auth/
 
+# Lucy D: private memories stay on this machine
+lucy/private.md
+lucy/private.nibli
