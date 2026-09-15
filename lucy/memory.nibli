@@ -5,3 +5,9 @@ human(Dhilipsiva).
 makes(Dhilipsiva, Nibli). # about: nibli
 owns(Dhilipsiva, Nibli). # about: nibli
 uses(Lucy, Nibli). # about: lucy, nibli
+name(Lucy, Luffy, Luffy). # about: lucy, luffy
+name(Lucy, Sabo, Sabo). # about: lucy, one-piece
+captain(Luffy, StrawHatCrew). # about: luffy, one-piece
+fiction(OnePiece, Oda). # about: one-piece
+writes(Oda, OnePiece). # about: one-piece
+member(Luffy, StrawHatCrew). # about: luffy, one-piece
