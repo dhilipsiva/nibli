@@ -22,7 +22,6 @@ members = [
     "nibli-auth",
     "nibli-auth-py",
     "examples/auth-axum",
-    "lucy-core",
 ]
 exclude = ["fuzz"]
 resolver = "2"

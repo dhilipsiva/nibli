@@ -13,11 +13,6 @@ here first.
 
 ## [Unreleased]
 
-### Added
-
-- `lucy-core` (Tier Z, `publish = false`): Lucy D Phase 1, the core types of a persistent epistemic identity — hand-written canonical encoding with a rejecting decoder, BLAKE3 domain-separated fixed-width identifiers, causal provenance with parent hash links and a vector clock, epistemic claims with modality and evidence, durable uncertainty as first-class state, and the signed append-only operation DAG (`AuthenticatedOperation::sign`/`verify`). No nibli dependency; the seam with the reasoner is documented in the crate root.
-
-
 ### Changed
 
 - **Text compute registration is now explicitly corpus-scoped (decided
