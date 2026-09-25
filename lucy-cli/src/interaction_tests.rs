@@ -21,7 +21,7 @@ fn complete_messages_round_trip_and_remain_opaque_in_a_standalone_kb() {
         "record",
         "--stdin",
         "--speaker",
-        "Owner",
+        "User",
         "--id",
         "one",
         "--source",
@@ -44,7 +44,7 @@ fn complete_messages_round_trip_and_remain_opaque_in_a_standalone_kb() {
     let engine = nibli_engine::NibliEngine::new();
     engine.assert_text(&saved).unwrap();
     for query in [
-        r#"message("one", "memory", Conversation, "Owner")."#,
+        r#"message("one", "memory", Conversation, "User")."#,
         r#"source("codex", "one")."#,
         r#"member("one", "test-session")."#,
     ] {
@@ -69,7 +69,7 @@ fn facts_and_decisions_cite_the_message_without_asserting_its_contents() {
                 "record",
                 "I say Ada is human.",
                 "--speaker",
-                "Owner",
+                "User",
                 "--id",
                 "original"
             ]
@@ -94,7 +94,7 @@ fn facts_and_decisions_cite_the_message_without_asserting_its_contents() {
     assert_eq!(
         crate::ask::ask(
             &engine,
-            r#"expresses("Owner", fact { human(Ada) }, Conversation, "claim-one")."#
+            r#"expresses("User", fact { human(Ada) }, Conversation, "claim-one")."#
         )
         .unwrap()
         .status,
@@ -162,7 +162,7 @@ fn conversation_query_scope_is_explicit_and_excludes_the_constitution() {
                 "record",
                 "hello",
                 "--speaker",
-                "Owner",
+                "User",
                 "--source",
                 "codex",
                 "--id",
@@ -195,7 +195,7 @@ fn private_extractions_stay_private_and_invalid_batches_leave_no_partial_records
                 "record",
                 "a private conversation",
                 "--speaker",
-                "Owner",
+                "User",
                 "--id",
                 "private-one",
                 "--private"
@@ -216,7 +216,7 @@ fn private_extractions_stay_private_and_invalid_batches_leave_no_partial_records
             .all(|e| e.private)
     );
     let mut leaking = Interaction {
-        speaker: "Owner".into(),
+        speaker: "User".into(),
         text: "extraction".into(),
         kind: Kind::Claim,
         from: Some("private-one".into()),
@@ -294,7 +294,7 @@ fn concurrent_writers_preserve_every_record_and_indexes_cannot_drift() {
                     &env,
                     &paths,
                     vec![Interaction {
-                        speaker: "Owner".into(),
+                        speaker: "User".into(),
                         text: format!("message {i}"),
                         ..Interaction::default()
                     }],
@@ -317,7 +317,7 @@ fn concurrent_writers_preserve_every_record_and_indexes_cannot_drift() {
         4
     );
     let tampered = read(&paths.interactions)
-        .replace("Conversation, \"Owner\").", "Conversation, \"Impostor\").");
+        .replace("Conversation, \"User\").", "Conversation, \"Impostor\").");
     files::write_atomic(&paths.interactions, &tampered).unwrap();
     assert!(interactions::read(&paths, false).is_err());
     assert_eq!(lucy(&env, &["check"]).code, 2);

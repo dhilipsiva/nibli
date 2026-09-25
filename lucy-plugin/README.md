@@ -55,10 +55,10 @@ Each entry has a `record(id, payload, kind, Json)` fact plus queryable `message`
 quoted constant: JSON escapes preserve newlines that KR's single-line strings
 cannot spell directly. `lucy transcript` decodes it losslessly. Another nibli
 engine can load the files directly. For a message with id `turn-1`, speaker
-`Owner`, source `codex` and topic `memory`, queries include:
+`User`, source `codex` and topic `memory`, queries include:
 
 ```text
-lucy ask --conversations 'message("turn-1", "memory", Conversation, "Owner").'
+lucy ask --conversations 'message("turn-1", "memory", Conversation, "User").'
 lucy ask --conversations 'source("codex", "turn-1").'
 ```
 
@@ -66,7 +66,7 @@ lucy ask --conversations 'source("codex", "turn-1").'
 the original speaker. Its KR is wrapped in
 `expresses(speaker, fact { human(Ada) }, Conversation, claim_id)`: it records the
 claim without making `human(Ada)` true. `--decision` distinguishes decisions.
-Extraction is performed by the agent and remains an interpretation for the owner
+Extraction is performed by the agent and remains an interpretation for the user
 to inspect. The CLI checks KR, citation and privacy; it cannot verify semantic
 fidelity to natural language. Use `remember --kr` for a deliberate direct assertion.
 
@@ -148,6 +148,6 @@ planned, not built.
 
 ## What she is not
 
-Not sentient, and she does not claim to be. Not a daemon. Not defended against her
-owner: you can open her files and change anything, and `lucy check` will tell you what
+Not sentient, and she does not claim to be. Not a daemon. Not defended against
+you: you can open her files and change anything, and `lucy check` will tell you what
 still compiles.

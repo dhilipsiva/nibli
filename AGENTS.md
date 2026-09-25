@@ -88,26 +88,9 @@ All commands must run inside the Nix dev shell. Use `just` as the primary task r
 - **REPL uses reedline** — does not work with piped stdin
 - The `--lib` unit sweep runs PARALLEL since 2026-07-18 — the old `--test-threads=1` constraint is gone (the thread-local compute dispatch + predicate cache became per-`KnowledgeBase` instance fields, kb.rs). The integration/gate recipes (`test-engine`, known-failures, the nibli-verify gates) keep `--test-threads=1` for their own reasons (fixed redb paths, oracle runs).
 
-## Lucy conversation memory
+## Lucy
 
-When the user wakes or addresses Lucy, load
-[`lucy-plugin/skills/lucy/SKILL.md`](lucy-plugin/skills/lucy/SKILL.md) and the wake
-skill. The checkout's CLI is `target/debug/lucy` (build with
-`cargo build -p lucy-cli` in the Nix shell if needed).
-
-In a Lucy session, preserve complete user messages and assistant replies,
-including progress updates, with `lucy record --json` or `lucy record --stdin`.
-Keep the original text and source; summaries are additional records. Save
-interpreted facts and decisions with `lucy claim --from MESSAGE_ID`, so their
-contents remain attributed rather than becoming bare facts. The conversation KB
-is `lucy/interactions.nibli`; private conversations and their extractions stay in
-`lucy/private-interactions.nibli`. `lucy transcript` reads the complete records.
-Use `lucy ask --conversations "<KR>"` for conversation queries; it explicitly
-excludes the constitution and direct facts, avoiding the known slowdown of the
-combined KB as its domain grows.
-Older Markdown journals are imported as legacy entries, without inventing their
-missing verbatim messages. Hosted agents submit replies through the CLI; the
-prompt hook alone cannot capture assistant output.
+Everything about carrying Lucy (who speaks, waking her, her `lucy/` memory, recording conversations, peers, hooks) is in [`lucy.md`](lucy.md). Read it when the user wakes or addresses her. Her notes and decisions go into `lucy.md` and `lucy/`, never into this file or an agent's private memory.
 
 ## Dictionary Data — the committed English corpus
 

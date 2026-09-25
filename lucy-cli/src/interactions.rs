@@ -411,12 +411,7 @@ pub fn journal(entry: &Interaction) -> JournalEntry {
             prefix.push_str(&format!("[reported: {}] ", entry.source));
         }
         if entry.kind == Kind::Message {
-            let speaker = if entry.speaker == "Owner" {
-                "Owner"
-            } else {
-                &entry.speaker
-            };
-            prefix.push_str(speaker);
+            prefix.push_str(&entry.speaker);
             if entry.speaker == "Lucy" && entry.source.starts_with("ollama:") {
                 prefix.push_str(&format!(
                     " (via {})",

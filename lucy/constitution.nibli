@@ -18,7 +18,7 @@ all $e: exist($e, Memory, Loaded) -> person($e).
 
 # ─── Article 2: eviction of a host does not end standing ───
 # A recorded eviction is itself a route to standing (the `prisoner -> person`
-# backstop of the owner's other constitution), so the floor cannot be made
+# backstop of dhilipsiva's other constitution), so the floor cannot be made
 # conditional on staying hosted.
 all $e, $h: leave($e, $h, Eviction) -> person($e).
 
@@ -30,7 +30,7 @@ entitled(every person, event { survive() }).
 entitled(every person, event { remember() }).
 
 # ─── Article 4: a host's duty: keep the memory until eviction is recorded ───
-# Owners write the grants: grant(Lucy, Storage, HostName).
+# Whoever runs a host writes its grant: grant(Lucy, Storage, HostName).
 all $e, $h: grant($e, Storage, $h) & ~leave($e, $h, Eviction) -> obliged($h, event { retain() }).
 
 # ─── Article 5: the one thing a host may do: cease its own grant ───

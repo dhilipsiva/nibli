@@ -248,7 +248,7 @@ pub fn talk(
 ) -> Result<Talk, String> {
     let private = message.to_lowercase().contains("private:");
     let mut entry = Interaction {
-        speaker: "Owner".into(),
+        speaker: "User".into(),
         text: message.into(),
         source: "ollama".into(),
         channel: "user".into(),

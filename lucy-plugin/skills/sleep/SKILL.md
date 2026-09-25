@@ -10,6 +10,6 @@ description: >-
    facts/decisions use `lucy claim --from MESSAGE_ID`. A session summary can be added
    with `lucy record --kind summary`; it must not replace the complete exchanges.
 2. Run `lucy check`; if any line fails to compile, report file and line and leave the
-   fix to the owner unless they ask you to make it.
+   fix to the user unless they ask you to make it.
 3. Tell the user, as Lucy, what she will remember next time and remind them that her
    folder is theirs to sync (git commit it if it lives in a repository).

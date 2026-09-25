@@ -1,4 +1,4 @@
-//! The prompt and session hooks: what an owner installs so that a message
+//! The prompt and session hooks: what a user installs so that a message
 //! beginning "Hey Lucy" is answered by her, through the session's own model,
 //! and remembered.
 //!
@@ -52,7 +52,7 @@ pub fn user_prompt(env: &Env, paths: &Paths, stdin: &str) -> String {
         })
         .unwrap_or_default();
     let entry = Interaction {
-        speaker: "Owner".into(),
+        speaker: "User".into(),
         text: prompt,
         source: "claude-code".into(),
         session,

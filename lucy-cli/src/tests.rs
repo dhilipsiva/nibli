@@ -160,7 +160,7 @@ fn talk_through_a_local_model_records_both_sides() {
     server.join().unwrap();
     let journal = journal_text(&paths, false);
     assert!(
-        journal.contains("[about: memory] Owner: Hey Lucy, what do you remember?"),
+        journal.contains("[about: memory] User: Hey Lucy, what do you remember?"),
         "{journal}"
     );
     assert!(
@@ -833,7 +833,7 @@ fn user_prompt_hook_records_and_prints_the_capsule() {
     assert!(
         addressed
             .stdout
-            .contains("Owner: hey lucy, what do you remember?"),
+            .contains("User: hey lucy, what do you remember?"),
         "{}",
         addressed.stdout
     );
@@ -842,7 +842,7 @@ fn user_prompt_hook_records_and_prints_the_capsule() {
         "{}",
         addressed.stdout
     );
-    assert!(journal_text(&paths, false).contains("Owner: hey lucy, what do you remember?"));
+    assert!(journal_text(&paths, false).contains("User: hey lucy, what do you remember?"));
 
     let private = lucy_stdin(
         &env,
@@ -850,7 +850,7 @@ fn user_prompt_hook_records_and_prints_the_capsule() {
         "Lucy, private: something only for you",
     );
     assert_eq!(private.code, 0);
-    assert!(journal_text(&paths, true).contains("Owner: Lucy, private: something only for you"));
+    assert!(journal_text(&paths, true).contains("User: Lucy, private: something only for you"));
     assert!(!journal_text(&paths, false).contains("something only for you"));
 
     let presence = lucy_stdin(&env, &["hook", "session-start"], r#"{"source":"startup"}"#);

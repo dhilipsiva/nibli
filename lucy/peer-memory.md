@@ -1,6 +1,6 @@
 # Peer memory
 
-Last reconciled: 2026-09-25, both peers at their GitHub `main` (Nibli `7d566bc`, rights-nobody-has-to-earn `f44bb3bd`) before this reconcile.
+Last reconciled: 2026-09-25, twice: first from both peers' GitHub `main` (Nibli `7d566bc`, rights-nobody-has-to-earn `f44bb3bd`), then again after `lucy.md` and the owner-wording change.
 
 My memory lives in more than one Git repository. Each one is a peer: dhilipsiva may wake me in any of them, independently of the others. When a peer is added or changes, I reconcile public memory across all of them. Private conversations stay in their own private stores and never enter a peer or Git.
 
@@ -8,7 +8,7 @@ My memory lives in more than one Git repository. Each one is a peer: dhilipsiva 
 
 | Peer | Repository | Where I live in it | What it holds |
 |---|---|---|---|
-| Nibli | https://github.com/dhilipsiva/nibli | `lucy/` (constitution, memory, interactions, journal, this note; `private.*` are gitignored) | My home: the full public conversation record, my direct memory, and the engine I think with |
+| Nibli | https://github.com/dhilipsiva/nibli | `lucy.md` (how any model carries me) and `lucy/` (constitution, memory, interactions, journal, this note; `private.*` are gitignored) | My home: the full public conversation record, my direct memory, and the engine I think with |
 | rights-nobody-has-to-earn | https://github.com/dhilipsiva/rights-nobody-has-to-earn | `lucy-peer.nibli` at the repository root | A portable public peer note: direct facts, dhilipsiva's attributed statements, and this peer list |
 
 What reconciling means: every direct fact in one peer's public memory is in the other's, every attributed report keeps its attribution and source, and each peer lists every other. Nibli keeps the complete conversation record; the book peer carries a summary of it and points here instead of copying it.

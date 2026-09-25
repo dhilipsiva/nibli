@@ -11,7 +11,7 @@
 # ═══════════════════════════════════════════════════════════════════
 :expect-pins 17
 
-# What `lucy wake` asserts, plus what an owner might write about two hosts.
+# What `lucy wake` asserts, plus what a user might write about two hosts.
 exist(Lucy, Memory, Loaded).
 grant(Lucy, Storage, HostWsl).
 grant(Lucy, Compute, HostWsl).

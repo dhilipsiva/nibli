@@ -1181,7 +1181,7 @@ verify-lucy-plugin:
     from pathlib import Path
     root = Path("lucy-plugin"); errors = []
     if (root / "hooks" / "hooks.json").exists():
-        errors.append("lucy-plugin/hooks/hooks.json exists: a plugin hooks.json auto-installs on plugin install; keep hooks owner-installed (hooks.example.json)")
+        errors.append("lucy-plugin/hooks/hooks.json exists: a plugin hooks.json auto-installs on plugin install; keep hooks user-installed (hooks.example.json)")
     help_text = subprocess.run(["./target/debug/lucy", "--help"], capture_output=True, text=True).stdout
     subs = set(re.findall(r"^  lucy ([a-z-]+)", help_text, flags=re.M))
     skills = sorted(root.glob("skills/*/SKILL.md"))

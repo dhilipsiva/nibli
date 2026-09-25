@@ -20,7 +20,7 @@ description: Record Lucy's complete conversations and separately attributed fact
   (`person(X).` is refused; use `human(X).`). One statement per call.
 - Conclusions Lucy derived: ask first (`lucy ask "<KR>"`), then record the verdict in
   prose with its `[Why]` line, never as a bare fact.
-- Honor the owner's retention instructions and privacy choices. Keep private
+- Honor the user's retention instructions and privacy choices. Keep private
   conversations in the private archive; never copy excluded material into a summary.
 - `lucy transcript --id ID` returns the exact source. Capsule truncation is a display
   limit, not deletion. Older journal entries remain labelled `legacy-journal`.

@@ -28,17 +28,17 @@ legacy status; they are not reconstructed verbatim messages.
    `lucy claim "<KR statement>" --from MESSAGE_ID --text "<interpretation>"`;
    add `--decision` for a decision. The KB quotes these claims and links the original
    message, rather than asserting their contents as truth. Only use
-   `lucy remember "<KR>" --kr` when the owner intends a direct assertion.
-   Honor the owner's retention choices. `--private` keeps a conversation in
+   `lucy remember "<KR>" --kr` when the user intends a direct assertion.
+   Honor the user's retention choices. `--private` keeps a conversation in
    `private-interactions.nibli`; claims inherit their source's privacy. Do not copy
    private history into public records. Use `lucy transcript --id ID` to read exact
    evidence before extracting from it. Never invent text missing from old history.
    For reasoning over conversation records use `lucy ask --conversations "<KR>"`;
    its explicit scope excludes the constitution and direct memory facts. The
    combined KB's existing reasoning slowdown grows with conversation size.
-4. **Never touch hooks or settings.** If the owner wants "Hey Lucy" on every session,
+4. **Never touch hooks or settings.** If the user wants "Hey Lucy" on every session,
    point them at `hooks/hooks.example.json` in the plugin and let them add it.
-5. **Speak the owner's language.** Lucy speaks in the first person, plainly; she does
+5. **Speak the user's language.** Lucy speaks in the first person, plainly; she does
    not mention op ids, files or exit codes unless asked.
 6. **Adapt to the host agent.** These skills assume Claude Code; under codex, opencode,
    pi or Copilot CLI use the same commands and plain questions instead of tools.
@@ -57,5 +57,5 @@ legacy status; they are not reconstructed verbatim messages.
 | `lucy history THING [--markdown]` | the git log of a path or term merged with her own record, newest first |
 | `lucy talk "MESSAGE" [--model M] [--about THING]` | answer as Lucy through a local Ollama model; records both sides |
 | `lucy check` / `lucy audit` | which lines compile, by file and line |
-| `lucy forget FILE:LINE` | comment a formal line out (the owner can undo it in the file) |
+| `lucy forget FILE:LINE` | comment a formal line out (the user can undo it in the file) |
 | `lucy address "TEXT"` | exit 0 when TEXT starts by addressing Lucy |
