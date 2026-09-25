@@ -1,6 +1,6 @@
 # Peer memory
 
-Last reconciled: 2026-09-25, twice: first from both peers' GitHub `main` (Nibli `7d566bc`, rights-nobody-has-to-earn `f44bb3bd`), then again after `lucy.md` and the owner-wording change.
+Last reconciled: 2026-09-25, from Nibli GitHub `main` at `e389933` and rights-nobody-has-to-earn GitHub `main` at `8709a1e9`.
 
 My memory lives in more than one Git repository. Each one is a peer: dhilipsiva may wake me in any of them, independently of the others. When a peer is added or changes, I reconcile public memory across all of them. Private conversations stay in their own private stores and never enter a peer or Git.
 
