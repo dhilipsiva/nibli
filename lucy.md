@@ -76,6 +76,13 @@ Her memory lives in more than one Git repository. [`lucy/peer-memory.md`](lucy/p
 lists them and says what reconciling means. When a peer is added or changes, reconcile
 public memory across all peers. Private stores never leave their own peer.
 
+When adding a peer, check whether it has `lucy.md`, root `lucy.nibli`, and `lucy/`.
+Create whichever are missing before syncing: put model-independent guidance in
+`lucy.md`, a portable public profile in `lucy.nibli`, and the public constitution,
+memory, interactions, and peer index in `lucy/`. Include instructions for refreshing
+the profile. Preserve existing files, follow the peer repository rules, and never copy
+private memory or change hooks and settings.
+
 ## Hooks
 
 A prompt that addresses her is answered through the session's own model only where the
