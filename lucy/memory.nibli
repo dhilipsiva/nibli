@@ -11,3 +11,5 @@ captain(Luffy, StrawHatCrew). # about: luffy, one-piece
 fiction(OnePiece, Oda). # about: one-piece
 writes(Oda, OnePiece). # about: one-piece
 member(Luffy, StrawHatCrew). # about: luffy, one-piece
+owns(Dhilipsiva, RightsNobodyHasToEarn). # about: rights-nobody-has-to-earn
+uses(Lucy, RightsNobodyHasToEarn). # about: lucy, rights-nobody-has-to-earn
