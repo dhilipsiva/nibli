@@ -312,7 +312,7 @@ fn mutations_swap_and_substitute_deterministically() {
 fn facts_read_as_english_from_the_corpus() {
     assert_eq!(
         dataset::english("owns(Dhilipsiva, Nibli)."),
-        "dhilipsiva possesses Nibli."
+        "dhilipsiva owns Nibli."
     );
     assert_eq!(
         dataset::english("makes(Dhilipsiva, Nibli)."),
@@ -320,7 +320,16 @@ fn facts_read_as_english_from_the_corpus() {
     );
     assert_eq!(
         dataset::english("name(Lucy, Luffy, Luffy)."),
-        "name(name: Lucy, named: Luffy, user: Luffy)"
+        "Lucy is a name for Luffy, used by Luffy."
+    );
+    assert_eq!(
+        dataset::english("fiction(OnePiece, Oda)."),
+        "One Piece is a work of fiction by Oda."
+    );
+    // Neither the table nor the corpus has a template: the places are spelled out.
+    assert_eq!(
+        dataset::english("public(Models)."),
+        "public(public: Models)"
     );
     assert_eq!(dataset::display_name("StrawHatCrew"), "Straw Hat Crew");
     assert_eq!(

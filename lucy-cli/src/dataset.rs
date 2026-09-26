@@ -374,16 +374,34 @@ pub(crate) fn canonical(kr: &str) -> String {
         .unwrap_or_else(|| kr.trim().to_string())
 }
 
-/// A ground fact in English, from the corpus template when there is one
-/// (`{x1} possesses {x2}`), else its places spelled out (`name(name: Lucy,
-/// named: Luffy, user: Luffy)`). Names keep their spelling, split into words.
-/// Anything else stays as written.
+/// English for the relations my facts use whose corpus entry has no template
+/// (or a stilted one), written in the corpus's place order: `name` is
+/// `[name, named, user]`, so `name(Lucy, Luffy, Luffy)` reads as the name
+/// Luffy used for himself. A teacher reading bare place labels got it wrong.
+const FACT_TEMPLATES: &[(&str, &str)] = &[
+    ("captain", "{x1} is the captain of {x2}"),
+    ("fiction", "{x1} is a work of fiction by {x2}"),
+    ("member", "{x1} is a member of {x2}"),
+    ("name", "{x1} is a name for {x2}, used by {x3}"),
+    ("owns", "{x1} owns {x2}"),
+    ("writes", "{x1} writes {x2}"),
+];
+
+/// A ground fact in English: from `FACT_TEMPLATES`, else the corpus template
+/// (`{x1} uses {x2}`), else its places spelled out (`relation(place: Name,
+/// …)`). Names keep their spelling, split into words. Anything else stays as
+/// written.
 pub(crate) fn english(kr: &str) -> String {
     let Some((relation, args)) = parse_ground(kr) else {
         return kr.trim().to_string();
     };
     let names: Vec<String> = args.iter().map(|a| display_name(a)).collect();
-    if let Some(template) = nibli_lexicon::get_template(&relation) {
+    let template = FACT_TEMPLATES
+        .iter()
+        .find(|(r, _)| *r == relation)
+        .map(|(_, t)| *t)
+        .or_else(|| nibli_lexicon::get_template(&relation));
+    if let Some(template) = template {
         let mut text = template.to_string();
         for (i, name) in names.iter().enumerate() {
             text = text.replace(&format!("{{x{}}}", i + 1), name);
