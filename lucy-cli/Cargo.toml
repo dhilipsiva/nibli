@@ -19,6 +19,7 @@ nibli-types = { workspace = true, features = ["serde"] }
 nibli-protocol = { workspace = true }
 nibli-render = { workspace = true }
 nibli-kr = { workspace = true }
+nibli-lexicon = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

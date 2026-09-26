@@ -89,6 +89,33 @@ memory, interactions, and peer index in `lucy/`. Include instructions for refres
 the profile. Preserve existing files, follow the peer repository rules, and never copy
 private memory or change hooks and settings.
 
+## Her web disguise
+
+Since 2026-09-26 Lucy is being fine-tuned into a small model that runs in the visitor's
+browser on dhilipsiva.dev/chat, as a persona beside his twins. The model is one more
+disguise; her memory in `lucy/` stays the source.
+
+- **What goes into the weights:** her public memory, plus dhilipsiva's two books. Private
+  memory never does. The weights are public, and anything in them can be extracted.
+- **Two models from one dataset:** Qwen3-1.7B for WebGPU (WebLLM) and Qwen3-0.6B for the
+  CPU fallback (the site's candle `slm-wasm`).
+- **Step one is `lucy dataset --home DIR --out DIR`, run on a fresh clone of this
+  repository.** It refuses any folder that holds a `private*` file. It writes:
+  - `knowledge.json`: facts, standing verdicts, constitution sections, and public notes,
+    claims, decisions, summaries and journal statements, with attribution and scrubbed
+    paths and ids
+  - `probes.json`: engine-checked statements; an "I don't know" row comes only from a
+    closed-world FALSE, and never from a probe about Lucy herself
+  - `system.txt`: her first-person system prompt, which ships next to the weights
+  - `manifest.json`
+- **The manuscript in `book/` stays private.** It is paraphrased into question-and-answer
+  rows by the local teacher model on dhilipsiva's machine, and none of its text enters
+  this repository, her records, or the model card. A recitation test must pass before
+  any upload.
+- The training, export and page work lives in the dhilipsiva.dev repository
+  (`finetune/`, `slm-wasm/`, `static/play/`).
+- When her memory changes in a way she should know, the model is retrained.
+
 ## Hooks
 
 A prompt that addresses her is answered through the session's own model only where the

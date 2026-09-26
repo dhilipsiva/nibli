@@ -47,6 +47,9 @@ pub const USAGE: &str = "lucy — a persistent identity whose memory is nibli te
   lucy talk \"MESSAGE\" [--model M] [--about THING]... [--markdown]
   lucy task WORDS...                 answer as Lucy through a local Ollama model and record it
                                      (task takes the rest of the line unquoted)
+  lucy dataset --home DIR --out DIR  export my public memory for fine-tuning: knowledge,
+                                     engine-checked probes, system prompt, manifest; refuses
+                                     a folder that holds any private file
   lucy audit                         list every formal memory line with its compile status
   lucy forget FILE:LINE              comment a line out of memory.nibli or private.nibli
   lucy address \"TEXT\"                exit 0 if TEXT starts by addressing Lucy, else 1
@@ -75,6 +78,9 @@ pub fn run(args: &[String], stdin: &str, env_override: Option<Env>) -> Outcome {
         "version" | "--version" | "-V" => {
             return text(0, &format!("lucy {}\n", env!("CARGO_PKG_VERSION")));
         }
+        // Takes its folder only from --home: the process's own memory folder,
+        // which holds private files, is never resolved for an export.
+        "dataset" => return cmd_dataset(&args[1..]),
         _ => {}
     }
     let env = match env_override {
@@ -180,6 +186,8 @@ const VALUE_FLAGS: &[&str] = &[
     "--kind",
     "--from",
     "--text",
+    "--home",
+    "--out",
 ];
 
 fn parse(rest: &[String]) -> Args {
@@ -524,6 +532,31 @@ fn cmd_claim(env: &Env, paths: &Paths, rest: &[String]) -> Outcome {
             kr: Some(args.positional[0].clone()),
             ..Interaction::default()
         }],
+    )
+}
+
+fn cmd_dataset(rest: &[String]) -> Outcome {
+    let args = parse(rest);
+    let (Some(home), Some(out)) = (args.value("--home"), args.value("--out")) else {
+        return harness("dataset takes --home DIR (a fresh public clone's lucy/) and --out DIR");
+    };
+    if !args.positional.is_empty() {
+        return harness("dataset takes no positional arguments");
+    }
+    let export = match crate::dataset::build(std::path::Path::new(home)) {
+        Ok(export) => export,
+        Err(e) => return harness(&e),
+    };
+    if let Err(e) = crate::dataset::write(&export, std::path::Path::new(out)) {
+        return harness(&e);
+    }
+    json_out(
+        0,
+        json!({
+            "ok": true, "command": "dataset", "out": out,
+            "items": export.items.len(), "probes": export.probes.len(),
+            "dropped": export.dropped.len(), "manifest": export.manifest,
+        }),
     )
 }
 

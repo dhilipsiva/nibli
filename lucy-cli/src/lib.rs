@@ -28,6 +28,7 @@ pub mod address;
 pub mod ask;
 pub mod capsule;
 pub mod cli;
+pub mod dataset;
 pub mod env;
 pub mod files;
 pub mod hook;
@@ -42,6 +43,8 @@ pub use cli::{Outcome, run};
 /// `just verify-lucy-pins` against this exact file.
 pub const CONSTITUTION_TEMPLATE: &str = include_str!("../constitution/lucy.nibli");
 
+#[cfg(test)]
+mod dataset_tests;
 #[cfg(test)]
 mod interaction_tests;
 #[cfg(test)]
