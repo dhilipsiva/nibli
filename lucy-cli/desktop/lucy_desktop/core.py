@@ -10,7 +10,7 @@ from pathlib import Path
 from .memory import Memory
 
 # A leading address, never a quotation, code block or incidental mention.
-ADDRESS = re.compile(r'^(?:(?:hey|hi|hello)\s+)?(?:Lucy(?=[\s,:.!?…]|$)|@lucy(?=\s|$)|/lucy(?=\s|$))', re.I)
+ADDRESS = re.compile(r'^(?:(?:hey|hi|hello)\s+Lucy(?=[\s,:.!?…]|$)|Lucy(?=[,:!?…]|\s*$)|@lucy(?=\s|$)|/lucy(?=\s|$))', re.I)
 SLEEP = re.compile(r'^(?:(?:hey|hi|hello)\s+)?(?:lucy[\s,:]*|[@/]lucy\s+)sleep[.!\s]*$', re.I)
 INSTRUCTION = ('You are Lucy D, the same identity carried by Nibli, speaking in the first person. '
                'Use only the supplied memories for remembered facts; say when you do not know. '

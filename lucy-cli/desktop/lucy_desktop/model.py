@@ -36,24 +36,33 @@ def verify_model():
 def chat(messages, cancel, tools):
     if cancel.is_set():
         raise ValueError('Request cancelled')
+    text_messages = [{k: v for k, v in message.items() if k != 'images'} for message in messages]
+    if len(json.dumps(text_messages, ensure_ascii=False).encode()) > 48000:
+        raise ValueError('Local context budget reached. Continue with a shorter message or selected excerpts.')
     verify_model()
-    conn = http.client.HTTPConnection('127.0.0.1', 11434, timeout=600)
+    if cancel.is_set():
+        raise ValueError('Request cancelled')
+    conn = http.client.HTTPConnection('127.0.0.1', 11434, timeout=15)
     finished = threading.Event()
+    transport_socket = None
 
     def interrupt():
         while not finished.wait(0.05):
             if cancel.is_set():
-                if conn.sock:
+                if transport_socket:
                     try:
-                        conn.sock.shutdown(socket.SHUT_RDWR)
+                        transport_socket.shutdown(socket.SHUT_RDWR)
                     except OSError:
                         pass
                 conn.close()
                 return
 
     watcher = threading.Thread(target=interrupt, daemon=True)
-    watcher.start()
     try:
+        conn.connect()
+        transport_socket = conn.sock
+        transport_socket.settimeout(600)
+        watcher.start()
         body = dict(model=MODEL, messages=messages, tools=tools, stream=False,
                     think=False, keep_alive=0, options=dict(num_ctx=CONTEXT, num_predict=2048))
         conn.request('POST', '/api/chat', json.dumps(body), {'Content-Type': 'application/json'})

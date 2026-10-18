@@ -7,7 +7,7 @@
 //! context. They never fail the session: any problem becomes one line of
 //! stdout and exit 0.
 
-use crate::address::addresses_lucy;
+use crate::address::explicit_address;
 use crate::capsule;
 use crate::env::Env;
 use crate::files::{self, Paths};
@@ -28,7 +28,7 @@ already in the conversation KB.\n";
 /// The user-prompt hook. Returns the text to print (empty when not addressed).
 pub fn user_prompt(env: &Env, paths: &Paths, stdin: &str) -> String {
     let prompt = prompt_from(stdin);
-    let addressed = addresses_lucy(&prompt);
+    let addressed = explicit_address(&prompt);
     // Privacy boundary: do not even read the memory directory for other prompts.
     if !addressed {
         return String::new();

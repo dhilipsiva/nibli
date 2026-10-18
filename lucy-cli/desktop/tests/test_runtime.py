@@ -26,7 +26,7 @@ class RuntimeTests(unittest.TestCase):
     def test_inactive_boundary_and_quotations(self):
         for text in ['hello', 'ask Lucy later', '"Lucy, hello"', '> Lucy help', '`Lucy`',
                      '```\nLucy help\n```', '<text>Lucy help</text>', 'Lucky hello', 'Lucyish',
-                     '/lucy-file', '@lucy.example', 'Explain "Lucy, wake"']:
+                     '/lucy-file', '@lucy.example', 'Explain "Lucy, wake"', 'Lucy said hello', 'Lucy is a name']:
             with self.subTest(text=text):
                 self.assertFalse(addressed(text))
                 self.assertFalse(self.prompt(text)['active'])
@@ -161,6 +161,69 @@ class RuntimeTests(unittest.TestCase):
         participant = vscode['contributes']['chatParticipants'][0]
         self.assertTrue(participant['isSticky'])
         self.assertNotIn('disambiguation', participant)
+
+
+    def test_settings_merge_preserves_models_and_credentials(self):
+        from lucy_desktop.install import merge
+        path = self.root / 'settings.json'
+        original = {'model': 'selected-cloud-model', 'env': {'AUTH_PLACEHOLDER': 'fixture-only'},
+                    'hooks': {'Stop': [{'hooks': [{'type': 'command', 'command': 'existing-hook'}]}]}}
+        path.write_text(json.dumps(original))
+        new = {'hooks': {'Stop': [{'hooks': [{'type': 'command', 'command': 'lucy desktop-hook codex'}]}]}}
+        merge(path, new)
+        first = path.read_text()
+        merge(path, new)
+        self.assertEqual(path.read_text(), first)
+        saved = json.loads(first)
+        self.assertEqual(saved['model'], original['model'])
+        self.assertEqual(saved['env'], original['env'])
+        self.assertEqual(len(saved['hooks']['Stop']), 2)
+        self.assertEqual(len(list(self.root.glob('settings.json.lucy-backup-*'))), 1)
+
+    def test_http_transport_is_local_and_unloads(self):
+        import http.server
+        import socketserver
+        import http.client
+        captured = []
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *_):
+                pass
+            def do_GET(self):
+                body = json.dumps({'models': [{'name': model.MODEL, 'digest': model.DIGEST}]}).encode()
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(body)
+            def do_POST(self):
+                body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+                captured.append(body)
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b'{"message":{"role":"assistant","content":"offline fixture"}}')
+        with socketserver.TCPServer(('127.0.0.1', 0), Handler) as server:
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            real = http.client.HTTPConnection
+            def connection(host, port, **kwargs):
+                self.assertEqual((host, port), ('127.0.0.1', 11434))
+                return real('127.0.0.1', server.server_address[1], **kwargs)
+            try:
+                with patch('lucy_desktop.model.http.client.HTTPConnection', side_effect=connection):
+                    result = model.chat([{'role': 'user', 'content': 'fixture'}], threading.Event(), [])
+                self.assertEqual(result['content'], 'offline fixture')
+                self.assertEqual(captured[0]['keep_alive'], 0)
+                self.assertEqual(captured[0]['options']['num_ctx'], 16384)
+                self.assertEqual(captured[0]['model'], model.MODEL)
+            finally:
+                server.shutdown()
+                thread.join()
+
+    def test_closing_one_session_cannot_record_a_late_reply(self):
+        prompt = dict(op='prompt', source='test', session='one', text='Lucy, first', event='turn-1', workspace=str(self.root))
+        self.service.dispatch(prompt)
+        self.service.dispatch(dict(op='close', source='test', session='one'))
+        self.service.dispatch(dict(prompt, text='Lucy, second', event='new'))
+        with self.assertRaises(ValueError):
+            self.service.dispatch(dict(op='record', source='test', session='one', text='late', event='old', turn='turn-1'))
 
 
 if __name__ == '__main__':

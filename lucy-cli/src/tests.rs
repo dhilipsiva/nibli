@@ -812,6 +812,21 @@ fn user_prompt_hook_records_and_prints_the_capsule() {
         !paths.interactions.exists(),
         "inactive prompts must not record"
     );
+    for prompt in [
+        "Lucy said hello",
+        "\"Lucy, hi\"",
+        "> Lucy, hi",
+        "`Lucy, hi`",
+        "Lucy.md",
+    ] {
+        let input = serde_json::json!({"prompt": prompt}).to_string();
+        assert!(
+            lucy_stdin(&env, &["hook", "user-prompt"], &input)
+                .stdout
+                .is_empty()
+        );
+        assert!(!paths.interactions.exists());
+    }
 
     let addressed = lucy_stdin(
         &env,

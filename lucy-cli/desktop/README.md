@@ -8,8 +8,9 @@ commands retain their original behavior; they are explicit publication workflows
 not the desktop archive.
 
 `lucy ui` opens the named Ask Lucy window without inference. Sending there or in
-`lucy chat` invokes Lucy. App hooks accept a leading `Lucy`, `@lucy` or `/lucy`
-address. Activation is per source and conversation; ordinary prompts, quotations
+`lucy chat` invokes Lucy. App hooks accept `Lucy,` (or another address punctuation), a greeting such
+as `Hey Lucy`, `@lucy`, or `/lucy`. Bare subject mentions such as “Lucy said”
+do not wake her. Activation is per source and conversation; ordinary prompts, quotations
 and incidental mentions in inactive conversations do nothing. `Lucy, sleep`,
 close and service shutdown end activation; Stop cancels the current task and
 clears pending approvals. A subsequent message in the same open conversation can
@@ -26,8 +27,11 @@ permission systems and selected models.
 The archive is `~/.local/share/lucy/conversations.sqlite3`, directory mode 0700,
 file mode 0600. Complete visible messages, IDs, sources, channels and capture times
 are retained; hidden reasoning and tool internals are not conversation records.
-Imports may retain original timestamps. The FTS5 index can be rebuilt from the
-canonical message table. Recall is bounded and does not compile the historical
+Imports may retain original timestamps. Use `lucy archive reindex` to rebuild FTS5 from the canonical message table.
+`lucy archive import < messages.json` explicitly imports an array with string
+`id`, `source`, `session`, `role` (user/assistant), `text`, and optional original
+`timestamp`/`channel` metadata. These commands require explicit invocation and
+never start inference. Recall is bounded and does not compile the historical
 archive. Private memory is supplied to a cloud app only after invocation, as the
 user selected. Nothing publishes private records into a public peer automatically.
 Memory roots inside repositories, Nix sources, store paths or symlinks are refused.
@@ -53,8 +57,8 @@ stay in the private runtime directory and disappear at logout.
 `lucy integrations install` adds hooks to existing JSON settings with backups,
 refuses conflicts or invalid JSON, and does not touch model/provider settings.
 It installs the explicit Cursor and Zed skills, VS Code extension and Firefox
-native host registration. Pass `--browser-id ID` after loading the Chrome extension
-to register its native host. The browser extension requests only activeTab,
+native host registration. The shipped public extension key gives Chrome a stable ID, registered by the
+installer. `--browser-id ID` supports a separately built extension. The browser extension requests only activeTab,
 scripting and nativeMessaging; pages are read only when the user clicks an action.
 Firefox persistent extension installation requires signing. Codex hook trust and
 model access in VS Code must be accepted in their own applications.

@@ -34,6 +34,30 @@ const DENY: &[&str] = &[
     "luck", "lucky", "lucid", "lucia", "lucius", "lucite", "lucas", "luca",
 ];
 
+/// Strict invocation boundary for recording hooks. The more permissive
+/// `addresses_lucy` remains available to the legacy diagnostic command.
+pub fn explicit_address(text: &str) -> bool {
+    let lowered = text.trim_start().to_lowercase();
+    for marker in ["@lucy", "/lucy"] {
+        if let Some(rest) = lowered.strip_prefix(marker) {
+            return rest.is_empty() || rest.starts_with(char::is_whitespace);
+        }
+    }
+    for greeting in ["hey", "hi", "hello"] {
+        if let Some(rest) = lowered.strip_prefix(greeting)
+            && rest.starts_with(char::is_whitespace)
+            && let Some(tail) = rest.trim_start().strip_prefix("lucy")
+        {
+            return tail.is_empty()
+                || tail.starts_with(char::is_whitespace)
+                || tail.starts_with([',', ':', '.', '!', '?', '…']);
+        }
+    }
+    lowered
+        .strip_prefix("lucy")
+        .is_some_and(|rest| rest.trim().is_empty() || rest.starts_with([',', ':', '!', '?', '…']))
+}
+
 /// True when `text` starts by addressing Lucy.
 pub fn addresses_lucy(text: &str) -> bool {
     let trimmed = text.trim_start();

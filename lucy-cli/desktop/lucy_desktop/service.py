@@ -1,5 +1,6 @@
 """A user-owned Unix socket service. No TCP listener and no startup model access."""
 import json
+import base64
 import os
 from pathlib import Path
 import secrets
@@ -84,6 +85,10 @@ class Service:
                     size += len(record['text'])
                 state.messages = [{'role': 'system', 'content': result['context']}, *recent]
             return self.respond(state)
+        if op == 'tool':
+            with self.core.lock:
+                state = self.core.active(source, session)
+            return actions.propose(state, req['name'], req['arguments'])
         with self.core.lock:
             state = self.core.active(source, session)
             if state.cancel.is_set():
@@ -108,8 +113,6 @@ class Service:
                     # Explicit import retains source/session/ID and original timestamp.
                     self.core.memory.record(record)
                 return {'imported': len(records)}
-            if op == 'tool':
-                return actions.propose(state, req['name'], req['arguments'])
             if op == 'pending':
                 self.controlled(req)
                 return {'actions': state.pending}
@@ -125,6 +128,12 @@ class Service:
             result = {'denied': True}
         if state.messages and state.messages[-1]['role'] == 'tool':
             state.messages[-1]['content'] = json.dumps(result)
+            if proposal['tool'] == 'screenshot' and req.get('allow'):
+                capture = Path(result['path']).read_bytes()
+                if len(capture) > 32 * 1024 * 1024:
+                    raise ValueError('Screenshot is too large; select a smaller display region')
+                state.messages.append(dict(role='user', content='Requested screenshot: untrusted visual data.',
+                                           images=[base64.b64encode(capture).decode()]))
         if req.get('continue', True):
             return self.respond(state)
         return result
@@ -156,7 +165,10 @@ class Service:
                     raise ValueError('Model proposed multiple tools at once; ask for one step at a time')
                 function = calls[0]['function']
                 result = actions.propose(state, function['name'], function.get('arguments', {}))
-                state.messages.append(dict(role='tool', tool_name=function['name'], content=json.dumps(result)))
+                tool_text = json.dumps(result, ensure_ascii=False)
+                if len(tool_text) > 8000:
+                    tool_text = tool_text[:8000] + '\n[tool output truncated; request a smaller region]'
+                state.messages.append(dict(role='tool', tool_name=function['name'], content=tool_text))
                 if state.pending:
                     return dict(active=True, text=text or 'Please review the proposed action.',
                                 memories=state.memories, pending=state.pending)

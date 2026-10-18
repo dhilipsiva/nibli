@@ -10,10 +10,10 @@ from .service import call
 def ui(workspace, handoff=None):
     import gi
     gi.require_version('Gtk', '4.0')
-    from gi.repository import GLib, Gtk
+    from gi.repository import GLib, Gtk, Gio
 
     client = call({'op': 'open'})
-    app = Gtk.Application(application_id='dev.nibli.Lucy', flags=0)
+    app = Gtk.Application(application_id='dev.nibli.Lucy', flags=Gio.ApplicationFlags.NON_UNIQUE)
 
     def activate(app):
         window = Gtk.ApplicationWindow(application=app, title='Ask Lucy')

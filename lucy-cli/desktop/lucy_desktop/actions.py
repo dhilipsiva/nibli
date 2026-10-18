@@ -1,6 +1,7 @@
 """Workspace tools and explicit action proposals; models cannot approve actions."""
 import difflib
 import os
+import re
 from pathlib import Path
 import secrets
 import signal
@@ -148,7 +149,6 @@ def execute(state, name, args, before=None):
         action = args['action']
         if action == 'list':
             return run(['hyprctl', '-j', 'clients'], state, gui=True)
-        import re
         address = args.get('address', '')
         if not re.fullmatch(r'0x[0-9a-fA-F]+', address) or action not in ('focus', 'close'):
             raise ValueError('Invalid window address/action')
@@ -162,8 +162,18 @@ def execute(state, name, args, before=None):
         return {'path': str(destination), 'monitors': run(['hyprctl', '-j', 'monitors'], state, gui=True)}
     if name == 'gui':
         argv = args['argv']
-        if argv[0] not in ('mousemove', 'click', 'type', 'key'):
-            raise ValueError('Only one mousemove/click/type/key action is supported')
+        valid = False
+        if argv[0] == 'type':
+            valid = len(argv) == 3 and argv[1] == '--' and len(argv[2]) <= 4096
+        elif argv[0] == 'key':
+            valid = 1 < len(argv) <= 65 and all(re.fullmatch(r'[0-9]{1,3}:[01]', item) for item in argv[1:])
+        elif argv[0] == 'click':
+            valid = len(argv) == 2 and bool(re.fullmatch(r'0x[0-9a-fA-F]{1,2}', argv[1]))
+        elif argv[0] == 'mousemove':
+            positions = argv[2:] if len(argv) > 1 and argv[1] == '--absolute' else argv[1:]
+            valid = len(positions) == 2 and all(re.fullmatch(r'-?[0-9]{1,5}', item) for item in positions)
+        if not valid:
+            raise ValueError('Use literal type -- TEXT, numeric key events, one click code, or mousemove [--absolute] X Y')
         result = run(['pkexec', os.environ['LUCY_INPUT_HELPER']], state, gui=True)
         if result['exit_code']:
             raise ValueError('Input helper authentication failed')

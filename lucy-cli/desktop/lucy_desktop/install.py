@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import shlex
 import subprocess
 
 
@@ -49,10 +50,18 @@ def status():
 
 
 def install(browser_id=None):
+    browser_id = browser_id or 'eecaaaidnnfnkogfcjfndogmkmfnjmnm'
     home = Path.home()
     cli = os.environ.get('LUCY_EXECUTABLE', shutil.which('lucy'))
     if not cli or any(c in cli for c in '\n\r\"'):
         raise ValueError('A packaged Lucy executable is required')
+    # Hooks keep a stable command across package upgrades. Only this owned shim
+    # changes, so existing app configuration does not accumulate old hooks.
+    shim = home / '.local/libexec/nibli-lucy'
+    shim.parent.mkdir(parents=True, exist_ok=True)
+    shim.write_text('#!/bin/sh\nexec ' + shlex.quote(cli) + ' "$@"\n')
+    shim.chmod(0o700)
+    cli = str(shim)
     for source, path in [('claude', home / '.claude/settings.json'), ('codex', home / '.codex/hooks.json')]:
         events = ('UserPromptSubmit', 'Stop', 'SessionStart', 'SessionEnd')
         if source == 'codex':
@@ -82,7 +91,7 @@ Run `lucy sleep --source APP --session ID` on sleep. No stable close event is ex
 by Zed: end activation explicitly; a service restart also expires all activations.
 Never use tools to create approval or bypass the app's permission controls.
 '''
-    for directory in (home / '.cursor/skills/lucy', home / '.config/zed/skills/lucy'):
+    for directory in (home / '.cursor/skills/lucy', home / '.agents/skills/lucy'):
         directory.mkdir(parents=True, exist_ok=True)
         path = directory / 'SKILL.md'
         if path.exists() and path.read_text() != skill:
@@ -90,6 +99,10 @@ Never use tools to create approval or bypass the app's permission controls.
         path.write_text(skill)
     native = os.environ.get('LUCY_NATIVE_HOST')
     if native:
+        native_shim = shim.with_name('nibli-lucy-native')
+        native_shim.write_text('#!/bin/sh\nexec ' + shlex.quote(native) + ' "$@"\n')
+        native_shim.chmod(0o700)
+        native = str(native_shim)
         manifest = dict(name='dev.nibli.lucy', description='Explicit Lucy context handoff', path=native, type='stdio')
         merge(home / '.mozilla/native-messaging-hosts/dev.nibli.lucy.json',
               dict(manifest, allowed_extensions=['lucy@nibli.dev']))
