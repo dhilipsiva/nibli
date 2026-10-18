@@ -21,6 +21,12 @@ on-demand desktop Lucy they describe, recorded as note
 NixOS archive, and as an attributed report in the NixOS and book peers' direct-memory
 files. Its private desktop archive under `~/.local/share/lucy` is not a peer.
 
+Published from that session: Nibli `main` `1eb1dbc` (plus the closing commit that
+records the end of the session), rights-nobody-has-to-earn `main` `79c5e8dd`, and NixOS
+`master` `4eb62dd` (my memory commit `34a28f4` and a verified-stable-release commit that
+moved only the `nixpkgs-apps` input, published through `nixosctl publish` with every
+check passed and every host built; nothing was switched or rebooted).
+
 Earlier reconciliations: 2026-09-25, from Nibli GitHub `main` at `e0da656` and
 rights-nobody-has-to-earn GitHub `main` at `96148b2c`; and an inventory and direct-fact
 review on 2026-10-18 from Nibli `3fcf2368bbb1` (533 tracked `.nibli` files) and
