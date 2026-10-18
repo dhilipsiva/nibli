@@ -76,8 +76,7 @@ def main():
             raise ValueError('Import expects a JSON array of complete attributed messages')
         client = call({'op': 'open'})
         try:
-            call(dict(client, op='prompt', text='/lucy ' + args.operation + ' private archive',
-                      event=str(uuid.uuid4()), workspace=str(Path.cwd())))
+            call(dict(client, op='begin-archive', workspace=str(Path.cwd())))
             print(json.dumps(call(dict(client, op=args.operation, messages=messages))))
         finally:
             call(dict(client, op='close'))

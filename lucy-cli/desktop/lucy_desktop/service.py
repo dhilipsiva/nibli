@@ -10,7 +10,7 @@ import struct
 import threading
 
 from . import actions, model
-from .core import Core
+from .core import Core, Session
 
 MAX_FRAME = 8 * 1024 * 1024
 
@@ -57,6 +57,12 @@ class Service:
                 return {'active': [dict(source=s.source, session=s.id, turn=s.turn, pending=len(s.pending), busy=s.busy)
                                    for s in self.core.sessions.values()], 'model': model.MODEL}
         source, session = req['source'], req['session']
+        if op == 'begin-archive':
+            self.controlled(req)
+            workspace = str(Path(req['workspace']).resolve(strict=True))
+            with self.core.lock:
+                self.core.sessions[(source, session)] = Session(source, session, workspace)
+            return {'active': True}
         if op in ('close', 'cancel', 'sleep', 'start'):
             if op == 'close':
                 self.clients.pop((source, session), None)
