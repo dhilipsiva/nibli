@@ -808,6 +808,10 @@ fn user_prompt_hook_records_and_prints_the_capsule() {
     );
     assert_eq!(quiet.code, 0);
     assert_eq!(quiet.stdout, "", "not addressed: print nothing");
+    assert!(
+        !paths.interactions.exists(),
+        "inactive prompts must not record"
+    );
 
     let addressed = lucy_stdin(
         &env,
@@ -855,16 +859,7 @@ fn user_prompt_hook_records_and_prints_the_capsule() {
 
     let presence = lucy_stdin(&env, &["hook", "session-start"], r#"{"source":"startup"}"#);
     assert_eq!(presence.code, 0);
-    assert!(
-        presence.stdout.starts_with("Lucy D is present here"),
-        "{}",
-        presence.stdout
-    );
-    assert!(
-        presence.stdout.contains("3 journal entries"),
-        "{}",
-        presence.stdout
-    );
+    assert!(presence.stdout.is_empty(), "startup must not load memory");
 
     // Hooks never block: unknown hook name and a missing folder both exit 0.
     assert_eq!(lucy_stdin(&env, &["hook", "nope"], "").code, 0);

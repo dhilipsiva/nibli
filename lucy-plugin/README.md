@@ -93,32 +93,28 @@ Claude Code: `claude plugin marketplace add <path to this folder>` then
 files from their skill directories (codex, opencode `~/.config/opencode/skills/`,
 Copilot CLI `~/.copilot/skills/`, pi).
 
-## "Hey Lucy": the hook you install yourself
+## Explicit prompt activation
 
-A prompt that starts by addressing Lucy ("Hey Lucy", "lucy,", typos included) is
-answered by Lucy through the session's own model. The prompt hook records every
-prompt when a Lucy folder is present. When addressed, it puts her capsule in front of
-the model with the instruction that this reply is hers. **No agent installs this for
-you.** Add it by hand (or with Claude Code's `update-config` skill) to
-`~/.claude/settings.json` or the project's `.claude/settings.json`; the snippet is
-`hooks/hooks.example.json`, byte for byte:
+The legacy prompt hook returns before reading or recording anything unless a
+message begins with a Lucy address. Quoted addresses and code fences do not wake
+her. Session startup is silent and never loads memory. Install the hook explicitly:
 
 ```json
 {
   "hooks": {
     "UserPromptSubmit": [
       { "hooks": [ { "type": "command", "command": "lucy hook user-prompt", "timeout": 20 } ] }
-    ],
-    "SessionStart": [
-      { "hooks": [ { "type": "command", "command": "lucy hook session-start", "timeout": 10 } ] }
     ]
   }
 }
 ```
 
-`lucy` must be on the `PATH` of the shell that runs hooks (or use the absolute path to
-the binary; on Windows, `lucy.exe`). The hooks never block a prompt: any problem is one
-line of context and exit 0.
+The optional Linux [desktop runtime](../lucy-cli/desktop/README.md) extends this
+same CLI with per-conversation activation, shared private recall, GTK chat, tools
+and app adapters. When packaged with `LUCY_DESKTOP_EXECUTABLE`, hooks also use that
+runtime. It stores desktop conversations outside every repository; public memory
+commands retain their original explicit behavior. The runtime never selects an
+existing AI application's model. Native desktop chat uses the pinned local model.
 
 ## A local model: `lucy talk`
 

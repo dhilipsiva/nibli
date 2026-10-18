@@ -29,6 +29,10 @@ already in the conversation KB.\n";
 pub fn user_prompt(env: &Env, paths: &Paths, stdin: &str) -> String {
     let prompt = prompt_from(stdin);
     let addressed = addresses_lucy(&prompt);
+    // Privacy boundary: do not even read the memory directory for other prompts.
+    if !addressed {
+        return String::new();
+    }
     if files::read_optional(&paths.constitution)
         .ok()
         .flatten()
@@ -80,33 +84,8 @@ pub fn user_prompt(env: &Env, paths: &Paths, stdin: &str) -> String {
 }
 
 /// The session-start hook: one line of presence, never the capsule.
-pub fn session_start(env: &Env, paths: &Paths) -> String {
-    if files::read_optional(&paths.constitution)
-        .ok()
-        .flatten()
-        .is_none()
-    {
-        return String::new();
-    }
-    match load::load(env, paths) {
-        Ok(loaded) => {
-            let statements: usize = loaded.memory.iter().filter(|m| m.ok).count();
-            let last = loaded
-                .journal
-                .last()
-                .map(|e| e.date.clone())
-                .unwrap_or_else(|| "never".to_string());
-            format!(
-                "Lucy D is present here ({}): {} memory statements, {} journal entries (last {}), {} lines needing attention. Address her with \"Hey Lucy\".\n",
-                env.home.display(),
-                statements,
-                loaded.journal.len(),
-                last,
-                loaded.failures.len()
-            )
-        }
-        Err(e) => format!("Lucy D could not be loaded: {e}\n"),
-    }
+pub fn session_start(_env: &Env, _paths: &Paths) -> String {
+    String::new()
 }
 
 /// The prompt text from the hook's JSON, or the raw stdin when it is not JSON

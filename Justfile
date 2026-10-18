@@ -1146,6 +1146,7 @@ release-check:
 # end-to-end run in a temporary memory folder)
 test-lucy:
     cargo test -p lucy-cli
+    PYTHONPATH=lucy-cli/desktop python3 -m unittest discover -s lucy-cli/desktop/tests -v
 
 # Content pins over Lucy's live constitution template, plus the counterfactual
 # with the standing line removed (fixture generated, never copied).

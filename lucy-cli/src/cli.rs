@@ -55,6 +55,14 @@ pub const USAGE: &str = "lucy — a persistent identity whose memory is nibli te
   lucy address \"TEXT\"                exit 0 if TEXT starts by addressing Lucy, else 1
   lucy hook user-prompt              Claude Code UserPromptSubmit hook (JSON on stdin)
   lucy hook session-start            Claude Code SessionStart hook
+  lucy chat                         local desktop conversation (optional desktop runtime)
+  lucy ui                           native GTK chat; opening does not invoke a model
+  lucy sleep --source APP --session ID
+  lucy integrations status          adapter inventory and trust/recording limitations
+  lucy memory                       private activated-conversation tools
+  lucy mcp                          session-bound private memory MCP transport
+  lucy setup-model                  explicit download and pinned digest verification
+  lucy archive import|reindex       explicit private JSON import or search-index rebuild
 
 Memory folder: LUCY_HOME, else a lucy/ folder in this directory or a parent, else ~/.lucy.
 Environment: LUCY_HOME, LUCY_HOST, LUCY_CAPSULE_MAX_BYTES, LUCY_MAX_CHAIN_DEPTH,

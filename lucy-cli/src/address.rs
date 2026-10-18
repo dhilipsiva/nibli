@@ -37,7 +37,7 @@ const DENY: &[&str] = &[
 /// True when `text` starts by addressing Lucy.
 pub fn addresses_lucy(text: &str) -> bool {
     let trimmed = text.trim_start();
-    if trimmed.starts_with("```") {
+    if trimmed.starts_with(['`', '\'', '"', '>', '<', '“', '‘', '#', '[']) {
         return false;
     }
     let lowered = trimmed.to_lowercase();
