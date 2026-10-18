@@ -16,6 +16,12 @@ def hook(source, data):
         return {}
     event = data.get('hook_event_name', '')
     base = dict(source=source, session=session)
+    if source == 'cursor' and event == 'postToolUse':
+        try:
+            result = call(dict(base, op='context'))
+        except ValueError:
+            return {}
+        return {'additional_context': result['context'] + '\nLucy conversation: ' + json.dumps(base)}
     if event in ('SessionStart', 'sessionStart', 'SessionEnd', 'sessionEnd', 'Interrupt'):
         call(dict(base, op='cancel' if event == 'Interrupt' else 'close'))
         return {}

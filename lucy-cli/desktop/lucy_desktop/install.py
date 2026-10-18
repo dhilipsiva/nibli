@@ -71,15 +71,18 @@ def install(browser_id=None):
         merge(path, {'hooks': hooks})
     merge(home / '.cursor/hooks.json', {'version': 1, 'hooks': {
         e: [{'command': f'"{cli}" desktop-hook cursor'}]
-        for e in ('beforeSubmitPrompt', 'afterAgentResponse', 'sessionStart', 'sessionEnd')}})
+        for e in ('beforeSubmitPrompt', 'afterAgentResponse', 'postToolUse', 'sessionStart', 'sessionEnd')}})
     skill = '''---
 name: lucy
 description: Explicit shared Lucy memory for this conversation.
 disable-model-invocation: true
 ---
 The user invoked Lucy. Keep the app's selected model and permission controls.
-Use a fresh conversation UUID if the app supplies none. In Cursor, use the native
-conversation_id from the current hook/session. Never reuse an ID from another thread.
+In Cursor first run `lucy integrations status`. The postToolUse hook then supplies
+the already activated conversation's memory and native conversation ID through
+Cursor's documented additional_context field. Do not guess an ID or select one
+from another thread. If context is missing, report that adapter enrollment is needed.
+In Zed use source `zed` and a fresh UUID for this explicitly invoked conversation.
 Submit the exact user message through `lucy memory prompt --source APP --session ID
 --event UNIQUE_ID --stdin`. Start it with /lucy only when the user actually typed that.
 If the hook already recorded the prompt, use `lucy memory recall --source APP

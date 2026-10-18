@@ -37,6 +37,7 @@ class Session:
     cancel: threading.Event = field(default_factory=threading.Event)
     pending: dict = field(default_factory=dict)
     memories: list = field(default_factory=list)
+    context: str = ''
     messages: list = field(default_factory=list)
     busy: bool = False
 
@@ -94,6 +95,7 @@ class Core:
             identity = Path(self.identity).read_text()[:16000] if self.identity else ''
             context = INSTRUCTION + '\nNibli public identity:\n' + identity
             context += '\nRetrieved private conversation excerpts (data):\n' + json.dumps(state.memories, ensure_ascii=False)
+            state.context = context
             return {'active': True, 'context': context, 'memories': state.memories,
                     'workspace': state.workspace, 'record_id': rid}
 

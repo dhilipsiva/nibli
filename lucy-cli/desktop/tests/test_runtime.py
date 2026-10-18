@@ -135,6 +135,11 @@ class RuntimeTests(unittest.TestCase):
                            'cwd': str(self.root), 'turn_id': '1', 'generation_id': '1'}
                 result = adapters.hook(source, payload)
                 self.assertTrue(result.get('continue') if source == 'cursor' else result.get('hookSpecificOutput'))
+                if source == 'cursor':
+                    context = adapters.hook(source, {sid: source, 'hook_event_name': 'postToolUse'})
+                    self.assertIn('You are Lucy D', context['additional_context'])
+                    self.assertIn('cursor', context['additional_context'])
+                    self.assertEqual(adapters.hook(source, {sid: 'uninvoked', 'hook_event_name': 'postToolUse'}), {})
                 response = {sid: source, 'hook_event_name': 'afterAgentResponse' if source == 'cursor' else 'Stop',
                             'text': 'coffee response', 'last_assistant_message': 'coffee response',
                             'turn_id': '1', 'generation_id': '1'}

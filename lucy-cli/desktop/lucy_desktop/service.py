@@ -99,6 +99,8 @@ class Service:
             state = self.core.active(source, session)
             if state.cancel.is_set():
                 raise ValueError('Request cancelled')
+            if op == 'context':
+                return {'context': state.context, 'memories': state.memories}
             if op == 'record':
                 if req.get('turn', state.turn) != state.turn:
                     raise ValueError('Response belongs to an earlier or cancelled turn')

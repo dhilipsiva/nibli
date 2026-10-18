@@ -66,7 +66,9 @@ model access in VS Code must be accepted in their own applications.
 Recording capabilities are deliberately narrower than complete app transcripts:
 Claude/Codex hooks expose submitted prompts and final Stop messages; commentary
 needs explicit `lucy memory record`. Cursor exposes afterAgentResponse text but its
-submission hook cannot inject context, so use the explicit skill and recall tool.
+submission hook cannot inject context. Its explicit skill runs a harmless status
+command; the documented postToolUse hook then supplies bounded context and the
+native conversation ID, only for the already activated conversation.
 Claude supplies no stable prompt event ID: repeated hook deliveries cannot be
 distinguished from repeated intentional prompts. Other supplied native event IDs
 are idempotent; changed content with the same ID is rejected. No historical
