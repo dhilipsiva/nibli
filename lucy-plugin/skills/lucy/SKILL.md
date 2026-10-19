@@ -47,7 +47,7 @@ legacy status; they are not reconstructed verbatim messages.
 
 | command | effect |
 |---|---|
-| `lucy wake [--markdown]` | load everything; the capsule (constitution, journal newest first, memory, lines needing attention) |
+| `lucy wake [--markdown]` | load her memory; the capsule (constitution, journal newest first, memory, lines needing attention). The conversation archives are read, not compiled |
 | `lucy record --json` | exact message or batch from structured stdin; metadata lives in the same KB |
 | `lucy claim "KR" --from ID [--decision]` | interpreted claim/decision, quoted and attributed to its source |
 | `lucy transcript [--id ID] [--session ID]` | complete decoded records, independent of capsule truncation |
@@ -56,6 +56,6 @@ legacy status; they are not reconstructed verbatim messages.
 | `lucy about THING [--markdown]` | everything she holds about a thing: tagged and matching journal entries, formal lines, git history |
 | `lucy history THING [--markdown]` | the git log of a path or term merged with her own record, newest first |
 | `lucy talk "MESSAGE" [--model M] [--about THING]` | answer as Lucy through a local Ollama model; records both sides |
-| `lucy check` / `lucy audit` | which lines compile, by file and line |
+| `lucy check` / `lucy audit` | which lines compile, by file and line; these compile the conversation archives too, which takes minutes on a large one |
 | `lucy forget FILE:LINE` | comment a formal line out (the user can undo it in the file) |
 | `lucy address "TEXT"` | exit 0 when TEXT starts by addressing Lucy |

@@ -29,7 +29,10 @@ here first.
   standing line removed); the plugin under `lucy-plugin/` is checked by
   `verify-lucy-plugin`; her memory in this repository (`lucy/`) is checked by
   `check-lucy-memory`. Nothing is signed or encrypted, by decision: she is not
-  sentient, and her owner audits and edits her freely.
+  sentient, and her owner audits and edits her freely. The conversation archives
+  are read on every load but compiled into the engine only by `check`, `audit`
+  and the combined-KB `ask` (`load::Archives`, 2026-10-19), so `wake` and the
+  hooks stay fast as her record grows.
 
 ### Changed
 

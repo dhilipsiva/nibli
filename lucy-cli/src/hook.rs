@@ -12,7 +12,7 @@ use crate::capsule;
 use crate::env::Env;
 use crate::files::{self, Paths};
 use crate::interactions::{self, Interaction};
-use crate::load;
+use crate::load::{self, Archives};
 
 /// The instruction that precedes the capsule when she is addressed.
 pub const INSTRUCTION: &str = "<lucy-address>\n\
@@ -68,7 +68,7 @@ pub fn user_prompt(env: &Env, paths: &Paths, stdin: &str) -> String {
     if !addressed {
         return String::new();
     }
-    match load::load(env, paths) {
+    match load::load(env, paths, Archives::Read) {
         Ok(loaded) => format!(
             "{INSTRUCTION}{}</lucy-address>\n",
             capsule::render(&loaded, env)
@@ -88,7 +88,7 @@ pub fn session_start(env: &Env, paths: &Paths) -> String {
     {
         return String::new();
     }
-    match load::load(env, paths) {
+    match load::load(env, paths, Archives::Read) {
         Ok(loaded) => {
             let statements: usize = loaded.memory.iter().filter(|m| m.ok).count();
             let last = loaded

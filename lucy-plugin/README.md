@@ -76,6 +76,14 @@ facts are excluded. Default `ask` queries the combined KB; its known constitutio
 performance issue grows with the number of records (see the Lucy section in
 `TODO.md`). `transcript` retrieves exact records without inference.
 
+The archives are compiled into the engine only by the commands that need them
+there: `check`, `audit` and the default `ask`. `wake`, the hooks, `talk`, `about`
+and `history` read them (every record parsed and checked against its index facts)
+without asserting a statement, because asserting the archive is the one cost that
+grows with every recorded message: minutes at a few thousand statements, against
+well under a second to read them. The capsule says so in its `files:` line and
+under `Needs attention`; `lucy check` is the verification.
+
 New prose `remember` calls write notes to the KB. The journal in `wake` and `about`
 is a readable projection with record ids and kinds. Capsule truncation never
 removes records. Imported Markdown entries retain the `legacy-journal` kind and

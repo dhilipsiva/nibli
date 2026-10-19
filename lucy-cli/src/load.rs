@@ -5,7 +5,10 @@
 //! `private.nibli` when present. Every statement is compiled on its own; a
 //! line that fails is reported with its file and line and skipped, so one bad
 //! line never hides the rest of what she knows. Conversation archives are
-//! compiled too; the readable journal is a projection of their exact records.
+//! always read (every record parsed and checked against its index facts) for
+//! the journal, a projection of their exact records, but compiled into the
+//! engine only when the caller asks ([`Archives::Compiled`]): asserting them
+//! is the one cost that grows with every recorded message.
 
 use std::path::Path;
 
@@ -28,6 +31,30 @@ pub const STANDING_QUERIES: &[&str] = &[
     "entitled(Lucy, event { remember() }).",
 ];
 
+/// Whether the conversation archives are compiled into the engine or only
+/// read. Reading parses every record and checks it against its index facts,
+/// which is all the capsule, the hooks, `talk`, `about` and `history` need.
+/// Asserting the archive's statements is what grows with every recorded
+/// message (minutes at a few thousand statements, against well under a second
+/// to read them), so only `check`, `audit` and `ask` over the combined KB pay it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Archives {
+    /// Parsed and index-checked for the journal; no statement asserted.
+    Read,
+    /// Every statement asserted, failures reported by file and line.
+    Compiled,
+}
+
+impl Archives {
+    /// The word reported in JSON output.
+    pub fn label(self) -> &'static str {
+        match self {
+            Archives::Read => "read",
+            Archives::Compiled => "compiled",
+        }
+    }
+}
+
 /// A line that did not compile.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LineFailure {
@@ -48,10 +75,15 @@ pub struct FileCount {
     pub file: String,
     /// Whether the file exists.
     pub present: bool,
+    /// KR statements in the file, compiled or not.
+    pub statements: usize,
     /// Statements that compiled.
     pub asserted: usize,
     /// Statements that did not.
     pub failed: usize,
+    /// Whether the statements were compiled into the engine; an archive that
+    /// was only read reports its statements with none asserted.
+    pub compiled: bool,
 }
 
 /// One formal memory line, with its compile status.
@@ -89,11 +121,14 @@ pub struct Loaded {
     pub standing_lines: Vec<String>,
     /// The constitution's statements as written, in order.
     pub constitution_lines: Vec<String>,
+    /// Whether the conversation archives were compiled or only read.
+    pub archives: Archives,
 }
 
 /// Loads the folder. Fails only when there is no constitution (no memory
-/// folder at all); a bad line is a report, not a failure.
-pub fn load(env: &Env, paths: &Paths) -> Result<Loaded, String> {
+/// folder at all) or a conversation archive disagrees with its own records;
+/// a bad line is a report, not a failure.
+pub fn load(env: &Env, paths: &Paths, archives: Archives) -> Result<Loaded, String> {
     let constitution = files::read_optional(&paths.constitution)?
         .ok_or_else(|| format!("no memory at {}: run `lucy init`", env.home.display()))?;
     let engine = NibliEngine::new();
@@ -118,6 +153,7 @@ pub fn load(env: &Env, paths: &Paths) -> Result<Loaded, String> {
             .into_iter()
             .map(|(_, s)| s)
             .collect(),
+        archives,
     };
     load_file(
         &mut loaded,
@@ -151,8 +187,10 @@ pub fn load(env: &Env, paths: &Paths) -> Result<Loaded, String> {
             None => loaded.counts.push(FileCount {
                 file: short_name(path),
                 present: false,
+                statements: 0,
                 asserted: 0,
                 failed: 0,
+                compiled: false,
             }),
         }
     }
@@ -161,11 +199,20 @@ pub fn load(env: &Env, paths: &Paths) -> Result<Loaded, String> {
         (&paths.interactions, false),
         (&paths.private_interactions, true),
     ] {
-        let entries = interactions::read(paths, private)?;
+        conversations.extend(interactions::read(paths, private)?);
         if let Some(text) = files::read_optional(path)? {
-            load_file(&mut loaded, path, &text, true, private);
+            match archives {
+                Archives::Compiled => load_file(&mut loaded, path, &text, true, private),
+                Archives::Read => loaded.counts.push(FileCount {
+                    file: short_name(path),
+                    present: true,
+                    statements: files::kr_lines(&text).len(),
+                    asserted: 0,
+                    failed: 0,
+                    compiled: false,
+                }),
+            }
         }
-        conversations.extend(entries);
     }
     conversations.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
     loaded
@@ -205,7 +252,9 @@ fn load_file(loaded: &mut Loaded, path: &Path, text: &str, is_memory: bool, priv
     loaded.counts.push(FileCount {
         file,
         present: true,
+        statements: asserted + failed,
         asserted,
         failed,
+        compiled: true,
     });
 }

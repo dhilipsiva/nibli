@@ -11,6 +11,11 @@ use crate::load::Loaded;
 /// How many formal memory lines the capsule shows at most.
 pub const MEMORY_LINES_SHOWN: usize = 40;
 
+/// The attention line printed when the conversation archives were read, not
+/// compiled (see [`crate::load::Archives`]).
+pub const ARCHIVES_READ_NOTE: &str =
+    "- the conversation archives were read, not compiled: `lucy check` compiles them\n";
+
 /// Renders the capsule.
 pub fn render(loaded: &Loaded, env: &Env) -> String {
     let mut head = String::new();
@@ -23,6 +28,11 @@ pub fn render(loaded: &Loaded, env: &Env) -> String {
         .map(|c| {
             if !c.present {
                 format!("{} absent", c.file)
+            } else if !c.compiled {
+                format!(
+                    "{} {} statements (read, not compiled)",
+                    c.file, c.statements
+                )
             } else if c.failed > 0 {
                 format!(
                     "{} {} statements ({} failing)",
@@ -70,8 +80,13 @@ pub fn render(loaded: &Loaded, env: &Env) -> String {
     }
 
     let mut attention = String::from("\n## Needs attention\n");
+    let archives_read = loaded.counts.iter().any(|c| c.present && !c.compiled);
     if loaded.failures.is_empty() {
-        attention.push_str("- nothing; every line compiles\n");
+        attention.push_str(if archives_read {
+            "- nothing; the constitution and memory compile\n"
+        } else {
+            "- nothing; every line compiles\n"
+        });
     } else {
         for f in &loaded.failures {
             attention.push_str(&format!(
@@ -79,6 +94,9 @@ pub fn render(loaded: &Loaded, env: &Env) -> String {
                 f.file, f.line, f.text, f.error
             ));
         }
+    }
+    if archives_read {
+        attention.push_str(ARCHIVES_READ_NOTE);
     }
 
     let fixed_len = head.len() + constitution.len() + attention.len();

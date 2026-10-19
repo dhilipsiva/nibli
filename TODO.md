@@ -380,6 +380,15 @@ Blocked followers:
   Lucy's capsule sidesteps it (standing lines computed before the memory loads); user
   `ask`s still pay it. Hypothesis to check first: universal rules with abstraction heads
   and body variables unbound by any indexed fact enumerate the whole domain per query.
+- **`wake` paid the same cost by asserting the conversation archive (measured 2026-10-19,
+  fixed the same day).** On the Windows desktop, a release `lucy wake --markdown` over
+  `lucy/interactions.nibli` at 5,830 statements (758 records) took 7 m 38 s; with
+  `LUCY_MATERIALIZE=0` at 6,061 statements it took 6 m 18 s, so materialisation is not
+  the cost either; `lucy transcript --markdown` reads and index-checks the same archive
+  in 0.07 s and `lucy record` appends in 0.08 s. Since then `load::Archives` compiles the
+  archives only for `check`, `audit` and the combined-KB `ask`; `wake`, the hooks,
+  `talk`, `about`, `history`, `init` and `remember --kr` read them. The engine finding
+  above still stands for those three commands and for `check-lucy-memory` in `ci`.
 - **Deferred, wanted later:** code-browsing tools for LLMs in `lucy` (`code tree | outline
   <file> | find <symbol> | grep <pattern>`, deterministic and token-cheap) plus her own
   summaries of code as tagged memories; the browser page (`lucy-wasm`: two editors over

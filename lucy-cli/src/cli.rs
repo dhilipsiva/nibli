@@ -9,6 +9,7 @@ use serde_json::{Value, json};
 use crate::env::Env;
 use crate::files::{self, Paths, short_name};
 use crate::interactions::{Interaction, Kind};
+use crate::load::Archives;
 use crate::{CONSTITUTION_TEMPLATE, address, ask, capsule, hook, interactions, load, talk, topics};
 
 /// What a command produced.
@@ -26,8 +27,10 @@ pub struct Outcome {
 pub const USAGE: &str = "lucy — a persistent identity whose memory is nibli text
 
   lucy init [--name NAME] [--here]   create the memory folder (--here: ./lucy in this directory)
-  lucy check                         compile every line; list the ones that fail (exit 1 if any)
-  lucy wake [--markdown]             load everything and print the capsule
+  lucy check                         compile every line, conversation archives included; list
+                                     the ones that fail (exit 1 if any)
+  lucy wake [--markdown]             load her memory and print the capsule; the conversation
+                                     archives are read, not compiled
   lucy remember \"TEXT\" [--kr] [--private] [--source WHO] [--about THING]...
                                      append a note to the conversation KB, or with --kr a
                                      nibli statement to memory.nibli (checked first)
@@ -275,7 +278,7 @@ fn cmd_init(env: &Env, rest: &[String]) -> Outcome {
         }
         created.push(short_name(path));
     }
-    match load::load(env, paths) {
+    match load::load(env, paths, Archives::Read) {
         Ok(loaded) if loaded.failures.is_empty() && loaded.standing => json_out(
             0,
             json!({ "ok": true, "command": "init", "home": env.home.display().to_string(), "created": created, "existing": existing, "standing": true }),
@@ -308,13 +311,13 @@ fn counts_json(loaded: &load::Loaded) -> Value {
         loaded
             .counts
             .iter()
-            .map(|c| json!({ "file": c.file, "present": c.present, "asserted": c.asserted, "failed": c.failed }))
+            .map(|c| json!({ "file": c.file, "present": c.present, "statements": c.statements, "asserted": c.asserted, "failed": c.failed, "compiled": c.compiled }))
             .collect(),
     )
 }
 
 fn cmd_check(env: &Env, paths: &Paths) -> Outcome {
-    let loaded = match load::load(env, paths) {
+    let loaded = match load::load(env, paths, Archives::Compiled) {
         Ok(loaded) => loaded,
         Err(e) => return harness(&e),
     };
@@ -323,6 +326,7 @@ fn cmd_check(env: &Env, paths: &Paths) -> Outcome {
         "ok": ok,
         "command": "check",
         "standing": loaded.standing,
+        "archives": loaded.archives.label(),
         "files": counts_json(&loaded),
         "journal_entries": loaded.journal.len(),
         "failures": failures_json(&loaded),
@@ -332,7 +336,7 @@ fn cmd_check(env: &Env, paths: &Paths) -> Outcome {
 
 fn cmd_wake(env: &Env, paths: &Paths, rest: &[String]) -> Outcome {
     let args = parse(rest);
-    let loaded = match load::load(env, paths) {
+    let loaded = match load::load(env, paths, Archives::Read) {
         Ok(loaded) => loaded,
         Err(e) => return harness(&e),
     };
@@ -346,6 +350,7 @@ fn cmd_wake(env: &Env, paths: &Paths, rest: &[String]) -> Outcome {
             "ok": true,
             "command": "wake",
             "standing": loaded.standing,
+            "archives": loaded.archives.label(),
             "files": counts_json(&loaded),
             "journal_entries": loaded.journal.len(),
             "failures": loaded.failures.len(),
@@ -366,7 +371,7 @@ fn cmd_remember(env: &Env, paths: &Paths, rest: &[String]) -> Outcome {
     let private = args.has("--private");
     let tags = args.values("--about");
     if args.has("--kr") {
-        let loaded = match load::load(env, paths) {
+        let loaded = match load::load(env, paths, Archives::Read) {
             Ok(loaded) => loaded,
             Err(e) => return harness(&e),
         };
@@ -626,7 +631,7 @@ fn cmd_ask(env: &Env, paths: &Paths, rest: &[String]) -> Outcome {
         }
         (engine, 0)
     } else {
-        match load::load(env, paths) {
+        match load::load(env, paths, Archives::Compiled) {
             Ok(loaded) => (loaded.engine, loaded.failures.len()),
             Err(e) => return harness(&e),
         }
@@ -723,7 +728,7 @@ fn cmd_about(env: &Env, paths: &Paths, rest: &[String], history_only: bool) -> O
         .value("--limit")
         .and_then(|v| v.parse::<usize>().ok())
         .unwrap_or(40);
-    let loaded = match load::load(env, paths) {
+    let loaded = match load::load(env, paths, Archives::Read) {
         Ok(loaded) => loaded,
         Err(e) => return harness(&e),
     };
@@ -793,7 +798,7 @@ fn cmd_about(env: &Env, paths: &Paths, rest: &[String], history_only: bool) -> O
 }
 
 fn cmd_audit(env: &Env, paths: &Paths) -> Outcome {
-    let loaded = match load::load(env, paths) {
+    let loaded = match load::load(env, paths, Archives::Compiled) {
         Ok(loaded) => loaded,
         Err(e) => return harness(&e),
     };

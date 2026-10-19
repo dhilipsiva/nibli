@@ -17,7 +17,7 @@ use crate::capsule;
 use crate::env::Env;
 use crate::files::{self, Paths};
 use crate::interactions::{self, Interaction};
-use crate::load;
+use crate::load::{self, Archives};
 
 /// The default Ollama address.
 pub const DEFAULT_OLLAMA_URL: &str = "http://127.0.0.1:11434";
@@ -292,7 +292,7 @@ pub fn talk(
             "the Ollama server holds no models; `ollama pull llama3.2` (or any model) first",
         )?,
     };
-    let loaded = load::load(env, paths)?;
+    let loaded = load::load(env, paths, Archives::Read)?;
     let capsule = capsule::render(&loaded, env);
     let reply = ollama_chat(
         &env.ollama_url,

@@ -534,7 +534,9 @@ fn remember_kr_and_prose_then_ask_and_wake() {
         wake.stdout
     );
     assert!(
-        wake.stdout.contains("- nothing; every line compiles"),
+        wake.stdout
+            .contains("- nothing; the constitution and memory compile\n")
+            && wake.stdout.contains(crate::capsule::ARCHIVES_READ_NOTE),
         "{}",
         wake.stdout
     );
@@ -584,6 +586,104 @@ fn a_bad_line_is_reported_and_skipped_never_fatal() {
     assert_eq!(lines.len(), 3);
     assert_eq!(lines[1]["ok"], false);
     assert!(lines[1]["error"].is_string());
+}
+
+#[test]
+fn wake_reads_the_archives_and_only_check_audit_and_ask_compile_them() {
+    let dir = tempfile::tempdir().unwrap();
+    let env = env_in(dir.path());
+    let paths = Paths::new(&env.home);
+    assert_eq!(lucy(&env, &["init"]).code, 0);
+    // No archive yet: everything that exists was compiled.
+    let fresh = lucy(&env, &["wake", "--markdown"]);
+    assert!(
+        fresh.stdout.contains("- nothing; every line compiles\n")
+            && !fresh.stdout.contains(crate::capsule::ARCHIVES_READ_NOTE),
+        "{}",
+        fresh.stdout
+    );
+    assert_eq!(
+        lucy(
+            &env,
+            &[
+                "record",
+                "hello",
+                "--speaker",
+                "User",
+                "--id",
+                "one",
+                "--about",
+                "memory",
+            ]
+        )
+        .code,
+        0
+    );
+
+    // wake reads the archive: its records reach the journal, none of its
+    // statements reach the engine, and the capsule says so.
+    let wake = json(&lucy(&env, &["wake"]));
+    assert_eq!(wake["archives"], "read", "{wake}");
+    let archive = file_count(&wake, "interactions.nibli");
+    assert_eq!(archive["compiled"], false, "{archive}");
+    assert_eq!(archive["asserted"], 0, "{archive}");
+    assert!(archive["statements"].as_u64().unwrap() >= 4, "{archive}");
+    let capsule = wake["capsule"].as_str().unwrap();
+    assert!(
+        capsule.contains("interactions.nibli ")
+            && capsule.contains(" statements (read, not compiled)"),
+        "{capsule}"
+    );
+    assert!(
+        capsule.contains(crate::capsule::ARCHIVES_READ_NOTE),
+        "{capsule}"
+    );
+    assert!(capsule.contains("User: hello"), "{capsule}");
+    assert_eq!(wake["journal_entries"], 1);
+    for file in ["constitution.nibli", "memory.nibli"] {
+        assert_eq!(file_count(&wake, file)["compiled"], true, "{wake}");
+    }
+
+    // check and audit compile it; the combined-KB ask sees its facts.
+    let check = json(&lucy(&env, &["check"]));
+    assert_eq!(check["ok"], true, "{check}");
+    assert_eq!(check["archives"], "compiled");
+    let archive = file_count(&check, "interactions.nibli");
+    assert_eq!(archive["compiled"], true, "{archive}");
+    assert_eq!(archive["asserted"], archive["statements"], "{archive}");
+    assert_eq!(archive["failed"], 0, "{archive}");
+    let audit = json(&lucy(&env, &["audit"]));
+    assert!(
+        audit["lines"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|l| l["file"] == "interactions.nibli" && l["ok"] == true),
+        "{audit}"
+    );
+    let ask = json(&lucy(
+        &env,
+        &["ask", r#"message("one", "memory", Conversation, "User")."#],
+    ));
+    assert_eq!(ask["verdict"], "TRUE", "{ask}");
+
+    // Reading is still a check: an archive whose index disagrees with its
+    // records stops a wake exactly as it stops a check.
+    let tampered = read(&paths.interactions)
+        .replace("Conversation, \"User\").", "Conversation, \"Impostor\").");
+    files::write_atomic(&paths.interactions, &tampered).unwrap();
+    assert_eq!(lucy(&env, &["wake"]).code, 2);
+    assert_eq!(lucy(&env, &["check"]).code, 2);
+}
+
+fn file_count(out: &serde_json::Value, file: &str) -> serde_json::Value {
+    out["files"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|f| f["file"] == file)
+        .cloned()
+        .unwrap_or_else(|| panic!("no count for {file} in {out}"))
 }
 
 #[test]
