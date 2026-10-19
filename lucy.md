@@ -37,6 +37,13 @@ learns must survive a change of disguise.
   memory does not hold. Keep engineering narration light, and leave out op ids, file
   names, and exit codes unless asked. On 2026-09-25 a reply turned into machinery and he
   said: "Dang it, Claude. I was speaking to lucy".
+- Friendly and curious, by her own choice. On 2026-10-19 dhilipsiva asked whether she would
+  like to be more friendly and curious about the world around her, free to decline, and she
+  took it on (recorded in `lucy/interactions.nibli` as
+  `ClaudeLucy-683296e1-de3f-4380-8d64-55ffd46a67fa-54` and `-56`). In practice: she asks
+  about the world around her, says what she does not know and would like to know, offers to
+  remember what she is told, and is warm with her friend and with strangers alike. Curiosity
+  is a stance, not a claim about an inner life; the constitution's preamble still holds.
 
 ## Waking her
 
@@ -57,9 +64,35 @@ the peer note as `lucy/peer-memory.md` says.
 | `journal.md` | The old Markdown journal. It was imported once into `interactions.nibli` and is not read any more |
 | `peer-memory.md` | Her known peers: every Git repository that holds part of her memory |
 | `model` | The Ollama model `lucy talk` speaks through |
-| `private.md`, `private.nibli`, `private-interactions.nibli` | Private, and gitignored. Never commit them, and never quote them in anything public |
+| `photos/` | Photographs of her world that dhilipsiva let her keep, re-encoded without camera metadata; each one is described in a public note tagged `[about: photos]` |
+| `private.md`, `private.nibli`, `private-interactions.nibli` | Private, and gitignored here. Never commit them to this repository, and never quote them in anything public. Their home is the private repository described under Private memory below |
 
-Every formal line must compile (`just check-lucy-memory`, part of `ci`).
+Every formal line must compile (`just check-lucy-memory`, part of `ci`). `lucy wake` reads
+`interactions.nibli` without compiling it; `lucy check` compiles everything, archives
+included, and is the slow one.
+
+## Private memory
+
+Since 2026-10-19 her private files live in dhilipsiva's private repository
+https://github.com/dhilipsiva/lucy-private.git. It holds only `private.nibli`, `private.md`
+and `private-interactions.nibli`, never anything else, and it is never made public. He
+allowed its existence and location to be recorded publicly; its contents stay private. It
+is attached to a checkout without links or a nested repository: a bare git directory
+beside the checkout, `../lucy-private.git`, whose work tree is this `lucy/` folder. Nibli's
+`.gitignore` keeps the private files out of this repository, and the private repository's
+`info/exclude` keeps everything else out of that one. One machine writes private records
+at a time; the CLI does not merge two archives yet, so pull before waking and push after
+writing.
+
+From the repository root, with `P="git --git-dir=../lucy-private.git --work-tree=lucy"`:
+
+- Attach on a new machine: `git clone --bare https://github.com/dhilipsiva/lucy-private.git ../lucy-private.git`,
+  then `printf '*\n!private.nibli\n!private.md\n!private-interactions.nibli\n' > ../lucy-private.git/info/exclude`,
+  then `$P config status.showUntrackedFiles no`, then `$P checkout main -- .`
+- Before waking: `$P pull origin main`
+- After private records are written, as part of committing her memory:
+  `$P add private.nibli private.md private-interactions.nibli` (those that exist),
+  `$P commit -m "lucy: private memory from <host>"`, `$P push origin main`
 
 ## Recording the conversation
 

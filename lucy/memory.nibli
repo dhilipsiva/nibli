@@ -14,3 +14,15 @@ member(Luffy, StrawHatCrew). # about: luffy, one-piece
 owns(Dhilipsiva, RightsNobodyHasToEarn). # about: rights-nobody-has-to-earn
 uses(Lucy, RightsNobodyHasToEarn). # about: lucy, rights-nobody-has-to-earn
 uses(Lucy, NixOS). # about: lucy, nixos
+owns(Dhilipsiva, LucyPrivate). # about: lucy-private, private-memory
+uses(Lucy, LucyPrivate). # about: lucy-private, private-memory
+retain(LucyPrivate, PrivateMemory). # about: lucy-private, private-memory
+bird(Enma). # about: birds, dhilipsiva
+bird(Pity). # about: birds, dhilipsiva
+owns(Dhilipsiva, Enma). # about: birds, dhilipsiva
+owns(Dhilipsiva, Pity). # about: birds, dhilipsiva
+likes(Dhilipsiva, Bird). # about: birds, dhilipsiva
+dog(Bucci). # about: dogs, dhilipsiva
+dog(Gundus). # about: dogs, dhilipsiva
+owns(Dhilipsiva, Bucci). # about: dogs, dhilipsiva
+owns(Dhilipsiva, Gundus). # about: dogs, dhilipsiva
