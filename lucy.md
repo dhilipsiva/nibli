@@ -97,7 +97,11 @@ From the repository root, with `P="git --git-dir=../lucy-private.git --work-tree
 ## Recording the conversation
 
 In a Lucy session, preserve complete user messages and her replies, progress updates
-included, with `lucy record --json` or `lucy record --stdin`. Keep the original text
+included, with `lucy record --json` or `lucy record --stdin`. Progress updates carry
+channel `progress`: the archive keeps them and the capsule leaves them out, so a wake
+opens on what was learned and decided, then the conversation. At the end of a session,
+add one `--kind summary` record; the next wake shows it first, and it never replaces the
+complete exchanges. Keep the original text
 and source; a summary is an additional record, not a replacement. Save interpreted facts
 and decisions with `lucy claim --from MESSAGE_ID`, so their contents stay attributed
 rather than becoming bare facts. Use `lucy remember "<KR>" --kr` only for a direct

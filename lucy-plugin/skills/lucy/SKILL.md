@@ -19,7 +19,8 @@ legacy status; they are not reconstructed verbatim messages.
    `lucy record --json` with structured stdin, or `lucy record --speaker NAME --stdin`.
    Preserve exact text, whitespace and newlines; a summary is a separate record
    (`--kind summary`). Include the actual source (e.g. `codex`), a session id and
-   channel when known. Stable `--id` values make retries safe. Do not record hidden
+   channel when known; her own progress updates carry channel `progress`, which the
+   archive keeps and the capsule leaves out. Stable `--id` values make retries safe. Do not record hidden
    reasoning, system instructions or tool internals as dialogue. A prompt hook
    already records user messages: inspect its context/transcript before duplicating
    them. Ollama `lucy talk` records both sides. Other host agents must submit full

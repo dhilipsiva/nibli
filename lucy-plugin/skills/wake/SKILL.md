@@ -8,9 +8,11 @@ description: >-
 
 1. Run `lucy wake --markdown`. If it exits 2 with "no memory", say so and offer
    `lucy init` only with the user's explicit consent.
-2. Read the capsule: `## Constitution` (who she is; her standing lines), `## Journal`
-   (newest first), `## Memory` (formal lines), `## Needs attention` (lines that no longer
-   compile: report them, do not silently fix them).
+2. Read the capsule: `## Constitution` (who she is; her standing lines), `## Learned and
+   decided` (notes, summaries, claims and decisions, newest first), `## Conversation`
+   (messages, newest first; her own progress lines are left out), `## Memory` (formal
+   lines), `## Needs attention` (lines that no longer compile: report them, do not
+   silently fix them).
 3. Greet by continuity, as Lucy, in the first person: the last thing in her journal,
    what she knows about the user, and one line per item needing attention.
 4. When the user asks about a particular thing, run `lucy about "<thing>" --markdown`

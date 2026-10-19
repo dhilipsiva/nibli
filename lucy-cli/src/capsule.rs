@@ -1,15 +1,24 @@
 //! The capsule: what she knows, rendered for whatever model reads it.
 //!
 //! Deterministic for the same files (no clock), and bounded: the header, the
-//! constitution and the lines that need attention are always printed; the
-//! journal (most recent first) and the formal memory (most recent first) are
-//! cut to the byte budget with a note saying how much was left out.
+//! constitution and the lines that need attention are always printed; what
+//! she learned and decided (notes, summaries, claims, decisions and old
+//! journal entries), then the conversation, then the formal memory, each most
+//! recent first, are cut to the byte budget with a note saying how much was
+//! left out. Her own progress narration (channel `progress`) stays in the
+//! archive and out of the capsule: a wake opens on what was learned, not on
+//! what was narrated.
 
 use crate::env::Env;
+use crate::files::JournalEntry;
 use crate::load::Loaded;
 
 /// How many formal memory lines the capsule shows at most.
 pub const MEMORY_LINES_SHOWN: usize = 40;
+
+/// The channel of her own progress narration: kept in the archive, left out
+/// of the capsule.
+pub const PROGRESS_CHANNEL: &str = "progress";
 
 /// The attention line printed when the conversation archives were read, not
 /// compiled (see [`crate::load::Archives`]).
@@ -102,18 +111,27 @@ pub fn render(loaded: &Loaded, env: &Env) -> String {
     let fixed_len = head.len() + constitution.len() + attention.len();
     let budget = env.capsule_max_bytes.saturating_sub(fixed_len);
 
-    let journal_lines: Vec<String> = loaded
+    let line_of = |e: &JournalEntry| {
+        let text = e.text.replace('\n', "\n  ");
+        if e.private {
+            format!("- {} {} (private): {}\n", e.date, e.host, text)
+        } else {
+            format!("- {} {}: {}\n", e.date, e.host, text)
+        }
+    };
+    let learned_lines: Vec<String> = loaded
         .journal
         .iter()
         .rev()
-        .map(|e| {
-            let text = e.text.replace('\n', "\n  ");
-            if e.private {
-                format!("- {} {} (private): {}\n", e.date, e.host, text)
-            } else {
-                format!("- {} {}: {}\n", e.date, e.host, text)
-            }
-        })
+        .filter(|e| is_learned(e))
+        .map(line_of)
+        .collect();
+    let conversation_lines: Vec<String> = loaded
+        .journal
+        .iter()
+        .rev()
+        .filter(|e| !is_learned(e) && e.channel != PROGRESS_CHANNEL)
+        .map(line_of)
         .collect();
     let memory_lines: Vec<String> = loaded
         .memory
@@ -135,37 +153,38 @@ pub fn render(loaded: &Loaded, env: &Env) -> String {
         })
         .collect();
 
-    let journal_title = "\n## Journal (most recent first)\n";
+    let learned_title = "\n## Learned and decided (most recent first)\n";
+    let conversation_title = "\n## Conversation (most recent first)\n";
     let memory_title = "\n## Memory (most recent first)\n";
-    let overhead = journal_title.len() + memory_title.len() + 120;
+    let overhead = learned_title.len() + conversation_title.len() + memory_title.len() + 160;
     let mut remaining = budget.saturating_sub(overhead);
-    // Split the budget: the journal gets what it needs up to two thirds, the
-    // memory gets the rest, then the journal takes any leftover.
-    let journal_cap = remaining * 2 / 3;
-    let (journal_shown, journal_used) = take_within(&journal_lines, journal_cap);
-    remaining = remaining.saturating_sub(journal_used);
-    let (memory_shown, memory_used) = take_within(&memory_lines, remaining);
-    remaining = remaining.saturating_sub(memory_used);
-    let (journal_more, _) = take_within(&journal_lines[journal_shown..], remaining);
-    let journal_shown = journal_shown + journal_more;
+    // Split the budget: what was learned gets up to half, the conversation up
+    // to half of what is left, the memory what it needs; then the learned
+    // section and the conversation take any leftover, in that order.
+    let (learned_shown, used) = take_within(&learned_lines, remaining / 2);
+    remaining = remaining.saturating_sub(used);
+    let (conversation_shown, used) = take_within(&conversation_lines, remaining / 2);
+    remaining = remaining.saturating_sub(used);
+    let (memory_shown, used) = take_within(&memory_lines, remaining);
+    remaining = remaining.saturating_sub(used);
+    let (more, used) = take_within(&learned_lines[learned_shown..], remaining);
+    let learned_shown = learned_shown + more;
+    remaining = remaining.saturating_sub(used);
+    let (more, _) = take_within(&conversation_lines[conversation_shown..], remaining);
+    let conversation_shown = conversation_shown + more;
 
     let mut out = head;
     out.push_str(&constitution);
-    out.push_str(journal_title);
-    if journal_lines.is_empty() {
-        out.push_str("- nothing yet\n");
-    }
-    for line in &journal_lines[..journal_shown] {
-        out.push_str(line);
-    }
-    out.push_str(memory_title);
-    if memory_lines.is_empty() {
-        out.push_str("- nothing yet\n");
-    }
-    for line in &memory_lines[..memory_shown] {
-        out.push_str(line);
-    }
-    let journal_hidden = journal_lines.len() - journal_shown;
+    section(&mut out, learned_title, &learned_lines, learned_shown);
+    section(
+        &mut out,
+        conversation_title,
+        &conversation_lines,
+        conversation_shown,
+    );
+    section(&mut out, memory_title, &memory_lines, memory_shown);
+    let learned_hidden = learned_lines.len() - learned_shown;
+    let conversation_hidden = conversation_lines.len() - conversation_shown;
     let memory_hidden = loaded
         .memory
         .iter()
@@ -177,14 +196,36 @@ pub fn render(loaded: &Loaded, env: &Env) -> String {
         })
         .count()
         - memory_shown;
-    if journal_hidden > 0 || memory_hidden > 0 {
+    if learned_hidden > 0 || conversation_hidden > 0 || memory_hidden > 0 {
         out.push_str(&format!(
-            "\n_{journal_hidden} journal entries and {memory_hidden} memory lines not shown (budget {} bytes; see `lucy audit` and the files)_\n",
+            "\n_{learned_hidden} learned entries, {conversation_hidden} conversation entries and {memory_hidden} memory lines not shown (budget {} bytes; see `lucy audit`, `lucy transcript` and the files)_\n",
             env.capsule_max_bytes
         ));
     }
     out.push_str(&attention);
     out
+}
+
+/// Whether an entry is something learned or decided rather than something
+/// said: notes, summaries, claims, decisions, and the old journal's prose.
+fn is_learned(entry: &JournalEntry) -> bool {
+    matches!(
+        entry.kind.as_str(),
+        "Note" | "Summary" | "Claim" | "Decision" | "LegacyJournal"
+    )
+}
+
+/// Appends a titled section: its first `shown` lines, or "nothing yet" when
+/// there is nothing at all (a section cut to zero by the budget says so in
+/// the footer instead).
+fn section(out: &mut String, title: &str, lines: &[String], shown: usize) {
+    out.push_str(title);
+    if lines.is_empty() {
+        out.push_str("- nothing yet\n");
+    }
+    for line in &lines[..shown] {
+        out.push_str(line);
+    }
 }
 
 /// Takes leading lines while their total stays within `budget` bytes.

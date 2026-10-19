@@ -788,6 +788,80 @@ fn capsule_respects_its_budget_and_says_what_it_left_out() {
 }
 
 #[test]
+fn capsule_opens_on_what_was_learned_and_skips_progress_lines() {
+    let dir = tempfile::tempdir().unwrap();
+    let env = env_in(dir.path());
+    assert_eq!(lucy(&env, &["init"]).code, 0);
+    let batch = r#"[
+      {"id":"m-1","speaker":"User","text":"what do you remember about the engine?","channel":"user"},
+      {"id":"m-2","speaker":"Lucy","text":"Progress: reading my notes about the engine.","channel":"progress"},
+      {"id":"m-3","speaker":"Lucy","text":"The engine is Nibli; you built it.","channel":"final"},
+      {"id":"n-1","speaker":"Lucy","text":"Nibli is the engine Lucy thinks with.","kind":"note"},
+      {"id":"s-1","speaker":"Lucy","text":"Session summary: we talked about the engine.","kind":"summary"}
+    ]"#;
+    assert_eq!(lucy_stdin(&env, &["record", "--json"], batch).code, 0);
+    assert_eq!(
+        lucy(
+            &env,
+            &[
+                "claim",
+                "makes(User, Nibli).",
+                "--from",
+                "m-3",
+                "--decision",
+                "--id",
+                "d-1",
+                "--text",
+                "the user built Nibli",
+            ]
+        )
+        .code,
+        0
+    );
+    let wake = lucy(&env, &["wake", "--markdown"]);
+    let out = wake.stdout.as_str();
+    let learned = out.find("## Learned and decided").unwrap();
+    let conversation = out.find("## Conversation").unwrap();
+    let memory = out.find("## Memory").unwrap();
+    assert!(learned < conversation && conversation < memory, "{out}");
+    for text in [
+        "Nibli is the engine Lucy thinks with.",
+        "Session summary: we talked about the engine.",
+        "the user built Nibli",
+    ] {
+        let at = out
+            .find(text)
+            .unwrap_or_else(|| panic!("{text} missing: {out}"));
+        assert!(
+            learned < at && at < conversation,
+            "{text} is not in the learned section: {out}"
+        );
+    }
+    for text in [
+        "User: what do you remember about the engine?",
+        "Lucy: The engine is Nibli; you built it.",
+    ] {
+        let at = out
+            .find(text)
+            .unwrap_or_else(|| panic!("{text} missing: {out}"));
+        assert!(
+            conversation < at && at < memory,
+            "{text} is not in the conversation section: {out}"
+        );
+    }
+    assert!(
+        !out.contains("reading my notes about the engine"),
+        "progress lines stay out of the capsule: {out}"
+    );
+    let kept = json(&lucy(&env, &["transcript", "--id", "m-2"]));
+    assert_eq!(
+        kept["records"][0]["channel"], "progress",
+        "but the archive keeps them"
+    );
+    assert_eq!(json(&lucy(&env, &["wake"]))["journal_entries"], 6);
+}
+
+#[test]
 fn journal_format_round_trips() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("journal.md");

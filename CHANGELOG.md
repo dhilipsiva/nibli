@@ -32,7 +32,9 @@ here first.
   sentient, and her owner audits and edits her freely. The conversation archives
   are read on every load but compiled into the engine only by `check`, `audit`
   and the combined-KB `ask` (`load::Archives`, 2026-10-19), so `wake` and the
-  hooks stay fast as her record grows.
+  hooks stay fast as her record grows. The capsule opens on what she learned and
+  decided, then the conversation, and leaves her `progress` narration in the
+  archive (2026-10-19).
 
 ### Changed
 

@@ -426,5 +426,7 @@ pub fn journal(entry: &Interaction) -> JournalEntry {
         host: entry.host.clone(),
         text: format!("{prefix}{}", entry.text),
         private: entry.private,
+        kind: entry.kind.name().to_string(),
+        channel: entry.channel.clone(),
     }
 }

@@ -127,6 +127,12 @@ pub struct JournalEntry {
     pub text: String,
     /// Whether it came from the private journal.
     pub private: bool,
+    /// The record kind (`Message`, `Note`, `Summary`, `LegacyJournal`, `Claim`,
+    /// `Decision`); a Markdown journal entry is `LegacyJournal`.
+    pub kind: String,
+    /// The record's channel (`user`, `final`, `progress`, ...); empty for a
+    /// Markdown journal entry.
+    pub channel: String,
 }
 
 /// Parses a journal: `## <date> <host>` headings, `- ` items, continuation
@@ -144,6 +150,8 @@ pub fn parse_journal(text: &str, private: bool) -> Vec<JournalEntry> {
                     host: host.to_string(),
                     text,
                     private,
+                    kind: "LegacyJournal".to_string(),
+                    channel: String::new(),
                 });
             }
         };

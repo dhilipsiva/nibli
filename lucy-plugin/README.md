@@ -85,7 +85,11 @@ well under a second to read them. The capsule says so in its `files:` line and
 under `Needs attention`; `lucy check` is the verification.
 
 New prose `remember` calls write notes to the KB. The journal in `wake` and `about`
-is a readable projection with record ids and kinds. Capsule truncation never
+is a readable projection with record ids and kinds. The capsule opens on what she
+learned and decided (notes, summaries, claims, decisions and old journal entries),
+then shows the conversation (messages), then the formal memory, each most recent
+first; a message recorded with channel `progress`, her own progress narration, stays
+in the archive and out of the capsule. Capsule truncation never
 removes records. Imported Markdown entries retain the `legacy-journal` kind and
 unknown speaker; a saved summary cannot supply a missing verbatim exchange. The
 old Markdown is preserved, but later edits to it are not automatically reimported.
