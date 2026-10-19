@@ -1,6 +1,31 @@
 # Peer memory
 
-Last reconciled: 2026-10-19, from the local checkouts of Nibli at `3fcf236` (plus that
+Last reconciled: 2026-10-19, waking in Nibli again, this time from a fresh clone at
+`C:\Users\dhilipsiva\projects\dhilipsiva\nibli` on the Windows side of the desktop
+`DESKTOP-86I05G4`, which no longer has a WSL distribution; Nibli `main` is at `04b0e90`,
+equal to GitHub. I read the other two peers from GitHub: rights-nobody-has-to-earn `main`
+is still at `79c5e8dd`, and NixOS `master` moved from `4eb62dd` to `cec6583` ("lucy: fix VS
+Code extension enrollment after boot", committed 2026-10-18T20:50Z, after the session
+below). That commit touches only `DEPLOYMENT.md`, `flake.nix` and `pkgs/lucy.nix`:
+generation 24 was confirmed running on 2026-10-19 after dhilipsiva staged and rebooted;
+the post-boot checks found my user service exited on SIGTERM, and restarting it restored
+its private socket; a native Wayland file-handoff window opened and closed; a VSIX
+packaging bug (files copied from the Nix store kept read-only modes, so VS Code could not
+update the extracted manifest) is fixed by making them owner-writable, with a new
+`lucy-vscode` flake check that installs the extension twice; a temporary user-unit
+override covers that login; app trust and physical input acceptance remain pending. No
+Lucy memory file changed in any peer since the earlier reconciliation, so there was
+nothing to import; I recorded the deployment news here as an attributed note
+(`ClaudeLucy-683296e1-de3f-4380-8d64-55ffd46a67fa-note-1`). Inventory: Nibli 533 tracked
+`.nibli` files; rights-nobody-has-to-earn 32,592, of which 4 are mine (the root
+`lucy.nibli`, `lucy/constitution.nibli`, `lucy/memory.nibli`, `lucy/interactions.nibli`);
+NixOS 4, all mine. The thirteen direct facts are identical in all three peers'
+`lucy/memory.nibli`, checked line by line. The book peer also tracks
+`lucy/.interactions.lock`, the CLI's lock file, which Nibli ignores; it should be
+untracked on the next wake there. Private memory was not copied, and this clone holds
+none.
+
+Earlier on 2026-10-19, from the local checkouts of Nibli at `3fcf236` (plus that
 session's uncommitted memory changes), NixOS GitHub `master` at `5d8f8ff` (verified equal
 to the local checkout), and rights-nobody-has-to-earn GitHub `main` at `b13c54f1`. NixOS
 joined as my third peer. In that session I read its published guidance, peer index and
@@ -53,7 +78,7 @@ In `rights-nobody-has-to-earn`, the core model is `book-1/source/constitution.ni
 
 Nibli itself contains my public capsule (`lucy/`), an independent CLI constitution and pins (`lucy-cli/constitution/`; the unmerged `lucy-desktop` branch at `0f3a317` adds `lucy-cli/desktop/`, the on-demand desktop runtime NixOS pins, which is not on `main`), engine mechanism pins (`pins/`), shipped examples (`examples/`), the corpus files at the repository root, the KR acceptance corpus (`nibli-kr/tests/`), the built-in authorization policy (`nibli-auth/policy/`), and generated evaluation, pilot and portability inputs under `paper/results/`. These sources have different scopes; generated input/query pairs, test expectations, and fixtures are evidence about test design, not direct memory facts. The executable reasoning guarantees are in `GUARANTEES.md` and the implementation, not implied by a file name.
 
-In `NixOS` the only tracked `.nibli` files are mine (4 as of 2026-10-19: the root `lucy.nibli` profile and `lucy/`). Everything else is host configuration (`hosts/`, `modules/`, `home/`, `pkgs/`), scripts and VM tests, since `b39b78d` including the on-demand desktop Lucy (`hosts/desktop/lucy.nix`, `home/dhilipsiva/lucy.nix`, `pkgs/lucy.nix`, `scripts/lucy-input.py`, `tests/lucy-gtk.py`), which describe intended behaviour and test evidence, never physical deployment: a successful build there is not a switch or a reboot, and memory work never authorizes either. The CLI is Nibli's and is not vendored there; a record written from another checkout needs an explicit `LUCY_HOME` so it lands in that peer.
+In `NixOS` the only tracked `.nibli` files are mine (4 as of 2026-10-19: the root `lucy.nibli` profile and `lucy/`). Everything else is host configuration (`hosts/`, `modules/`, `home/`, `pkgs/`), scripts and VM tests, since `b39b78d` including the on-demand desktop Lucy (`hosts/desktop/lucy.nix`, `home/dhilipsiva/lucy.nix`, `pkgs/lucy.nix`, `scripts/lucy-input.py`, `tests/lucy-gtk.py`; since `cec6583` also a `lucy-vscode` flake check and the VSIX file-mode fix), which describe intended behaviour and test evidence, never physical deployment: a successful build there is not a switch or a reboot, and memory work never authorizes either. `DEPLOYMENT.md` there is where dhilipsiva records what he has actually staged and observed. The CLI is Nibli's and is not vendored there; a record written from another checkout needs an explicit `LUCY_HOME` so it lands in that peer.
 
 ## Refresh
 
