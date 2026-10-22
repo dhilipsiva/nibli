@@ -72,6 +72,8 @@
             # Core Compiler
             rustToolchain
             just
+            # Supply-chain gate (deny.toml): `cargo deny check advisories bans licenses sources`
+            cargo-deny
 
             # WASI Component Model Tooling
             wasm-tools          # Low-level WASM/WIT manipulation

@@ -1,0 +1,110 @@
+# deny.toml: the portfolio's canonical cargo-deny policy (CONVENTIONS.md, "Deny policy").
+# Source of truth: github.com/dhilipsiva/products/templates/deny.toml. Copy it unchanged, then
+# add only repository-specific entries in the marked places.
+#
+# Gate: `cargo deny check advisories bans licenses sources` in CI (cargo-deny 0.19 or later).
+#
+# The ignore convention, which every consumer follows:
+#   - An open RUSTSEC id may be ignored only with a comment naming the work item that closes
+#     it and an expiry no later than 90 days after the commit that adds the ignore:
+#         { id = "RUSTSEC-YYYY-NNNN", reason = "closed by <ITEM-ID>; expires YYYY-MM-DD" },
+#   - An ignore without both the item and the expiry is rejected in review. An expired
+#     ignore is removed or renewed with a new dated reason, never left in place.
+#   - The CI deny job may run non-blocking while ignores exist; it becomes blocking when the
+#     list is empty, and it never goes back.
+
+[graph]
+all-features = true
+
+[advisories]
+# Vulnerabilities and unsound advisories are always errors.
+yanked = "deny"
+# Unmaintained crates are errors for direct dependencies of workspace crates; transitive
+# ones are reported by `cargo deny check advisories` runs and handled case by case.
+unmaintained = "workspace"
+ignore = [
+    # Repository-specific, each with its closing item and an expiry (see the header). Taken on
+    # main's committed Cargo.lock on 2026-10-22: 30 in wasmtime / wasmtime-wasi 41.0.3, closed by
+    # the wasmtime 49 upgrade, and 4 in pyo3, anyhow and crossbeam-epoch, closed by the
+    # remaining-advisories upgrade.
+    { id = "RUSTSEC-2026-0020", reason = "wasmtime: closed by P2-NIBLI-01 (the wasmtime 49 upgrade); expires 2027-01-20" },
+    { id = "RUSTSEC-2026-0021", reason = "wasmtime: closed by P2-NIBLI-01 (the wasmtime 49 upgrade); expires 2027-01-20" },
+    { id = "RUSTSEC-2026-0022", reason = "wasmtime: closed by P2-NIBLI-01 (the wasmtime 49 upgrade); expires 2027-01-20" },
+    { id = "RUSTSEC-2026-0085", reason = "wasmtime: closed by P2-NIBLI-01 (the wasmtime 49 upgrade); expires 2027-01-20" },
+    { id = "RUSTSEC-2026-0086", reason = "wasmtime: closed by P2-NIBLI-01 (the wasmtime 49 upgrade); expires 2027-01-20" },
+    { id = "RUSTSEC-2026-0087", reason = "wasmtime: closed by P2-NIBLI-01 (the wasmtime 49 upgrade); expires 2027-01-20" },
+    { id = "RUSTSEC-2026-0088", reason = "wasmtime: closed by P2-NIBLI-01 (the wasmtime 49 upgrade); expires 2027-01-20" },
+    { id = "RUSTSEC-2026-0089", reason = "wasmtime: closed by P2-NIBLI-01 (the wasmtime 49 upgrade); expires 2027-01-20" },
+    { id = "RUSTSEC-2026-0091", reason = "wasmtime: closed by P2-NIBLI-01 (the wasmtime 49 upgrade); expires 2027-01-20" },
+    { id = "RUSTSEC-2026-0092", reason = "wasmtime: closed by P2-NIBLI-01 (the wasmtime 49 upgrade); expires 2027-01-20" },
+    { id = "RUSTSEC-2026-0093", reason = "wasmtime: closed by P2-NIBLI-01 (the wasmtime 49 upgrade); expires 2027-01-20" },
+    { id = "RUSTSEC-2026-0094", reason = "wasmtime: closed by P2-NIBLI-01 (the wasmtime 49 upgrade); expires 2027-01-20" },
+    { id = "RUSTSEC-2026-0095", reason = "wasmtime: closed by P2-NIBLI-01 (the wasmtime 49 upgrade); expires 2027-01-20" },
+    { id = "RUSTSEC-2026-0096", reason = "wasmtime: closed by P2-NIBLI-01 (the wasmtime 49 upgrade); expires 2027-01-20" },
+    { id = "RUSTSEC-2026-0114", reason = "wasmtime: closed by P2-NIBLI-01 (the wasmtime 49 upgrade); expires 2027-01-20" },
+    { id = "RUSTSEC-2026-0149", reason = "wasmtime-wasi: closed by P2-NIBLI-01 (the wasmtime 49 upgrade); expires 2027-01-20" },
+    { id = "RUSTSEC-2026-0176", reason = "pyo3: closed by P2-NIBLI-02 (the remaining-advisories upgrade); expires 2027-01-20" },
+    { id = "RUSTSEC-2026-0177", reason = "pyo3: closed by P2-NIBLI-02 (the remaining-advisories upgrade); expires 2027-01-20" },
+    { id = "RUSTSEC-2026-0182", reason = "wasmtime-wasi: closed by P2-NIBLI-01 (the wasmtime 49 upgrade); expires 2027-01-20" },
+    { id = "RUSTSEC-2026-0188", reason = "wasmtime-wasi: closed by P2-NIBLI-01 (the wasmtime 49 upgrade); expires 2027-01-20" },
+    { id = "RUSTSEC-2026-0190", reason = "anyhow: closed by P2-NIBLI-02 (the remaining-advisories upgrade); expires 2027-01-20" },
+    { id = "RUSTSEC-2026-0204", reason = "crossbeam-epoch: closed by P2-NIBLI-02 (the remaining-advisories upgrade); expires 2027-01-20" },
+    { id = "RUSTSEC-2026-0222", reason = "wasmtime: closed by P2-NIBLI-01 (the wasmtime 49 upgrade); expires 2027-01-20" },
+    { id = "RUSTSEC-2026-0269", reason = "wasmtime: closed by P2-NIBLI-01 (the wasmtime 49 upgrade); expires 2027-01-20" },
+    { id = "RUSTSEC-2026-0314", reason = "wasmtime-wasi: closed by P2-NIBLI-01 (the wasmtime 49 upgrade); expires 2027-01-20" },
+    { id = "RUSTSEC-2026-0316", reason = "wasmtime: closed by P2-NIBLI-01 (the wasmtime 49 upgrade); expires 2027-01-20" },
+    { id = "RUSTSEC-2026-0321", reason = "wasmtime-wasi: closed by P2-NIBLI-01 (the wasmtime 49 upgrade); expires 2027-01-20" },
+    { id = "RUSTSEC-2026-0322", reason = "wasmtime-wasi: closed by P2-NIBLI-01 (the wasmtime 49 upgrade); expires 2027-01-20" },
+    { id = "RUSTSEC-2026-0323", reason = "wasmtime-wasi: closed by P2-NIBLI-01 (the wasmtime 49 upgrade); expires 2027-01-20" },
+    { id = "RUSTSEC-2026-0327", reason = "wasmtime: closed by P2-NIBLI-01 (the wasmtime 49 upgrade); expires 2027-01-20" },
+    { id = "RUSTSEC-2026-0352", reason = "wasmtime-wasi: closed by P2-NIBLI-01 (the wasmtime 49 upgrade); expires 2027-01-20" },
+    { id = "RUSTSEC-2026-0363", reason = "wasmtime: closed by P2-NIBLI-01 (the wasmtime 49 upgrade); expires 2027-01-20" },
+    { id = "RUSTSEC-2026-0379", reason = "wasmtime: closed by P2-NIBLI-01 (the wasmtime 49 upgrade); expires 2027-01-20" },
+    { id = "RUSTSEC-2026-0380", reason = "wasmtime: closed by P2-NIBLI-01 (the wasmtime 49 upgrade); expires 2027-01-20" },
+]
+
+[licenses]
+# Every repository is MIT OR Apache-2.0 (CONVENTIONS.md, "Licence policy"); these are the
+# licences its dependencies may carry.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "Zlib",
+    "MPL-2.0",
+    # A public-domain dedication (tiny-keccak and others).
+    "CC0-1.0",
+    # The Boost licence (xxhash-rust and others).
+    "BSL-1.0",
+]
+confidence-threshold = 0.8
+# The allow list is shared by every repository, so entries a given repository never uses are normal.
+unused-allowed-license = "allow"
+exceptions = [
+    # Repository-specific, one crate per entry, for example vendored prose or certificates:
+    # { allow = ["CC-BY-4.0"], crate = "<crate>" },
+    # { allow = ["CDLA-Permissive-2.0"], crate = "webpki-roots" },
+]
+
+[licenses.private]
+# Unpublished workspace crates (`publish = false`) are not licence-checked.
+ignore = true
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+highlight = "all"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = [
+    # Repository-specific git dependencies, each with a comment saying why it is not on crates.io.
+]
