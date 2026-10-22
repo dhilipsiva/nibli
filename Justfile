@@ -1158,6 +1158,10 @@ build-lucy-desktop:
 clippy-lucy-desktop:
     cargo clippy --no-deps -p lucy-cli --all-targets --features desktop-ui -- -D warnings
 
+# The desktop gates CI runs in their own job, in the GTK shell: `nix develop .#lucy --command just
+# ci-lucy-desktop` (the default shell carries no GTK, so these stay out of `ci`).
+ci-lucy-desktop: test-lucy-desktop clippy-lucy-desktop
+
 test-lucy-window:
     bash lucy-cli/desktop/test-window.sh target/release/lucy
 
