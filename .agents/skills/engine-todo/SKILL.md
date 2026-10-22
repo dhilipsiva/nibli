@@ -37,11 +37,11 @@ gitignored here, so this skill file itself was force-added — keep that in mind
 ## The loop
 
 1. **Locate & plan.** Read the relevant crate source/tests for the item. Architecture, crate roles, and
-   conventions are in [`AGENTS.md`](../../../AGENTS.md). State a one-paragraph approach for non-trivial
+   conventions are in [`CLAUDE.md`](../../../CLAUDE.md). State a one-paragraph approach for non-trivial
    items. Pause and ask **only** if the item is genuinely ambiguous or needs a design decision —
    otherwise proceed through the whole loop.
 
-2. **Implement.** Follow the engine conventions in [`AGENTS.md`](../../../AGENTS.md). Key ones:
+2. **Implement.** Follow the engine conventions in [`CLAUDE.md`](../../../CLAUDE.md). Key ones:
    - Test with `cargo test --lib`, **not** `cargo test` (the cdylib linker chokes on WIT `@` export
      symbols). Exception: `gasnu` is a plain bin — `cargo test -p nibli-host` links fine.
    - Logji (reasoning) tests need `--test-threads=1` (shared global state); the Justfile handles this.
@@ -61,7 +61,7 @@ gitignored here, so this skill file itself was force-added — keep that in mind
    (no `~~strikethrough~~`, no "DONE" marker); partial → rewrite it to state exactly what remains; stale
    → say so and remove it. If there is no tracker, note in the commit what was completed.
 
-5. **Sync docs.** Per the pre-commit checklist in [`AGENTS.md`](../../../AGENTS.md): update `AGENTS.md`,
+5. **Sync docs.** Per the pre-commit checklist in [`CLAUDE.md`](../../../CLAUDE.md): update `CLAUDE.md`,
    `README.md` (if Lojban coverage or reasoning capability changed), and the tracker, then commit all
    code + doc changes together.
 

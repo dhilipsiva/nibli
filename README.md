@@ -89,7 +89,7 @@ Supporting crates:
 | **nibli-lexicon** | The committed English corpus — strongly-typed predicate + compound entries (name, named places, gloss, template, gismu provenance), const-validated; the single vocabulary source for every stage |
 | **nibli-engine** | Native in-process embedding of the pipeline — **the crate to depend on when embedding nibli in Rust** ([Install](#install)) |
 | **nibli-ui** | Standalone Dioxus web UI — the engine is compiled in and runs fully in-browser |
-| **nibli-wasm** | wasm-bindgen wrapper exposing the in-browser pipeline (powers the live demo) |
+| **nibli-wasm** | wasm-bindgen wrapper exposing the in-browser pipeline (the site's demo page; broken until the site repository migrates, [`DEPLOY.md`](DEPLOY.md)) |
 | **nibli** | Native debug REPL and the `nibli-validate` / `nibli-import` / `nibli-pin` tooling |
 
 Everything above **except `nibli-pipeline`, `nibli-host`, `nibli-ui` and `nibli-wasm`** is published on crates.io at the workspace version — those four ship as the WASM component, the host binary and the hosted sites instead ([Install](#install)).
@@ -111,7 +111,7 @@ building alternative front-ends or consumers against it).
 **Supporting surfaces:**
 
 - **`nibli-engine`** — The native embedding library, published on crates.io: a library to build on rather than a runtime to launch ([Install](#install)).
-- **`nibli-wasm`** — wasm-bindgen wrapper exposing the in-browser pipeline (powers the live demo at dhilipsiva.dev/nibli).
+- **`nibli-wasm`** — wasm-bindgen wrapper exposing the in-browser pipeline (it powers the demo page at dhilipsiva.dev/nibli, whose Lojban-era page script breaks until the site repository migrates; see [`DEPLOY.md`](DEPLOY.md)).
 - **`nibli`** — Native direct-crate REPL and `nibli-validate`. Developer tooling, not the canonical production path.
 
 Validation names have different scopes. `NibliEngine::validate` is parse+compile only:
@@ -134,7 +134,7 @@ Code-derived human docs live in **`mdbook/`** (mdBook). They are **not** the Ora
 |---------|-----|
 | **Docs site** | https://dhilipsiva.github.io/nibli/ |
 | Local | `just docs` / `just docs-serve` (http://127.0.0.1:3000) inside `nix develop` |
-| Site integration (planned) | `dhilipsiva.dev/docs/nibli/` — pending the site-repo copy, see [`DEPLOY.md`](DEPLOY.md) §2b |
+| Site integration (planned) | `dhilipsiva.dev/docs/nibli/` — a 404 until the site repository copies the build, see [`DEPLOY.md`](DEPLOY.md) §2b; the mirror below is live |
 | Playground | https://dhilipsiva.dev/nibli-playground/ |
 | Rust API | [docs.rs/nibli-engine](https://docs.rs/nibli-engine) — all published crates indexed in the [API index](https://dhilipsiva.github.io/nibli/api-index.html); locally `cargo doc -p <crate> --open` |
 | Releasing | [`RELEASING.md`](RELEASING.md) · changes land in [`CHANGELOG.md`](CHANGELOG.md) first |
