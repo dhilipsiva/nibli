@@ -369,3 +369,33 @@ fn restored_copies_whose_files_vanish_before_the_first_sync_leave_recall() {
     host_b.sync().unwrap();
     assert!(host_b.search("dippers", "", 8, None).unwrap().is_empty());
 }
+
+#[test]
+fn a_record_reaching_an_emptied_origin_still_leaves_with_its_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("store");
+    let store = Store::open(&root).unwrap();
+    let home = dir.path().join("checkout/lucy");
+    std::fs::create_dir_all(&home).unwrap();
+    std::fs::write(home.join("constitution.nibli"), "# Lucy\n").unwrap();
+    store.register("nibli", &home).unwrap();
+    // An origin the peer has no file for is emptied and marked once.
+    let mut first = record("p4", "a note about wagtails");
+    first.origin = "peer:nibli/notes.md".into();
+    store.record(&first).unwrap();
+    for entry in std::fs::read_dir(root.join("records")).unwrap() {
+        std::fs::remove_file(entry.unwrap().path()).unwrap();
+    }
+    store.sync().unwrap();
+    assert!(store.search("wagtails", "", 8, None).unwrap().is_empty());
+    // A later record under the same origin, whose file then goes too, leaves recall as well.
+    let mut second = record("p5", "a note about ouzels");
+    second.origin = "peer:nibli/notes.md".into();
+    store.record(&second).unwrap();
+    for entry in std::fs::read_dir(root.join("records")).unwrap() {
+        std::fs::remove_file(entry.unwrap().path()).unwrap();
+    }
+    store.sync().unwrap();
+    store.sync().unwrap();
+    assert!(store.search("ouzels", "", 8, None).unwrap().is_empty());
+}

@@ -442,12 +442,18 @@ impl Store {
     /// A registered peer's origin with no local file. Copies restored from a snapshot stand in
     /// for it only while no local file has ever been seen here (a new host, before the peer's
     /// private files arrive); once one has, an absent file means the origin is empty, so a file
-    /// deleted on purpose stays deleted.
-    fn absent(&self, origin: &str, restored: &mut BTreeMap<String, Vec<Record>>) -> Result<()> {
+    /// deleted on purpose stays deleted. `indexed` holds the origins the index had when this sync
+    /// began: an origin already emptied is emptied again only if records reached it since.
+    fn absent(
+        &self,
+        origin: &str,
+        restored: &mut BTreeMap<String, Vec<Record>>,
+        indexed: &BTreeSet<String>,
+    ) -> Result<()> {
         let current = self.fingerprint_of(origin)?;
         match current.as_deref() {
             Some(seen) if !seen.starts_with(RESTORED) => {
-                if !seen.is_empty() {
+                if !seen.is_empty() || indexed.contains(origin) {
                     self.replace(origin, &[])?;
                     self.fingerprint(origin, "")?;
                 }
@@ -583,6 +589,7 @@ impl Store {
         }
         let mut loaded = Vec::new();
         let mut unavailable = Vec::new();
+        let indexed: BTreeSet<String> = self.all()?.into_iter().map(|r| r.origin).collect();
         for peer in config.peers {
             if !peer.path.is_dir() {
                 unavailable.push(peer.name);
@@ -611,7 +618,7 @@ impl Store {
                 let bytes = match fs::read(&input) {
                     Ok(bytes) => bytes,
                     Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                        self.absent(&origin, &mut restored)?;
+                        self.absent(&origin, &mut restored, &indexed)?;
                         continue;
                     }
                     Err(e) => {
@@ -695,15 +702,14 @@ impl Store {
                 self.replace(&origin, &records)?;
                 self.fingerprint(&origin, &fingerprint)?;
             }
-            let stale: BTreeSet<_> = self
-                .all()?
-                .into_iter()
-                .map(|r| r.origin)
-                .chain(restored.keys().cloned())
-                .filter(|origin| origin.starts_with(&prefix) && !present.contains(origin))
+            let stale: BTreeSet<_> = indexed
+                .iter()
+                .chain(restored.keys())
+                .filter(|origin| origin.starts_with(&prefix) && !present.contains(*origin))
+                .cloned()
                 .collect();
             for origin in stale {
-                self.absent(&origin, &mut restored)?;
+                self.absent(&origin, &mut restored, &indexed)?;
             }
             loaded.push(peer.name);
         }
