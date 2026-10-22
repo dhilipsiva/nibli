@@ -32,7 +32,7 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 tokio = { version = "1", features = ["rt", "time", "macros"] }
 
 [target.'cfg(unix)'.dependencies]
-nix = { version = "0.30", features = ["socket", "user", "signal", "process"] }
+nix = { version = "0.30", features = ["socket", "user", "signal", "process", "term"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk4 = { version = "0.10", optional = true }

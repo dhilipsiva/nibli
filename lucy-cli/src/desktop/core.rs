@@ -412,12 +412,17 @@ impl Service {
                 let _running = Running::begin(&session)?;
                 let (proposal, workspace) = {
                     let mut s = session.lock().map_err(err)?;
-                    (
-                        s.pending
-                            .remove(string(&req, "action")?)
-                            .ok_or("action expired or already handled")?,
-                        s.workspace.clone(),
-                    )
+                    let proposal = s
+                        .pending
+                        .remove(string(&req, "action")?)
+                        .ok_or("action expired or already handled")?;
+                    // Synthetic input reaches whatever window has focus, Lucy's own approval
+                    // controls included, so an approved `gui` action first withdraws every other
+                    // proposal: none of them can be approved by it.
+                    if proposal["tool"] == "gui" && req["allow"].as_bool() == Some(true) {
+                        s.pending.clear();
+                    }
+                    (proposal, s.workspace.clone())
                 };
                 let tool = string(&proposal, "tool")?;
                 let result = if req["allow"].as_bool() == Some(true) {

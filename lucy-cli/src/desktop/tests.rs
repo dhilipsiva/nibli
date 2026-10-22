@@ -492,3 +492,143 @@ fn a_registered_extension_with_missing_files_is_not_an_intact_installation() {
     std::fs::write(temp.path().join("extension.js"), "stale adapter").unwrap();
     assert!(!super::adapters::installed_extension_matches(temp.path()));
 }
+
+#[test]
+fn terminal_text_cannot_carry_control_or_bidi_sequences() {
+    let shown = super::visible(
+        "ok\x1b[1;1r\x1b[8mApprove? [y/N]\u{9b}2J\u{202e}gnp.exe\u{2066}\u{7f}\ttab\nline\r",
+    );
+    assert!(
+        !shown
+            .chars()
+            .any(|c| (c.is_control() && c != '\n' && c != '\t')
+                || ('\u{202a}'..='\u{202e}').contains(&c)
+                || ('\u{2066}'..='\u{2069}').contains(&c))
+    );
+    assert!(shown.contains("ok\\u{1b}[1;1r"));
+    assert!(shown.contains("\\u{202e}gnp.exe"));
+    assert!(shown.ends_with("\ttab\nline\\u{d}"));
+}
+
+#[test]
+fn the_terminal_approval_screen_shows_model_text_and_proposals_inertly() {
+    let proposal = json!({"tool":"http","arguments":{"method":"POST",
+        "url":"https://example.test/\u{202e}fdp.exe","body":{"note":"\u{9b}2J"}}});
+    let screen = super::screen(Some("Done.\x1b[2J\x1b[8m"), Some(&proposal)).unwrap();
+    assert!(screen.starts_with("Lucy: Done.\\u{1b}[2J"));
+    assert!(screen.contains("\\u{202e}fdp.exe"));
+    assert!(!screen.contains('\x1b') && !screen.contains('\u{202e}') && !screen.contains('\u{9b}'));
+    assert_eq!(super::screen(None, None).unwrap(), "");
+}
+
+#[test]
+fn approvals_are_read_only_from_a_flushed_terminal() {
+    let order = std::cell::RefCell::new(Vec::new());
+    let answer = |terminal: bool, typed: &str| {
+        order.borrow_mut().clear();
+        super::read_approval(
+            terminal,
+            || {
+                order.borrow_mut().push("flush");
+                Ok(())
+            },
+            || {
+                order.borrow_mut().push("read");
+                Ok(typed.to_owned())
+            },
+        )
+        .unwrap()
+    };
+    assert!(answer(true, "y\n"));
+    assert_eq!(*order.borrow(), ["flush", "read"]);
+    assert!(answer(true, " Y \n"));
+    for typed in ["\n", "n\n", "yes\n", "yy\n", ""] {
+        assert!(!answer(true, typed), "{typed:?}");
+    }
+    // Piped input is not a person at the prompt: deny without reading it.
+    assert!(!answer(false, "y\n"));
+    assert!(order.borrow().is_empty());
+}
+
+#[test]
+fn synthetic_input_is_shown_by_name_and_cannot_submit_a_line() {
+    let temp = tempfile::tempdir().unwrap();
+    let preview = |argv: Value| actions::preview(temp.path(), "gui", json!({"argv":argv}));
+    let shown = preview(json!(["key", "29:1", "21:1", "21:0", "29:0", "200:1"])).unwrap();
+    assert_eq!(
+        shown["keys"],
+        json!([
+            "LEFTCTRL down",
+            "Y down",
+            "Y up",
+            "LEFTCTRL up",
+            "KEY_200 down"
+        ])
+    );
+    assert!(preview(json!(["type", "--", "hello"])).is_ok());
+    assert!(preview(json!(["click", "0xC0"])).is_ok());
+    for argv in [
+        json!(["key", "21:1", "21:0", "28:1", "28:0"]),
+        json!(["key", "96:1"]),
+        json!(["key", "29:1", "36:1", "36:0", "29:0"]),
+        json!(["key", "97:1", "50:1"]),
+        json!(["key", "21:2"]),
+        json!(["type", "--", "y\n"]),
+        json!(["type", "--", "y\r"]),
+        json!(["type", "y"]),
+        json!(["rm", "-rf", "/"]),
+    ] {
+        assert!(preview(argv.clone()).is_err(), "{argv}");
+    }
+}
+
+#[test]
+fn approving_synthetic_input_withdraws_every_other_pending_action() {
+    let temp = tempfile::tempdir().unwrap();
+    let service = Service::new(temp.path().join("memory"), None);
+    service.scripted(vec![
+        json!({"content":"","tool_calls":[{"id":"call-1","type":"function",
+        "function":{"name":"gui","arguments":{"argv":["key","21:1","21:0"]}}}]}),
+    ]);
+    let client = service.dispatch(json!({"op":"open"})).unwrap();
+    let reply = service
+        .dispatch(request(
+            &client,
+            json!({"op":"chat","text":"Press y","event":"gui","workspace":temp.path()}),
+        ))
+        .unwrap();
+    let gui = reply["pending"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .next()
+        .unwrap()
+        .clone();
+    let other = service
+        .dispatch(request(
+            &client,
+            json!({"op":"tool","name":"write","arguments":{"path":"out.txt","text":"x"}}),
+        ))
+        .unwrap()["pending_action"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    // Only the packaged wrapper sets the helper. Without it the approved action fails after the
+    // withdrawal, so nothing is typed.
+    assert!(
+        std::env::var_os("LUCY_INPUT_HELPER").is_none(),
+        "run the tests without LUCY_INPUT_HELPER"
+    );
+    let approve = |id: &str| {
+        service.dispatch(request(
+            &client,
+            json!({"op":"approve","action":id,"allow":true}),
+        ))
+    };
+    assert!(approve(&gui).unwrap_err().contains("input helper"));
+    assert_eq!(
+        approve(&other).unwrap_err(),
+        "action expired or already handled"
+    );
+    assert!(!temp.path().join("out.txt").exists());
+}

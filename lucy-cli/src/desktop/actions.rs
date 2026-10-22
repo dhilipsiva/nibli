@@ -174,6 +174,175 @@ pub fn path(root: &Path, relative: &str, allow_root: bool) -> Result<PathBuf> {
     }
     Ok(resolved)
 }
+/// Linux input event names for the keys a `gui` proposal presses, so its approval reads
+/// "Y down", not "21:1".
+fn key_name(code: u16) -> String {
+    const NAMES: &[(u16, &str)] = &[
+        (1, "ESC"),
+        (2, "1"),
+        (3, "2"),
+        (4, "3"),
+        (5, "4"),
+        (6, "5"),
+        (7, "6"),
+        (8, "7"),
+        (9, "8"),
+        (10, "9"),
+        (11, "0"),
+        (12, "MINUS"),
+        (13, "EQUAL"),
+        (14, "BACKSPACE"),
+        (15, "TAB"),
+        (16, "Q"),
+        (17, "W"),
+        (18, "E"),
+        (19, "R"),
+        (20, "T"),
+        (21, "Y"),
+        (22, "U"),
+        (23, "I"),
+        (24, "O"),
+        (25, "P"),
+        (26, "LEFTBRACE"),
+        (27, "RIGHTBRACE"),
+        (28, "ENTER"),
+        (29, "LEFTCTRL"),
+        (30, "A"),
+        (31, "S"),
+        (32, "D"),
+        (33, "F"),
+        (34, "G"),
+        (35, "H"),
+        (36, "J"),
+        (37, "K"),
+        (38, "L"),
+        (39, "SEMICOLON"),
+        (40, "APOSTROPHE"),
+        (41, "GRAVE"),
+        (42, "LEFTSHIFT"),
+        (43, "BACKSLASH"),
+        (44, "Z"),
+        (45, "X"),
+        (46, "C"),
+        (47, "V"),
+        (48, "B"),
+        (49, "N"),
+        (50, "M"),
+        (51, "COMMA"),
+        (52, "DOT"),
+        (53, "SLASH"),
+        (54, "RIGHTSHIFT"),
+        (56, "LEFTALT"),
+        (57, "SPACE"),
+        (58, "CAPSLOCK"),
+        (59, "F1"),
+        (60, "F2"),
+        (61, "F3"),
+        (62, "F4"),
+        (63, "F5"),
+        (64, "F6"),
+        (65, "F7"),
+        (66, "F8"),
+        (67, "F9"),
+        (68, "F10"),
+        (87, "F11"),
+        (88, "F12"),
+        (96, "KPENTER"),
+        (97, "RIGHTCTRL"),
+        (100, "RIGHTALT"),
+        (102, "HOME"),
+        (103, "UP"),
+        (104, "PAGEUP"),
+        (105, "LEFT"),
+        (106, "RIGHT"),
+        (107, "END"),
+        (108, "DOWN"),
+        (109, "PAGEDOWN"),
+        (110, "INSERT"),
+        (111, "DELETE"),
+        (125, "LEFTMETA"),
+        (126, "RIGHTMETA"),
+    ];
+    NAMES
+        .iter()
+        .find(|(known, _)| *known == code)
+        .map_or_else(|| format!("KEY_{code}"), |(_, name)| (*name).to_owned())
+}
+/// Checks a `gui` argv and returns the key events it presses, by name. Synthetic input may not
+/// submit a line (Enter, keypad Enter, Ctrl+J, Ctrl+M, or a control character in typed text):
+/// the approval prompts read lines, and an approved action must not be able to answer one.
+fn gui_events(args: &[String]) -> Result<Option<Vec<String>>> {
+    let unsupported = || Err::<_, String>("unsupported literal mouse/keyboard action".into());
+    match args[0].as_str() {
+        "type" if args.len() == 3 && args[1] == "--" && args[2].len() <= 4096 => {
+            if args[2].chars().any(|c| c.is_control() && c != '\t') {
+                return Err(
+                    "synthetic input may not type line breaks or control characters".into(),
+                );
+            }
+            Ok(None)
+        }
+        "key" if args.len() > 1 && args.len() <= 65 => {
+            let (mut left_ctrl, mut right_ctrl) = (false, false);
+            let mut names = Vec::new();
+            for event in &args[1..] {
+                let Some((code, state)) = event.split_once(':') else {
+                    return unsupported();
+                };
+                let Some(code) = code.parse::<u16>().ok().filter(|n| *n <= 999) else {
+                    return unsupported();
+                };
+                let down = match state {
+                    "1" => true,
+                    "0" => false,
+                    _ => return unsupported(),
+                };
+                match code {
+                    29 => left_ctrl = down,
+                    97 => right_ctrl = down,
+                    _ => {}
+                }
+                if down
+                    && (matches!(code, 28 | 96)
+                        || ((left_ctrl || right_ctrl) && matches!(code, 36 | 50)))
+                {
+                    return Err("synthetic input may not press Enter or submit a line".into());
+                }
+                names.push(format!(
+                    "{} {}",
+                    key_name(code),
+                    if down { "down" } else { "up" }
+                ));
+            }
+            Ok(Some(names))
+        }
+        "click"
+            if args.len() == 2
+                && args[1].strip_prefix("0x").is_some_and(|s| {
+                    s.len() <= 2 && !s.is_empty() && s.bytes().all(|b| b.is_ascii_hexdigit())
+                }) =>
+        {
+            Ok(None)
+        }
+        "mousemove" => {
+            let positions = if args.get(1).is_some_and(|s| s == "--absolute") {
+                &args[2..]
+            } else {
+                &args[1..]
+            };
+            if positions.len() == 2
+                && positions
+                    .iter()
+                    .all(|s| s.parse::<i32>().is_ok_and(|n| n.unsigned_abs() <= 99999))
+            {
+                Ok(None)
+            } else {
+                unsupported()
+            }
+        }
+        _ => unsupported(),
+    }
+}
 fn argv(args: &Value) -> Result<Vec<String>> {
     let values = args["argv"]
         .as_array()
@@ -207,8 +376,13 @@ pub fn preview(root: &Path, name: &str, args: Value) -> Result<Value> {
         value["diff"] = json!({"path":value["arguments"]["path"],"before":before,"after":value["arguments"]["text"]});
         value["before"] = json!({"path":target,"exists":target.exists(),"text":before});
     }
-    if matches!(name, "command" | "gui") {
+    if name == "command" {
         argv(&value["arguments"])?;
+    }
+    if name == "gui"
+        && let Some(keys) = gui_events(&argv(&value["arguments"])?)?
+    {
+        value["keys"] = json!(keys);
     }
     if name == "http" {
         let url =
@@ -587,41 +761,7 @@ pub fn execute(
         }
         "gui" => {
             let args = argv(args)?;
-            let valid = match args[0].as_str() {
-                "type" => args.len() == 3 && args[1] == "--" && args[2].len() <= 4096,
-                "key" => {
-                    args.len() > 1
-                        && args.len() <= 65
-                        && args[1..].iter().all(|s| {
-                            s.split_once(':').is_some_and(|(n, v)| {
-                                n.parse::<u16>().is_ok_and(|n| n <= 999) && ["0", "1"].contains(&v)
-                            })
-                        })
-                }
-                "click" => {
-                    args.len() == 2
-                        && args[1].strip_prefix("0x").is_some_and(|s| {
-                            s.len() <= 2
-                                && !s.is_empty()
-                                && s.bytes().all(|b| b.is_ascii_hexdigit())
-                        })
-                }
-                "mousemove" => {
-                    let positions = if args.get(1).is_some_and(|s| s == "--absolute") {
-                        &args[2..]
-                    } else {
-                        &args[1..]
-                    };
-                    positions.len() == 2
-                        && positions
-                            .iter()
-                            .all(|s| s.parse::<i32>().is_ok_and(|n| n.unsigned_abs() <= 99999))
-                }
-                _ => false,
-            };
-            if !valid {
-                return Err("unsupported literal mouse/keyboard action".into());
-            }
+            gui_events(&args)?;
             let helper =
                 std::env::var("LUCY_INPUT_HELPER").map_err(|_| "input helper is not configured")?;
             let auth = run(root, cancel, &strings(&["pkexec", &helper]), true, 60)?;
