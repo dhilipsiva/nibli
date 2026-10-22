@@ -23,13 +23,8 @@ yanked = "deny"
 # ones are reported by `cargo deny check advisories` runs and handled case by case.
 unmaintained = "workspace"
 ignore = [
-    # Repository-specific, each with its closing item and an expiry (see the header). Taken on
-    # main's committed Cargo.lock on 2026-10-22: 30 in wasmtime / wasmtime-wasi 41.0.3, closed by
-    # the wasmtime 49 upgrade, and 4 in pyo3, anyhow and crossbeam-epoch, closed by the
-    # remaining-advisories upgrade.
-    { id = "RUSTSEC-2026-0176", reason = "pyo3: closed by P2-NIBLI-02 (the remaining-advisories upgrade); expires 2027-01-20" },
-    { id = "RUSTSEC-2026-0177", reason = "pyo3: closed by P2-NIBLI-02 (the remaining-advisories upgrade); expires 2027-01-20" },
-    { id = "RUSTSEC-2026-0204", reason = "crossbeam-epoch: closed by P2-NIBLI-02 (the remaining-advisories upgrade); expires 2027-01-20" },
+    # Repository-specific, each with its closing item and an expiry (see the header). Empty since
+    # 2026-10-22: the wasmtime 49 upgrade, PyO3 0.29 and crossbeam-epoch 0.9.21 closed all 34.
 ]
 
 [licenses]

@@ -15,7 +15,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 nibli-auth = { workspace = true }
-pyo3 = "0.24"
+pyo3 = "0.29"
 
 [features]
 # Set by maturin (pyproject.toml) for the wheel: an extension module must not link libpython,

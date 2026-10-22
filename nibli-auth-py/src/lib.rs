@@ -11,7 +11,7 @@ fn to_py_err(e: AuthError) -> PyErr {
 }
 
 /// Authorization decision (mirrors Rust Decision).
-#[pyclass(name = "Decision", module = "nibli_auth_native")]
+#[pyclass(name = "Decision", module = "nibli_auth_native", skip_from_py_object)]
 #[derive(Clone)]
 pub struct PyDecision {
     #[pyo3(get)]
@@ -46,7 +46,7 @@ impl PyDecision {
 }
 
 /// Decision + optional proof JSON.
-#[pyclass(name = "Explained", module = "nibli_auth_native")]
+#[pyclass(name = "Explained", module = "nibli_auth_native", skip_from_py_object)]
 #[derive(Clone)]
 pub struct PyExplained {
     #[pyo3(get)]

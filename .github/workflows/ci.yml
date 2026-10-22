@@ -107,12 +107,11 @@ jobs:
       - name: Build on the MSRV
         run: nix develop --extra-experimental-features 'nix-command flakes' --command just msrv-check
 
-  # Supply chain (deny.toml): advisories, bans, licences, sources. Non-blocking while deny.toml
-  # ignores open advisories; it becomes blocking when that list is empty, and stays so.
+  # Supply chain (deny.toml): advisories, bans, licences, sources. Blocking since the ignore list
+  # emptied (2026-10-22), and it stays so.
   deny:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    continue-on-error: true
 
     steps:
       - name: Check out repository

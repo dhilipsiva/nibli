@@ -110,6 +110,9 @@ here first.
   checked against `wit/` (`just verify-bindings`), the component's exports are
   compiled only for wasm32 so native test binaries link, and nibli-auth-py's PyO3
   `extension-module` is a crate feature that maturin turns on.
+- **No open advisories:** PyO3 0.24 → 0.29 (nibli-auth-py), crossbeam-epoch,
+  memmap2 and rand patch releases; `deny.toml`'s ignore list is empty and the CI
+  `deny` job is blocking.
 
 ### Fixed
 
