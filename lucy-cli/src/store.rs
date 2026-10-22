@@ -17,6 +17,8 @@ use sha2::{Digest, Sha256};
 const RECORDS: TableDefinition<&str, &str> = TableDefinition::new("records-v1");
 const VECTORS: TableDefinition<&str, &str> = TableDefinition::new("vectors-v1");
 const META: TableDefinition<&str, &str> = TableDefinition::new("metadata-v1");
+/// The fingerprint of a peer origin indexed from restored copies, never from a local file.
+const RESTORED: &str = "restored-snapshot";
 type Result<T> = std::result::Result<T, String>;
 
 fn err(e: impl std::fmt::Display) -> String {
@@ -426,6 +428,38 @@ impl Store {
             .is_some_and(|value| value.value() == fingerprint))
     }
 
+    fn fingerprint_of(&self, origin: &str) -> Result<Option<String>> {
+        let tx = self.db.begin_read().map_err(err)?;
+        Ok(tx
+            .open_table(META)
+            .map_err(err)?
+            .get(origin)
+            .map_err(err)?
+            .map(|value| value.value().to_owned()))
+    }
+
+    /// A registered peer's origin with no local file. Copies restored from a snapshot stand in
+    /// for it only while no local file has ever been seen here (a new host, before the peer's
+    /// private files arrive); once one has, an absent file means the origin is empty, so a file
+    /// deleted on purpose stays deleted.
+    fn absent(&self, origin: &str, restored: &mut BTreeMap<String, Vec<Record>>) -> Result<()> {
+        match self.fingerprint_of(origin)?.as_deref() {
+            None | Some(RESTORED) => {
+                let kept = restored.remove(origin).unwrap_or_default();
+                if !kept.is_empty() {
+                    self.replace(origin, &kept)?;
+                    self.fingerprint(origin, RESTORED)?;
+                }
+            }
+            Some("") => {}
+            Some(_) => {
+                self.replace(origin, &[])?;
+                self.fingerprint(origin, "")?;
+            }
+        }
+        Ok(())
+    }
+
     fn fingerprint(&self, origin: &str, fingerprint: &str) -> Result<()> {
         let tx = self.db.begin_write().map_err(err)?;
         tx.open_table(META)
@@ -501,9 +535,10 @@ impl Store {
         let mut restored: BTreeMap<String, Vec<Record>> = BTreeMap::new();
         if records.is_dir() {
             for path in json_files(&records)? {
-                let record: Record = match fs::read(&path)
-                    .map_err(err)
+                let record: Record = match plain(&path)
+                    .and_then(|_| fs::read(&path).map_err(err))
                     .and_then(|bytes| serde_json::from_slice(&bytes).map_err(err))
+                    .and_then(|record: Record| record.validate().map(|_| record))
                 {
                     Ok(record) => record,
                     Err(error) => {
@@ -555,11 +590,7 @@ impl Store {
                 let bytes = match fs::read(&input) {
                     Ok(bytes) => bytes,
                     Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                        // Locally registered peer files win over a snapshot, but only once
-                        // they exist: until then the restored copies stay recallable.
-                        let kept = restored.remove(&origin).unwrap_or_default();
-                        self.replace(&origin, &kept)?;
-                        self.fingerprint(&origin, "")?;
+                        self.absent(&origin, &mut restored)?;
                         continue;
                     }
                     Err(e) => {
@@ -646,12 +677,12 @@ impl Store {
             let stale: BTreeSet<_> = self
                 .all()?
                 .into_iter()
-                .filter(|r| r.origin.starts_with(&prefix) && !present.contains(&r.origin))
                 .map(|r| r.origin)
+                .chain(restored.keys().cloned())
+                .filter(|origin| origin.starts_with(&prefix) && !present.contains(origin))
                 .collect();
             for origin in stale {
-                self.replace(&origin, &[])?;
-                self.fingerprint(&origin, "")?;
+                self.absent(&origin, &mut restored)?;
             }
             loaded.push(peer.name);
         }
@@ -876,13 +907,14 @@ impl Store {
     }
 }
 
+/// Every `*.json` entry, symlinks included: the caller refuses those one by one.
 fn json_files(directory: &Path) -> Result<Vec<PathBuf>> {
     let mut paths = Vec::new();
     for entry in fs::read_dir(directory).map_err(err)? {
         let entry = entry.map_err(err)?;
         if entry.path().extension().is_some_and(|s| s == "json") {
-            plain(&entry.path())?;
-            if entry.file_type().map_err(err)?.is_file() {
+            let kind = entry.file_type().map_err(err)?;
+            if kind.is_file() || kind.is_symlink() {
                 paths.push(entry.path());
             }
         }

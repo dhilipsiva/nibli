@@ -253,3 +253,55 @@ fn restored_peer_conversations_stay_recallable_until_the_peer_files_arrive() {
     host_b.sync().unwrap();
     assert!(host_b.search("herons", "", 8, None).unwrap().is_empty());
 }
+
+#[test]
+fn restored_copies_stand_in_only_until_a_local_file_has_existed() {
+    let dir = tempfile::tempdir().unwrap();
+    let host_a = Store::open(&dir.path().join("host-a")).unwrap();
+    let mut archive = record("p1", "a private conversation about herons");
+    archive.origin = "peer:nibli/private-interactions.nibli".into();
+    host_a.record(&archive).unwrap();
+    let mut private = record("p2", "a private fact about kingfishers");
+    private.origin = "peer:nibli/private.nibli".into();
+    host_a.record(&private).unwrap();
+    let manifest = host_a.backup(&dir.path().join("backup")).unwrap();
+    let host_b = Store::open(&dir.path().join("host-b")).unwrap();
+    host_b.restore(&manifest).unwrap();
+    let home = dir.path().join("checkout/lucy");
+    std::fs::create_dir_all(&home).unwrap();
+    std::fs::write(home.join("constitution.nibli"), "# Lucy\n").unwrap();
+    host_b.register("nibli", &home).unwrap();
+    host_b.sync().unwrap();
+    // Every gitignored private file of the peer, not only the archives.
+    assert_eq!(host_b.search("herons", "", 8, None).unwrap().len(), 1);
+    assert_eq!(host_b.search("kingfishers", "", 8, None).unwrap().len(), 1);
+    std::fs::write(home.join("private-interactions.nibli"), "").unwrap();
+    host_b.sync().unwrap();
+    assert!(host_b.search("herons", "", 8, None).unwrap().is_empty());
+    // A local file has existed, so deleting it empties the origin; the snapshot does not return.
+    std::fs::remove_file(home.join("private-interactions.nibli")).unwrap();
+    host_b.sync().unwrap();
+    assert!(host_b.search("herons", "", 8, None).unwrap().is_empty());
+    assert_eq!(host_b.search("kingfishers", "", 8, None).unwrap().len(), 1);
+}
+
+#[test]
+fn invalid_and_symlinked_records_are_skipped_too() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(dir.path()).unwrap();
+    store.record(&record("good", "a findable note")).unwrap();
+    let records = dir.path().join("records");
+    let mut empty = serde_json::to_value(record("empty", "x")).unwrap();
+    empty["payload"]["text"] = json!("");
+    std::fs::write(records.join("invalid.json"), empty.to_string()).unwrap();
+    let mut tool = serde_json::to_value(record("tool", "tool output")).unwrap();
+    tool["payload"]["role"] = json!("tool");
+    std::fs::write(records.join("tool.json"), tool.to_string()).unwrap();
+    std::os::unix::fs::symlink("/etc/hostname", records.join("linked.json")).unwrap();
+    let sync = store.sync().unwrap();
+    let skipped = sync["skipped"].to_string();
+    for name in ["invalid.json", "tool.json", "linked.json"] {
+        assert!(skipped.contains(name), "{name}: {sync}");
+    }
+    assert_eq!(store.search("findable", "", 8, None).unwrap().len(), 1);
+}

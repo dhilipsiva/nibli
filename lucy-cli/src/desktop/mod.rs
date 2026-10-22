@@ -43,15 +43,36 @@ pub fn model() -> String {
 }
 
 /// Text from the model, memory or a proposal, made inert for a terminal or a text view: control
-/// characters other than newline and tab, and bidirectional overrides, isolates and marks, are
-/// shown as `\u{..}` escapes, so they cannot move the cursor, hide text or reorder it.
+/// characters other than newline and tab, line and paragraph separators, and the invisible format
+/// characters (bidirectional controls, zero-width characters, the soft hyphen, tags) are shown as
+/// `\u{..}` escapes, so they cannot move the cursor, fake a line, hide text or reorder it.
 pub fn visible(text: &str) -> String {
     let mut shown = String::with_capacity(text.len());
     for c in text.chars() {
         if (c.is_control() && c != '\n' && c != '\t')
             || matches!(
                 c,
-                '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}' | '\u{200e}' | '\u{200f}' | '\u{61c}'
+                '\u{ad}'
+                    | '\u{600}'..='\u{605}'
+                    | '\u{61c}'
+                    | '\u{6dd}'
+                    | '\u{70f}'
+                    | '\u{890}'..='\u{891}'
+                    | '\u{8e2}'
+                    | '\u{180e}'
+                    | '\u{200b}'..='\u{200f}'
+                    | '\u{2028}'..='\u{202e}'
+                    | '\u{2060}'..='\u{2064}'
+                    | '\u{2066}'..='\u{206f}'
+                    | '\u{feff}'
+                    | '\u{fff9}'..='\u{fffb}'
+                    | '\u{110bd}'
+                    | '\u{110cd}'
+                    | '\u{13430}'..='\u{1343f}'
+                    | '\u{1bca0}'..='\u{1bca3}'
+                    | '\u{1d173}'..='\u{1d17a}'
+                    | '\u{e0001}'
+                    | '\u{e0020}'..='\u{e007f}'
             )
         {
             shown.push_str(&format!("\\u{{{:x}}}", c as u32));

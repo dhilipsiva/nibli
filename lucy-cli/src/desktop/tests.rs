@@ -554,25 +554,39 @@ fn approvals_are_read_only_from_a_flushed_terminal() {
 fn synthetic_input_is_shown_by_name_and_cannot_submit_a_line() {
     let temp = tempfile::tempdir().unwrap();
     let preview = |argv: Value| actions::preview(temp.path(), "gui", json!({"argv":argv}));
-    let shown = preview(json!(["key", "29:1", "21:1", "21:0", "29:0", "200:1"])).unwrap();
+    let shown = preview(json!([
+        "key", "42:1", "21:1", "21:0", "42:0", "200:1", "200:0"
+    ]))
+    .unwrap();
     assert_eq!(
         shown["keys"],
         json!([
-            "LEFTCTRL down",
+            "LEFTSHIFT down",
             "Y down",
             "Y up",
-            "LEFTCTRL up",
-            "KEY_200 down"
+            "LEFTSHIFT up",
+            "KEY_200 down",
+            "KEY_200 up"
         ])
     );
     assert!(preview(json!(["type", "--", "hello"])).is_ok());
     assert!(preview(json!(["click", "0xC0"])).is_ok());
     for argv in [
+        // Enter, keypad Enter, Linefeed.
         json!(["key", "21:1", "21:0", "28:1", "28:0"]),
-        json!(["key", "96:1"]),
+        json!(["key", "96:1", "96:0"]),
+        json!(["key", "101:1", "101:0"]),
+        // Modifiers other than Shift, CapsLock (often Ctrl) and keys left down.
         json!(["key", "29:1", "36:1", "36:0", "29:0"]),
-        json!(["key", "97:1", "50:1"]),
+        json!(["key", "97:1", "50:1", "50:0", "97:0"]),
+        json!(["key", "58:1", "50:1", "50:0", "58:0"]),
+        json!(["key", "56:1", "15:1", "15:0", "56:0"]),
+        json!(["key", "125:1", "125:0"]),
+        json!(["key", "29:1"]),
+        json!(["key", "21:1"]),
         json!(["key", "21:2"]),
+        // ydotool expands backslash escapes in typed text.
+        json!(["type", "--", "y\\n"]),
         json!(["type", "--", "y\n"]),
         json!(["type", "--", "y\r"]),
         json!(["type", "y"]),
@@ -762,5 +776,236 @@ fn approved_commands_cannot_reach_denied_names_at_any_depth() {
     assert!(
         !result["output"].as_str().unwrap().contains("secret-value"),
         "{result}"
+    );
+}
+
+#[test]
+fn terminal_text_escapes_invisible_and_line_separator_characters() {
+    for c in [
+        '\u{2028}',
+        '\u{2029}',
+        '\u{200b}',
+        '\u{2060}',
+        '\u{feff}',
+        '\u{ad}',
+        '\u{e0041}',
+        '\u{180e}',
+    ] {
+        let shown = super::visible(&format!("a{c}b"));
+        assert!(!shown.contains(c), "{c:?} -> {shown}");
+        assert!(shown.contains(&format!("\\u{{{:x}}}", c as u32)), "{shown}");
+    }
+    assert_eq!(super::visible("plain é ✓ 😀"), "plain é ✓ 😀");
+}
+
+#[test]
+fn approving_synthetic_input_withdraws_other_conversations_proposals_too() {
+    let temp = tempfile::tempdir().unwrap();
+    let service = Service::new(temp.path().join("memory"), None);
+    service.scripted(vec![
+        json!({"content":"","tool_calls":[{"id":"call-1","type":"function",
+        "function":{"name":"gui","arguments":{"argv":["key","21:1","21:0"]}}}]}),
+    ]);
+    let first = service.dispatch(json!({"op":"open"})).unwrap();
+    let gui = service
+        .dispatch(request(
+            &first,
+            json!({"op":"chat","text":"Press y","event":"gui","workspace":temp.path()}),
+        ))
+        .unwrap()["pending"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .next()
+        .unwrap()
+        .clone();
+    let second = service.dispatch(json!({"op":"open"})).unwrap();
+    service
+        .dispatch(request(
+            &second,
+            json!({"op":"begin-archive","workspace":temp.path()}),
+        ))
+        .unwrap();
+    let other = service
+        .dispatch(request(
+            &second,
+            json!({"op":"tool","name":"write","arguments":{"path":"b.txt","text":"x"}}),
+        ))
+        .unwrap()["pending_action"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(
+        std::env::var_os("LUCY_INPUT_HELPER").is_none(),
+        "run the tests without LUCY_INPUT_HELPER"
+    );
+    let approve = |client: &Value, id: &str| {
+        service.dispatch(request(
+            client,
+            json!({"op":"approve","action":id,"allow":true}),
+        ))
+    };
+    assert!(approve(&first, &gui).unwrap_err().contains("input helper"));
+    assert_eq!(
+        approve(&second, &other).unwrap_err(),
+        "action expired or already handled"
+    );
+    assert!(!temp.path().join("b.txt").exists());
+}
+
+#[test]
+fn a_workspace_inside_credentials_or_runtime_state_is_refused() {
+    let temp = tempfile::tempdir().unwrap();
+    for inside in [".ssh", "repo/.git", "x/.config/app"] {
+        let root = temp.path().join(inside);
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("file"), "secret").unwrap();
+        assert!(actions::path(&root, "file", false).is_err(), "{inside}");
+    }
+    for runtime in ["/run", "/proc/self", "/sys"] {
+        let runtime = std::path::Path::new(runtime);
+        if runtime.is_dir() {
+            assert!(
+                actions::path(runtime, "x", false).is_err(),
+                "{}",
+                runtime.display()
+            );
+        }
+    }
+    if let Some(runtime) = std::env::var_os("XDG_RUNTIME_DIR").map(std::path::PathBuf::from)
+        && runtime.is_dir()
+    {
+        assert!(actions::path(&runtime, "x", false).is_err());
+    }
+    // Ordinary project directories that share a word with a denied name stay readable.
+    std::fs::create_dir_all(temp.path().join("p/src/credentials")).unwrap();
+    std::fs::write(temp.path().join("p/src/credentials/mod.rs"), "").unwrap();
+    assert!(actions::path(&temp.path().join("p"), "src/credentials/mod.rs", false).is_ok());
+}
+
+#[test]
+fn git_inspection_never_shows_tracked_files_under_denied_names() {
+    if !sandboxed() {
+        return;
+    }
+    let temp = tempfile::tempdir().unwrap();
+    let repo = temp.path().join("repo");
+    for (path, text) in [
+        ("a.txt", "one\n"),
+        (".env.example", "TOKEN=PROBE-ENV-SECRET\n"),
+        (
+            "deploy/.docker/config.json",
+            "{\"auth\":\"PROBE-REGISTRY-TOKEN\"}\n",
+        ),
+        ("ops/.kube/config", "token: PROBE-KUBE-TOKEN\n"),
+        (".envrc", "export X=PROBE-ENVRC\n"),
+    ] {
+        let file = repo.join(path);
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::write(file, text).unwrap();
+    }
+    git(&repo, &["init", "-q"]);
+    git(&repo, &["add", "-A"]);
+    git(&repo, &["commit", "-q", "-m", "one"]);
+    let cancel = AtomicBool::new(false);
+    let inspect = |operation: &str| {
+        actions::execute(&repo, &cancel, "git", &json!({"operation":operation}), None).unwrap()
+    };
+    // A clean repository is clean, and nothing under a denied name is printed.
+    for operation in ["status", "diff"] {
+        let result = inspect(operation);
+        assert_eq!(result["exit_code"], 0, "{operation}: {result}");
+        assert_eq!(result["output"], "", "{operation}: {result}");
+    }
+    std::fs::write(repo.join("a.txt"), "two\n").unwrap();
+    std::fs::write(repo.join(".env.example"), "TOKEN=PROBE-CHANGED\n").unwrap();
+    let diff = inspect("diff");
+    let output = diff["output"].as_str().unwrap();
+    assert!(output.contains("+two"), "{diff}");
+    assert!(!output.contains("PROBE"), "{diff}");
+    let status = inspect("status");
+    assert!(
+        status["output"].as_str().unwrap().contains("a.txt"),
+        "{status}"
+    );
+    assert!(
+        !status["output"].as_str().unwrap().contains(".env"),
+        "{status}"
+    );
+}
+
+#[test]
+fn git_inspection_works_in_a_linked_worktree_and_explains_a_subdirectory() {
+    if !sandboxed() {
+        return;
+    }
+    let temp = tempfile::tempdir().unwrap();
+    let repo = temp.path().join("repo");
+    std::fs::create_dir_all(repo.join("sub")).unwrap();
+    std::fs::write(repo.join("sub/a.txt"), "one\n").unwrap();
+    git(&repo, &["init", "-q"]);
+    git(&repo, &["add", "-A"]);
+    git(&repo, &["commit", "-q", "-m", "one"]);
+    git(&repo, &["worktree", "add", "-q", "../linked"]);
+    let linked = temp.path().join("linked");
+    std::fs::write(linked.join("sub/a.txt"), "two\n").unwrap();
+    let cancel = AtomicBool::new(false);
+    let status = actions::execute(
+        &linked,
+        &cancel,
+        "git",
+        &json!({"operation":"status"}),
+        None,
+    )
+    .unwrap();
+    assert_eq!(status["exit_code"], 0, "{status}");
+    assert!(
+        status["output"].as_str().unwrap().contains("sub/a.txt"),
+        "{status}"
+    );
+    let error = actions::execute(
+        &repo.join("sub"),
+        &cancel,
+        "git",
+        &json!({"operation":"status"}),
+        None,
+    )
+    .unwrap_err();
+    assert!(error.contains("repository root"), "{error}");
+}
+
+#[test]
+fn approved_commands_see_neither_sockets_nor_unreadable_directories() {
+    if !sandboxed() {
+        return;
+    }
+    use std::os::unix::fs::PermissionsExt;
+    let temp = tempfile::tempdir().unwrap();
+    let _listener = std::os::unix::net::UnixListener::bind(temp.path().join("bus.sock")).unwrap();
+    let locked = temp.path().join("locked");
+    std::fs::create_dir_all(locked.join(".git")).unwrap();
+    std::fs::write(locked.join(".git/config"), "original\n").unwrap();
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let cancel = AtomicBool::new(false);
+    let result = actions::execute(
+        temp.path(),
+        &cancel,
+        "command",
+        &json!({"argv":["sh","-c",
+            "test -S bus.sock && echo socket-visible; chmod 700 locked && echo changed > locked/.git/config; true"]}),
+        None,
+    );
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let result = result.unwrap();
+    assert!(
+        !result["output"]
+            .as_str()
+            .unwrap()
+            .contains("socket-visible"),
+        "{result}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(locked.join(".git/config")).unwrap(),
+        "original\n"
     );
 }

@@ -39,7 +39,6 @@ const DENIED: &[&str] = &[
     ".pki",
     ".terraform.d",
     ".vault-token",
-    "credentials",
     "credentials.toml",
 ];
 // A bounded walk finds denied names for the sandbox; a larger workspace is refused, not
@@ -161,36 +160,68 @@ fn denied(name: &str) -> bool {
         || name.starts_with(".env.")
         || (name.starts_with('.') && name.ends_with("history"))
 }
-/// The canonical workspace. The home directory and its ancestors are refused: they hold the
-/// credentials and shell startup files the deny list can only partly name.
+/// The canonical workspace. Refused: the home directory and its ancestors (they hold the
+/// credentials and shell startup files the deny list can only partly name), anything inside a
+/// denied name (`~/.ssh`, a repository's `.git`), and the runtime and kernel trees, which hold
+/// sockets to the session bus and to Lucy's own service.
 fn workspace(root: &Path) -> Result<PathBuf> {
     let root = root.canonicalize().map_err(err)?;
+    let refused = |what: &str| {
+        Err(format!(
+            "tools need a project directory as the workspace, not {what}"
+        ))
+    };
     if let Some(home) = std::env::var_os("HOME").and_then(|h| Path::new(&h).canonicalize().ok())
         && home.starts_with(&root)
     {
-        return Err(
-            "tools need a project directory as the workspace, not the home directory or above it"
-                .into(),
-        );
+        return refused("the home directory or above it");
+    }
+    if root
+        .components()
+        .any(|c| denied(&c.as_os_str().to_string_lossy()))
+    {
+        return refused("a credential or configuration directory");
+    }
+    let runtime = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from);
+    for system in ["/run", "/proc", "/sys", "/dev"]
+        .into_iter()
+        .map(PathBuf::from)
+        .chain(runtime)
+    {
+        let system = system.canonicalize().unwrap_or(system);
+        if root.starts_with(&system) || system.starts_with(&root) {
+            return refused("a runtime or system directory");
+        }
     }
     Ok(root)
 }
-/// Every denied name in the workspace, found without following symlinks.
-fn denied_paths(root: &Path) -> Result<Vec<PathBuf>> {
+/// What the sandbox hides, found by a bounded walk that never follows symlinks: every denied
+/// name; every socket and FIFO, each a door to another process (the session bus, Lucy's own
+/// service); and every directory this user cannot read, which an approved command could
+/// otherwise chmod open. Each entry says whether it is a directory.
+fn masks(root: &Path) -> Result<Vec<(PathBuf, bool)>> {
+    use std::os::unix::fs::FileTypeExt;
     let mut found = Vec::new();
     let mut directories = vec![root.to_path_buf()];
     let mut walked = 0;
     while let Some(directory) = directories.pop() {
-        // A directory this user cannot read is unreadable inside the sandbox too.
-        let Ok(entries) = fs::read_dir(&directory) else {
-            continue;
+        let entries = match fs::read_dir(&directory) {
+            Ok(entries) => entries,
+            Err(_) if directory != root => {
+                found.push((directory, true));
+                continue;
+            }
+            Err(error) => return Err(err(error)),
         };
         for entry in entries {
             let entry = entry.map_err(err)?;
             let kind = entry.file_type().map_err(err)?;
-            if denied(&entry.file_name().to_string_lossy()) {
+            let path = entry.path();
+            if kind.is_socket() || kind.is_fifo() {
+                found.push((path, false));
+            } else if denied(&entry.file_name().to_string_lossy()) {
                 if kind.is_dir() || kind.is_file() {
-                    found.push(entry.path());
+                    found.push((path, kind.is_dir()));
                 }
             } else if kind.is_dir() {
                 walked += 1;
@@ -199,19 +230,24 @@ fn denied_paths(root: &Path) -> Result<Vec<PathBuf>> {
                         "the workspace is too large to sandbox; choose a smaller one".into(),
                     );
                 }
-                directories.push(entry.path());
+                directories.push(path);
             }
         }
     }
     Ok(found)
 }
 /// bwrap arguments that run a program in the workspace with no network, no environment and none
-/// of the host but the Nix store and the system profile. Denied names are masked at every depth.
-/// `writable` is for approved commands; the unapproved git inspection gets a read-only workspace,
-/// and keeps `.git` itself, so repository configuration (filters, drivers) can run nothing that
-/// changes or reaches anything.
-fn sandbox(root: &Path, writable: bool) -> Result<Vec<String>> {
-    let workspace = root.to_str().ok_or("workspace is not UTF-8")?;
+/// of the host but the Nix store, the system profile and `git_dirs`, with `masks` hidden.
+/// `writable` is for approved commands; the unapproved git inspection gets a read-only workspace
+/// and keeps the repository's own `.git`, so repository configuration (filters, drivers) can run
+/// nothing that changes or reaches anything.
+fn sandbox(root: &Path, writable: bool, git_dirs: &[PathBuf]) -> Result<Vec<String>> {
+    let utf8 = |path: &Path| {
+        path.to_str()
+            .map(str::to_owned)
+            .ok_or_else(|| "workspace path is not UTF-8".to_owned())
+    };
+    let workspace = utf8(root)?;
     let mut command = strings(&[
         "bwrap",
         "--unshare-all",
@@ -235,25 +271,28 @@ fn sandbox(root: &Path, writable: bool) -> Result<Vec<String>> {
         "--ro-bind",
         "/run/current-system/sw",
         "/run/current-system/sw",
-        if writable { "--bind" } else { "--ro-bind" },
-        workspace,
-        workspace,
-        "--chdir",
-        workspace,
-        "--clearenv",
-        "--setenv",
-        "PATH",
-        &std::env::var("LUCY_COMMAND_PATH").unwrap_or_else(|_| "/run/current-system/sw/bin".into()),
     ]);
-    for path in denied_paths(root)? {
-        if !writable && path.file_name().is_some_and(|name| name == ".git") {
+    for directory in git_dirs {
+        let directory = utf8(directory)?;
+        command.extend(["--ro-bind".into(), directory.clone(), directory]);
+    }
+    command.extend([
+        if writable { "--bind" } else { "--ro-bind" }.into(),
+        workspace.clone(),
+        workspace.clone(),
+        "--chdir".into(),
+        workspace,
+        "--clearenv".into(),
+        "--setenv".into(),
+        "PATH".into(),
+        std::env::var("LUCY_COMMAND_PATH").unwrap_or_else(|_| "/run/current-system/sw/bin".into()),
+    ]);
+    for (path, directory) in masks(root)? {
+        if !writable && path == root.join(".git") {
             continue;
         }
-        let path = path
-            .to_str()
-            .ok_or("workspace path is not UTF-8")?
-            .to_owned();
-        if path_is_dir(&path) {
+        let path = utf8(&path)?;
+        if directory {
             command.extend(["--tmpfs".into(), path]);
         } else {
             command.extend(["--ro-bind".into(), "/dev/null".into(), path]);
@@ -262,8 +301,56 @@ fn sandbox(root: &Path, writable: bool) -> Result<Vec<String>> {
     command.push("--".into());
     Ok(command)
 }
-fn path_is_dir(path: &str) -> bool {
-    fs::symlink_metadata(path).is_ok_and(|m| m.is_dir())
+/// The git directories a read-only inspection needs bound besides the workspace, which must be
+/// the repository's root (from a subdirectory git would need the whole work tree). A linked
+/// worktree's `.git` is a file naming its git directory elsewhere; it is bound, with the
+/// repository's common directory, only when it has a real worktree's layout, so a planted `.git`
+/// file cannot name some other directory into the sandbox.
+fn git_dirs(root: &Path) -> Result<Vec<PathBuf>> {
+    let dot = root.join(".git");
+    match fs::symlink_metadata(&dot) {
+        Ok(meta) if meta.is_dir() => Ok(Vec::new()),
+        Ok(meta) if meta.is_file() => {
+            let named = fs::read_to_string(&dot).map_err(err)?;
+            let named = named
+                .strip_prefix("gitdir:")
+                .map(str::trim)
+                .ok_or("the workspace's .git file names no git directory")?;
+            let gitdir = root.join(named).canonicalize().map_err(err)?;
+            let common = fs::read_to_string(gitdir.join("commondir"))
+                .map_err(|_| "the workspace's .git file does not name a linked worktree")?;
+            let common = gitdir.join(common.trim()).canonicalize().map_err(err)?;
+            if gitdir.parent() != Some(common.join("worktrees").as_path())
+                || !common.join("HEAD").is_file()
+                || !common.join("objects").is_dir()
+            {
+                return Err("the workspace's .git file does not name a linked worktree".into());
+            }
+            Ok(vec![common, gitdir])
+        }
+        _ => match root.ancestors().skip(1).find(|a| a.join(".git").exists()) {
+            Some(top) => Err(format!(
+                "git inspection needs the repository root as the workspace ({})",
+                top.display()
+            )),
+            None => Ok(Vec::new()),
+        },
+    }
+}
+/// Pathspecs that keep every denied name out of git's output: the sandbox masks those paths, so
+/// git would otherwise report them as deleted and print their committed content.
+fn git_pathspecs() -> Vec<String> {
+    let mut specs = vec![".".to_owned()];
+    for name in DENIED
+        .iter()
+        .copied()
+        .filter(|name| *name != ".git")
+        .chain([".env.*", ".*history"])
+    {
+        specs.push(format!(":(exclude,glob)**/{name}"));
+        specs.push(format!(":(exclude,glob)**/{name}/**"));
+    }
+    specs
 }
 pub fn path(root: &Path, relative: &str, allow_root: bool) -> Result<PathBuf> {
     let root = workspace(root)?;
@@ -406,22 +493,30 @@ fn key_name(code: u16) -> String {
         .find(|(known, _)| *known == code)
         .map_or_else(|| format!("KEY_{code}"), |(_, name)| (*name).to_owned())
 }
-/// Checks a `gui` argv and returns the key events it presses, by name. Synthetic input may not
-/// submit a line (Enter, keypad Enter, Ctrl+J, Ctrl+M, or a control character in typed text):
-/// the approval prompts read lines, and an approved action must not be able to answer one.
+/// Checks a `gui` argv and returns the key events it presses, by name. Synthetic input must not
+/// be able to answer an approval prompt, so it may not press Enter, keypad Enter or Linefeed, may
+/// hold no modifier but Shift (Ctrl, Alt, Meta and CapsLock, often remapped to Ctrl, turn
+/// ordinary keys into control characters on any layout), must release every key it presses, and
+/// may not type control characters or backslashes (ydotool expands backslash escapes). This is
+/// best effort: the terminal's flushed, terminal-only read is what protects its prompt.
 fn gui_events(args: &[String]) -> Result<Option<Vec<String>>> {
     let unsupported = || Err::<_, String>("unsupported literal mouse/keyboard action".into());
     match args[0].as_str() {
         "type" if args.len() == 3 && args[1] == "--" && args[2].len() <= 4096 => {
-            if args[2].chars().any(|c| c.is_control() && c != '\t') {
+            if args[2]
+                .chars()
+                .any(|c| (c.is_control() && c != '\t') || c == '\\')
+            {
                 return Err(
-                    "synthetic input may not type line breaks or control characters".into(),
+                    "synthetic input may not type line breaks, control characters or \
+                     backslashes"
+                        .into(),
                 );
             }
             Ok(None)
         }
         "key" if args.len() > 1 && args.len() <= 65 => {
-            let (mut left_ctrl, mut right_ctrl) = (false, false);
+            let mut held = std::collections::BTreeSet::new();
             let mut names = Vec::new();
             for event in &args[1..] {
                 let Some((code, state)) = event.split_once(':') else {
@@ -435,22 +530,25 @@ fn gui_events(args: &[String]) -> Result<Option<Vec<String>>> {
                     "0" => false,
                     _ => return unsupported(),
                 };
-                match code {
-                    29 => left_ctrl = down,
-                    97 => right_ctrl = down,
-                    _ => {}
-                }
-                if down
-                    && (matches!(code, 28 | 96)
-                        || ((left_ctrl || right_ctrl) && matches!(code, 36 | 50)))
-                {
+                if matches!(code, 28 | 96 | 101) {
                     return Err("synthetic input may not press Enter or submit a line".into());
+                }
+                if matches!(code, 29 | 97 | 56 | 100 | 125 | 126 | 58) {
+                    return Err("synthetic input may hold Shift but no other modifier".into());
+                }
+                if down {
+                    held.insert(code);
+                } else {
+                    held.remove(&code);
                 }
                 names.push(format!(
                     "{} {}",
                     key_name(code),
                     if down { "down" } else { "up" }
                 ));
+            }
+            if !held.is_empty() {
+                return Err("synthetic input must release every key it presses".into());
             }
             Ok(Some(names))
         }
@@ -699,7 +797,7 @@ pub fn execute(
         }
         "git" => {
             let root = workspace(root)?;
-            let mut command = sandbox(&root, false)?;
+            let mut command = sandbox(&root, false, &git_dirs(&root)?)?;
             command.extend(strings(&[
                 "git",
                 "--no-pager",
@@ -709,12 +807,22 @@ pub fn execute(
                 "-c",
                 "core.hooksPath=/dev/null",
             ]));
-            command.extend(match string(args, "operation")? {
-                "status" => strings(&["status", "--short"]),
-                "diff" => strings(&["diff", "--no-ext-diff", "--no-textconv", "--"]),
+            let operation = string(args, "operation")?;
+            command.extend(match operation {
+                "status" => strings(&["status", "--short", "--ignore-submodules=all"]),
+                "diff" => strings(&[
+                    "diff",
+                    "--no-ext-diff",
+                    "--no-textconv",
+                    "--ignore-submodules=all",
+                ]),
                 "log" => strings(&["log", "-10", "--format=%h %s"]),
                 _ => return Err("unsupported Git inspection".into()),
             });
+            if operation != "log" {
+                command.push("--".into());
+                command.extend(git_pathspecs());
+            }
             run(&root, cancel, &command, false, 30)
         }
         "diagnostics" => {
@@ -769,7 +877,7 @@ pub fn execute(
         "command" => {
             let task_args = argv(args)?;
             let root = workspace(root)?;
-            let mut command = sandbox(&root, true)?;
+            let mut command = sandbox(&root, true, &[])?;
             command.extend(task_args);
             run(&root, cancel, &command, false, 120)
         }

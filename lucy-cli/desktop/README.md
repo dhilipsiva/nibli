@@ -70,16 +70,23 @@ Writes
 show a diff and refuse a file changed since preview. Commands require approval and
 run in a bubblewrap workspace sandbox without network or host credentials. Git
 inspection runs in the same sandbox with the workspace read-only, so a repository's
-own configuration (filters, drivers) cannot change or reach anything. The tools
-refuse the home directory, or anything above it, as a workspace; `lucy ui`, `chat`
-and `agent` started there use `~/LucyTasks`. Credential and configuration names
-(`.git`, `.ssh`, `.env*`, `.netrc`, `.docker`, `.kube`, shell histories and the
-rest of the list in `actions.rs`) are refused at any depth and masked inside the
-sandbox. The terminal takes an approval only from a terminal, after discarding
-input typed before the prompt; model text and proposals are shown with control and
-bidirectional-override characters escaped. GUI key events are shown by name,
-synthetic input cannot press Enter or type a line break, and approving a GUI action
-withdraws every other pending proposal. GUI,
+own configuration (filters, drivers) cannot change or reach anything; it needs the
+repository's root (or a linked worktree's) as the workspace, and never prints paths
+under a denied name. The tools refuse as a workspace the home directory or anything
+above it, anything inside a denied name (`~/.ssh`, a repository's `.git`), and the
+runtime and kernel trees (`/run`, `$XDG_RUNTIME_DIR`, `/proc`, `/sys`, `/dev`);
+`lucy ui`, `chat` and `agent` started in the home directory use `~/LucyTasks`.
+Credential and configuration names (`.git`, `.ssh`, `.env*`, `.netrc`, `.docker`,
+`.kube`, shell histories and the rest of the list in `actions.rs`) are refused at
+any depth and masked inside the sandbox, as are sockets, FIFOs and directories the
+user cannot read. A file an approved command creates is not masked until the next
+action. The terminal takes an approval only from a terminal, after discarding input
+typed before the prompt; model text, proposals and memories are shown with control,
+format and line-separator characters escaped. GUI key events are shown by name.
+Synthetic input may hold Shift but no other modifier, must release every key, and
+cannot press Enter or Linefeed or type a line break or backslash; this is best
+effort, and the flushed terminal-only read is what protects the terminal's prompt.
+Approving a GUI action withdraws every pending proposal in every conversation. GUI,
 screenshots, app launches and privileged diagnostics require explicit approval;
 privileged helpers additionally require polkit authentication. GUI actions check
 an active unlocked Wayland login and stop on lock/cancel. This is polling, not a

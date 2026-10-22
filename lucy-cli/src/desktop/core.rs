@@ -416,14 +416,15 @@ impl Service {
                         .pending
                         .remove(string(&req, "action")?)
                         .ok_or("action expired or already handled")?;
-                    // Synthetic input reaches whatever window has focus, Lucy's own approval
-                    // controls included, so an approved `gui` action first withdraws every other
-                    // proposal: none of them can be approved by it.
-                    if proposal["tool"] == "gui" && req["allow"].as_bool() == Some(true) {
-                        s.pending.clear();
-                    }
                     (proposal, s.workspace.clone())
                 };
+                // Synthetic input reaches whatever window has focus, the approval controls of
+                // any Lucy window or terminal included, so an approved `gui` action first
+                // withdraws every pending proposal in every conversation: none of them can be
+                // approved by it.
+                if proposal["tool"] == "gui" && req["allow"].as_bool() == Some(true) {
+                    self.withdraw_everywhere()?;
+                }
                 let tool = string(&proposal, "tool")?;
                 let result = if req["allow"].as_bool() == Some(true) {
                     actions::execute(
@@ -461,6 +462,21 @@ impl Service {
             }
             _ => Err("unsupported operation".into()),
         }
+    }
+    /// Clears every conversation's pending proposals. The sessions are collected first and locked
+    /// one at a time, never while the map is held (`status` takes the map, then each session).
+    fn withdraw_everywhere(&self) -> Result<()> {
+        let sessions: Vec<_> = self
+            .sessions
+            .lock()
+            .map_err(err)?
+            .values()
+            .cloned()
+            .collect();
+        for session in sessions {
+            session.lock().map_err(err)?.pending.clear();
+        }
+        Ok(())
     }
     fn create(&self, source: &str, id: &str, workspace: &str) -> Result<Arc<Mutex<Session>>> {
         let workspace = std::fs::canonicalize(workspace).map_err(err)?;

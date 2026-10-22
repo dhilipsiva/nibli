@@ -155,12 +155,12 @@ impl Window {
                 &memories
                     .iter()
                     .map(|m| {
-                        format!(
+                        super::visible(&format!(
                             "{} · {}\n{}",
                             m["source"].as_str().unwrap_or("memory"),
                             m["id"].as_str().unwrap_or(""),
                             m["excerpt"].as_str().unwrap_or("")
-                        )
+                        ))
                     })
                     .collect::<Vec<_>>()
                     .join("\n\n"),
