@@ -2,18 +2,16 @@
 //! code-review panel (see `todo.md` → "Deep code-review panel findings" and
 //! `code-review-panel-2026-06-10.json`).
 //!
-//! Each test below encodes the DESIRED (post-fix) behavior, so it FAILS today
-//! (the bug reproduces) and will PASS once the corresponding `todo.md` item is
-//! fixed. Every test is `#[ignore]`d so the normal suite stays green; this file
-//! is the red backlog you opt into.
+//! Each test encodes the DESIRED (post-fix) behavior. Every reproducer that was
+//! filed here has been fixed and promoted to a live guard (none is ignored, checked
+//! 2026-10-22), and `just verify-harness`, part of `just ci`, runs the file.
 //!
-//! Run the backlog (expect failures — that's the point):
+//! Workflow for a new defect: add its test with an ignore attribute and a TODO.md
+//! entry naming it, so the normal suite stays green; run the backlog with
 //!   cargo test -p nibli-engine --test known_failures -- --ignored --test-threads=1
-//!
-//! Workflow: when you fix an item, delete its `#[ignore]` line so the test joins
-//! the normal regression suite. A test here going GREEN while still `#[ignore]`d
-//! means either the bug was fixed elsewhere (promote it) or the pin is mis-encoded
-//! (fix the pin) — never leave a green ignored test.
+//! When it is fixed, remove the attribute so the test joins the regression suite.
+//! A test going GREEN while still ignored means the bug was fixed elsewhere
+//! (promote it) or the pin is mis-encoded (fix the pin): never leave one ignored.
 //!
 //! Scope: these are reproducible through the engine's public surface
 //! (`assert_text`/`query_holds`/`check_contradictions`) and are NON-FATAL (they

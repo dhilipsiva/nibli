@@ -721,13 +721,15 @@ verify-book-capture: build-wasm
     NIBLI_WASM_PATH={{wasm_dir}}/nibli.wasm python3 book/tools/capture_book.py --check
 
 # Step-zero regression guard (run by `ci`). The logji FOL control test proves the
-# deep-chain reasoning path stays sound (it must PASS). The RED known-failure
-# backlog (known_failures*) stays opt-in via `-- --ignored` and is NOT run here.
+# deep-chain reasoning path stays sound (it must PASS). The known-failure files hold
+# the panel's reproducers, all fixed and promoted to live guards, so all three run
+# here; a new defect joins one of them ignored (opt in with `-- --ignored`).
 # The book vocab gate (`verify-book-vocab`) joins `ci` once the `xanlu` non-word
 # is fixed (revisions P0.2) — it is intentionally red until then.
 verify-harness:
     cargo test -p nibli-reason --test known_failures_fol {{cargo_profile_flag}} -- --test-threads=1
     cargo test -p nibli-engine --test known_failures {{cargo_profile_flag}} -- --test-threads=1
+    cargo test -p nibli-engine --test known_failures_fatal {{cargo_profile_flag}} -- --test-threads=1
 
 # Differential SOUNDNESS gate (Track A), two oracles: nibli's verdict must agree with
 # (1) the Vampire FOL prover over the Horn/NAF-free fragment, and (2) the clingo ASP solver

@@ -126,6 +126,64 @@ wrong one proves nothing (it cost two wrong conclusions during this re-cut).
 
 ---
 
+## Chain — the 0.2.0 release (do in this order: split -> merge -> upgrade -> tag)
+
+Added 2026-10-22 from the workspace plan (its item IDs in brackets), which found these
+prerequisites tracked nowhere in this repo. The order is the dependency order: the CI split makes
+the merged and upgraded tree's gate fit its hour; the Lucy merge lands before the upgrade so the
+upgrade is reviewed against the tree that ships; and nothing is tagged until the gate is green on
+that tree.
+
+1. **Split CI** *(effort: low)* `[P0-NIBLI-02]`. `runtime-ci` becomes `native` (`just ci`) and
+   `wasm` (`just ci-wasm`), with a `concurrency` group and cargo caches, because the single job
+   took 46 of its 60 minutes. Prepared on `todo/P0-NIBLI-02`. Done when three consecutive pushes
+   to main are green in every job, none cancelled. Rename any required status check called
+   `runtime-ci` to the two new jobs.
+2. **Merge the Lucy desktop rewrite** *(effort: medium)* `[P1-NIBLI-01; D1(a)]`. The work that was
+   uncommitted on main is on `lucy-desktop-rust` (from `3516ca7`). Review the full diff, add
+   `test-lucy-desktop` and `clippy-lucy-desktop` to `just ci`, and merge. Do not rebase or delete
+   `origin/lucy-desktop` until NixOS re-pins (`[P1-NIXOS-01]`; `NixOS/flake.nix` pins `0f3a317`).
+3. **Upgrade and gate the dependencies** *(effort: high)*:
+   - `[P1-NIBLI-07]`: commit the canonical `deny.toml` with every open RUSTSEC id ignored and
+     annotated;
+   - `[P2-NIBLI-01]`: move from wasmtime 41.0.3 to wasmtime 49 (>= 49.0.4, the advisory floor),
+     keeping the determinism corpus byte-identical across native, wasmtime and node;
+   - `[P2-NIBLI-02]`: rustls >= 0.23.46, rustls-webpki >= 0.103.12, and pyo3 >= 0.29 (or
+     nibli-auth-py behind a feature), until `cargo deny check advisories` passes with no ignore
+     list.
+4. **Roll CHANGELOG [0.2.0]** *(effort: low)* `[P3-NIBLI-01]`. Move `[Unreleased]` to `[0.2.0]`,
+   including the ENGINE_UPGRADE_0_2.md API changes.
+5. **Take the never-run tag-push path** *(effort: medium)*:
+   - `[P3-NIBLI-02]`: one more `workflow_dispatch` dry run of `release.yml` on the exact
+     candidate commit;
+   - `[P3-NIBLI-03]`: push `v0.2.0` itself, so the gate, bins, lockstep publish and finalize run
+     live for the first time, with the owner watching.
+
+   `RELEASING.md` is the runbook.
+
+Independent of 1-5, best before the tag so the released tree is the light one: **move the
+`paper/results` raw captures** *(effort: medium)* `[P3-NIBLI-05; D4]`. That is 8,369 files, 482.9
+MB of the 491.9 MB tracked tree. Move them to a Release asset, a Zenodo DOI or git-lfs, without
+rewriting history. Leave a manifest of sha256 sums and a `paper/README.md` link.
+
+---
+
+## The red backlog — empty (checked 2026-10-22)
+
+- `nibli-engine/tests/known_failures.rs`, `known_failures_fatal.rs` and
+  `nibli-reason/tests/known_failures_fol.rs` hold no ignored test: every reproducer from the
+  2026-06-10 panel was fixed and promoted to a live guard, and `just verify-harness` (part of
+  `just ci`) runs all three. A new defect joins one of them ignored, with an entry here naming
+  it, and is promoted when fixed.
+- The six ignored tests elsewhere wait on an environment, not a defect: five in
+  `nibli-host/src/recovery_tests.rs` need the built component and run in
+  `just smoke-host-state-controls` (`ci-wasm`). **`native_compute_backend_real_python_tenfa`**
+  *(effort: small)* in `nibli-engine/tests/integration.rs` starts the Python backend and runs
+  only by hand (`cargo test -p nibli-engine --test integration -- --ignored`): wire it into a
+  recipe, or say in its comment why it stays manual.
+
+---
+
 ## Chain — case-study corpora (1 and 2 independent)
 
 The `obliged`-rendering entry that used to head this chain LANDED 2026-08-17, together

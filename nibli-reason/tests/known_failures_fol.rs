@@ -12,11 +12,11 @@
 //! would hit them. So they live in this nibli-reason-level integration file rather than
 //! the engine-level `known_failures.rs`.
 //!
-//! Each test encodes the DESIRED (post-fix) behaviour, so it FAILS today (the bug
-//! reproduces) and PASSES once the corresponding `todo.md` item is fixed. Every
-//! test is `#[ignore]`d so the normal suite stays green.
-//!
-//! Run the backlog (expect failures — that's the point):
+//! Each test encodes the DESIRED (post-fix) behaviour. Every reproducer filed here
+//! has been fixed and promoted to a live guard (none is ignored, checked
+//! 2026-10-22), and `just verify-harness` runs the file. A new defect is added with
+//! an ignore attribute and a TODO.md entry, as in `nibli-engine/tests/known_failures.rs`,
+//! and runs with
 //!   cargo test -p nibli-reason --test known_failures_fol -- --ignored --test-threads=1
 
 use nibli_reason::KnowledgeBase;
