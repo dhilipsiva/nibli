@@ -3684,7 +3684,7 @@ pub(super) fn process_preflighted_assertion(
     // assertion, and the replay runs with `rebuilding = true`, where strict is
     // inert (previously-accepted facts restore faithfully).
     if !inner.strict_violations.is_empty() {
-        let joined = inner.strict_violations.drain(..).collect::<Vec<_>>();
+        let joined = std::mem::take(&mut inner.strict_violations);
         return Err(format!("strict mode rejected: {}", joined.join("; ")));
     }
     Ok(())
@@ -4407,7 +4407,7 @@ fn extract_rule_candidates_for_entailment_bounded(
                     for combo in GroundTermCartesianProduct::new(members, unresolved.len()) {
                         note_entailment_candidate_cartesian_step(&anchor.relation);
                         let bindings: HashMap<String, GroundTerm> =
-                            unresolved.iter().cloned().zip(combo.into_iter()).collect();
+                            unresolved.iter().cloned().zip(combo).collect();
                         if insert_bounded_candidate(
                             candidates,
                             substitute_term(&structured, &bindings).into_owned(),

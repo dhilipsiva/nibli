@@ -18,8 +18,13 @@
           inherit system overlays;
         };
 
-        # Latest stable Rust with WASI targets (wasip2 used by cargo-component)
-        rustToolchain = pkgs.rust-bin.stable.latest.default.override {
+        # An exact stable release with WASI targets (wasip2 used by cargo-component), equal to
+        # `rust-version` in Cargo.toml. wasmtime 49 needs rustc 1.96 or later, and from 1.97 the
+        # wasm32-wasip2 standard library imports wasi:clocks/monotonic-clock even for a bare
+        # println!, which `just smoke-component-imports` refuses (the component's documented
+        # surface has no clock): 1.96 is the release that satisfies both. Moving past it means
+        # deciding that surface again. Pinned, so updating rust-overlay never moves it silently.
+        rustToolchain = pkgs.rust-bin.stable."1.96.1".default.override {
           extensions = [ "rust-src" "rust-analyzer" "clippy" "rustfmt" ];
           targets = [ "wasm32-wasip1" "wasm32-wasip2" "wasm32-unknown-unknown" ];
         };

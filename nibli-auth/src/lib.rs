@@ -318,9 +318,9 @@ impl Authorizer {
     ) -> Result<T, AuthError> {
         self.clear_ephemeral_inner();
         if !context_kr.trim().is_empty() {
-            match self.assert_text_ids(context_kr) {
-                Ok(ids) => self.ephemeral_ids = ids,
-                Err(e) => return Err(e),
+            {
+                let ids = self.assert_text_ids(context_kr)?;
+                self.ephemeral_ids = ids
             }
         }
         let result = f(self);

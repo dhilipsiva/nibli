@@ -250,7 +250,7 @@ policy is `RELEASING.md`, the remaining open items are `TODO.md`):
 ## Known Issues
 
 - `cargo component build` fails on `io-extras` crate — pre-existing, unrelated to our changes. Bindings generate before the failure.
-- **rustc ICE in `check_mod_deathness`** — RESOLVED: the `wasmtime::component::bindgen!` compiler panic was fixed in rustc 1.94.0 (the flake's pinned toolchain); nibli-engine's `#![allow(dead_code)]` workaround was removed 2026-07-17 (zero dead code surfaced).
+- **rustc ICE in `check_mod_deathness`** — RESOLVED: the `wasmtime::component::bindgen!` compiler panic was fixed in rustc 1.94.0 (the flake now pins 1.96.1); nibli-engine's `#![allow(dead_code)]` workaround was removed 2026-07-17 (zero dead code surfaced).
 ## Roadmap
 
 The **soundness-by-proof frontier is complete** (P1–P4 gaps cleared; P5 done): Track A ships two

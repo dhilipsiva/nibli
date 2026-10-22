@@ -14,8 +14,8 @@ publish = false
 anyhow = "1.0.101"
 reedline = "0.45.0"
 nu-ansi-term = "0.50"
-wasmtime = { version = "41.0.3", features = ["component-model"] }
-wasmtime-wasi = "41.0.3"
+wasmtime = { version = "49.0.4", features = ["component-model"] }
+wasmtime-wasi = "49.0.4"
 nibli-kr = { workspace = true, features = ["reedline"] }
 nibli-protocol = { workspace = true, features = ["compute-client"] }
 nibli-render = { workspace = true }

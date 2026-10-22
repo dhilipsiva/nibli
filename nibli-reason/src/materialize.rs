@@ -360,7 +360,7 @@ fn project_atoms_inner(
     }
     if !abs_const.is_empty() {
         // The referent may fill at most one role slot across the whole atom set.
-        for (referent, _) in abs_const.iter() {
+        for referent in abs_const.keys() {
             let uses = atoms
                 .iter()
                 .filter(|a| {
@@ -629,8 +629,8 @@ pub(super) fn project_rule(rule: &UniversalRuleRecord) -> Result<ProjectedRule, 
         }
     }
 
-    let (mut positive, pos_flat) = project_atoms(&pos_conds).map_err(&flav)?;
-    let (neg_flat_atoms, neg_flat) = project_atoms(&neg_conds).map_err(&flav)?;
+    let (mut positive, pos_flat) = project_atoms(&pos_conds).map_err(flav)?;
+    let (neg_flat_atoms, neg_flat) = project_atoms(&neg_conds).map_err(flav)?;
 
     let mut builtins: Vec<(StoredFact, bool)> = Vec::new();
     for (f, negated) in pos_flat
@@ -669,7 +669,7 @@ pub(super) fn project_rule(rule: &UniversalRuleRecord) -> Result<ProjectedRule, 
     // event slot, which is exactly right: the dependent Skolem that every `∀`-rule head
     // carries lives in the event slot and is what the projection eliminates.
     let (mut head, head_flat, suppressed) =
-        project_atoms_inner(&rule.typed_conclusions).map_err(&flav)?;
+        project_atoms_inner(&rule.typed_conclusions).map_err(flav)?;
     if !head_flat.is_empty() || head.is_empty() {
         return Err(Ineligible::NotProjectable(label));
     }

@@ -94,6 +94,13 @@ here first.
   Lifecycle states the contract; §Disclosed Sharp Edges carries the residuals
   and the re-open trigger.
 
+- **Toolchain and Wasmtime:** the flake pins rustc 1.96.1, and `rust-version` is
+  1.96 (it was the flake's stable, 1.94.0). nibli-host moves from wasmtime and
+  wasmtime-wasi 41.0.3 to 49.0.4, which needs rustc 1.96 or later, closing the 30
+  wasmtime advisories `deny.toml` ignored; host errors are now `wasmtime::Error`.
+  The toolchain stops at 1.96: from 1.97 the wasm32-wasip2 standard library imports
+  a monotonic clock, outside the component's documented import surface.
+
 ### Fixed
 
 - **Raw witness collections now fail closed on every non-definitive final leaf.**

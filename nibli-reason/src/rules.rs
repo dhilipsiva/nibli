@@ -157,25 +157,12 @@ pub(super) fn decompose_implication(buffer: &LogicBuffer, body_id: u32) -> Optio
     let mut conditions = Vec::new();
     let mut current = body_id;
 
-    loop {
-        let Ok(node) = get_node(buffer, current) else {
-            break;
-        };
-        match node {
-            LogicNode::OrNode((left, right)) => {
-                let Ok(left_node) = get_node(buffer, *left) else {
-                    break;
-                };
-                match left_node {
-                    LogicNode::NotNode(inner) => {
-                        conditions.push(*inner);
-                        current = *right;
-                    }
-                    _ => break,
-                }
-            }
-            _ => break,
-        }
+    // Peel `¬c ∨ rest` links: each negated left side is a condition, the right side continues.
+    while let Ok(LogicNode::OrNode((left, right))) = get_node(buffer, current)
+        && let Ok(LogicNode::NotNode(inner)) = get_node(buffer, *left)
+    {
+        conditions.push(*inner);
+        current = *right;
     }
 
     if conditions.is_empty() {

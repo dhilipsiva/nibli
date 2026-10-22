@@ -507,7 +507,7 @@ If an external predicate's backend is unreachable (or unconfigured), the query r
 
 | Component | Technology |
 |-----------|-----------|
-| Language | Rust (stable, 1.94.0) |
+| Language | Rust (stable, 1.96.1) |
 | WASM target | WASI Preview 2 Component Model (cargo-component) |
 | WASM runtime | Wasmtime |
 | Reasoning | Demand-driven backward chaining over indexed fact store |
