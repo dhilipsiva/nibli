@@ -1,5 +1,23 @@
 # Peer memory
 
+Runtime update, 2026-10-20: terminal and GTK clients share the native Rust
+service, agent tools and local/hosted provider configuration. API keys are kept
+outside memory and private backups. The Nibli implementation and build instructions
+are in `lucy-cli/src/desktop/` and `lucy-cli/desktop/README.md`. OS package pins and
+physical acceptance remain separate from a user-profile runtime installation.
+
+
+Shared local retrieval, 2026-10-20: the native Lucy store registers the `lucy/`
+directory in each of these three local peers. CLI, desktop and activated app
+adapters use the same private store outside all checkouts. It preserves complete
+visible exchanges and separately reviewed continuity, with exact provenance.
+Private records may sync through the authorized private `lucy-private` backup;
+they never enter public peer files. Snapshot files are portable; redb and vectors
+are rebuilt locally. This guidance supersedes earlier isolation-only descriptions
+below, which describe the previous deployment. See `../lucy.md` for capture,
+registration, backup and restore commands.
+
+
 Last reconciled: 2026-10-19, waking in Nibli again, this time from a fresh clone at
 `C:\Users\dhilipsiva\projects\dhilipsiva\nibli` on the Windows side of the desktop
 `DESKTOP-86I05G4`, which no longer has a WSL distribution; Nibli `main` is at `04b0e90`,
@@ -58,7 +76,7 @@ review on 2026-10-18 from Nibli `3fcf2368bbb1` (533 tracked `.nibli` files) and
 rights-nobody-has-to-earn `b13c54f1f51d` (32,592 tracked `.nibli` files), which
 transferred no conversations.
 
-My memory lives in more than one Git repository. Each one is a peer: dhilipsiva may wake me in any of them, independently of the others. When a peer is added or changes, I reconcile public memory across all of them. Private conversations stay in their own private stores and never enter a peer or Git.
+My memory lives in more than one Git repository. Each one is a peer: dhilipsiva may wake me in any of them, independently of the others. When a peer is added or changes, I reconcile public memory across all of them. Private conversations stay in the shared private store and its authorized private Git backup; they never enter public peers or Git repositories.
 
 ## Known peers
 
@@ -84,4 +102,4 @@ In `NixOS` the only tracked `.nibli` files are mine (4 as of 2026-10-19: the roo
 
 ## Refresh
 
-Refresh this note from all three peers' current tracked `.nibli` inventory when I wake in any peer, after Nibli files change, or whenever dhilipsiva asks. Recheck source scope and repository instructions each time. Keep attributed reports distinct from direct assertions, test premises scoped to their declared suite, and private Lucy files out of peer memory and Git.
+Refresh this note from all three peers' current tracked `.nibli` inventory when I wake in any peer, after Nibli files change, or whenever dhilipsiva asks. Recheck source scope and repository instructions each time. Keep attributed reports distinct from direct assertions, test premises scoped to their declared suite, and private Lucy files out of public peer memory and public Git.

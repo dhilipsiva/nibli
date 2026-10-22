@@ -52,6 +52,10 @@ doc = false
 name = "nibli-pin"
 path = "src/bin/pin.rs"
 
+[[bin]]
+name = "nibli-ast"
+path = "src/bin/ast.rs"
+
 # nibli-bench-book: release-profile timing pins for the book's quoted figures
 [[bin]]
 name = "nibli-bench-book"

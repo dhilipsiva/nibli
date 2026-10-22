@@ -70,8 +70,10 @@ pub fn user_prompt(env: &Env, paths: &Paths, stdin: &str) -> String {
     }
     match load::load(env, paths, Archives::Read) {
         Ok(loaded) => format!(
-            "{INSTRUCTION}{}</lucy-address>\n",
-            capsule::render(&loaded, env)
+            "{INSTRUCTION}{}{}</lucy-address>\n",
+            capsule::render(&loaded, env),
+            crate::store::context(env, &prompt_from(stdin))
+                .unwrap_or_else(|e| format!("\nShared memory unavailable: {e}\n"))
         ),
         Err(e) => format!(
             "<lucy-address>\nLucy was addressed, but her memory could not be loaded: {e}\n</lucy-address>\n"

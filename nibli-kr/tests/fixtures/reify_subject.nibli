@@ -1,0 +1,4 @@
+# Deliberately invalid subject code remains inert, valid metadata.
+admits("person").
+derived_only("prisoner").
+all $x, $y: person($x) & ~unknown_ast_probe($y) & ~($x = $y) -> prisoner($x).

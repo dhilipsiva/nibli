@@ -215,6 +215,17 @@ impl NibliEngine {
         }
     }
 
+    /// Load ordered fixture statements into a fresh, nonpersistent engine.
+    /// Uses the ordinary assertion guards and exposes no partial engine on
+    /// failure, without copying the growing session for every statement.
+    pub fn from_text_batch(texts: &[&str]) -> Result<Self, EngineError> {
+        let (core, _) = nibli_session::CoreSession::from_text_batch(texts)?;
+        Ok(Self {
+            core,
+            store: RefCell::new(None),
+        })
+    }
+
     /// Create an engine with disk persistence at the given path.
     /// Opens a `RedbFactStore` for typed fact persistence and replays
     /// the legacy `NibliStore` (LogicBuffer-level) for backward compatibility.

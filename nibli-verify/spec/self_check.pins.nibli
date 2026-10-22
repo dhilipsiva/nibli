@@ -1,0 +1,30 @@
+# Content pins: load the LIVE checker and its freshly reified AST via --kb.
+? checker_complete("program:0").
+# => TRUE
+? checker_accepts("program:0").
+# => TRUE
+? violation_kind("program:0", "vocabulary").
+# => FALSE
+? violation_kind("program:0", "derived_only").
+# => FALSE
+? violation_kind("program:0", "declaration_order").
+# => FALSE
+? violation_kind("program:0", "arity").
+# => FALSE
+? violation_kind("program:0", "place").
+# => FALSE
+? violation_kind("program:0", "position").
+# => FALSE
+? violation_kind("program:0", "scope").
+# => FALSE
+? violation_kind("program:0", "query_only").
+# => FALSE
+? violation_kind("program:0", "assertion_form").
+# => FALSE
+? violation_kind("program:0", "stratification").
+# => FALSE
+? advisory_kind("program:0", "range_restriction").
+# => FALSE
+? advisory_kind("program:0", "schema_conflict").
+# => FALSE
+:expect-pins 14

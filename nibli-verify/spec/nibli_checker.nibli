@@ -1,0 +1,596 @@
+# Self-hosted static checker. Schema nibli-ast-v1.
+# Input facts are syntax and catalog data; subject rules never execute.
+# Native rejection and optional range/schema advisories are separate.
+
+admits("ast_child").
+admits("ast_index_next").
+admits("ast_length").
+admits("ast_next_statement").
+admits("ast_node").
+admits("ast_program").
+admits("ast_span").
+admits("ast_statement").
+admits("ast_text_byte").
+admits("ast_text_end").
+admits("ast_value").
+admits("lex_builtin").
+admits("lex_domain").
+admits("lex_name_byte").
+admits("lex_place").
+admits("lex_pred").
+admits("lex_pronoun").
+admits("lex_role").
+admits("sc_abstraction_type").
+admits("sc_bad_disjunct_kind").
+admits("sc_boolean_body_kind").
+admits("sc_bound_key").
+admits("sc_call_kind").
+admits("sc_capped_succ").
+admits("sc_comparison_place").
+admits("sc_complex_guard_kind").
+admits("sc_conditional_kind").
+admits("sc_connected_kind").
+admits("sc_direct_call_kind").
+admits("sc_ground_kind").
+admits("sc_nested_head_kind").
+admits("sc_numeric_kind").
+admits("sc_opaque_determiner").
+admits("sc_rigid_kind").
+admits("sc_succ").
+admits("sc_text_mode").
+admits("sc_universal_determiner").
+derived_only("advisory_kind").
+derived_only("arity_violation").
+derived_only("assertion_form_violation").
+derived_only("checker_accepts").
+derived_only("checker_complete").
+derived_only("checker_incomplete").
+derived_only("decl_admits").
+derived_only("decl_derived_only").
+derived_only("declaration_order_violation").
+derived_only("dep_edge").
+derived_only("dep_path").
+derived_only("derived_only_violation").
+derived_only("fact_assertion").
+derived_only("native_violation").
+derived_only("neg_dep").
+derived_only("neg_dep_path").
+derived_only("place_violation").
+derived_only("pos_dep").
+derived_only("position_violation").
+derived_only("query_only_violation").
+derived_only("rule_binds_var").
+derived_only("rule_head").
+derived_only("rule_neg_body").
+derived_only("rule_pos_body").
+derived_only("rule_quantifies_var").
+derived_only("rule_uses_var").
+derived_only("sc_add").
+derived_only("sc_admitted").
+derived_only("sc_arg").
+derived_only("sc_arg_before").
+derived_only("sc_arg_term").
+derived_only("sc_assertion").
+derived_only("sc_atom").
+derived_only("sc_block_clause").
+derived_only("sc_body").
+derived_only("sc_bound_it").
+derived_only("sc_bound_marker").
+derived_only("sc_bound_place").
+derived_only("sc_byte").
+derived_only("sc_call").
+derived_only("sc_canonical_place").
+derived_only("sc_clause_candidate").
+derived_only("sc_clause_has_candidate").
+derived_only("sc_clause_reference").
+derived_only("sc_clause_visible").
+derived_only("sc_closed").
+derived_only("sc_conditional_or").
+derived_only("sc_constant_text").
+derived_only("sc_constraint_branch").
+derived_only("sc_contains").
+derived_only("sc_declaration_relation").
+derived_only("sc_decomposed_atom").
+derived_only("sc_definite_variable").
+derived_only("sc_derived_only").
+derived_only("sc_dnf").
+derived_only("sc_explicit_binding").
+derived_only("sc_explicit_subject").
+derived_only("sc_exposed_var").
+derived_only("sc_fact_relation").
+derived_only("sc_filled_subject").
+derived_only("sc_frame_term").
+derived_only("sc_free_occurrence").
+derived_only("sc_free_var").
+derived_only("sc_ground").
+derived_only("sc_has_bound_it").
+derived_only("sc_has_condition").
+derived_only("sc_has_incomplete").
+derived_only("sc_has_universal").
+derived_only("sc_has_violation").
+derived_only("sc_head").
+derived_only("sc_hidden_var").
+derived_only("sc_implication_or").
+derived_only("sc_known_word").
+derived_only("sc_later_occurrence").
+derived_only("sc_left_not").
+derived_only("sc_legal_it").
+derived_only("sc_legal_slot").
+derived_only("sc_literal").
+derived_only("sc_marker_admission").
+derived_only("sc_marker_text").
+derived_only("sc_matrix_clause").
+derived_only("sc_multiply").
+derived_only("sc_negative_form").
+derived_only("sc_number").
+derived_only("sc_numeric_term").
+derived_only("sc_operational").
+derived_only("sc_outer").
+derived_only("sc_parent").
+derived_only("sc_place").
+derived_only("sc_prior_fact").
+derived_only("sc_prior_marker_admission").
+derived_only("sc_prior_ordinary").
+derived_only("sc_quoted").
+derived_only("sc_quoted_body").
+derived_only("sc_quoted_fact").
+derived_only("sc_quoted_head").
+derived_only("sc_represented").
+derived_only("sc_resolved").
+derived_only("sc_rule").
+derived_only("sc_rule_formula").
+derived_only("sc_runtime_edge").
+derived_only("sc_same_constant").
+derived_only("sc_sequence_head").
+derived_only("sc_sequence_word").
+derived_only("sc_shared_scope").
+derived_only("sc_spelling").
+derived_only("sc_spine").
+derived_only("sc_statement_free").
+derived_only("sc_statement_node").
+derived_only("sc_target").
+derived_only("sc_term_before").
+derived_only("sc_text_equal").
+derived_only("sc_text_pair").
+derived_only("sc_valid_label").
+derived_only("sc_valid_place").
+derived_only("schema_conflict").
+derived_only("scope_violation").
+derived_only("unbound_var_violation").
+derived_only("unstratifiable_cycle").
+derived_only("violation_kind").
+derived_only("vocab_violation").
+
+# Structural views. No native compiler results are inputs to this program.
+all $n, $f, $i, $c: ast_child($n, $f, $i, $c) -> sc_parent($n, $c).
+all $n, $k: ast_node($n, $k) -> sc_contains($n, $n).
+all $n, $c: sc_parent($n, $c) -> sc_contains($n, $c).
+all $n, $m, $c: sc_parent($n, $m) & sc_contains($m, $c) -> sc_contains($n, $c).
+all $s, $r, $intent, $n: ast_statement($s, $r, $intent) & sc_contains($r, $n) -> sc_statement_node($s, $n).
+all $n, $k: ast_node($n, $k) -> sc_outer($n, $n).
+all $n, $c, $d, $k: sc_parent($n, $c) & ast_node($n, $k) & ~($k = "abstraction") & sc_outer($c, $d) -> sc_outer($n, $d).
+all $n, $b, $d: ast_node($n, "abstraction") & ast_child($n, "body", "0", $b) & sc_contains($b, $d) -> sc_quoted($d).
+all $n, $v: ast_value($n, "spelling", "text", $v) -> sc_spelling($n, $v).
+all $n, $v, $p, $a: sc_spelling($n, $v) & lex_pred($v, $p, $a) -> sc_resolved($n, $p, $a).
+all $n, $v: sc_spelling($n, $v) & ~sc_known_word($v) -> vocab_violation($n, "unknown_predicate").
+all $v, $p, $a: lex_pred($v, $p, $a) -> sc_known_word($v).
+all $s, $i, $u, $len: ast_child($s, "units", $i, $u) & ast_length($s, "units", $len) & ast_index_next($i, $len) -> sc_sequence_head($s, $u).
+all $s, $g, $inner, $w: sc_sequence_head($s, $g) & ast_node($g, "group") & ast_child($g, "sequence", "0", $inner) & sc_sequence_head($inner, $w) -> sc_sequence_head($s, $w).
+all $s, $i, $w: ast_child($s, "units", $i, $w) & ast_node($w, "word") -> sc_sequence_word($s, $w).
+all $s, $i, $g, $inner, $w: ast_child($s, "units", $i, $g) & ast_child($g, "sequence", "0", $inner) & sc_sequence_word($inner, $w) -> sc_sequence_word($s, $w).
+all $n, $k, $s, $w, $v, $p, $a: ast_node($n, $k) & sc_call_kind($k) & ast_child($n, "sequence", "0", $s) & sc_sequence_head($s, $w) & sc_spelling($w, $v) & lex_pred($v, $p, $a) -> sc_call($n, $v, $p, $a).
+all $n, $k, $v, $p, $a: ast_node($n, $k) & sc_direct_call_kind($k) & sc_spelling($n, $v) & lex_pred($v, $p, $a) -> sc_call($n, $v, $p, $a).
+sc_call_kind("predication").
+sc_call_kind("restrictor").
+sc_call_kind("clause").
+sc_direct_call_kind("selected").
+sc_direct_call_kind("tag").
+all $n, $v, $p, $a: sc_call($n, $v, $p, $a) -> sc_atom($n, $p).
+all $n, $v, $p, $a, $s, $w, $q, $b: sc_call($n, $v, $p, $a) & ast_child($n, "sequence", "0", $s) & sc_sequence_word($s, $w) & sc_resolved($w, $q, $b) -> sc_atom($n, $q).
+all $n, $p: ast_node($n, "equality") & lex_builtin($p, "identity") -> sc_atom($n, $p).
+all $n, $t, $i, $p: ast_child($n, "tags", $i, $t) & sc_atom($t, $p) -> sc_atom($n, $p).
+
+# Argument places, including restrictor links and converted aliases.
+all $n, $i, $a: ast_child($n, "args", $i, $a) -> sc_arg($n, $a, $i).
+all $a, $t: ast_node($a, "argument") & ast_child($a, "term", "0", $t) -> sc_arg_term($a, $t).
+all $n, $a, $i, $j: sc_arg($n, $a, $i) & ast_node($n, "predication") & ast_value($a, "label", "tag", "positional") & ast_index_next($i, $j) -> sc_place($n, $a, $j).
+all $n, $a, $i, $j, $k: sc_arg($n, $a, $i) & ast_node($n, "restrictor") & ast_value($a, "label", "tag", "positional") & ast_index_next($i, $j) & ast_index_next($j, $k) -> sc_place($n, $a, $k).
+all $n, $a, $i, $v, $p, $arity, $l, $s, $c: sc_arg($n, $a, $i) & sc_call($n, $v, $p, $arity) & ast_value($a, "label", "text", $l) & lex_place($v, $l, $s, $c) -> sc_place($n, $a, $s).
+all $v, $l, $s, $c: lex_place($v, $l, $s, $c) -> sc_valid_place($v, $s).
+all $n, $v, $p, $arity, $a, $place: sc_call($n, $v, $p, $arity) & sc_place($n, $a, $place) & ~sc_valid_place($v, $place) -> arity_violation($a, "overflow").
+all $v, $l, $s, $c: lex_place($v, $l, $s, $c) -> sc_valid_label($v, $l).
+all $n, $a, $i, $v, $p, $arity, $l: sc_arg($n, $a, $i) & sc_call($n, $v, $p, $arity) & ast_value($a, "label", "text", $l) & ~sc_valid_label($v, $l) -> place_violation($a, "unknown_label").
+all $n, $v, $p, $a, $l: ast_node($n, "selected") & sc_call($n, $v, $p, $a) & ast_value($n, "selector", "text", $l) & ~sc_valid_label($v, $l) -> place_violation($n, "unknown_selector").
+all $n, $a, $b, $p: sc_place($n, $a, $p) & sc_place($n, $b, $p) & ~($a = $b) -> place_violation($b, "duplicate_place").
+all $n, $v, $p: ast_node($n, "tag") & sc_call($n, $v, $p, "1") -> arity_violation($n, "modal_requires_two_places").
+all $n, $a, $i, $t, $l: ast_node($n, "restrictor") & sc_arg($n, $a, $i) & sc_arg_term($a, $t) & ast_value($t, "key", "tag", "it") & ast_value($a, "label", "text", $l) -> sc_bound_it($n, $t).
+all $n, $t: sc_bound_it($n, $t) -> sc_legal_it($t).
+all $c, $t: ast_node($c, "clause") & sc_contains($c, $t) -> sc_legal_it($t).
+all $n, $t: ast_node($n, "abstraction") & ast_value($n, "abstraction", "tag", "property") & sc_contains($n, $t) -> sc_legal_slot($t).
+all $t: ast_value($t, "key", "tag", "it") & ~sc_legal_it($t) -> position_violation($t, "it_context").
+all $t: ast_value($t, "key", "tag", "slot") & ~sc_legal_slot($t) -> position_violation($t, "slot_context").
+all $n, $t, $u: sc_bound_it($n, $t) & sc_bound_it($n, $u) & ~($t = $u) -> position_violation($u, "multiple_bound_places").
+all $n, $t: sc_bound_it($n, $t) -> sc_has_bound_it($n).
+all $n, $a: ast_node($n, "restrictor") & sc_place($n, $a, "1") & ~sc_has_bound_it($n) -> position_violation($a, "occupied_bound_place").
+
+# Literal identity is derived from bytes. Rigid-name folding is not exported.
+sc_text_mode("literal").
+sc_text_mode("name").
+all $t, $v: ast_node($t, "string") & ast_value($t, "text", "text", $v) -> sc_constant_text($t, $v, "literal").
+all $t, $v: ast_node($t, "name") & ast_value($t, "name", "text", $v) -> sc_constant_text($t, $v, "name").
+all $t, $k, $v: ast_value($t, "key", "tag", $k) & lex_pronoun($k, $v) -> sc_constant_text($t, $v, "literal").
+all $t, $v, $m: sc_constant_text($t, $v, $m) -> sc_literal($t).
+all $t, $v, $w, $p, $a: sc_constant_text($t, $v, "name") & lex_pred($w, $p, $a) -> sc_text_pair($v, $p, "name", "literal").
+all $t, $v, $k, $p: sc_constant_text($t, $v, "name") & lex_pronoun($k, $p) -> sc_text_pair($v, $p, "name", "literal").
+all $t, $v, $u, $w, $n: sc_constant_text($t, $v, "name") & sc_constant_text($u, $w, $n) -> sc_text_pair($v, $w, "name", $n).
+all $t, $v: sc_constant_text($t, $v, "literal") -> sc_target($t, $v).
+all $t, $i, $b: ast_text_byte($t, $i, $b) -> sc_byte($t, $i, "literal", $b).
+all $t, $i, $b, $c: ast_text_byte($t, $i, $b) & lex_name_byte($b, $c) -> sc_byte($t, $i, "name", $c).
+all $a, $b, $ma, $mb, $i: sc_text_pair($a, $b, $ma, $mb) & ast_text_end($a, $i) & ast_text_end($b, $i) -> sc_text_equal($a, $b, $ma, $mb, $i).
+all $a, $b, $ma, $mb, $i, $j, $c: sc_text_pair($a, $b, $ma, $mb) & sc_byte($a, $i, $ma, $c) & sc_byte($b, $i, $mb, $c) & ast_index_next($i, $j) & sc_text_equal($a, $b, $ma, $mb, $j) -> sc_text_equal($a, $b, $ma, $mb, $i).
+all $t, $v, $m, $p: sc_constant_text($t, $v, $m) & sc_text_equal($v, $p, $m, "literal", "0") -> sc_target($t, $p).
+all $t, $u, $v: sc_target($t, $v) & sc_target($u, $v) -> sc_same_constant($t, $u).
+all $t, $v, $u, $w: sc_constant_text($t, $v, "name") & sc_constant_text($u, $w, "name") & sc_text_equal($v, $w, "name", "name", "0") -> sc_same_constant($t, $u).
+all $t, $v, $k: ast_node($t, "name") & sc_target($t, $v) & lex_pronoun($k, $v) -> position_violation($t, "pronoun_collision").
+
+# Assertion reachability and implicit quantifiers.
+all $n, $d: sc_outer($n, $d) & ast_value($d, "determiner", "tag", "every") -> sc_has_universal($n).
+all $n, $d: sc_outer($n, $d) & ast_value($d, "determiner", "tag", "every_the") -> sc_has_universal($n).
+all $n: ast_node($n, "prenex") -> sc_has_universal($n).
+all $s, $r: ast_statement($s, $r, "assertion") -> sc_assertion($s, $r).
+all $s, $n, $l, $r: sc_assertion($s, $n) & ast_node($n, "and") & ast_child($n, "left", "0", $l) & ast_child($n, "right", "0", $r) -> sc_assertion($s, $l) & sc_assertion($s, $r).
+# Ground collection preserves flavor and declaration interception order.
+all $s, $r: ast_statement($s, $r, "assertion") -> sc_ground($s, $r, "bare").
+all $s, $n, $f, $a, $b: sc_ground($s, $n, $f) & ast_node($n, "and") & ast_child($n, "left", "0", $a) & ast_child($n, "right", "0", $b) -> sc_ground($s, $a, $f) & sc_ground($s, $b, $f).
+all $s, $n, $f, $b: sc_ground($s, $n, $f) & ast_node($n, "prefixed") & ast_child($n, "body", "0", $b) -> sc_ground($s, $b, "flavored").
+all $s, $n, $f, $b: sc_ground($s, $n, $f) & ast_node($n, "det_block") & ast_value($n, "determiner", "tag", "the") & ast_child($n, "body", "0", $b) -> sc_ground($s, $b, $f).
+all $s, $n, $f, $r, $b: sc_ground($s, $n, $f) & ast_node($n, "det_block") & ast_value($n, "determiner", "tag", "some") & ast_child($n, "restrictor", "0", $r) & ast_child($n, "body", "0", $b) -> sc_ground($s, $r, $f) & sc_ground($s, $b, $f).
+all $s, $n, $f, $k, $p: sc_ground($s, $n, $f) & ast_node($n, $k) & sc_ground_kind($k) & ~sc_has_universal($n) & ~ast_value($n, "negated", "bool", "true") & sc_atom($n, $p) -> fact_assertion($s, $n, $p).
+sc_ground_kind("predication").
+sc_ground_kind("equality").
+sc_ground_kind("restrictor").
+sc_ground_kind("selected").
+sc_ground_kind("clause").
+all $s, $n, $f, $d, $r, $p: sc_ground($s, $n, $f) & fact_assertion($s, $n, $p) & sc_outer($n, $d) & ast_value($d, "determiner", "tag", "some") & ast_child($d, "restrictor", "0", $r) -> sc_ground($s, $r, $f).
+all $s, $n, $f, $d, $c, $i, $p: sc_ground($s, $n, $f) & fact_assertion($s, $n, $p) & sc_outer($n, $d) & ast_child($d, "clauses", $i, $c) -> sc_ground($s, $c, $f).
+all $s, $n, $f, $b: sc_ground($s, $n, $f) & ast_node($n, "clause") & ast_child($n, "body", "0", $b) -> sc_ground($s, $b, $f).
+all $s, $n, $p, $a, $i, $t: sc_ground($s, $n, "bare") & fact_assertion($s, $n, $p) & lex_builtin($p, "admits") & sc_arg($n, $a, $i) & sc_place($n, $a, "1") & sc_arg_term($a, $t) & sc_literal($t) -> decl_admits($s, $t).
+all $s, $n, $p, $a, $i, $t: sc_ground($s, $n, "bare") & fact_assertion($s, $n, $p) & lex_builtin($p, "derived_only") & sc_arg($n, $a, $i) & sc_place($n, $a, "1") & sc_arg_term($a, $t) & sc_literal($t) -> decl_derived_only($s, $t).
+all $s, $d, $t: ast_next_statement($d, $s) & decl_admits($d, $t) -> sc_closed($s).
+all $s, $d: ast_next_statement($d, $s) & sc_closed($d) -> sc_closed($s).
+all $s, $d, $t, $p: ast_next_statement($d, $s) & decl_admits($d, $t) & sc_target($t, $p) -> sc_admitted($s, $p).
+all $s, $d, $p: ast_next_statement($d, $s) & sc_admitted($d, $p) -> sc_admitted($s, $p).
+all $s, $d, $t, $p: ast_next_statement($d, $s) & decl_derived_only($d, $t) & sc_target($t, $p) -> sc_derived_only($s, $p).
+all $s, $d, $p: ast_next_statement($d, $s) & sc_derived_only($d, $p) -> sc_derived_only($s, $p).
+all $s, $d, $n, $p: ast_next_statement($d, $s) & sc_fact_relation($d, $n, $p) -> sc_prior_fact($s, $p).
+all $s, $d, $p: ast_next_statement($d, $s) & sc_prior_fact($d, $p) -> sc_prior_fact($s, $p).
+all $p: lex_builtin($p, "admits") -> sc_declaration_relation($p).
+all $p: lex_builtin($p, "derived_only") -> sc_declaration_relation($p).
+all $s, $n, $p: fact_assertion($s, $n, $p) & sc_closed($s) & ~sc_admitted($s, $p) & ~sc_declaration_relation($p) -> vocab_violation($n, "unadmitted_assertion").
+all $s, $n, $p: sc_fact_relation($s, $n, $p) & sc_derived_only($s, $p) & ~lex_builtin($p, "derived_only") -> derived_only_violation($n, $p).
+all $s, $t: decl_admits($s, $t) & ~sc_closed($s) & sc_prior_ordinary($s) -> declaration_order_violation($s, "late_admits").
+all $s, $t, $p: decl_derived_only($s, $t) & sc_target($t, $p) & ~sc_derived_only($s, $p) & sc_prior_fact($s, $p) -> declaration_order_violation($s, "late_derived_only").
+all $s, $t, $d, $u: decl_admits($s, $t) & decl_derived_only($d, $u) & sc_same_constant($t, $u) -> schema_conflict($s, $d).
+
+# Rule structure is derived here, not by the exporter.
+all $s, $n: sc_assertion($s, $n) & ast_node($n, "prenex") -> sc_rule($n).
+all $s, $n: sc_assertion($s, $n) & ast_node($n, "impl") -> sc_rule($n).
+all $s, $n: sc_assertion($s, $n) & ast_node($n, "iff") -> sc_rule($n).
+all $s, $n: sc_assertion($s, $n) & ast_node($n, "det_block") & sc_has_universal($n) -> sc_rule($n).
+all $s, $n: sc_assertion($s, $n) & ast_node($n, "predication") & sc_has_universal($n) -> sc_rule($n).
+all $r: sc_rule($r) -> sc_rule_formula($r, $r).
+all $r, $n, $b: sc_rule_formula($r, $n) & ast_node($n, "prenex") & ast_child($n, "body", "0", $b) -> sc_rule_formula($r, $b).
+all $r, $n, $a, $b: sc_rule_formula($r, $n) & ast_node($n, "impl") & ast_child($n, "left", "0", $a) & ast_child($n, "right", "0", $b) -> sc_body($r, $a, "positive") & sc_head($r, $b) & sc_spine($r, $b).
+all $r, $n, $a, $b: sc_rule_formula($r, $n) & ast_node($n, "iff") & ast_child($n, "left", "0", $a) & ast_child($n, "right", "0", $b) -> sc_body($n, $a, "positive") & sc_head($n, $b) & sc_body($a, $b, "positive") & sc_head($a, $a).
+all $r, $n: sc_rule_formula($r, $n) & ast_node($n, "predication") -> sc_head($r, $n).
+all $r, $n: sc_rule_formula($r, $n) & ast_node($n, "equality") -> sc_head($r, $n).
+all $r, $n, $restr, $b, $det: sc_rule_formula($r, $n) & ast_node($n, "det_block") & ast_value($n, "determiner", "tag", $det) & ~($det = "every_the") & ast_child($n, "restrictor", "0", $restr) & ast_child($n, "body", "0", $b) -> sc_body($r, $restr, "positive") & sc_head($r, $b) & sc_spine($r, $b).
+all $r, $n, $restr, $b: sc_rule_formula($r, $n) & ast_node($n, "det_block") & ast_value($n, "determiner", "tag", "every_the") & ast_child($n, "restrictor", "0", $restr) & ast_child($n, "body", "0", $b) -> sc_body($r, $restr, "definite") & sc_head($r, $b) & sc_spine($r, $b).
+all $r, $n, $a, $b: sc_head($r, $n) & ast_node($n, "and") & ast_child($n, "left", "0", $a) & ast_child($n, "right", "0", $b) -> sc_head($r, $a) & sc_head($r, $b).
+all $r, $n, $b: sc_head($r, $n) & ast_node($n, "prefixed") & ast_child($n, "body", "0", $b) -> sc_head($r, $b).
+all $r, $n, $d, $restr: sc_head($r, $n) & ast_node($n, "predication") & sc_outer($n, $d) & ast_value($d, "determiner", "tag", "every") & ast_child($d, "restrictor", "0", $restr) -> sc_body($r, $restr, "positive").
+all $r, $n, $d, $restr: sc_head($r, $n) & ast_node($n, "predication") & sc_outer($n, $d) & ast_value($d, "determiner", "tag", "every_the") & ast_child($d, "restrictor", "0", $restr) -> sc_body($r, $restr, "definite").
+all $r, $n, $d, $body: sc_head($r, $n) & sc_outer($n, $d) & ast_node($d, "abstraction") & ast_child($d, "body", "0", $body) -> sc_head($r, $body).
+all $r, $n, $p: sc_head($r, $n) & sc_atom($n, $p) -> rule_head($r, $p).
+all $r, $n, $sign, $a, $b, $kind: sc_body($r, $n, $sign) & ast_node($n, $kind) & sc_boolean_body_kind($kind) & ast_child($n, "left", "0", $a) & ast_child($n, "right", "0", $b) -> sc_body($r, $a, $sign) & sc_body($r, $b, $sign).
+sc_boolean_body_kind("and").
+sc_boolean_body_kind("or").
+all $r, $n, $b: sc_body($r, $n, "positive") & ast_node($n, "not") & ast_child($n, "body", "0", $b) -> sc_body($r, $b, "negative").
+all $r, $n, $sign, $b: sc_body($r, $n, $sign) & ast_node($n, "prefixed") & ast_child($n, "body", "0", $b) -> sc_body($r, $b, $sign).
+all $r, $n, $sign, $i, $c: sc_body($r, $n, $sign) & ast_child($n, "clauses", $i, $c) & ~sc_matrix_clause($r, $c) -> sc_body($r, $c, $sign).
+all $r, $n, $sign, $b: sc_body($r, $n, $sign) & ast_node($n, "clause") & ast_child($n, "body", "0", $b) -> sc_body($r, $b, $sign).
+all $r, $n, $sign, $d, $restr: sc_body($r, $n, $sign) & ast_node($n, "predication") & sc_outer($n, $d) & ast_node($d, "description") & ast_child($d, "restrictor", "0", $restr) -> sc_body($r, $restr, $sign).
+all $r, $n, $p: sc_body($r, $n, "positive") & sc_atom($n, $p) & ~ast_value($n, "negated", "bool", "true") -> rule_pos_body($r, $p).
+all $r, $n, $p: sc_body($r, $n, "negative") & sc_atom($n, $p) -> rule_neg_body($r, $p).
+all $r, $n, $p: sc_body($r, $n, "positive") & sc_atom($n, $p) & ast_value($n, "negated", "bool", "true") -> rule_neg_body($r, $p).
+
+# A path containing a negative edge is not a parity calculation. Even two
+# negative edges in a cycle make a program unstratifiable.
+all $r, $h, $b: rule_head($r, $h) & rule_pos_body($r, $b) -> pos_dep($h, $b).
+all $r, $h, $b: rule_head($r, $h) & rule_neg_body($r, $b) -> neg_dep($h, $b).
+all $a, $b: pos_dep($a, $b) -> dep_edge($a, $b).
+all $a, $b: neg_dep($a, $b) -> dep_edge($a, $b).
+all $a, $b: dep_edge($a, $b) -> dep_path($a, $b).
+all $a, $b, $c: dep_path($a, $b) & dep_edge($b, $c) -> dep_path($a, $c).
+all $a, $b: neg_dep($a, $b) -> neg_dep_path($a, $b).
+all $a, $b, $c: dep_path($a, $b) & neg_dep($b, $c) -> neg_dep_path($a, $c).
+all $a, $b, $c: neg_dep_path($a, $b) & dep_edge($b, $c) -> neg_dep_path($a, $c).
+all $p: neg_dep_path($p, $p) -> unstratifiable_cycle($p).
+
+# Range restriction is advisory: the native compiler accepts these rules.
+all $r, $n, $t, $v, $p: sc_body($r, $n, "positive") & sc_atom($n, $p) & ~lex_builtin($p, "identity") & ~ast_value($n, "negated", "bool", "true") & sc_outer($n, $t) & ast_node($t, "variable") & ast_value($t, "name", "text", $v) -> rule_binds_var($r, $v).
+all $r, $n, $t, $v: sc_head($r, $n) & sc_outer($n, $t) & ast_node($t, "variable") & ast_value($t, "name", "text", $v) -> rule_uses_var($r, $v).
+all $r, $n, $t, $v: sc_body($r, $n, "negative") & sc_outer($n, $t) & ast_node($t, "variable") & ast_value($t, "name", "text", $v) -> rule_uses_var($r, $v).
+all $r, $n, $t, $v, $sign: sc_body($r, $n, $sign) & ast_node($n, "equality") & sc_contains($n, $t) & ast_node($t, "variable") & ast_value($t, "name", "text", $v) -> rule_uses_var($r, $v).
+all $r, $v: rule_uses_var($r, $v) & ~rule_binds_var($r, $v) -> unbound_var_violation($r, $v).
+all $r, $n, $i, $b, $v: sc_rule_formula($r, $n) & ast_node($n, "prenex") & ast_child($n, "vars", $i, $b) & ast_value($b, "name", "text", $v) -> rule_quantifies_var($r, $v).
+all $r, $v: rule_quantifies_var($r, $v) & ~rule_binds_var($r, $v) -> unbound_var_violation($r, $v).
+all $r, $n, $t, $v: sc_body($r, $n, "positive") & ast_value($n, "negated", "bool", "true") & sc_outer($n, $t) & ast_node($t, "variable") & ast_value($t, "name", "text", $v) -> rule_uses_var($r, $v).
+
+# Query-only constructs are allowed inside opaque quotations and query input.
+all $s, $r: ast_statement($s, $r, "assertion") -> sc_operational($r).
+all $n, $c, $k: sc_operational($n) & sc_runtime_edge($n, $c) & ast_node($n, $k) & ~($k = "abstraction") -> sc_operational($c).
+all $n, $f, $i, $c: ast_child($n, $f, $i, $c) & ~($f = "restrictor") -> sc_runtime_edge($n, $c).
+all $n, $c, $d: ast_child($n, "restrictor", "0", $c) & ast_value($n, "determiner", "tag", $d) & ~sc_opaque_determiner($d) -> sc_runtime_edge($n, $c).
+all $n, $c, $d, $i, $q: ast_child($n, "restrictor", "0", $c) & ast_value($n, "determiner", "tag", $d) & sc_opaque_determiner($d) & ast_child($c, "clauses", $i, $q) -> sc_runtime_edge($n, $q).
+sc_opaque_determiner("the").
+sc_opaque_determiner("every_the").
+sc_opaque_determiner("exactly_the").
+all $n, $count: sc_operational($n) & ast_value($n, "count", "u32", $count) -> query_only_violation($n, "exact_count").
+all $n, $p: sc_operational($n) & sc_atom($n, $p) & lex_builtin($p, "compute") -> query_only_violation($n, "compute").
+all $n, $p: sc_operational($n) & sc_atom($n, $p) & lex_builtin($p, "external_compute") -> query_only_violation($n, "external_compute").
+all $n, $p, $a, $place, $t: sc_operational($n) & sc_atom($n, $p) & lex_builtin($p, "comparison") & sc_canonical_place($n, $a, $place) & sc_comparison_place($place) & sc_arg_term($a, $t) & sc_numeric_term($t) -> query_only_violation($n, "numeric_comparison").
+sc_comparison_place("1").
+sc_comparison_place("2").
+sc_numeric_kind("number").
+sc_numeric_kind("variable").
+all $s, $r, $b: sc_assertion($s, $r) & ast_node($r, "prefixed") & ast_child($r, "body", "0", $b) & sc_has_universal($b) -> assertion_form_violation($r, "whole_rule_flavor").
+
+
+all $n, $l: ast_node($n, "or") & ast_child($n, "left", "0", $l) & ast_node($l, "not") -> sc_conditional_or($n).
+
+# Saturating arithmetic over the native DNF limit, using only positive rules.
+all $a, $b: sc_succ($a, $b) -> sc_number($a) & sc_number($b) & sc_capped_succ($a, $b).
+sc_capped_succ("33", "33").
+all $b: sc_number($b) -> sc_add("0", $b, $b) & sc_multiply("0", $b, "0").
+all $a, $b, $c, $aa, $cc: sc_add($a, $b, $c) & sc_succ($a, $aa) & sc_capped_succ($c, $cc) -> sc_add($aa, $b, $cc).
+all $a, $b, $c, $aa, $cc: sc_multiply($a, $b, $c) & sc_succ($a, $aa) & sc_add($c, $b, $cc) -> sc_multiply($aa, $b, $cc).
+all $n, $kind: ast_node($n, $kind) & ~sc_boolean_body_kind($kind) -> sc_dnf($n, "1").
+all $n, $a, $b, $ca, $cb, $c: ast_node($n, "and") & ast_child($n, "left", "0", $a) & ast_child($n, "right", "0", $b) & sc_dnf($a, $ca) & sc_dnf($b, $cb) & sc_multiply($ca, $cb, $c) -> sc_dnf($n, $c).
+all $n, $a, $b, $ca, $cb, $c: ast_node($n, "or") & ast_child($n, "left", "0", $a) & ast_child($n, "right", "0", $b) & sc_dnf($a, $ca) & sc_dnf($b, $cb) & sc_add($ca, $cb, $c) -> sc_dnf($n, $c).
+all $r, $n, $sign: sc_body($r, $n, $sign) & sc_dnf($n, "33") -> assertion_form_violation($n, "dnf_limit").
+
+# Distinct acceptance and advisory channels. NAF requests complete evaluation
+# of the positive recursive analysis before a clean verdict can be returned.
+all $p, $version, $n, $why: ast_program($p, $version) & vocab_violation($n, $why) -> native_violation($p, $n, "vocabulary").
+all $p, $version, $n, $why: ast_program($p, $version) & arity_violation($n, $why) -> native_violation($p, $n, "arity").
+all $p, $version, $n, $why: ast_program($p, $version) & place_violation($n, $why) -> native_violation($p, $n, "place").
+all $p, $version, $n, $why: ast_program($p, $version) & position_violation($n, $why) -> native_violation($p, $n, "position").
+all $p, $version, $n, $why: ast_program($p, $version) & derived_only_violation($n, $why) -> native_violation($p, $n, "derived_only").
+all $p, $version, $n, $why: ast_program($p, $version) & declaration_order_violation($n, $why) -> native_violation($p, $n, "declaration_order").
+all $p, $version, $n, $why: ast_program($p, $version) & query_only_violation($n, $why) -> native_violation($p, $n, "query_only").
+all $p, $version, $n, $why: ast_program($p, $version) & assertion_form_violation($n, $why) -> native_violation($p, $n, "assertion_form").
+all $p, $version, $n: ast_program($p, $version) & unstratifiable_cycle($n) -> native_violation($p, $n, "stratification").
+all $p, $n, $kind: native_violation($p, $n, $kind) -> sc_has_violation($p).
+all $p, $n, $kind: native_violation($p, $n, $kind) -> violation_kind($p, $kind).
+all $p, $version, $r, $v: ast_program($p, $version) & unbound_var_violation($r, $v) -> advisory_kind($p, "range_restriction").
+all $p, $version, $s, $d: ast_program($p, $version) & schema_conflict($s, $d) -> advisory_kind($p, "schema_conflict").
+all $p: ast_program($p, "nibli-ast-v1") & ~sc_has_incomplete($p) -> checker_complete($p).
+all $p: checker_complete($p) & ~sc_has_violation($p) -> checker_accepts($p).
+
+# Free textual co-reference is shared only across an ordinary connected region.
+# Explicit binders are lexical; anonymous witnesses and earlier descriptions
+# hide the free binder introduced by an atomic frame.
+all $n, $i, $b, $v, $t: ast_node($n, "prenex") & ast_child($n, "vars", $i, $b) & ast_value($b, "name", "text", $v) & sc_contains($n, $t) -> sc_explicit_binding($t, $v).
+all $n, $v, $d, $t: ast_node($n, "det_block") & ast_value($n, "var", "text", $v) & ast_value($n, "determiner", "tag", $d) & ~($d = "some") & sc_contains($n, $t) -> sc_explicit_binding($t, $v).
+all $f, $a, $i, $t: sc_arg($f, $a, $i) & sc_arg_term($a, $t) -> sc_frame_term($f, $t).
+all $f, $field, $i, $t: ast_node($f, "equality") & ast_child($f, $field, $i, $t) -> sc_frame_term($f, $t).
+all $f, $tag, $i, $t: ast_child($f, "tags", $i, $tag) & ast_child($tag, "term", "0", $t) -> sc_frame_term($f, $t).
+all $f, $t, $v: sc_frame_term($f, $t) & ast_value($t, "name", "text", $v) & ast_node($t, "variable") & ~sc_explicit_binding($t, $v) -> sc_free_occurrence($f, $t, $v).
+all $f, $t, $v: sc_free_occurrence($f, $t, $v) -> sc_free_var($f, $v).
+all $f, $a, $b, $i, $j: sc_arg($f, $a, $i) & sc_arg($f, $b, $j) & ast_index_next($i, $j) -> sc_arg_before($f, $a, $b).
+all $f, $a, $b, $c: sc_arg_before($f, $a, $b) & sc_arg_before($f, $b, $c) -> sc_arg_before($f, $a, $c).
+all $f, $a, $b, $ta, $tb: sc_arg_before($f, $a, $b) & sc_arg_term($a, $ta) & sc_arg_term($b, $tb) -> sc_term_before($f, $ta, $tb).
+all $f, $a, $b: ast_node($f, "equality") & ast_child($f, "left", "0", $a) & ast_child($f, "right", "0", $b) -> sc_term_before($f, $a, $b).
+all $f, $t, $v, $u: sc_free_occurrence($f, $t, $v) & sc_free_occurrence($f, $u, $v) & sc_term_before($f, $u, $t) -> sc_later_occurrence($f, $t).
+all $f, $t, $v, $u, $d: sc_free_occurrence($f, $t, $v) & ~sc_later_occurrence($f, $t) & sc_term_before($f, $u, $t) & ast_value($u, "determiner", "tag", $d) & ~($d = "the") -> sc_hidden_var($f, $v).
+all $f, $v, $t: sc_free_var($f, $v) & sc_frame_term($f, $t) & ast_node($t, "witness") -> sc_hidden_var($f, $v).
+all $f, $v: sc_free_var($f, $v) & ~sc_hidden_var($f, $v) -> sc_exposed_var($f, $f, $v).
+all $f, $n, $v, $p, $k: sc_exposed_var($f, $n, $v) & sc_parent($p, $n) & ast_node($p, $k) & sc_connected_kind($k) -> sc_exposed_var($f, $p, $v).
+sc_connected_kind("and").
+sc_connected_kind("or").
+sc_connected_kind("iff").
+sc_connected_kind("xor").
+sc_connected_kind("impl").
+all $f, $g, $n, $v: sc_exposed_var($f, $n, $v) & sc_exposed_var($g, $n, $v) -> sc_shared_scope($f, $g, $v).
+all $s, $f, $v: sc_statement_node($s, $f) & sc_free_var($f, $v) -> sc_statement_free($s, $f, $v).
+all $s, $f, $g, $v: sc_statement_free($s, $f, $v) & sc_statement_free($s, $g, $v) & ~($f = $g) & ~sc_shared_scope($f, $g, $v) -> scope_violation($f, $v).
+all $p, $version, $n, $why: ast_program($p, $version) & scope_violation($n, $why) -> native_violation($p, $n, "scope").
+
+# Root representability, distinct from checking every conjunct independently.
+all $n, $r: ast_node($n, "or") & ast_child($n, "right", "0", $r) & ast_node($r, "not") -> sc_conditional_or($n).
+all $s, $n, $f: sc_ground($s, $n, $f) & sc_conditional_or($n) -> sc_rule($n).
+all $s, $n, $f, $kind: sc_ground($s, $n, $f) & ast_node($n, $kind) & sc_conditional_kind($kind) -> sc_rule($n).
+sc_conditional_kind("impl").
+sc_conditional_kind("iff").
+all $r, $n, $a, $b, $p: sc_rule_formula($r, $n) & ast_node($n, "or") & ast_child($n, "left", "0", $a) & ast_child($n, "right", "0", $b) & ast_node($a, "not") & ast_child($a, "body", "0", $p) -> sc_body($r, $p, "positive") & sc_head($r, $b).
+all $r, $n, $a, $b, $p: sc_rule_formula($r, $n) & ast_node($n, "or") & ast_child($n, "left", "0", $a) & ast_child($n, "right", "0", $b) & ~sc_left_not($n) & ast_node($b, "not") & ast_child($b, "body", "0", $p) -> sc_body($r, $p, "positive") & sc_head($r, $a).
+all $n, $a: ast_node($n, "or") & ast_child($n, "left", "0", $a) & ast_node($a, "not") -> sc_left_not($n).
+all $s, $n, $p: fact_assertion($s, $n, $p) -> sc_represented($s).
+all $s, $n: sc_statement_node($s, $n) & sc_rule($n) -> sc_represented($s).
+all $n, $b: ast_node($n, "not") & ast_child($n, "body", "0", $b) & ~sc_has_universal($b) -> sc_negative_form($n).
+all $n, $b: ast_node($n, "prefixed") & ast_child($n, "body", "0", $b) & sc_negative_form($b) -> sc_negative_form($n).
+all $n, $a, $b: ast_node($n, "and") & ast_child($n, "left", "0", $a) & ast_child($n, "right", "0", $b) & sc_negative_form($a) & sc_negative_form($b) -> sc_negative_form($n).
+all $s, $r: ast_statement($s, $r, "assertion") & sc_negative_form($r) -> sc_represented($s).
+all $s, $r: ast_statement($s, $r, "assertion") & ~sc_represented($s) -> assertion_form_violation($r, "no_representable_content").
+
+# Conditions and conclusions that the rule store cannot represent.
+all $r, $n, $sign: sc_body($r, $n, $sign) -> sc_has_condition($r).
+all $r, $n, $k: sc_rule_formula($r, $n) & ast_node($n, $k) & ~($k = "prenex") & ~($k = "equality") & ~sc_has_condition($r) -> assertion_form_violation($n, "bare_universal").
+all $r, $n: sc_head($r, $n) & ast_node($n, "not") -> assertion_form_violation($n, "negative_conclusion").
+all $r, $n: sc_head($r, $n) & ast_value($n, "negated", "bool", "true") -> assertion_form_violation($n, "negative_conclusion").
+all $r, $n: sc_head($r, $n) & ast_node($n, "xor") -> assertion_form_violation($n, "xor_conclusion").
+all $r, $n, $p: sc_head($r, $n) & ast_node($n, "or") & rule_neg_body($r, $p) -> assertion_form_violation($n, "disjunction_with_negative_guard").
+all $r, $n, $sign: sc_body($r, $n, $sign) & ast_node($n, "predication") & sc_has_universal($n) -> assertion_form_violation($n, "quantified_antecedent").
+all $r, $n, $sign: sc_body($r, $n, $sign) & ~($sign = "definite") & ast_node($n, "restrictor") & sc_has_universal($n) -> assertion_form_violation($n, "quantified_restrictor").
+all $r, $n, $sign, $k: sc_body($r, $n, $sign) & ast_node($n, $k) & sc_complex_guard_kind($k) -> assertion_form_violation($n, "complex_antecedent").
+sc_complex_guard_kind("prenex").
+sc_complex_guard_kind("det_block").
+sc_complex_guard_kind("impl").
+sc_complex_guard_kind("iff").
+sc_complex_guard_kind("xor").
+all $r, $n, $a, $b: sc_head($r, $n) & ast_node($n, "impl") & ast_child($n, "left", "0", $a) & ast_child($n, "right", "0", $b) -> sc_body($r, $a, "positive") & sc_head($r, $b) & sc_spine($r, $b).
+all $r, $n, $b: sc_head($r, $n) & ast_node($n, "prenex") & ast_child($n, "body", "0", $b) -> sc_head($r, $b).
+all $r, $n, $b: sc_spine($r, $n) & ast_node($n, "prenex") & ast_child($n, "body", "0", $b) -> sc_spine($r, $b).
+all $r, $n, $det: sc_spine($r, $n) & ast_node($n, "det_block") & ast_value($n, "determiner", "tag", $det) & sc_universal_determiner($det) -> sc_rule_formula($r, $n).
+all $r, $n, $k: sc_head($r, $n) & ast_node($n, $k) & sc_nested_head_kind($k) & ~sc_spine($r, $n) -> assertion_form_violation($n, "nested_conclusion").
+all $r, $n: sc_head($r, $n) & ast_node($n, "iff") -> assertion_form_violation($n, "biconditional_conclusion").
+sc_nested_head_kind("prenex").
+sc_nested_head_kind("impl").
+
+# A linked restrictor's `it` chooses its own bound place. It does not bind
+# the enclosing term-relative clause. Check effective clause references and
+# the native fallback to a unique unspecified canonical subject slot.
+all $c, $b, $owner, $i: ast_child($owner, "clauses", $i, $c) & ast_child($c, "body", "0", $b) & ~sc_block_clause($c) -> sc_clause_visible($c, $b).
+all $d, $q, $i, $c: ast_node($d, "det_block") & ast_child($d, "restrictor", "0", $q) & ast_child($q, "clauses", $i, $c) -> sc_block_clause($c).
+all $c, $n, $child, $k: sc_clause_visible($c, $n) & ast_node($n, $k) & ~($k = "clause") & sc_runtime_edge($n, $child) -> sc_clause_visible($c, $child).
+all $n, $t: sc_bound_it($n, $t) -> sc_bound_marker($t).
+all $c, $t: sc_clause_visible($c, $t) & ast_value($t, "key", "tag", "it") & ~sc_bound_marker($t) -> sc_clause_reference($c).
+all $n, $a, $i: sc_arg($n, $a, $i) & ast_value($a, "label", "tag", "positional") -> sc_explicit_subject($n).
+all $c, $n: sc_clause_visible($c, $n) & ast_node($n, "predication") & ~sc_explicit_subject($n) -> sc_clause_reference($c).
+all $c, $n, $a, $t: sc_clause_visible($c, $n) & sc_canonical_place($n, $a, "1") & sc_arg_term($a, $t) & ast_node($t, "unspecified") -> sc_clause_candidate($c, $n).
+all $n, $a: sc_canonical_place($n, $a, "1") -> sc_filled_subject($n).
+all $n, $v, $p, $arity, $s, $l: sc_call($n, $v, $p, $arity) & sc_bound_place($n, $s) & lex_place($v, $l, $s, "1") -> sc_filled_subject($n).
+all $c, $n, $v, $p, $arity: sc_clause_visible($c, $n) & sc_call($n, $v, $p, $arity) & ~sc_filled_subject($n) -> sc_clause_candidate($c, $n).
+all $c, $n, $t, $field, $i: sc_clause_visible($c, $n) & ast_node($n, "equality") & ast_child($n, $field, $i, $t) & ast_node($t, "unspecified") -> sc_clause_candidate($c, $n).
+all $c, $n: sc_clause_candidate($c, $n) -> sc_clause_has_candidate($c).
+all $c, $b: ast_child($c, "body", "0", $b) & sc_clause_visible($c, $b) & ~sc_clause_reference($c) & ~sc_clause_has_candidate($c) -> position_violation($c, "unbound_relative_subject").
+all $c, $a, $b: sc_clause_candidate($c, $a) & sc_clause_candidate($c, $b) & ~($a = $b) & ~sc_clause_reference($c) -> position_violation($c, "ambiguous_relative_subject").
+all $r, $n, $d, $q, $p: sc_head($r, $n) & sc_outer($n, $d) & ast_value($d, "determiner", "tag", "some") & ast_child($d, "restrictor", "0", $q) & sc_atom($q, $p) -> rule_head($r, $p).
+all $r, $n, $d, $q, $i, $c: sc_head($r, $n) & ast_node($n, "predication") & sc_outer($n, $d) & ast_child($d, "restrictor", "0", $q) & ast_child($q, "clauses", $i, $c) & ast_value($c, "clause", "tag", "also") -> sc_head($r, $c).
+all $r, $n, $i, $c: sc_body($r, $n, "definite") & ast_child($n, "clauses", $i, $c) -> sc_body($r, $c, "positive").
+all $r, $n, $b: sc_head($r, $n) & ast_node($n, "clause") & ast_child($n, "body", "0", $b) -> sc_head($r, $b).
+all $r, $n, $i, $a, $t, $d: sc_body($r, $n, "negative") & sc_arg($n, $a, $i) & sc_arg_term($a, $t) & ast_value($t, "determiner", "tag", $d) & ~($d = "the") -> assertion_form_violation($n, "negated_foreign_quantifier").
+all $r, $n, $i, $a, $t, $v: sc_body($r, $n, "negative") & sc_arg($n, $a, $i) & sc_arg_term($a, $t) & ast_value($t, "name", "text", $v) & ast_node($t, "variable") & ~sc_explicit_binding($t, $v) -> assertion_form_violation($n, "negated_free_binder").
+all $r, $n, $i, $a, $t: sc_body($r, $n, "negative") & sc_arg($n, $a, $i) & sc_arg_term($a, $t) & ast_node($t, "witness") -> assertion_form_violation($n, "negated_anonymous_binder").
+all $r, $n, $i, $a, $t: sc_body($r, $n, "negative") & sc_arg($n, $a, $i) & sc_arg_term($a, $t) & ast_node($t, "abstraction") -> assertion_form_violation($n, "negated_abstraction").
+all $a, $b: ast_node($a, "prefixed") & ast_node($b, "prefixed") & sc_contains($a, $b) & ~($a = $b) & sc_operational($a) -> assertion_form_violation($b, "stacked_flavors").
+all $n, $a, $i, $t: ast_node($n, "restrictor") & sc_arg($n, $a, $i) & sc_arg_term($a, $t) & ast_value($t, "key", "tag", "it") & ast_value($a, "label", "tag", "positional") -> position_violation($t, "positional_bound_marker").
+
+# The committed catalog includes fixed event-role/domain spellings, never
+# compiler output. They matter when a declaration names an internal role.
+all $n, $v, $p, $a, $k: sc_call($n, $v, $p, $a) & ast_node($n, $k) & ~($k = "tag") & ~lex_builtin($p, "identity") -> sc_decomposed_atom($n, $p).
+all $n, $s, $w, $p, $a: ast_child($n, "sequence", "0", $s) & sc_sequence_word($s, $w) & sc_resolved($w, $p, $a) & ~lex_builtin($p, "identity") -> sc_decomposed_atom($n, $p).
+all $s, $n, $p: fact_assertion($s, $n, $p) -> sc_fact_relation($s, $n, $p).
+all $s, $n, $p, $i, $role: fact_assertion($s, $n, $p) & sc_decomposed_atom($n, $p) & lex_role($p, $i, $role) -> sc_fact_relation($s, $n, $role).
+all $s, $d, $n, $p: ast_next_statement($d, $s) & fact_assertion($d, $n, $p) & ~sc_declaration_relation($p) -> sc_prior_ordinary($s).
+all $s, $d: ast_next_statement($d, $s) & sc_prior_ordinary($d) -> sc_prior_ordinary($s).
+all $r, $n, $v, $p, $a, $domain: sc_body($r, $n, "definite") & sc_call($n, $v, $p, $a) & lex_domain($p, $domain) -> rule_pos_body($r, $domain).
+
+# A clause on a rigid term compiled during a universal restrictor closes too
+# late to preserve the universal root. Rust rejects this semantic shape.
+all $n, $d, $q, $a, $i, $t, $c, $j, $kind: ast_node($n, "predication") & sc_has_universal($n) & sc_outer($n, $d) & ast_child($d, "restrictor", "0", $q) & sc_arg($q, $a, $i) & sc_arg_term($a, $t) & ast_node($t, $kind) & sc_rigid_kind($kind) & ast_child($t, "clauses", $j, $c) -> scope_violation($c, "late_relative_clause").
+sc_rigid_kind("name").
+
+# Disjunctive conclusions are constraints, so their alternatives do not add
+# Horn dependency edges. Every alternative must still be representable.
+all $r, $n, $a, $b, $p: sc_spine($r, $n) & ast_node($n, "or") & ast_child($n, "left", "0", $a) & ast_child($n, "right", "0", $b) & ast_node($a, "not") & ast_child($a, "body", "0", $p) -> sc_body($r, $p, "positive") & sc_head($r, $b) & sc_spine($r, $b) & sc_implication_or($r, $n).
+all $r, $n: sc_head($r, $n) & ast_node($n, "or") & ~sc_implication_or($r, $n) -> sc_constraint_branch($r, $n).
+all $r, $n, $a, $b, $k: sc_constraint_branch($r, $n) & ast_node($n, $k) & sc_boolean_body_kind($k) & ast_child($n, "left", "0", $a) & ast_child($n, "right", "0", $b) -> sc_constraint_branch($r, $a) & sc_constraint_branch($r, $b).
+all $r, $n, $b: sc_constraint_branch($r, $n) & ast_node($n, "prefixed") & ast_child($n, "body", "0", $b) -> sc_constraint_branch($r, $b).
+all $r, $n, $k: sc_constraint_branch($r, $n) & ast_node($n, $k) & sc_bad_disjunct_kind($k) -> assertion_form_violation($n, "complex_disjunct").
+all $r, $n: sc_constraint_branch($r, $n) & ast_node($n, "predication") & sc_has_universal($n) -> assertion_form_violation($n, "quantified_disjunct").
+sc_bad_disjunct_kind("not").
+sc_bad_disjunct_kind("xor").
+sc_bad_disjunct_kind("prenex").
+sc_bad_disjunct_kind("det_block").
+sc_bad_disjunct_kind("iff").
+
+# Effective numeric operands include implicit binders, converted places and via.
+all $t, $kind: ast_node($t, $kind) & sc_numeric_kind($kind) & ~sc_definite_variable($t) -> sc_numeric_term($t).
+all $t: ast_node($t, "witness") -> sc_numeric_term($t).
+all $t: ast_node($t, "abstraction") -> sc_numeric_term($t).
+all $t, $d: ast_node($t, "description") & ast_value($t, "determiner", "tag", $d) & ~($d = "the") -> sc_numeric_term($t).
+all $t, $k: ast_value($t, "key", "tag", $k) & sc_bound_key($k) -> sc_numeric_term($t).
+sc_bound_key("it").
+sc_bound_key("slot").
+all $n, $v, $t: ast_node($n, "det_block") & ast_value($n, "determiner", "tag", "the") & ast_value($n, "var", "text", $v) & sc_contains($n, $t) & ast_node($t, "variable") & ast_value($t, "name", "text", $v) -> sc_definite_variable($t).
+all $n, $a, $s, $v, $p, $arity, $label, $c: sc_place($n, $a, $s) & sc_call($n, $v, $p, $arity) & lex_place($v, $label, $s, $c) -> sc_canonical_place($n, $a, $c).
+all $n: ast_node($n, "restrictor") & ~sc_has_bound_it($n) -> sc_bound_place($n, "1").
+all $n, $t, $a, $p: sc_bound_it($n, $t) & sc_arg_term($a, $t) & sc_place($n, $a, $p) -> sc_bound_place($n, $p).
+all $n, $v, $p, $arity, $label, $s, $c: ast_node($n, "selected") & sc_call($n, $v, $p, $arity) & ast_value($n, "selector", "text", $label) & lex_place($v, $label, $s, $c) -> sc_bound_place($n, $s).
+all $n, $v, $p, $arity, $s, $label, $c: sc_operational($n) & sc_call($n, $v, $p, $arity) & lex_builtin($p, "comparison") & sc_bound_place($n, $s) & lex_place($v, $label, $s, $c) & sc_comparison_place($c) -> query_only_violation($n, "implicit_numeric_operand").
+all $n, $v, $p, $arity, $t: sc_operational($n) & ast_node($n, "tag") & sc_call($n, $v, $p, $arity) & lex_builtin($p, "comparison") & ast_child($n, "term", "0", $t) & sc_numeric_term($t) -> query_only_violation($n, "numeric_modal_operand").
+all $n, $tag, $i, $v, $p, $arity, $a, $t: sc_operational($tag) & ast_child($n, "tags", $i, $tag) & sc_call($tag, $v, $p, $arity) & lex_builtin($p, "comparison") & sc_place($n, $a, "1") & sc_arg_term($a, $t) & sc_numeric_term($t) -> query_only_violation($tag, "numeric_modal_subject").
+
+# Quoted bodies stay opaque to ground collection; their type is asserted.
+sc_abstraction_type("event", "text:6576656e74").
+sc_abstraction_type("fact", "text:66616374").
+sc_abstraction_type("property", "text:70726f7065727479").
+sc_abstraction_type("amount", "text:616d6f756e74").
+sc_abstraction_type("concept", "text:636f6e63657074").
+all $s, $n, $p, $d, $kind, $q: fact_assertion($s, $n, $p) & sc_outer($n, $d) & ast_node($d, "abstraction") & ast_value($d, "abstraction", "tag", $kind) & sc_abstraction_type($kind, $q) -> fact_assertion($s, $d, $q).
+all $r, $n, $d, $kind, $p: sc_head($r, $n) & sc_outer($n, $d) & ast_node($d, "abstraction") & ast_value($d, "abstraction", "tag", $kind) & sc_abstraction_type($kind, $p) -> rule_head($r, $p).
+all $r, $n, $d, $q, $i, $c, $det: sc_head($r, $n) & ast_node($n, "predication") & sc_outer($n, $d) & ast_value($d, "determiner", "tag", $det) & sc_universal_determiner($det) & ast_child($d, "restrictor", "0", $q) & ast_child($q, "clauses", $i, $c) & ast_value($c, "clause", "tag", "also") -> sc_matrix_clause($r, $c).
+sc_universal_determiner("every").
+sc_universal_determiner("every_the").
+
+# Dependency flattening retains quoted head/body leaves. A quoted quantifier
+# or connective must also satisfy the native rule-template restrictions.
+all $r, $n, $d, $b: sc_head($r, $n) & sc_outer($n, $d) & ast_node($d, "abstraction") & ast_child($d, "body", "0", $b) -> sc_quoted_head($r, $b).
+all $r, $n, $a, $b: sc_quoted_head($r, $n) & ast_node($n, "and") & ast_child($n, "left", "0", $a) & ast_child($n, "right", "0", $b) -> sc_quoted_head($r, $a) & sc_quoted_head($r, $b).
+all $r, $n, $b: sc_quoted_head($r, $n) & ast_node($n, "prefixed") & ast_child($n, "body", "0", $b) -> sc_quoted_head($r, $b).
+all $r, $n, $k: sc_quoted_head($r, $n) & ast_node($n, $k) & sc_complex_guard_kind($k) -> assertion_form_violation($n, "complex_quoted_conclusion").
+all $r, $n: sc_quoted_head($r, $n) & ast_node($n, "predication") & sc_has_universal($n) -> assertion_form_violation($n, "quantified_quoted_conclusion").
+all $r, $n, $d, $count: sc_quoted_head($r, $n) & sc_outer($n, $d) & ast_value($d, "count", "u32", $count) -> assertion_form_violation($d, "counted_quoted_conclusion").
+all $r, $n, $d, $b: sc_body($r, $n, "positive") & sc_outer($n, $d) & ast_node($d, "abstraction") & ast_child($d, "body", "0", $b) -> sc_body($r, $b, "positive") & sc_quoted_body($r, $b).
+all $r, $n, $a, $b: sc_quoted_body($r, $n) & ast_node($n, "and") & ast_child($n, "left", "0", $a) & ast_child($n, "right", "0", $b) -> sc_quoted_body($r, $a) & sc_quoted_body($r, $b).
+all $r, $n: sc_quoted_body($r, $n) & ast_node($n, "or") -> assertion_form_violation($n, "quoted_disjunctive_guard").
+
+# Literal declarations may target a compiler-generated quotation identity.
+# Its canonical IR encoding is deliberately not supplied by the syntax-only
+# exporter. Until that encoding is specified here, refuse to certify this case.
+all $v: ast_text_byte($v, "0", "95") & ast_text_byte($v, "1", "95") & ast_text_byte($v, "2", "97") & ast_text_byte($v, "3", "98") & ast_text_byte($v, "4", "115") & ast_text_byte($v, "5", "95") -> sc_marker_text($v).
+all $s, $t, $v: decl_admits($s, $t) & sc_target($t, $v) & sc_marker_text($v) -> sc_marker_admission($s).
+all $s, $d: ast_next_statement($d, $s) & sc_marker_admission($d) -> sc_prior_marker_admission($s).
+all $s, $d: ast_next_statement($d, $s) & sc_prior_marker_admission($d) -> sc_prior_marker_admission($s).
+all $s, $n, $p: fact_assertion($s, $n, $p) & ast_node($n, "abstraction") -> sc_quoted_fact($s, $n).
+all $s, $n: sc_quoted_fact($s, $n) & sc_closed($s) & ~sc_prior_marker_admission($s) -> vocab_violation($n, "unadmitted_quote_marker").
+all $p, $version, $s, $n: ast_program($p, $version) & sc_quoted_fact($s, $n) & sc_prior_marker_admission($s) -> checker_incomplete($p, "quotation_identity_declaration").
+all $p, $version, $s, $n, $d, $t, $v: ast_program($p, $version) & sc_quoted_fact($s, $n) & decl_derived_only($d, $t) & sc_target($t, $v) & sc_marker_text($v) -> checker_incomplete($p, "quotation_identity_declaration").
+all $p, $why: checker_incomplete($p, $why) -> sc_has_incomplete($p).
+
+# Finite arithmetic domain: the native DNF limit is 32.
+sc_succ("0", "1").
+sc_succ("1", "2").
+sc_succ("2", "3").
+sc_succ("3", "4").
+sc_succ("4", "5").
+sc_succ("5", "6").
+sc_succ("6", "7").
+sc_succ("7", "8").
+sc_succ("8", "9").
+sc_succ("9", "10").
+sc_succ("10", "11").
+sc_succ("11", "12").
+sc_succ("12", "13").
+sc_succ("13", "14").
+sc_succ("14", "15").
+sc_succ("15", "16").
+sc_succ("16", "17").
+sc_succ("17", "18").
+sc_succ("18", "19").
+sc_succ("19", "20").
+sc_succ("20", "21").
+sc_succ("21", "22").
+sc_succ("22", "23").
+sc_succ("23", "24").
+sc_succ("24", "25").
+sc_succ("25", "26").
+sc_succ("26", "27").
+sc_succ("27", "28").
+sc_succ("28", "29").
+sc_succ("29", "30").
+sc_succ("30", "31").
+sc_succ("31", "32").
+sc_succ("32", "33").

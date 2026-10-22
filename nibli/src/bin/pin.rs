@@ -559,27 +559,29 @@ fn run_file(name: &str, src: &str) -> Report {
     run_file_with_kb(name, src, &[], false)
 }
 
-/// Load every fixture KB into a fresh engine, then run the pin file against it.
-///
-/// A fixture line that fails to assert is a HARNESS error (exit 2), never a
-/// finding (exit 1). The distinction is not a judgement call: if the fixture did
-/// not load, no pin ran, so there is no pinned property that could have
-/// regressed — reporting a finding would claim knowledge the run does not have.
-/// "I could not run the test" and "the test failed" are different in kind, and
-/// the exit taxonomy exists to keep them apart.
-/// Load the `--kb` fixtures into a fresh engine and render the engine's stratification.
-///
-/// Returns `(stdout_text, harness_errors)`. A fixture that fails to load yields harness
-/// errors and NO dump: numbers computed over a partly-loaded KB would be worse than no
-/// numbers at all, because they look like numbers.
-///
-/// Format is TSV so it diffs line-by-line and parses with `split('\t')`; the header is
-/// comment lines so a consumer can `startswith('#')`-skip it. Every ordering is fixed by
-/// [`nibli_reason::KnowledgeBase::stratification_report`], so two runs over the same
-/// input are byte-identical.
-fn strata_dump(kbs: &[KbFile]) -> (String, Vec<String>) {
-    use std::fmt::Write as _;
-
+/// Load plain fixture lines in order, reporting failures as harness errors.
+/// No partially loaded engine may reach a pin or a stratification dump.
+fn fixture_engine(kbs: &[KbFile]) -> Result<NibliEngine, Vec<String>> {
+    let lines: Vec<&str> = kbs
+        .iter()
+        .flat_map(|(_, source)| source.lines())
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .collect();
+    // Large reified ASTs contain tens of thousands of ordinary facts. The
+    // batch constructor preserves declaration order and checks the final
+    // dependency graph once. Fall back only to recover file/line diagnostics.
+    let batch_error = if lines
+        .iter()
+        .any(|line| line.starts_with(':') || line.starts_with('?'))
+    {
+        None
+    } else {
+        match NibliEngine::from_text_batch(&lines) {
+            Ok(engine) => return Ok(engine),
+            Err(error) => Some(error),
+        }
+    };
     let mut harness: Vec<String> = Vec::new();
     let engine = NibliEngine::new();
     for (kb_name, kb_src) in kbs {
@@ -605,9 +607,25 @@ fn strata_dump(kbs: &[KbFile]) -> (String, Vec<String>) {
             }
         }
     }
-    if !harness.is_empty() {
-        return (String::new(), harness);
+    if harness.is_empty() {
+        harness.push(format!(
+            "fixture batch failed to load: {}",
+            batch_error.expect("a valid batch returned above")
+        ));
     }
+    Err(harness)
+}
+
+/// Load fixtures and render stable TSV from the engine's stratification report.
+/// Returns `(stdout_text, harness_errors)`; a failed fixture produces no dump.
+fn strata_dump(kbs: &[KbFile]) -> (String, Vec<String>) {
+    use std::fmt::Write as _;
+
+    let engine = match fixture_engine(kbs) {
+        Ok(engine) => engine,
+        Err(harness) => return (String::new(), harness),
+    };
+    let mut harness = Vec::new();
 
     let rows = match engine.kb().stratification_report() {
         Ok(rows) => rows,
@@ -667,36 +685,15 @@ fn run_file_with_kb(name: &str, src: &str, kbs: &[KbFile], allow_shell: bool) ->
         resolved: Vec::new(),
         harness: Vec::new(),
     };
-    let engine = NibliEngine::new();
-
-    for (kb_name, kb_src) in kbs {
-        for (n, raw) in kb_src.lines().enumerate() {
-            let line = raw.trim();
-            if line.is_empty() || line.starts_with('#') {
-                continue;
-            }
-            if line.starts_with(':') || line.starts_with('?') {
-                rep.harness.push(format!(
-                    "{kb_name}:{}: a --kb fixture is plain KB text — directives and `?` queries \
-                     belong in the pin file, not the artifact under test",
-                    n + 1
-                ));
-                continue;
-            }
-            if let Err(e) = engine.assert_text(line) {
-                rep.harness.push(format!(
-                    "{kb_name}:{}: fixture line failed to load — [{}] {e}",
-                    n + 1,
-                    Class::of(&e).name()
-                ));
-            }
-        }
-    }
     // A fixture that did not load fully leaves the engine in an unknown state;
     // running pins against it would produce noise, not signal.
-    if !rep.harness.is_empty() {
-        return rep;
-    }
+    let engine = match fixture_engine(kbs) {
+        Ok(engine) => engine,
+        Err(harness) => {
+            rep.harness = harness;
+            return rep;
+        }
+    };
 
     let mut expect = Expect::Default;
     let mut defect: Option<String> = None;
@@ -1389,6 +1386,36 @@ mod tests {
         assert_eq!(r.findings.len(), 0, "{r:?}");
         assert_eq!(r.harness.len(), 0, "{r:?}");
         assert_eq!(r.pins, 2);
+    }
+
+    #[test]
+    fn batched_fixtures_preserve_order_and_reject_negative_cycles() {
+        for source in [
+            "person(Ara).\nadmits(\"person\").\n",
+            "derived_only(\"person\").\nperson(Ara).\n",
+            "all $x: person($x) & ~eats($x) -> prisoner($x).\n\
+             all $x: prisoner($x) -> eats($x).\n",
+        ] {
+            let fixtures = vec![("ordered.nibli".to_owned(), source.to_owned())];
+            let report = run_file_with_kb(
+                "t",
+                "? person(Ara).\n# => TRUE\n:expect-pins 1\n",
+                &fixtures,
+                false,
+            );
+            assert_eq!(report.pins, 0, "{source}\n{report:?}");
+            assert!(report.findings.is_empty(), "{report:?}");
+            assert!(
+                report
+                    .harness
+                    .iter()
+                    .any(|error| error.contains("ordered.nibli:2")),
+                "{source}\n{report:?}"
+            );
+            let (dump, errors) = strata_dump(&fixtures);
+            assert!(dump.is_empty());
+            assert!(!errors.is_empty());
+        }
     }
 
     /// Without the fixture the very same pin file FAILS — proving the fixture is

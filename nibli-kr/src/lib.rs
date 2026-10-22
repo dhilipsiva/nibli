@@ -26,6 +26,7 @@ pub mod emit;
 pub mod highlight;
 pub mod lint;
 pub mod parser;
+pub mod reify;
 pub mod render;
 pub mod resolve;
 

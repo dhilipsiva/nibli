@@ -1,0 +1,494 @@
+use super::{Service, actions, core, net, providers, read_frame};
+use crate::store::Store;
+use serde_json::{Value, json};
+use std::{
+    io::{BufRead, BufReader, Read, Write},
+    net::TcpListener,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+        mpsc,
+    },
+    time::{Duration, Instant},
+};
+
+fn request(client: &Value, values: Value) -> Value {
+    let mut output = client.clone();
+    output
+        .as_object_mut()
+        .unwrap()
+        .extend(values.as_object().unwrap().clone());
+    output
+}
+
+fn prompt(
+    service: &Service,
+    workspace: &std::path::Path,
+    source: &str,
+    id: &str,
+    text: &str,
+) -> Value {
+    service
+        .dispatch(json!({"op":"prompt","source":source,"session":id,
+        "workspace":workspace,"text":text,"event":format!("{id}-{text}")}))
+        .unwrap()
+}
+
+#[test]
+fn opening_and_unaddressed_prompts_do_not_load_memory() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("memory");
+    let service = Service::new(root.clone(), None);
+    service.dispatch(json!({"op":"open"})).unwrap();
+    assert!(!root.exists());
+    assert_eq!(
+        prompt(&service, temp.path(), "codex", "one", "look at Lucy's file")["active"],
+        false
+    );
+    assert!(!root.exists());
+    for text in ["Lucy, wake", "Hey Lucy!", "/lucy hello", "@Lucy: hello"] {
+        assert!(core::addressed(text));
+    }
+    for text in ["I told Lucy", "LucyTools", "/lucy-example", "lucy.rs"] {
+        assert!(!core::addressed(text));
+    }
+}
+
+#[test]
+fn active_clients_share_exact_visible_records_and_sleep_is_scoped() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("memory");
+    let service = Service::new(root.clone(), None);
+    prompt(
+        &service,
+        temp.path(),
+        "codex",
+        "one",
+        "Lucy, preserve the brass compass.",
+    );
+    let record = json!({"op":"record","source":"codex","session":"one",
+        "event":"reply","channel":"commentary","text":"First line.\nSecond line — intact."});
+    service.dispatch(record.clone()).unwrap();
+    service.dispatch(record).unwrap();
+    let second = prompt(
+        &service,
+        temp.path(),
+        "claude",
+        "two",
+        "Lucy, recall the brass compass.",
+    );
+    assert!(second["memories"].as_array().unwrap().iter().any(|m| {
+        m["excerpt"]
+            .as_str()
+            .unwrap_or("")
+            .contains("brass compass")
+    }));
+    service
+        .dispatch(json!({"op":"sleep","source":"codex","session":"one"}))
+        .unwrap();
+    assert!(
+        service
+            .dispatch(json!({"op":"recall","source":"codex","session":"one","query":"compass"}))
+            .is_err()
+    );
+    assert!(
+        service
+            .dispatch(json!({"op":"recall","source":"claude","session":"two","query":"compass"}))
+            .is_ok()
+    );
+    let records = Store::open(&root).unwrap().all().unwrap();
+    let replies: Vec<_> = records
+        .iter()
+        .filter(|r| r.payload["role"] == "assistant")
+        .collect();
+    assert_eq!(replies.len(), 1);
+    assert_eq!(
+        replies[0].payload["text"],
+        "First line.\nSecond line — intact."
+    );
+    assert_eq!(replies[0].payload["channel"], "commentary");
+    assert_eq!(replies[0].payload["private"], true);
+}
+
+#[test]
+fn legacy_sqlite_payloads_migrate_losslessly_once() {
+    let temp = tempfile::tempdir().unwrap();
+    let sqlite = temp.path().join("conversations.sqlite3");
+    let original = json!({"id":"original","source":"desktop","session":"s","role":"user",
+        "text":"Exact\noriginal","timestamp":"2026-09-01T15:43:21.123456+00:00",
+        "private":true,"metadata":{"original_id":"provider-42"}});
+    {
+        let db = rusqlite::Connection::open(&sqlite).unwrap();
+        db.execute("CREATE TABLE messages (payload TEXT NOT NULL)", [])
+            .unwrap();
+        db.execute(
+            "INSERT INTO messages (payload) VALUES (?1)",
+            [original.to_string()],
+        )
+        .unwrap();
+    }
+    let bytes = std::fs::read(&sqlite).unwrap();
+    let store = Store::open(temp.path()).unwrap();
+    assert_eq!(store.migrate_sqlite().unwrap(), 1);
+    assert_eq!(store.migrate_sqlite().unwrap(), 0);
+    assert_eq!(store.all().unwrap()[0].payload, original);
+    assert_eq!(std::fs::read(sqlite).unwrap(), bytes);
+}
+
+#[test]
+fn hidden_channels_and_nonvisible_roles_are_rejected() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = Store::open(temp.path()).unwrap();
+    for channel in ["analysis", "reasoning", "thinking"] {
+        assert!(
+            store
+                .message(json!({"id":channel,"source":"test","session":"one",
+            "role":"assistant","channel":channel,"text":"not visible"}))
+                .is_err()
+        );
+    }
+    for role in ["system", "developer", "tool"] {
+        assert!(
+            store
+                .message(json!({"id":role,"source":"test","session":"one",
+            "role":role,"text":"not a visible exchange"}))
+                .is_err()
+        );
+    }
+    assert!(store.all().unwrap().is_empty());
+}
+
+#[test]
+fn agent_reads_then_returns_visible_response_without_provider_internals() {
+    let temp = tempfile::tempdir().unwrap();
+    std::fs::write(temp.path().join("note.txt"), "a small note").unwrap();
+    let root = temp.path().join("memory");
+    let service = Service::new(root.clone(), None);
+    service.scripted(vec![
+        json!({"content":"","tool_calls":[{"id":"call-1","type":"function","function":{"name":"read","arguments":"{\"path\":\"note.txt\"}"}}],"reasoning":"provider internals"}),
+        json!({"content":"The note says: a small note.","thinking":"provider internals"}),
+    ]);
+    let client = service.dispatch(json!({"op":"open"})).unwrap();
+    let reply = service
+        .dispatch(request(
+            &client,
+            json!({"op":"chat","text":"Read note.txt",
+        "event":"read","workspace":temp.path()}),
+        ))
+        .unwrap();
+    assert_eq!(reply["text"], "The note says: a small note.");
+    let records = Store::open(&root).unwrap().all().unwrap();
+    assert_eq!(records.len(), 2);
+    assert!(!json!(records).to_string().contains("provider internals"));
+}
+
+#[test]
+fn agent_write_needs_the_exact_ui_approval_and_can_only_run_once() {
+    let temp = tempfile::tempdir().unwrap();
+    let service = Service::new(temp.path().join("memory"), None);
+    service.scripted(vec![
+        json!({"content":"I can write that.","tool_calls":[{"id":"call-1","type":"function",
+            "function":{"name":"write","arguments":{"path":"out.txt","text":"approved content"}}}]}),
+        json!({"content":"Saved."}),
+    ]);
+    let client = service.dispatch(json!({"op":"open"})).unwrap();
+    let reply = service
+        .dispatch(request(
+            &client,
+            json!({"op":"chat","text":"Write a note",
+        "event":"write","workspace":temp.path()}),
+        ))
+        .unwrap();
+    let (id, preview) = reply["pending"].as_object().unwrap().iter().next().unwrap();
+    assert!(preview.get("before").is_none());
+    assert_eq!(preview["diff"]["after"], "approved content");
+    assert!(!temp.path().join("out.txt").exists());
+    let approval = request(&client, json!({"op":"approve","action":id,"allow":true}));
+    let mut fake = approval.clone();
+    fake["control"] = json!("model-supplied");
+    assert!(service.dispatch(fake).is_err());
+    assert!(!temp.path().join("out.txt").exists());
+    assert_eq!(
+        service.dispatch(approval.clone()).unwrap()["text"],
+        "Saved."
+    );
+    assert_eq!(
+        std::fs::read_to_string(temp.path().join("out.txt")).unwrap(),
+        "approved content"
+    );
+    assert!(service.dispatch(approval).is_err());
+}
+
+#[test]
+fn changed_files_and_cancelled_actions_cannot_use_stale_approvals() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("note");
+    std::fs::write(&path, "old").unwrap();
+    let args = json!({"path":"note","text":"replacement"});
+    let preview = actions::preview(temp.path(), "write", args.clone()).unwrap();
+    std::fs::write(&path, "user's change").unwrap();
+    assert!(
+        actions::execute(
+            temp.path(),
+            &AtomicBool::new(false),
+            "write",
+            &args,
+            preview.get("before")
+        )
+        .is_err()
+    );
+    assert_eq!(std::fs::read_to_string(path).unwrap(), "user's change");
+    let service = Service::new(temp.path().join("memory"), None);
+    let client = service.dispatch(json!({"op":"open"})).unwrap();
+    service
+        .dispatch(request(
+            &client,
+            json!({"op":"begin-archive","workspace":temp.path()}),
+        ))
+        .unwrap();
+    let pending = service
+        .dispatch(request(
+            &client,
+            json!({"op":"tool","name":"write","arguments":args}),
+        ))
+        .unwrap();
+    service
+        .dispatch(request(&client, json!({"op":"cancel"})))
+        .unwrap();
+    assert!(
+        service
+            .dispatch(request(
+                &client,
+                json!({"op":"approve","allow":true,
+        "action":pending["pending_action"],"continue":false})
+            ))
+            .is_err()
+    );
+}
+
+#[test]
+fn paths_cannot_escape_through_parent_components_or_symlinks() {
+    let temp = tempfile::tempdir().unwrap();
+    let workspace = temp.path().join("workspace");
+    std::fs::create_dir(&workspace).unwrap();
+    std::os::unix::fs::symlink(temp.path(), workspace.join("escape")).unwrap();
+    for path in [
+        "../secret",
+        "escape/secret",
+        ".env",
+        ".config/key",
+        ".git/config",
+    ] {
+        assert!(actions::path(&workspace, path, false).is_err(), "{path}");
+    }
+    assert_eq!(
+        actions::path(&workspace, "sub/../note", false).unwrap(),
+        workspace.join("note")
+    );
+}
+
+#[test]
+fn network_and_mutating_tools_are_always_proposals() {
+    for (name, args) in [
+        ("http", json!({"method":"GET","url":"http://127.0.0.1"})),
+        ("command", json!({"argv":["true"]})),
+        ("write", json!({"path":"note","text":"x"})),
+        ("service", json!({"operation":"restart","name":"example"})),
+        ("window", json!({"action":"close","address":"0x1"})),
+    ] {
+        assert!(actions::needs_approval(name, &args).unwrap());
+    }
+    assert!(!actions::needs_approval("service", &json!({"operation":"status"})).unwrap());
+    assert!(actions::needs_approval("approve", &json!({})).is_err());
+}
+
+fn server(
+    status: &str,
+    body: String,
+    delay: Duration,
+) -> (String, mpsc::Receiver<Value>, std::thread::JoinHandle<()>) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let endpoint = format!("http://{}", listener.local_addr().unwrap());
+    let status = status.to_string();
+    let (tx, rx) = mpsc::channel();
+    let thread = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        let mut reader = BufReader::new(stream.try_clone().unwrap());
+        let mut headers = Vec::new();
+        let mut length = 0;
+        loop {
+            let mut line = String::new();
+            reader.read_line(&mut line).unwrap();
+            if line == "\r\n" || line.is_empty() {
+                break;
+            }
+            if let Some(value) = line.to_lowercase().strip_prefix("content-length:") {
+                length = value.trim().parse::<usize>().unwrap();
+            }
+            headers.push(line.trim().to_string());
+        }
+        let mut bytes = vec![0; length];
+        reader.read_exact(&mut bytes).unwrap();
+        tx.send(json!({"headers":headers,"body":serde_json::from_slice::<Value>(&bytes).unwrap_or(Value::Null)})).unwrap();
+        std::thread::sleep(delay);
+        let _ = write!(
+            stream,
+            "HTTP/1.1 {status}\r\nContent-Length: {}\r\nRetry-After: 7\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        );
+    });
+    (endpoint, rx, thread)
+}
+
+#[test]
+fn hosted_transport_preserves_tool_ids_and_omits_local_only_image_fields() {
+    let (endpoint, received, worker) = server(
+        "200 OK",
+        json!({"choices":[{"message":{"content":null,"tool_calls":[{"id":"call-42",
+            "type":"function","function":{"name":"list","arguments":"{}"}}]}}]})
+        .to_string(),
+        Duration::ZERO,
+    );
+    let provider = providers::Provider {
+        name: "test".into(),
+        endpoint,
+        model: "test-free".into(),
+        key_env: "unused".into(),
+    };
+    let response = providers::complete(
+        &provider,
+        "fixture-key",
+        &[json!({"role":"user","content":"image","images":["YWJj"]})],
+        actions::schemas(),
+        &AtomicBool::new(false),
+    )
+    .unwrap();
+    assert_eq!(response["tool_calls"][0]["id"], "call-42");
+    let request = received.recv().unwrap();
+    assert!(request["headers"].as_array().unwrap().iter().any(|s| {
+        s.as_str()
+            .unwrap()
+            .eq_ignore_ascii_case("authorization: Bearer fixture-key")
+    }));
+    assert!(request["body"]["messages"][0].get("images").is_none());
+    assert_eq!(
+        request["body"]["messages"][0]["content"][1]["type"],
+        "image_url"
+    );
+    worker.join().unwrap();
+}
+
+#[test]
+fn rate_limits_are_returned_without_fallback_or_leaking_provider_bodies() {
+    let (endpoint, received, worker) = server(
+        "429 Too Many Requests",
+        "sensitive provider body".into(),
+        Duration::ZERO,
+    );
+    let provider = providers::Provider {
+        name: "test".into(),
+        endpoint,
+        model: "free".into(),
+        key_env: "unused".into(),
+    };
+    let error = providers::complete(
+        &provider,
+        "fixture-key",
+        &[],
+        json!([]),
+        &AtomicBool::new(false),
+    )
+    .unwrap_err();
+    assert!(error.contains("429") && error.contains("Retry-After: 7"));
+    assert!(!error.contains("sensitive provider body") && !error.contains("fixture-key"));
+    received.recv().unwrap();
+    worker.join().unwrap();
+}
+
+#[test]
+fn network_reads_are_cancellable_and_size_bounded() {
+    let (endpoint, received, worker) =
+        server("200 OK", "late response".into(), Duration::from_millis(400));
+    let cancelled = Arc::new(AtomicBool::new(false));
+    let signal = cancelled.clone();
+    let trigger = std::thread::spawn(move || {
+        received.recv().unwrap();
+        signal.store(true, Ordering::SeqCst);
+    });
+    let before = Instant::now();
+    let result = net::request("GET", &endpoint, &[], None, &cancelled, 5, 100);
+    assert!(result.unwrap_err().to_lowercase().contains("cancel"));
+    assert!(before.elapsed() < Duration::from_millis(350));
+    trigger.join().unwrap();
+    worker.join().unwrap();
+    let (endpoint, received, worker) = server("200 OK", "too much data".into(), Duration::ZERO);
+    assert!(
+        net::request("GET", &endpoint, &[], None, &AtomicBool::new(false), 5, 4)
+            .unwrap_err()
+            .contains("size limit")
+    );
+    received.recv().unwrap();
+    worker.join().unwrap();
+}
+
+#[test]
+fn cancellation_stops_command_process_groups() {
+    let temp = tempfile::tempdir().unwrap();
+    let cancel = Arc::new(AtomicBool::new(false));
+    let signal = cancel.clone();
+    let trigger = std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(100));
+        signal.store(true, Ordering::SeqCst);
+    });
+    let now = Instant::now();
+    assert!(
+        actions::run(
+            temp.path(),
+            &cancel,
+            &["sh".into(), "-c".into(), "sleep 10 & wait".into()],
+            false,
+            15
+        )
+        .is_err()
+    );
+    assert!(now.elapsed() < Duration::from_secs(2));
+    trigger.join().unwrap();
+}
+
+#[test]
+fn framing_requires_complete_bounded_json_lines() {
+    assert_eq!(
+        read_frame(&mut BufReader::new(b"{\"op\":\"status\"}\n".as_slice())).unwrap()["op"],
+        "status"
+    );
+    assert!(read_frame(&mut BufReader::new(b"{\"op\":\"status\"}".as_slice())).is_err());
+    assert!(
+        read_frame(&mut BufReader::new(
+            vec![b'x'; super::MAX_FRAME + 2].as_slice()
+        ))
+        .is_err()
+    );
+}
+
+#[test]
+fn a_registered_extension_with_missing_files_is_not_an_intact_installation() {
+    let temp = tempfile::tempdir().unwrap();
+    assert!(!super::adapters::installed_extension_matches(temp.path()));
+    std::fs::write(
+        temp.path().join("package.json"),
+        include_bytes!("../../desktop/adapters/vscode/package.json"),
+    )
+    .unwrap();
+    assert!(!super::adapters::installed_extension_matches(temp.path()));
+    std::fs::write(
+        temp.path().join("extension.js"),
+        include_bytes!("../../desktop/adapters/vscode/extension.js"),
+    )
+    .unwrap();
+    assert!(super::adapters::installed_extension_matches(temp.path()));
+    std::fs::write(temp.path().join("extension.js"), "stale adapter").unwrap();
+    assert!(!super::adapters::installed_extension_matches(temp.path()));
+}

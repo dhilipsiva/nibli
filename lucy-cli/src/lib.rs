@@ -29,11 +29,16 @@ pub mod ask;
 pub mod capsule;
 pub mod cli;
 pub mod dataset;
+#[cfg(unix)]
+pub mod desktop;
 pub mod env;
 pub mod files;
 pub mod hook;
 pub mod interactions;
 pub mod load;
+pub mod store;
+#[cfg(test)]
+mod store_tests;
 pub mod talk;
 pub mod topics;
 

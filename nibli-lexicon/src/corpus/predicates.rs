@@ -46,6 +46,7 @@ pub(crate) static PREDICATES: &[PredicateEntry] = &[
     // TODO(corpus): guessed places [x1:generic, x2:prose] — lensisku: "$x_{1}$ (object) adorns/decorates $x_{2}$; $x_{1}$ is an adornment/decor…"
     PredicateEntry { name: "admits", source_gismu: "zzmeta2", swap: None, places: &["relation"], gloss: "admitted vocabulary", template: Some("{x1} is admitted vocabulary"), tier: CorpusTier::Curated },
     PredicateEntry { name: "adorn", source_gismu: "jadni", swap: None, places: &["subject", "adorns"], gloss: "adorn", template: None, tier: CorpusTier::Generic },
+    PredicateEntry { name: "advisory_kind", source_gismu: "zzstatic_advisory_kind", swap: None, places: &["subject", "object"], gloss: "static checker advisory_kind", template: None, tier: CorpusTier::Curated },
     // TODO(corpus): guessed places [x1:gloss, x2:generic] — lensisku: "$x_{1}$ is an affair/organized activity involving person(s) $x_{2}$ (ind…"
     PredicateEntry { name: "affair", source_gismu: "cuntu", swap: None, places: &["affair", "object"], gloss: "affair", template: None, tier: CorpusTier::Generic },
     // TODO(corpus): guessed places [x1:gloss, x2:prose, x3:prose, x4:prose] — lensisku: "$x_{1}$ is an affix/suffix/prefix/combining-form for word/concept $x_{2}…"
@@ -119,6 +120,7 @@ pub(crate) static PREDICATES: &[PredicateEntry] = &[
     PredicateEntry { name: "argue", source_gismu: "darlu", swap: None, places: &["contention", "stand", "place3"], gloss: "argue", template: None, tier: CorpusTier::Generic },
     // TODO(corpus): guessed places [x1:gloss, x2:prose, x3:prose] — lensisku: "$x_{1}$ is a/the argument of predicate/function $x_{2}$ filling place $x…"
     PredicateEntry { name: "argument", source_gismu: "sumti", swap: None, places: &["argument", "predicate", "place"], gloss: "argument", template: None, tier: CorpusTier::GlossDerived },
+    PredicateEntry { name: "arity_violation", source_gismu: "zzstatic_arity_violation", swap: None, places: &["subject", "object"], gloss: "static checker arity_violation", template: None, tier: CorpusTier::Curated },
     // TODO(corpus): guessed places [x1:gloss, x2:generic] — lensisku: "$x_{1}$ is a/the arm [body-part] of $x_{2}$; [metaphor: branch with stre…"
     PredicateEntry { name: "arm", source_gismu: "birka", swap: None, places: &["arm", "object"], gloss: "arm", template: None, tier: CorpusTier::Generic },
     // TODO(corpus): guessed places [x1:generic, x2:prose, x3:prose] — lensisku: "$x_{1}$ (mass) is an army serving group/community $x_{2}$ (mass) in func…"
@@ -137,10 +139,22 @@ pub(crate) static PREDICATES: &[PredicateEntry] = &[
     PredicateEntry { name: "ask", source_gismu: "cpedu", swap: None, places: &["subject", "object", "place3", "manner"], gloss: "ask", template: None, tier: CorpusTier::Generic },
     // TODO(corpus): guessed places [x2:prose] — lensisku: "$x_{1}$ (agent) asserts/claims/declares $x_{2}$ (du'u) is true [can be u…"
     PredicateEntry { name: "assert", source_gismu: "xusra", swap: None, places: &["claim", "asserts"], gloss: "assert", template: None, tier: CorpusTier::Prose },
+    PredicateEntry { name: "assertion_form_violation", source_gismu: "zzstatic_assertion_form_violation", swap: None, places: &["subject", "object"], gloss: "static checker assertion_form_violation", template: None, tier: CorpusTier::Curated },
     // TODO(corpus): guessed places [x1:generic, x2:generic] — lensisku: "$x_{1}$ (set/mass/ind.) is miscellaneous/various/assorted in property $x…"
     PredicateEntry { name: "assorted", source_gismu: "vrici", swap: None, places: &["subject", "object"], gloss: "assorted", template: None, tier: CorpusTier::Generic },
     // TODO(corpus): guessed places [x1:generic, x2:generic, x3:prose] — lensisku: "$x_{1}$ assumes/supposes that $x_{2}$ (du'u) is true about subject $x_{3…"
     PredicateEntry { name: "assume", source_gismu: "sruma", swap: None, places: &["place1", "object", "subject"], gloss: "assume", template: None, tier: CorpusTier::Generic },
+    PredicateEntry { name: "ast_child", source_gismu: "zzstatic_ast_child", swap: None, places: &["subject", "object", "detail", "context"], gloss: "static checker ast_child", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "ast_index_next", source_gismu: "zzstatic_ast_index_next", swap: None, places: &["subject", "object"], gloss: "static checker ast_index_next", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "ast_length", source_gismu: "zzstatic_ast_length", swap: None, places: &["subject", "object", "detail"], gloss: "static checker ast_length", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "ast_next_statement", source_gismu: "zzstatic_ast_next_statement", swap: None, places: &["subject", "object"], gloss: "static checker ast_next_statement", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "ast_node", source_gismu: "zzstatic_ast_node", swap: None, places: &["subject", "object"], gloss: "static checker ast_node", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "ast_program", source_gismu: "zzstatic_ast_program", swap: None, places: &["subject", "object"], gloss: "static checker ast_program", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "ast_span", source_gismu: "zzstatic_ast_span", swap: None, places: &["subject", "object", "detail"], gloss: "static checker ast_span", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "ast_statement", source_gismu: "zzstatic_ast_statement", swap: None, places: &["subject", "object", "detail"], gloss: "static checker ast_statement", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "ast_text_byte", source_gismu: "zzstatic_ast_text_byte", swap: None, places: &["subject", "object", "detail"], gloss: "static checker ast_text_byte", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "ast_text_end", source_gismu: "zzstatic_ast_text_end", swap: None, places: &["subject", "object"], gloss: "static checker ast_text_end", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "ast_value", source_gismu: "zzstatic_ast_value", swap: None, places: &["subject", "object", "detail", "context"], gloss: "static checker ast_value", template: None, tier: CorpusTier::Curated },
     // TODO(corpus): guessed places [x2:generic] — lensisku: "$x_{1}$ (object/event) is at/attending/present at $x_{2}$ (event/locatio…"
     PredicateEntry { name: "at", source_gismu: "zvati", swap: None, places: &["position", "object"], gloss: "at", template: None, tier: CorpusTier::Generic },
     // TODO(corpus): guessed places [x1:gloss, x2:prose, x3:prose] — lensisku: "$x_{1}$ is an atom of element/atomic number $x_{2}$ of isotope number/at…"
@@ -430,6 +444,9 @@ pub(crate) static PREDICATES: &[PredicateEntry] = &[
     PredicateEntry { name: "chart", source_gismu: "cartu", swap: None, places: &["chart", "object", "formation"], gloss: "chart", template: None, tier: CorpusTier::Generic },
     // TODO(corpus): guessed places [x1:generic, x2:prose] — lensisku: "$x_{1}$ chases/pursues/(physically) follows after $x_{2}$; volition is n…"
     PredicateEntry { name: "chase", source_gismu: "jersi", swap: None, places: &["subject", "after"], gloss: "chase", template: None, tier: CorpusTier::Generic },
+    PredicateEntry { name: "checker_accepts", source_gismu: "zzstatic_checker_accepts", swap: None, places: &["subject"], gloss: "static checker checker_accepts", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "checker_complete", source_gismu: "zzstatic_checker_complete", swap: None, places: &["subject"], gloss: "static checker checker_complete", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "checker_incomplete", source_gismu: "zzstatic_checker_incomplete", swap: None, places: &["subject", "object"], gloss: "static checker checker_incomplete", template: None, tier: CorpusTier::Curated },
     // TODO(corpus): guessed places [x1:gloss, x2:prose] — lensisku: "$x_{1}$ is a quantity of/contains cheese/curd from source $x_{2}$."
     PredicateEntry { name: "cheese", source_gismu: "cirla", swap: None, places: &["quantity", "source"], gloss: "cheese", template: None, tier: CorpusTier::GlossDerived },
     // TODO(corpus): guessed places [x1:gloss] — lensisku: "$x_{1}$ is an instance of substance/chemical/drug $x_{2}$ (individual or…"
@@ -653,6 +670,9 @@ pub(crate) static PREDICATES: &[PredicateEntry] = &[
     PredicateEntry { name: "decide", source_gismu: "jdice", swap: None, places: &["subject", "decision", "matter"], gloss: "decide", template: None, tier: CorpusTier::Generic },
     // TODO(corpus): guessed places [x1:generic, x2:prose, x3:prose] — lensisku: "$x_{1}$ (me'o) is the [decimal/binary] equivalent of fractional $x_{2}$ …"
     PredicateEntry { name: "decimal", source_gismu: "saclu", swap: None, places: &["subject", "fractional", "base"], gloss: "decimal", template: None, tier: CorpusTier::Generic },
+    PredicateEntry { name: "decl_admits", source_gismu: "zzstatic_decl_admits", swap: None, places: &["subject", "object"], gloss: "static checker decl_admits", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "decl_derived_only", source_gismu: "zzstatic_decl_derived_only", swap: None, places: &["subject", "object"], gloss: "static checker decl_derived_only", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "declaration_order_violation", source_gismu: "zzstatic_declaration_order_violation", swap: None, places: &["subject", "object"], gloss: "static checker declaration_order_violation", template: None, tier: CorpusTier::Curated },
     // TODO(corpus): guessed places [x1:generic, x2:generic, x3:generic] — lensisku: "$x_{1}$ (experiencer) decreases/contracts/is reduced/diminished in prope…"
     PredicateEntry { name: "decrease", source_gismu: "jdika", swap: None, places: &["subject", "object", "place3"], gloss: "decrease", template: None, tier: CorpusTier::Generic },
     // TODO(corpus): guessed places [x1:gloss, x2:prose, x3:prose, x4:prose] — lensisku: "$x_{1}$ is deep in extent in direction/property $x_{2}$ away from refere…"
@@ -671,6 +691,8 @@ pub(crate) static PREDICATES: &[PredicateEntry] = &[
     PredicateEntry { name: "demon", source_gismu: "crida", swap: None, places: &["fairy", "mythos"], gloss: "demon", template: None, tier: CorpusTier::GlossDerived },
     // TODO(corpus): guessed places [x1:gloss, x2:generic, x3:prose] — lensisku: "$x_{1}$ is dense/concentrated/packed/intense in property $x_{2}$ (ka) at…"
     PredicateEntry { name: "dense", source_gismu: "denmi", swap: None, places: &["dense", "object", "location"], gloss: "dense", template: None, tier: CorpusTier::Generic },
+    PredicateEntry { name: "dep_edge", source_gismu: "zzstatic_dep_edge", swap: None, places: &["subject", "object"], gloss: "static checker dep_edge", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "dep_path", source_gismu: "zzstatic_dep_path", swap: None, places: &["subject", "object"], gloss: "static checker dep_path", template: None, tier: CorpusTier::Curated },
     // TODO(corpus): guessed places [x1:generic, x2:generic, x3:prose] — lensisku: "$x_{1}$ relies/depends/counts on/trusts $x_{2}$ to bring about/ensure/ma…"
     PredicateEntry { name: "depend", source_gismu: "lacri", swap: None, places: &["subject", "object", "about"], gloss: "depend", template: None, tier: CorpusTier::Generic },
     // TODO(corpus): guessed places [x1:gloss, x2:generic, x3:prose] — lensisku: "$x_{1}$ is a deputy/vice/subordinate in aspect [or organization principl…"
@@ -685,6 +707,7 @@ pub(crate) static PREDICATES: &[PredicateEntry] = &[
     // `CoreSession::assert_text`. Synthetic provenance (no source gismu), same
     // convention as the `zzauth*` rows.
     PredicateEntry { name: "derived_only", source_gismu: "zzmeta1", swap: None, places: &["relation"], gloss: "derived-only", template: Some("{x1} is derivable only by rule"), tier: CorpusTier::Curated },
+    PredicateEntry { name: "derived_only_violation", source_gismu: "zzstatic_derived_only_violation", swap: None, places: &["subject", "object"], gloss: "static checker derived_only_violation", template: None, tier: CorpusTier::Curated },
     // TODO(corpus): guessed places [x1:generic, x2:prose, x3:prose, x4:prose] — lensisku: "$x_{1}$ tells about/describes $x_{2}$ (object/event/state) to audience $…"
     PredicateEntry { name: "describe", source_gismu: "skicu", swap: None, places: &["subject", "about", "audience", "description"], gloss: "describe", template: None, tier: CorpusTier::Generic },
     // TODO(corpus): guessed places [x1:generic, x3:prose] — lensisku: "$x_{1}$ (agent/person) earns/[deserves/merits] wages/salary/pay $x_{2}$ …"
@@ -863,6 +886,7 @@ pub(crate) static PREDICATES: &[PredicateEntry] = &[
     PredicateEntry { name: "eye", source_gismu: "kanla", swap: None, places: &["eye", "object"], gloss: "eye", template: None, tier: CorpusTier::Generic },
     // TODO(corpus): guessed places [x1:gloss, x2:generic] — lensisku: "$x_{1}$ is a/the face [head/body-part] of $x_{2}$; (adjective:) $x_{1}$ …"
     PredicateEntry { name: "face", source_gismu: "flira", swap: None, places: &["face", "object"], gloss: "face", template: None, tier: CorpusTier::Generic },
+    PredicateEntry { name: "fact_assertion", source_gismu: "zzstatic_fact_assertion", swap: None, places: &["subject", "object", "detail"], gloss: "static checker fact_assertion", template: None, tier: CorpusTier::Curated },
     // TODO(corpus): guessed places [x1:gloss, x2:prose, x3:prose] — lensisku: "$x_{1}$ is a factory/foundry/industrial plant/mill producing $x_{2}$ fro…"
     PredicateEntry { name: "factory", source_gismu: "fanri", swap: None, places: &["factory", "producing", "materials"], gloss: "factory", template: None, tier: CorpusTier::GlossDerived },
     // TODO(corpus): guessed places [x1:generic, x2:prose] — lensisku: "$x_{1}$ fails at doing $x_{2}$ (state/event); $x_{1}$ is a failure at it…"
@@ -1349,6 +1373,13 @@ pub(crate) static PREDICATES: &[PredicateEntry] = &[
     PredicateEntry { name: "lever", source_gismu: "vraga", swap: None, places: &["lever", "doing", "fulcrum", "arm"], gloss: "lever", template: None, tier: CorpusTier::GlossDerived },
     // TODO(corpus): guessed places [x1:generic, x2:prose] — lensisku: "$x_{1}$ uses levity/is non-serious/frivolous about $x_{2}$ (abstraction)…"
     PredicateEntry { name: "levity", source_gismu: "xalbo", swap: None, places: &["subject", "about"], gloss: "levity", template: None, tier: CorpusTier::Generic },
+    PredicateEntry { name: "lex_builtin", source_gismu: "zzstatic_lex_builtin", swap: None, places: &["subject", "object"], gloss: "static checker lex_builtin", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "lex_domain", source_gismu: "zzstatic_lex_domain", swap: None, places: &["subject", "object"], gloss: "static checker lex_domain", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "lex_name_byte", source_gismu: "zzstatic_lex_name_byte", swap: None, places: &["subject", "object"], gloss: "static checker lex_name_byte", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "lex_place", source_gismu: "zzstatic_lex_place", swap: None, places: &["subject", "object", "detail", "context"], gloss: "static checker lex_place", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "lex_pred", source_gismu: "zzstatic_lex_pred", swap: None, places: &["subject", "object", "detail"], gloss: "static checker lex_pred", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "lex_pronoun", source_gismu: "zzstatic_lex_pronoun", swap: None, places: &["subject", "object"], gloss: "static checker lex_pronoun", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "lex_role", source_gismu: "zzstatic_lex_role", swap: None, places: &["subject", "object", "detail"], gloss: "static checker lex_role", template: None, tier: CorpusTier::Curated },
     // TODO(corpus): guessed places [x1:generic, x2:prose] — lensisku: "$x_{1}$ reflects Libyan culture/nationality in aspect $x_{2}$."
     PredicateEntry { name: "libyan", source_gismu: "libjo", swap: None, places: &["subject", "aspect"], gloss: "Libyan", template: None, tier: CorpusTier::Generic },
     // TODO(corpus): guessed places [x1:generic, x2:generic, x3:prose, x4:prose] — lensisku: "$x_{1}$ (force) lifts/applies raising/supporting force to $x_{2}$ at loc…"
@@ -1569,6 +1600,7 @@ pub(crate) static PREDICATES: &[PredicateEntry] = &[
     PredicateEntry { name: "narrow", source_gismu: "jarki", swap: None, places: &["narrow", "dimension", "standard"], gloss: "narrow", template: None, tier: CorpusTier::GlossDerived },
     // TODO(corpus): guessed places [x1:gloss] — lensisku: "$x_{1}$ is a nation/ethnic group of peoples $x_{2}$; [people sharing a h…"
     PredicateEntry { name: "nation", source_gismu: "natmi", swap: None, places: &["nation", "peoples"], gloss: "nation", template: None, tier: CorpusTier::GlossDerived },
+    PredicateEntry { name: "native_violation", source_gismu: "zzstatic_native_violation", swap: None, places: &["subject", "object", "detail"], gloss: "static checker native_violation", template: None, tier: CorpusTier::Curated },
     // TODO(corpus): guessed places [x1:gloss] — lensisku: "$x_{1}$ is natural/spontaneous/instinctive, not [consciously] caused by …"
     PredicateEntry { name: "natural", source_gismu: "rarna", swap: None, places: &["natural"], gloss: "natural", template: None, tier: CorpusTier::GlossDerived },
     // TODO(corpus): guessed places [x1:gloss, x2:generic, x3:generic] — lensisku: "$x_{1}$ is near/close to/approximates $x_{2}$ in property/quantity $x_{3…"
@@ -1579,6 +1611,8 @@ pub(crate) static PREDICATES: &[PredicateEntry] = &[
     // TODO(corpus): guessed places [x1:gloss, x2:prose] — lensisku: "$x_{1}$ is a needle [pointed shape/form, not tool] of material $x_{2}$."
     PredicateEntry { name: "needle", source_gismu: "jesni", swap: None, places: &["needle", "material"], gloss: "needle", template: None, tier: CorpusTier::GlossDerived },
     PredicateEntry { name: "needs", source_gismu: "nitcu", swap: None, places: &["needer", "needed", "purpose"], gloss: "need", template: Some("{x1} needs {x2}"), tier: CorpusTier::Curated },
+    PredicateEntry { name: "neg_dep", source_gismu: "zzstatic_neg_dep", swap: None, places: &["subject", "object"], gloss: "static checker neg_dep", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "neg_dep_path", source_gismu: "zzstatic_neg_dep_path", swap: None, places: &["subject", "object"], gloss: "static checker neg_dep_path", template: None, tier: CorpusTier::Curated },
     // TODO(corpus): guessed places [x1:gloss, x2:prose] — lensisku: "$x_1$ is a quantity of/contains/is made of noble gas of type $x_2$ [heli…"
     PredicateEntry { name: "neon", source_gismu: "navni", swap: None, places: &["quantity", "type"], gloss: "neon", template: None, tier: CorpusTier::GlossDerived },
     // TODO(corpus): guessed places [x1:gloss, x2:generic] — lensisku: "$x_{1}$ is a nerve/neuron [body-part] of $x_{2}$; [metaphor: information…"
@@ -1764,6 +1798,7 @@ pub(crate) static PREDICATES: &[PredicateEntry] = &[
     PredicateEntry { name: "pin", source_gismu: "pijne", swap: None, places: &["pin", "object", "material"], gloss: "pin", template: None, tier: CorpusTier::Generic },
     // TODO(corpus): guessed places [x1:generic, x2:generic, x3:prose] — lensisku: "$x_{1}$ (person) pities/feels sorry for $x_{2}$ (person) about $x_{3}$ (…"
     PredicateEntry { name: "pity", source_gismu: "kecti", swap: None, places: &["subject", "object", "about"], gloss: "pity", template: None, tier: CorpusTier::Generic },
+    PredicateEntry { name: "place_violation", source_gismu: "zzstatic_place_violation", swap: None, places: &["subject", "object"], gloss: "static checker place_violation", template: None, tier: CorpusTier::Curated },
     // TODO(corpus): guessed places [x1:generic, x2:generic, x3:prose] — lensisku: "$x_{1}$ (agent) plans/designs/plots plan/arrangement/plot/[schematic] $x…"
     PredicateEntry { name: "plan", source_gismu: "platu", swap: None, places: &["subject", "object", "state"], gloss: "plan", template: None, tier: CorpusTier::Generic },
     // TODO(corpus): guessed places [x1:gloss, x2:prose] — lensisku: "$x_{1}$ is a plane [2-dimensional shape/form] defined by points $x_{2}$ …"
@@ -1809,6 +1844,8 @@ pub(crate) static PREDICATES: &[PredicateEntry] = &[
     PredicateEntry { name: "poor", source_gismu: "pindi", swap: None, places: &["poor", "goods"], gloss: "poor", template: None, tier: CorpusTier::GlossDerived },
     // TODO(corpus): guessed places [x1:generic, x2:prose] — lensisku: "$x_{1}$ reflects Portuguese culture/nationality/language in aspect $x_{2…"
     PredicateEntry { name: "portuguese", source_gismu: "porto", swap: None, places: &["subject", "aspect"], gloss: "Portuguese", template: None, tier: CorpusTier::Generic },
+    PredicateEntry { name: "pos_dep", source_gismu: "zzstatic_pos_dep", swap: None, places: &["subject", "object"], gloss: "static checker pos_dep", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "position_violation", source_gismu: "zzstatic_position_violation", swap: None, places: &["subject", "object"], gloss: "static checker position_violation", template: None, tier: CorpusTier::Curated },
     // TODO(corpus): guessed places [x1:generic, x2:prose] — lensisku: "$x_{1}$ (event/state/property) is possible under conditions $x_{2}$; $x_…"
     PredicateEntry { name: "possible", source_gismu: "cumki", swap: None, places: &["subject", "conditions"], gloss: "possible", template: None, tier: CorpusTier::Generic },
     // TODO(corpus): guessed places [x1:gloss, x2:prose, x3:prose] — lensisku: "$x_{1}$ is a pot/kettle/urn/tub/sink, a deep container for contents $x_{…"
@@ -1888,6 +1925,7 @@ pub(crate) static PREDICATES: &[PredicateEntry] = &[
     PredicateEntry { name: "quantity", source_gismu: "klani", swap: None, places: &["measured", "number", "scale"], gloss: "quantity", template: None, tier: CorpusTier::Curated },
     // TODO(corpus): guessed places [x1:gloss, x2:generic] — lensisku: "$x_{1}$ is a quantum/ray/elementary particle/smallest measurable increme…"
     PredicateEntry { name: "quantum", source_gismu: "kantu", swap: None, places: &["quantum", "object"], gloss: "quantum", template: None, tier: CorpusTier::Generic },
+    PredicateEntry { name: "query_only_violation", source_gismu: "zzstatic_query_only_violation", swap: None, places: &["subject", "object"], gloss: "static checker query_only_violation", template: None, tier: CorpusTier::Curated },
     // TODO(corpus): guessed places [x1:generic, x2:prose, x3:prose, x4:prose] — lensisku: "$x_{1}$ (quoted text) is a question/query about subject $x_{2}$ by quest…"
     PredicateEntry { name: "question", source_gismu: "preti", swap: None, places: &["place1", "subject", "questioner", "audience"], gloss: "question", template: None, tier: CorpusTier::Generic },
     // TODO(corpus): guessed places [x1:generic, x2:prose, x3:prose] — lensisku: "$x_{1}$ (source) is quiet/silent/[still] at observation point $x_{2}$ by…"
@@ -2051,6 +2089,12 @@ pub(crate) static PREDICATES: &[PredicateEntry] = &[
     PredicateEntry { name: "rubber", source_gismu: "ckabu", swap: None, places: &["quantity", "source", "including"], gloss: "rubber", template: None, tier: CorpusTier::GlossDerived },
     // TODO(corpus): guessed places [x1:gloss] — lensisku: "$x_{1}$ is a rule prescribing/mandating/requiring $x_{2}$ (event/state) …"
     PredicateEntry { name: "rule", source_gismu: "javni", swap: None, places: &["rule", "act", "community"], gloss: "rule", template: Some("{x1} is a rule about {x2}"), tier: CorpusTier::GlossDerived },
+    PredicateEntry { name: "rule_binds_var", source_gismu: "zzstatic_rule_binds_var", swap: None, places: &["subject", "object"], gloss: "static checker rule_binds_var", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "rule_head", source_gismu: "zzstatic_rule_head", swap: None, places: &["subject", "object"], gloss: "static checker rule_head", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "rule_neg_body", source_gismu: "zzstatic_rule_neg_body", swap: None, places: &["subject", "object"], gloss: "static checker rule_neg_body", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "rule_pos_body", source_gismu: "zzstatic_rule_pos_body", swap: None, places: &["subject", "object"], gloss: "static checker rule_pos_body", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "rule_quantifies_var", source_gismu: "zzstatic_rule_quantifies_var", swap: None, places: &["subject", "object"], gloss: "static checker rule_quantifies_var", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "rule_uses_var", source_gismu: "zzstatic_rule_uses_var", swap: None, places: &["subject", "object"], gloss: "static checker rule_uses_var", template: None, tier: CorpusTier::Curated },
     PredicateEntry { name: "runs", source_gismu: "bajra", swap: None, places: &["runner", "surface", "limbs", "gait"], gloss: "run", template: Some("{x1} runs on {x2} to {x3} from {x4}"), tier: CorpusTier::Curated },
     // TODO(corpus): guessed places [x1:gloss, x2:generic] — lensisku: "$x_{1}$ is a rural/rustic/pastoral area of $x_{2}$; $x_{1}$ is in the co…"
     PredicateEntry { name: "rural", source_gismu: "nurma", swap: None, places: &["rural", "object"], gloss: "rural", template: None, tier: CorpusTier::Generic },
@@ -2084,14 +2128,124 @@ pub(crate) static PREDICATES: &[PredicateEntry] = &[
     PredicateEntry { name: "sauce", source_gismu: "sanso", swap: None, places: &["sauce", "object", "including"], gloss: "sauce", template: None, tier: CorpusTier::Generic },
     // TODO(corpus): guessed places [x1:generic, x2:prose] — lensisku: "$x_{1}$ reflects Saudi Arabian culture/nationality in aspect $x_{2}$."
     PredicateEntry { name: "saudi", source_gismu: "sadjo", swap: None, places: &["subject", "aspect"], gloss: "Saudi", template: None, tier: CorpusTier::Generic },
+    PredicateEntry { name: "sc_abstraction_type", source_gismu: "zzstatic_sc_abstraction_type", swap: None, places: &["subject", "object"], gloss: "static checker sc_abstraction_type", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_add", source_gismu: "zzstatic_sc_add", swap: None, places: &["subject", "object", "detail"], gloss: "static checker sc_add", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_admitted", source_gismu: "zzstatic_sc_admitted", swap: None, places: &["subject", "object"], gloss: "static checker sc_admitted", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_arg", source_gismu: "zzstatic_sc_arg", swap: None, places: &["subject", "object", "detail"], gloss: "static checker sc_arg", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_arg_before", source_gismu: "zzstatic_sc_arg_before", swap: None, places: &["subject", "object", "detail"], gloss: "static checker sc_arg_before", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_arg_term", source_gismu: "zzstatic_sc_arg_term", swap: None, places: &["subject", "object"], gloss: "static checker sc_arg_term", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_assertion", source_gismu: "zzstatic_sc_assertion", swap: None, places: &["subject", "object"], gloss: "static checker sc_assertion", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_atom", source_gismu: "zzstatic_sc_atom", swap: None, places: &["subject", "object"], gloss: "static checker sc_atom", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_bad_disjunct_kind", source_gismu: "zzstatic_sc_bad_disjunct_kind", swap: None, places: &["subject"], gloss: "static checker sc_bad_disjunct_kind", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_block_clause", source_gismu: "zzstatic_sc_block_clause", swap: None, places: &["subject"], gloss: "static checker sc_block_clause", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_body", source_gismu: "zzstatic_sc_body", swap: None, places: &["subject", "object", "detail"], gloss: "static checker sc_body", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_boolean_body_kind", source_gismu: "zzstatic_sc_boolean_body_kind", swap: None, places: &["subject"], gloss: "static checker sc_boolean_body_kind", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_bound_it", source_gismu: "zzstatic_sc_bound_it", swap: None, places: &["subject", "object"], gloss: "static checker sc_bound_it", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_bound_key", source_gismu: "zzstatic_sc_bound_key", swap: None, places: &["subject"], gloss: "static checker sc_bound_key", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_bound_marker", source_gismu: "zzstatic_sc_bound_marker", swap: None, places: &["subject"], gloss: "static checker sc_bound_marker", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_bound_place", source_gismu: "zzstatic_sc_bound_place", swap: None, places: &["subject", "object"], gloss: "static checker sc_bound_place", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_byte", source_gismu: "zzstatic_sc_byte", swap: None, places: &["subject", "object", "detail", "context"], gloss: "static checker sc_byte", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_call", source_gismu: "zzstatic_sc_call", swap: None, places: &["subject", "object", "detail", "context"], gloss: "static checker sc_call", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_call_kind", source_gismu: "zzstatic_sc_call_kind", swap: None, places: &["subject"], gloss: "static checker sc_call_kind", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_canonical_place", source_gismu: "zzstatic_sc_canonical_place", swap: None, places: &["subject", "object", "detail"], gloss: "static checker sc_canonical_place", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_capped_succ", source_gismu: "zzstatic_sc_capped_succ", swap: None, places: &["subject", "object"], gloss: "static checker sc_capped_succ", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_clause_candidate", source_gismu: "zzstatic_sc_clause_candidate", swap: None, places: &["subject", "object"], gloss: "static checker sc_clause_candidate", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_clause_has_candidate", source_gismu: "zzstatic_sc_clause_has_candidate", swap: None, places: &["subject"], gloss: "static checker sc_clause_has_candidate", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_clause_reference", source_gismu: "zzstatic_sc_clause_reference", swap: None, places: &["subject"], gloss: "static checker sc_clause_reference", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_clause_visible", source_gismu: "zzstatic_sc_clause_visible", swap: None, places: &["subject", "object"], gloss: "static checker sc_clause_visible", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_closed", source_gismu: "zzstatic_sc_closed", swap: None, places: &["subject"], gloss: "static checker sc_closed", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_comparison_place", source_gismu: "zzstatic_sc_comparison_place", swap: None, places: &["subject"], gloss: "static checker sc_comparison_place", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_complex_guard_kind", source_gismu: "zzstatic_sc_complex_guard_kind", swap: None, places: &["subject"], gloss: "static checker sc_complex_guard_kind", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_conditional_kind", source_gismu: "zzstatic_sc_conditional_kind", swap: None, places: &["subject"], gloss: "static checker sc_conditional_kind", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_conditional_or", source_gismu: "zzstatic_sc_conditional_or", swap: None, places: &["subject"], gloss: "static checker sc_conditional_or", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_connected_kind", source_gismu: "zzstatic_sc_connected_kind", swap: None, places: &["subject"], gloss: "static checker sc_connected_kind", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_constant_text", source_gismu: "zzstatic_sc_constant_text", swap: None, places: &["subject", "object", "detail"], gloss: "static checker sc_constant_text", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_constraint_branch", source_gismu: "zzstatic_sc_constraint_branch", swap: None, places: &["subject", "object"], gloss: "static checker sc_constraint_branch", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_contains", source_gismu: "zzstatic_sc_contains", swap: None, places: &["subject", "object"], gloss: "static checker sc_contains", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_declaration_relation", source_gismu: "zzstatic_sc_declaration_relation", swap: None, places: &["subject"], gloss: "static checker sc_declaration_relation", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_decomposed_atom", source_gismu: "zzstatic_sc_decomposed_atom", swap: None, places: &["subject", "object"], gloss: "static checker sc_decomposed_atom", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_definite_variable", source_gismu: "zzstatic_sc_definite_variable", swap: None, places: &["subject"], gloss: "static checker sc_definite_variable", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_derived_only", source_gismu: "zzstatic_sc_derived_only", swap: None, places: &["subject", "object"], gloss: "static checker sc_derived_only", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_direct_call_kind", source_gismu: "zzstatic_sc_direct_call_kind", swap: None, places: &["subject"], gloss: "static checker sc_direct_call_kind", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_dnf", source_gismu: "zzstatic_sc_dnf", swap: None, places: &["subject", "object"], gloss: "static checker sc_dnf", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_explicit_binding", source_gismu: "zzstatic_sc_explicit_binding", swap: None, places: &["subject", "object"], gloss: "static checker sc_explicit_binding", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_explicit_subject", source_gismu: "zzstatic_sc_explicit_subject", swap: None, places: &["subject"], gloss: "static checker sc_explicit_subject", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_exposed_var", source_gismu: "zzstatic_sc_exposed_var", swap: None, places: &["subject", "object", "detail"], gloss: "static checker sc_exposed_var", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_fact_relation", source_gismu: "zzstatic_sc_fact_relation", swap: None, places: &["subject", "object", "detail"], gloss: "static checker sc_fact_relation", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_filled_subject", source_gismu: "zzstatic_sc_filled_subject", swap: None, places: &["subject"], gloss: "static checker sc_filled_subject", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_frame_term", source_gismu: "zzstatic_sc_frame_term", swap: None, places: &["subject", "object"], gloss: "static checker sc_frame_term", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_free_occurrence", source_gismu: "zzstatic_sc_free_occurrence", swap: None, places: &["subject", "object", "detail"], gloss: "static checker sc_free_occurrence", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_free_var", source_gismu: "zzstatic_sc_free_var", swap: None, places: &["subject", "object"], gloss: "static checker sc_free_var", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_ground", source_gismu: "zzstatic_sc_ground", swap: None, places: &["subject", "object", "detail"], gloss: "static checker sc_ground", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_ground_kind", source_gismu: "zzstatic_sc_ground_kind", swap: None, places: &["subject"], gloss: "static checker sc_ground_kind", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_has_bound_it", source_gismu: "zzstatic_sc_has_bound_it", swap: None, places: &["subject"], gloss: "static checker sc_has_bound_it", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_has_condition", source_gismu: "zzstatic_sc_has_condition", swap: None, places: &["subject"], gloss: "static checker sc_has_condition", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_has_incomplete", source_gismu: "zzstatic_sc_has_incomplete", swap: None, places: &["subject"], gloss: "static checker sc_has_incomplete", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_has_universal", source_gismu: "zzstatic_sc_has_universal", swap: None, places: &["subject"], gloss: "static checker sc_has_universal", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_has_violation", source_gismu: "zzstatic_sc_has_violation", swap: None, places: &["subject"], gloss: "static checker sc_has_violation", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_head", source_gismu: "zzstatic_sc_head", swap: None, places: &["subject", "object"], gloss: "static checker sc_head", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_hidden_var", source_gismu: "zzstatic_sc_hidden_var", swap: None, places: &["subject", "object"], gloss: "static checker sc_hidden_var", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_implication_or", source_gismu: "zzstatic_sc_implication_or", swap: None, places: &["subject", "object"], gloss: "static checker sc_implication_or", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_known_word", source_gismu: "zzstatic_sc_known_word", swap: None, places: &["subject"], gloss: "static checker sc_known_word", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_later_occurrence", source_gismu: "zzstatic_sc_later_occurrence", swap: None, places: &["subject", "object"], gloss: "static checker sc_later_occurrence", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_left_not", source_gismu: "zzstatic_sc_left_not", swap: None, places: &["subject"], gloss: "static checker sc_left_not", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_legal_it", source_gismu: "zzstatic_sc_legal_it", swap: None, places: &["subject"], gloss: "static checker sc_legal_it", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_legal_slot", source_gismu: "zzstatic_sc_legal_slot", swap: None, places: &["subject"], gloss: "static checker sc_legal_slot", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_literal", source_gismu: "zzstatic_sc_literal", swap: None, places: &["subject"], gloss: "static checker sc_literal", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_marker_admission", source_gismu: "zzstatic_sc_marker_admission", swap: None, places: &["subject"], gloss: "static checker sc_marker_admission", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_marker_text", source_gismu: "zzstatic_sc_marker_text", swap: None, places: &["subject"], gloss: "static checker sc_marker_text", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_matrix_clause", source_gismu: "zzstatic_sc_matrix_clause", swap: None, places: &["subject", "object"], gloss: "static checker sc_matrix_clause", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_multiply", source_gismu: "zzstatic_sc_multiply", swap: None, places: &["subject", "object", "detail"], gloss: "static checker sc_multiply", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_negative_form", source_gismu: "zzstatic_sc_negative_form", swap: None, places: &["subject"], gloss: "static checker sc_negative_form", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_nested_head_kind", source_gismu: "zzstatic_sc_nested_head_kind", swap: None, places: &["subject"], gloss: "static checker sc_nested_head_kind", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_number", source_gismu: "zzstatic_sc_number", swap: None, places: &["subject"], gloss: "static checker sc_number", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_numeric_kind", source_gismu: "zzstatic_sc_numeric_kind", swap: None, places: &["subject"], gloss: "static checker sc_numeric_kind", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_numeric_term", source_gismu: "zzstatic_sc_numeric_term", swap: None, places: &["subject"], gloss: "static checker sc_numeric_term", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_opaque_determiner", source_gismu: "zzstatic_sc_opaque_determiner", swap: None, places: &["subject"], gloss: "static checker sc_opaque_determiner", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_operational", source_gismu: "zzstatic_sc_operational", swap: None, places: &["subject"], gloss: "static checker sc_operational", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_outer", source_gismu: "zzstatic_sc_outer", swap: None, places: &["subject", "object"], gloss: "static checker sc_outer", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_parent", source_gismu: "zzstatic_sc_parent", swap: None, places: &["subject", "object"], gloss: "static checker sc_parent", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_place", source_gismu: "zzstatic_sc_place", swap: None, places: &["subject", "object", "detail"], gloss: "static checker sc_place", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_prior_fact", source_gismu: "zzstatic_sc_prior_fact", swap: None, places: &["subject", "object"], gloss: "static checker sc_prior_fact", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_prior_marker_admission", source_gismu: "zzstatic_sc_prior_marker_admission", swap: None, places: &["subject"], gloss: "static checker sc_prior_marker_admission", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_prior_ordinary", source_gismu: "zzstatic_sc_prior_ordinary", swap: None, places: &["subject"], gloss: "static checker sc_prior_ordinary", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_quoted", source_gismu: "zzstatic_sc_quoted", swap: None, places: &["subject"], gloss: "static checker sc_quoted", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_quoted_body", source_gismu: "zzstatic_sc_quoted_body", swap: None, places: &["subject", "object"], gloss: "static checker sc_quoted_body", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_quoted_fact", source_gismu: "zzstatic_sc_quoted_fact", swap: None, places: &["subject", "object"], gloss: "static checker sc_quoted_fact", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_quoted_head", source_gismu: "zzstatic_sc_quoted_head", swap: None, places: &["subject", "object"], gloss: "static checker sc_quoted_head", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_represented", source_gismu: "zzstatic_sc_represented", swap: None, places: &["subject"], gloss: "static checker sc_represented", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_resolved", source_gismu: "zzstatic_sc_resolved", swap: None, places: &["subject", "object", "detail"], gloss: "static checker sc_resolved", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_rigid_kind", source_gismu: "zzstatic_sc_rigid_kind", swap: None, places: &["subject"], gloss: "static checker sc_rigid_kind", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_rule", source_gismu: "zzstatic_sc_rule", swap: None, places: &["subject"], gloss: "static checker sc_rule", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_rule_formula", source_gismu: "zzstatic_sc_rule_formula", swap: None, places: &["subject", "object"], gloss: "static checker sc_rule_formula", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_runtime_edge", source_gismu: "zzstatic_sc_runtime_edge", swap: None, places: &["subject", "object"], gloss: "static checker sc_runtime_edge", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_same_constant", source_gismu: "zzstatic_sc_same_constant", swap: None, places: &["subject", "object"], gloss: "static checker sc_same_constant", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_sequence_head", source_gismu: "zzstatic_sc_sequence_head", swap: None, places: &["subject", "object"], gloss: "static checker sc_sequence_head", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_sequence_word", source_gismu: "zzstatic_sc_sequence_word", swap: None, places: &["subject", "object"], gloss: "static checker sc_sequence_word", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_shared_scope", source_gismu: "zzstatic_sc_shared_scope", swap: None, places: &["subject", "object", "detail"], gloss: "static checker sc_shared_scope", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_spelling", source_gismu: "zzstatic_sc_spelling", swap: None, places: &["subject", "object"], gloss: "static checker sc_spelling", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_spine", source_gismu: "zzstatic_sc_spine", swap: None, places: &["subject", "object"], gloss: "static checker sc_spine", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_statement_free", source_gismu: "zzstatic_sc_statement_free", swap: None, places: &["subject", "object", "detail"], gloss: "static checker sc_statement_free", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_statement_node", source_gismu: "zzstatic_sc_statement_node", swap: None, places: &["subject", "object"], gloss: "static checker sc_statement_node", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_succ", source_gismu: "zzstatic_sc_succ", swap: None, places: &["subject", "object"], gloss: "static checker sc_succ", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_target", source_gismu: "zzstatic_sc_target", swap: None, places: &["subject", "object"], gloss: "static checker sc_target", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_term_before", source_gismu: "zzstatic_sc_term_before", swap: None, places: &["subject", "object", "detail"], gloss: "static checker sc_term_before", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_text_equal", source_gismu: "zzstatic_sc_text_equal", swap: None, places: &["subject", "object", "detail", "context", "value"], gloss: "static checker sc_text_equal", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_text_mode", source_gismu: "zzstatic_sc_text_mode", swap: None, places: &["subject"], gloss: "static checker sc_text_mode", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_text_pair", source_gismu: "zzstatic_sc_text_pair", swap: None, places: &["subject", "object", "detail", "context"], gloss: "static checker sc_text_pair", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_universal_determiner", source_gismu: "zzstatic_sc_universal_determiner", swap: None, places: &["subject"], gloss: "static checker sc_universal_determiner", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_valid_label", source_gismu: "zzstatic_sc_valid_label", swap: None, places: &["subject", "object"], gloss: "static checker sc_valid_label", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sc_valid_place", source_gismu: "zzstatic_sc_valid_place", swap: None, places: &["subject", "object"], gloss: "static checker sc_valid_place", template: None, tier: CorpusTier::Curated },
     // TODO(corpus): guessed places [x1:generic, x2:prose] — lensisku: "$x_{1}$ (si'o) is a scale of units for measuring/observing/determining $…"
     PredicateEntry { name: "scale", source_gismu: "ckilu", swap: None, places: &["subject", "measuring"], gloss: "scale", template: None, tier: CorpusTier::Generic },
     // TODO(corpus): guessed places [x1:gloss, x2:generic, x3:prose] — lensisku: "$x_{1}$ is the view/scene/panorama/sight/prospect of $x_{2}$ (object/loc…"
     PredicateEntry { name: "scene", source_gismu: "jvinu", swap: None, places: &["view", "object", "point_of_view"], gloss: "scene", template: None, tier: CorpusTier::Generic },
+    PredicateEntry { name: "schema_conflict", source_gismu: "zzstatic_schema_conflict", swap: None, places: &["subject", "object"], gloss: "static checker schema_conflict", template: None, tier: CorpusTier::Curated },
     // TODO(corpus): guessed places [x1:gloss, x2:generic, x3:generic, x4:prose, x5:generic] — lensisku: "$x_{1}$ is school/institute/academy at $x_{2}$ teaching subject(s) $x_{3…"
     PredicateEntry { name: "school", source_gismu: "ckule", swap: None, places: &["school", "object", "place3", "audience", "place5"], gloss: "school", template: None, tier: CorpusTier::Generic },
     // TODO(corpus): guessed places [x1:generic, x2:prose, x3:prose] — lensisku: "$x_{1}$ (mass of facts) is science of/about subject matter $x_{2}$ based…"
     PredicateEntry { name: "science", source_gismu: "saske", swap: None, places: &["subject", "matter", "methodology"], gloss: "science", template: None, tier: CorpusTier::Generic },
+    PredicateEntry { name: "scope_violation", source_gismu: "zzstatic_scope_violation", swap: None, places: &["subject", "object"], gloss: "static checker scope_violation", template: None, tier: CorpusTier::Curated },
     // TODO(corpus): guessed places [x1:generic, x2:prose] — lensisku: "$x_{1}$ reflects Gaelic/Scottish culture/nationality/language in aspect …"
     PredicateEntry { name: "scottish", source_gismu: "skoto", swap: None, places: &["subject", "aspect"], gloss: "Scottish", template: None, tier: CorpusTier::Generic },
     // TODO(corpus): guessed places [x1:generic, x2:prose, x3:generic] — lensisku: "$x_{1}$ blade/scraper/erosive scrapes/erodes/abrades $x_{2}$ from $x_{3}…"
@@ -2522,6 +2676,7 @@ pub(crate) static PREDICATES: &[PredicateEntry] = &[
     PredicateEntry { name: "ukrainian", source_gismu: "vukro", swap: None, places: &["subject", "aspect"], gloss: "Ukrainian", template: None, tier: CorpusTier::Generic },
     // TODO(corpus): guessed places [x1:gloss, x2:prose, x3:generic, x4:prose, x5:generic] — lensisku: "$x_{1}$ is an umbrella/parasol shielding $x_{2}$ from $x_{3}$, made of m…"
     PredicateEntry { name: "umbrella", source_gismu: "santa", swap: None, places: &["umbrella", "shielding", "place3", "material", "place5"], gloss: "umbrella", template: None, tier: CorpusTier::Generic },
+    PredicateEntry { name: "unbound_var_violation", source_gismu: "zzstatic_unbound_var_violation", swap: None, places: &["subject", "object"], gloss: "static checker unbound_var_violation", template: None, tier: CorpusTier::Curated },
     PredicateEntry { name: "understands", source_gismu: "jimpe", swap: None, places: &["understander", "understood"], gloss: "understand", template: Some("{x1} understands {x2}"), tier: CorpusTier::Curated },
     // TODO(corpus): guessed places [x1:generic, x2:generic] — lensisku: "$x_{1}$ (object/event) is uniform/homogeneous in property $x_{2}$ (ka)."
     PredicateEntry { name: "uniform", source_gismu: "manfo", swap: None, places: &["subject", "object"], gloss: "uniform", template: None, tier: CorpusTier::Generic },
@@ -2529,6 +2684,7 @@ pub(crate) static PREDICATES: &[PredicateEntry] = &[
     PredicateEntry { name: "unit", source_gismu: "gradu", swap: None, places: &["subject", "standard", "place3"], gloss: "unit", template: None, tier: CorpusTier::Generic },
     // TODO(corpus): guessed places [x1:gloss, x2:prose, x3:prose] — lensisku: "$x_{1}$ is a universe/cosmos [complete and ordered entirety] of domain/s…"
     PredicateEntry { name: "universe", source_gismu: "munje", swap: None, places: &["universe", "domain", "rules"], gloss: "universe", template: None, tier: CorpusTier::GlossDerived },
+    PredicateEntry { name: "unstratifiable_cycle", source_gismu: "zzstatic_unstratifiable_cycle", swap: None, places: &["subject"], gloss: "static checker unstratifiable_cycle", template: None, tier: CorpusTier::Curated },
     // TODO(corpus): guessed places [x1:gloss, x2:generic, x3:prose] — lensisku: "$x_{1}$ is upon/atop/resting on/lying on [the upper surface of] $x_{2}$ …"
     PredicateEntry { name: "upon", source_gismu: "cpana", swap: None, places: &["upon", "object", "reference"], gloss: "upon", template: None, tier: CorpusTier::Generic },
     // TODO(corpus): guessed places [x1:generic, x2:prose] — lensisku: "$x_{1}$ reflects Urdu language/culture/nationality in aspect $x_{2}$."
@@ -2558,6 +2714,7 @@ pub(crate) static PREDICATES: &[PredicateEntry] = &[
     PredicateEntry { name: "vertical", source_gismu: "sraji", swap: None, places: &["vertical", "frame"], gloss: "vertical", template: None, tier: CorpusTier::GlossDerived },
     // TODO(corpus): guessed places [x1:gloss, x2:prose] — lensisku: "$x_{1}$ is a video monitor/CRT/screen [machine] serving function $x_{2}$…"
     PredicateEntry { name: "video", source_gismu: "vidni", swap: None, places: &["video", "function"], gloss: "video", template: None, tier: CorpusTier::GlossDerived },
+    PredicateEntry { name: "violation_kind", source_gismu: "zzstatic_violation_kind", swap: None, places: &["subject", "object"], gloss: "static checker violation_kind", template: None, tier: CorpusTier::Curated },
     // TODO(corpus): guessed places [x1:generic] — lensisku: "$x_{1}$ is an event/state/act of violence."
     PredicateEntry { name: "violent", source_gismu: "vlile", swap: None, places: &["subject"], gloss: "violent", template: None, tier: CorpusTier::Generic },
     // TODO(corpus): guessed places [x1:gloss, x2:prose] — lensisku: "$x_{1}$ is virtuous/saintly/[fine/moral/nice/holy/morally good] by stand…"
@@ -2568,6 +2725,7 @@ pub(crate) static PREDICATES: &[PredicateEntry] = &[
     PredicateEntry { name: "viscous", source_gismu: "viknu", swap: None, places: &["thick", "conditions"], gloss: "viscous", template: None, tier: CorpusTier::GlossDerived },
     // Auth field-level access (nibli-auth) — not agricultural "field" (foldi).
     PredicateEntry { name: "visible_attr", source_gismu: "zzauth7", swap: None, places: &["agent", "resource", "attr"], gloss: "visible attr", template: Some("{x1} may access attribute {x3} of {x2}"), tier: CorpusTier::Curated },
+    PredicateEntry { name: "vocab_violation", source_gismu: "zzstatic_vocab_violation", swap: None, places: &["subject", "object"], gloss: "static checker vocab_violation", template: None, tier: CorpusTier::Curated },
     // TODO(corpus): guessed places [x1:gloss, x2:prose] — lensisku: "$x_{1}$ is a voice/speech sound of individual $x_{2}$."
     PredicateEntry { name: "voice", source_gismu: "voksa", swap: None, places: &["voice", "individual"], gloss: "voice", template: None, tier: CorpusTier::GlossDerived },
     // TODO(corpus): guessed places [x1:generic, x2:prose] — lensisku: "$x_{1}$ vomits/regurgitates $x_{2}$; $x_{1}$ throws $x_{2}$ up; [violent…"

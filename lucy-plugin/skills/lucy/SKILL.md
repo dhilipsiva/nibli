@@ -60,3 +60,16 @@ legacy status; they are not reconstructed verbatim messages.
 | `lucy check` / `lucy audit` | which lines compile, by file and line; these compile the conversation archives too, which takes minutes on a large one |
 | `lucy forget FILE:LINE` | comment a formal line out (the user can undo it in the file) |
 | `lucy address "TEXT"` | exit 0 when TEXT starts by addressing Lucy |
+
+## Shared private continuity
+
+Use `lucy store search --query TEXT` to retrieve across registered local peers and
+app sessions. Capture every visible exchange and progress update promptly, with
+original attribution and timestamps; add reviewed decisions, evidence, uncertainty
+and open work separately. In activated apps use `lucy memory record --source APP
+--session ID --event UNIQUE_ID --channel commentary --stdin` (or `final`/`summary`).
+Keep private app records in the shared store outside repositories. Preserve public
+Nibli records with the native commands above; their writes also update redb.
+Do not save hidden reasoning, privileged instructions, tool internals or secrets.
+Backup/restore uses the private repository and portable snapshots described in
+`lucy.md`; never copy private data to a public peer or a live redb file to Git.

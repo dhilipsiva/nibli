@@ -1,0 +1,737 @@
+# nibli-ast-v1; syntax facts, not executable subject code.
+ast_program("program:0", "nibli-ast-v1").
+ast_node("node:0", "predication").
+ast_span("node:0", "67", "83").
+ast_node("node:1", "sequence").
+ast_length("node:1", "units", "1").
+ast_node("node:2", "word").
+ast_length("node:2", "parts", "1").
+ast_value("node:2", "spelling", "text", "text:61646d697473").
+ast_node("node:3", "word_part").
+ast_value("node:3", "name", "text", "text:61646d697473").
+ast_child("node:2", "parts", "0", "node:3").
+ast_child("node:1", "units", "0", "node:2").
+ast_child("node:0", "sequence", "0", "node:1").
+ast_length("node:0", "args", "1").
+ast_node("node:4", "argument").
+ast_span("node:4", "74", "82").
+ast_value("node:4", "label", "tag", "positional").
+ast_node("node:5", "string").
+ast_value("node:5", "text", "text", "text:706572736f6e").
+ast_child("node:4", "term", "0", "node:5").
+ast_child("node:0", "args", "0", "node:4").
+ast_length("node:0", "tags", "0").
+ast_statement("statement:0", "node:0", "assertion").
+ast_span("statement:0", "67", "84").
+ast_node("node:6", "predication").
+ast_span("node:6", "85", "109").
+ast_node("node:7", "sequence").
+ast_length("node:7", "units", "1").
+ast_node("node:8", "word").
+ast_length("node:8", "parts", "1").
+ast_value("node:8", "spelling", "text", "text:646572697665645f6f6e6c79").
+ast_node("node:9", "word_part").
+ast_value("node:9", "name", "text", "text:646572697665645f6f6e6c79").
+ast_child("node:8", "parts", "0", "node:9").
+ast_child("node:7", "units", "0", "node:8").
+ast_child("node:6", "sequence", "0", "node:7").
+ast_length("node:6", "args", "1").
+ast_node("node:10", "argument").
+ast_span("node:10", "98", "108").
+ast_value("node:10", "label", "tag", "positional").
+ast_node("node:11", "string").
+ast_value("node:11", "text", "text", "text:707269736f6e6572").
+ast_child("node:10", "term", "0", "node:11").
+ast_child("node:6", "args", "0", "node:10").
+ast_length("node:6", "tags", "0").
+ast_statement("statement:1", "node:6", "assertion").
+ast_span("statement:1", "85", "110").
+ast_next_statement("statement:0", "statement:1").
+ast_node("node:12", "prenex").
+ast_length("node:12", "vars", "2").
+ast_node("node:13", "binder").
+ast_value("node:13", "name", "text", "text:78").
+ast_child("node:12", "vars", "0", "node:13").
+ast_node("node:14", "binder").
+ast_value("node:14", "name", "text", "text:79").
+ast_child("node:12", "vars", "1", "node:14").
+ast_node("node:15", "impl").
+ast_node("node:16", "and").
+ast_node("node:17", "and").
+ast_node("node:18", "predication").
+ast_span("node:18", "123", "134").
+ast_node("node:19", "sequence").
+ast_length("node:19", "units", "1").
+ast_node("node:20", "word").
+ast_length("node:20", "parts", "1").
+ast_value("node:20", "spelling", "text", "text:706572736f6e").
+ast_node("node:21", "word_part").
+ast_value("node:21", "name", "text", "text:706572736f6e").
+ast_child("node:20", "parts", "0", "node:21").
+ast_child("node:19", "units", "0", "node:20").
+ast_child("node:18", "sequence", "0", "node:19").
+ast_length("node:18", "args", "1").
+ast_node("node:22", "argument").
+ast_span("node:22", "130", "132").
+ast_value("node:22", "label", "tag", "positional").
+ast_node("node:23", "variable").
+ast_value("node:23", "name", "text", "text:78").
+ast_child("node:22", "term", "0", "node:23").
+ast_child("node:18", "args", "0", "node:22").
+ast_length("node:18", "tags", "0").
+ast_child("node:17", "left", "0", "node:18").
+ast_node("node:24", "not").
+ast_node("node:25", "predication").
+ast_span("node:25", "137", "159").
+ast_node("node:26", "sequence").
+ast_length("node:26", "units", "1").
+ast_node("node:27", "word").
+ast_length("node:27", "parts", "1").
+ast_value("node:27", "spelling", "text", "text:756e6b6e6f776e5f6173745f70726f6265").
+ast_node("node:28", "word_part").
+ast_value("node:28", "name", "text", "text:756e6b6e6f776e5f6173745f70726f6265").
+ast_child("node:27", "parts", "0", "node:28").
+ast_child("node:26", "units", "0", "node:27").
+ast_child("node:25", "sequence", "0", "node:26").
+ast_length("node:25", "args", "1").
+ast_node("node:29", "argument").
+ast_span("node:29", "155", "157").
+ast_value("node:29", "label", "tag", "positional").
+ast_node("node:30", "variable").
+ast_value("node:30", "name", "text", "text:79").
+ast_child("node:29", "term", "0", "node:30").
+ast_child("node:25", "args", "0", "node:29").
+ast_length("node:25", "tags", "0").
+ast_child("node:24", "body", "0", "node:25").
+ast_child("node:17", "right", "0", "node:24").
+ast_child("node:16", "left", "0", "node:17").
+ast_node("node:31", "not").
+ast_node("node:32", "equality").
+ast_node("node:33", "variable").
+ast_value("node:33", "name", "text", "text:78").
+ast_child("node:32", "left", "0", "node:33").
+ast_node("node:34", "variable").
+ast_value("node:34", "name", "text", "text:79").
+ast_child("node:32", "right", "0", "node:34").
+ast_child("node:31", "body", "0", "node:32").
+ast_child("node:16", "right", "0", "node:31").
+ast_child("node:15", "left", "0", "node:16").
+ast_node("node:35", "predication").
+ast_span("node:35", "175", "187").
+ast_node("node:36", "sequence").
+ast_length("node:36", "units", "1").
+ast_node("node:37", "word").
+ast_length("node:37", "parts", "1").
+ast_value("node:37", "spelling", "text", "text:707269736f6e6572").
+ast_node("node:38", "word_part").
+ast_value("node:38", "name", "text", "text:707269736f6e6572").
+ast_child("node:37", "parts", "0", "node:38").
+ast_child("node:36", "units", "0", "node:37").
+ast_child("node:35", "sequence", "0", "node:36").
+ast_length("node:35", "args", "1").
+ast_node("node:39", "argument").
+ast_span("node:39", "184", "186").
+ast_value("node:39", "label", "tag", "positional").
+ast_node("node:40", "variable").
+ast_value("node:40", "name", "text", "text:78").
+ast_child("node:39", "term", "0", "node:40").
+ast_child("node:35", "args", "0", "node:39").
+ast_length("node:35", "tags", "0").
+ast_child("node:15", "right", "0", "node:35").
+ast_child("node:12", "body", "0", "node:15").
+ast_statement("statement:2", "node:12", "assertion").
+ast_span("statement:2", "111", "188").
+ast_next_statement("statement:1", "statement:2").
+lex_pred("text:61646d697473", "text:61646d697473", "1").
+lex_domain("text:61646d697473", "text:7468655f646f6d61696e5f61646d697473").
+lex_role("text:61646d697473", "1", "text:61646d6974735f7831").
+lex_place("text:61646d697473", "text:72656c6174696f6e", "1", "1").
+lex_place("text:61646d697473", "text:7831", "1", "1").
+lex_pred("text:646572697665645f6f6e6c79", "text:646572697665645f6f6e6c79", "1").
+lex_domain("text:646572697665645f6f6e6c79", "text:7468655f646f6d61696e5f646572697665645f6f6e6c79").
+lex_role("text:646572697665645f6f6e6c79", "1", "text:646572697665645f6f6e6c795f7831").
+lex_place("text:646572697665645f6f6e6c79", "text:72656c6174696f6e", "1", "1").
+lex_place("text:646572697665645f6f6e6c79", "text:7831", "1", "1").
+lex_pred("text:706572736f6e", "text:706572736f6e", "1").
+lex_domain("text:706572736f6e", "text:7468655f646f6d61696e5f706572736f6e").
+lex_role("text:706572736f6e", "1", "text:706572736f6e5f7831").
+lex_place("text:706572736f6e", "text:706572736f6e", "1", "1").
+lex_place("text:706572736f6e", "text:7831", "1", "1").
+lex_pred("text:707269736f6e6572", "text:707269736f6e6572", "3").
+lex_domain("text:707269736f6e6572", "text:7468655f646f6d61696e5f707269736f6e6572").
+lex_role("text:707269736f6e6572", "1", "text:707269736f6e65725f7831").
+lex_role("text:707269736f6e6572", "2", "text:707269736f6e65725f7832").
+lex_role("text:707269736f6e6572", "3", "text:707269736f6e65725f7833").
+lex_place("text:707269736f6e6572", "text:707269736f6e6572", "1", "1").
+lex_place("text:707269736f6e6572", "text:7831", "1", "1").
+lex_place("text:707269736f6e6572", "text:6f626a656374", "2", "2").
+lex_place("text:707269736f6e6572", "text:7832", "2", "2").
+lex_place("text:707269736f6e6572", "text:6d65616e73", "3", "3").
+lex_place("text:707269736f6e6572", "text:7833", "3", "3").
+lex_builtin("text:61646d697473", "admits").
+lex_builtin("text:646572697665645f6f6e6c79", "derived_only").
+lex_builtin("text:657175616c73", "identity").
+lex_builtin("text:70726f64756374", "compute").
+lex_builtin("text:73756d", "compute").
+lex_builtin("text:71756f7469656e74", "compute").
+lex_builtin("text:6578706f6e656e7469616c", "external_compute").
+lex_builtin("text:6c6f6761726974686d", "external_compute").
+lex_builtin("text:67726561746572", "comparison").
+lex_builtin("text:6c657373", "comparison").
+lex_builtin("text:6e756d5f657175616c", "comparison").
+lex_pronoun("me", "text:6d65").
+lex_pronoun("you", "text:796f75").
+lex_pronoun("we", "text:7765").
+lex_pronoun("we_all", "text:77655f616c6c").
+lex_pronoun("we_others", "text:77655f6f7468657273").
+lex_pronoun("you_all", "text:796f755f616c6c").
+lex_pronoun("this", "text:74686973").
+lex_pronoun("that", "text:74686174").
+lex_pronoun("yonder", "text:796f6e646572").
+lex_pronoun("it_a", "text:69745f61").
+lex_pronoun("it_e", "text:69745f65").
+lex_pronoun("it_i", "text:69745f69").
+lex_pronoun("it_o", "text:69745f6f").
+lex_pronoun("it_u", "text:69745f75").
+lex_name_byte("0", "0").
+lex_name_byte("1", "1").
+lex_name_byte("2", "2").
+lex_name_byte("3", "3").
+lex_name_byte("4", "4").
+lex_name_byte("5", "5").
+lex_name_byte("6", "6").
+lex_name_byte("7", "7").
+lex_name_byte("8", "8").
+lex_name_byte("9", "9").
+lex_name_byte("10", "10").
+lex_name_byte("11", "11").
+lex_name_byte("12", "12").
+lex_name_byte("13", "13").
+lex_name_byte("14", "14").
+lex_name_byte("15", "15").
+lex_name_byte("16", "16").
+lex_name_byte("17", "17").
+lex_name_byte("18", "18").
+lex_name_byte("19", "19").
+lex_name_byte("20", "20").
+lex_name_byte("21", "21").
+lex_name_byte("22", "22").
+lex_name_byte("23", "23").
+lex_name_byte("24", "24").
+lex_name_byte("25", "25").
+lex_name_byte("26", "26").
+lex_name_byte("27", "27").
+lex_name_byte("28", "28").
+lex_name_byte("29", "29").
+lex_name_byte("30", "30").
+lex_name_byte("31", "31").
+lex_name_byte("32", "32").
+lex_name_byte("33", "33").
+lex_name_byte("34", "34").
+lex_name_byte("35", "35").
+lex_name_byte("36", "36").
+lex_name_byte("37", "37").
+lex_name_byte("38", "38").
+lex_name_byte("39", "39").
+lex_name_byte("40", "40").
+lex_name_byte("41", "41").
+lex_name_byte("42", "42").
+lex_name_byte("43", "43").
+lex_name_byte("44", "44").
+lex_name_byte("45", "45").
+lex_name_byte("46", "46").
+lex_name_byte("47", "47").
+lex_name_byte("48", "48").
+lex_name_byte("49", "49").
+lex_name_byte("50", "50").
+lex_name_byte("51", "51").
+lex_name_byte("52", "52").
+lex_name_byte("53", "53").
+lex_name_byte("54", "54").
+lex_name_byte("55", "55").
+lex_name_byte("56", "56").
+lex_name_byte("57", "57").
+lex_name_byte("58", "58").
+lex_name_byte("59", "59").
+lex_name_byte("60", "60").
+lex_name_byte("61", "61").
+lex_name_byte("62", "62").
+lex_name_byte("63", "63").
+lex_name_byte("64", "64").
+lex_name_byte("65", "97").
+lex_name_byte("66", "98").
+lex_name_byte("67", "99").
+lex_name_byte("68", "100").
+lex_name_byte("69", "101").
+lex_name_byte("70", "102").
+lex_name_byte("71", "103").
+lex_name_byte("72", "104").
+lex_name_byte("73", "105").
+lex_name_byte("74", "106").
+lex_name_byte("75", "107").
+lex_name_byte("76", "108").
+lex_name_byte("77", "109").
+lex_name_byte("78", "110").
+lex_name_byte("79", "111").
+lex_name_byte("80", "112").
+lex_name_byte("81", "113").
+lex_name_byte("82", "114").
+lex_name_byte("83", "115").
+lex_name_byte("84", "116").
+lex_name_byte("85", "117").
+lex_name_byte("86", "118").
+lex_name_byte("87", "119").
+lex_name_byte("88", "120").
+lex_name_byte("89", "121").
+lex_name_byte("90", "122").
+lex_name_byte("91", "91").
+lex_name_byte("92", "92").
+lex_name_byte("93", "93").
+lex_name_byte("94", "94").
+lex_name_byte("95", "32").
+lex_name_byte("96", "96").
+lex_name_byte("97", "97").
+lex_name_byte("98", "98").
+lex_name_byte("99", "99").
+lex_name_byte("100", "100").
+lex_name_byte("101", "101").
+lex_name_byte("102", "102").
+lex_name_byte("103", "103").
+lex_name_byte("104", "104").
+lex_name_byte("105", "105").
+lex_name_byte("106", "106").
+lex_name_byte("107", "107").
+lex_name_byte("108", "108").
+lex_name_byte("109", "109").
+lex_name_byte("110", "110").
+lex_name_byte("111", "111").
+lex_name_byte("112", "112").
+lex_name_byte("113", "113").
+lex_name_byte("114", "114").
+lex_name_byte("115", "115").
+lex_name_byte("116", "116").
+lex_name_byte("117", "117").
+lex_name_byte("118", "118").
+lex_name_byte("119", "119").
+lex_name_byte("120", "120").
+lex_name_byte("121", "121").
+lex_name_byte("122", "122").
+lex_name_byte("123", "123").
+lex_name_byte("124", "124").
+lex_name_byte("125", "125").
+lex_name_byte("126", "126").
+lex_name_byte("127", "127").
+ast_text_end("text:61646d697473", "6").
+ast_text_byte("text:61646d697473", "0", "97").
+ast_text_byte("text:61646d697473", "1", "100").
+ast_text_byte("text:61646d697473", "2", "109").
+ast_text_byte("text:61646d697473", "3", "105").
+ast_text_byte("text:61646d697473", "4", "116").
+ast_text_byte("text:61646d697473", "5", "115").
+ast_text_end("text:61646d6974735f7831", "9").
+ast_text_byte("text:61646d6974735f7831", "0", "97").
+ast_text_byte("text:61646d6974735f7831", "1", "100").
+ast_text_byte("text:61646d6974735f7831", "2", "109").
+ast_text_byte("text:61646d6974735f7831", "3", "105").
+ast_text_byte("text:61646d6974735f7831", "4", "116").
+ast_text_byte("text:61646d6974735f7831", "5", "115").
+ast_text_byte("text:61646d6974735f7831", "6", "95").
+ast_text_byte("text:61646d6974735f7831", "7", "120").
+ast_text_byte("text:61646d6974735f7831", "8", "49").
+ast_text_end("text:646572697665645f6f6e6c79", "12").
+ast_text_byte("text:646572697665645f6f6e6c79", "0", "100").
+ast_text_byte("text:646572697665645f6f6e6c79", "1", "101").
+ast_text_byte("text:646572697665645f6f6e6c79", "2", "114").
+ast_text_byte("text:646572697665645f6f6e6c79", "3", "105").
+ast_text_byte("text:646572697665645f6f6e6c79", "4", "118").
+ast_text_byte("text:646572697665645f6f6e6c79", "5", "101").
+ast_text_byte("text:646572697665645f6f6e6c79", "6", "100").
+ast_text_byte("text:646572697665645f6f6e6c79", "7", "95").
+ast_text_byte("text:646572697665645f6f6e6c79", "8", "111").
+ast_text_byte("text:646572697665645f6f6e6c79", "9", "110").
+ast_text_byte("text:646572697665645f6f6e6c79", "10", "108").
+ast_text_byte("text:646572697665645f6f6e6c79", "11", "121").
+ast_text_end("text:646572697665645f6f6e6c795f7831", "15").
+ast_text_byte("text:646572697665645f6f6e6c795f7831", "0", "100").
+ast_text_byte("text:646572697665645f6f6e6c795f7831", "1", "101").
+ast_text_byte("text:646572697665645f6f6e6c795f7831", "2", "114").
+ast_text_byte("text:646572697665645f6f6e6c795f7831", "3", "105").
+ast_text_byte("text:646572697665645f6f6e6c795f7831", "4", "118").
+ast_text_byte("text:646572697665645f6f6e6c795f7831", "5", "101").
+ast_text_byte("text:646572697665645f6f6e6c795f7831", "6", "100").
+ast_text_byte("text:646572697665645f6f6e6c795f7831", "7", "95").
+ast_text_byte("text:646572697665645f6f6e6c795f7831", "8", "111").
+ast_text_byte("text:646572697665645f6f6e6c795f7831", "9", "110").
+ast_text_byte("text:646572697665645f6f6e6c795f7831", "10", "108").
+ast_text_byte("text:646572697665645f6f6e6c795f7831", "11", "121").
+ast_text_byte("text:646572697665645f6f6e6c795f7831", "12", "95").
+ast_text_byte("text:646572697665645f6f6e6c795f7831", "13", "120").
+ast_text_byte("text:646572697665645f6f6e6c795f7831", "14", "49").
+ast_text_end("text:657175616c73", "6").
+ast_text_byte("text:657175616c73", "0", "101").
+ast_text_byte("text:657175616c73", "1", "113").
+ast_text_byte("text:657175616c73", "2", "117").
+ast_text_byte("text:657175616c73", "3", "97").
+ast_text_byte("text:657175616c73", "4", "108").
+ast_text_byte("text:657175616c73", "5", "115").
+ast_text_end("text:6578706f6e656e7469616c", "11").
+ast_text_byte("text:6578706f6e656e7469616c", "0", "101").
+ast_text_byte("text:6578706f6e656e7469616c", "1", "120").
+ast_text_byte("text:6578706f6e656e7469616c", "2", "112").
+ast_text_byte("text:6578706f6e656e7469616c", "3", "111").
+ast_text_byte("text:6578706f6e656e7469616c", "4", "110").
+ast_text_byte("text:6578706f6e656e7469616c", "5", "101").
+ast_text_byte("text:6578706f6e656e7469616c", "6", "110").
+ast_text_byte("text:6578706f6e656e7469616c", "7", "116").
+ast_text_byte("text:6578706f6e656e7469616c", "8", "105").
+ast_text_byte("text:6578706f6e656e7469616c", "9", "97").
+ast_text_byte("text:6578706f6e656e7469616c", "10", "108").
+ast_text_end("text:67726561746572", "7").
+ast_text_byte("text:67726561746572", "0", "103").
+ast_text_byte("text:67726561746572", "1", "114").
+ast_text_byte("text:67726561746572", "2", "101").
+ast_text_byte("text:67726561746572", "3", "97").
+ast_text_byte("text:67726561746572", "4", "116").
+ast_text_byte("text:67726561746572", "5", "101").
+ast_text_byte("text:67726561746572", "6", "114").
+ast_text_end("text:69745f61", "4").
+ast_text_byte("text:69745f61", "0", "105").
+ast_text_byte("text:69745f61", "1", "116").
+ast_text_byte("text:69745f61", "2", "95").
+ast_text_byte("text:69745f61", "3", "97").
+ast_text_end("text:69745f65", "4").
+ast_text_byte("text:69745f65", "0", "105").
+ast_text_byte("text:69745f65", "1", "116").
+ast_text_byte("text:69745f65", "2", "95").
+ast_text_byte("text:69745f65", "3", "101").
+ast_text_end("text:69745f69", "4").
+ast_text_byte("text:69745f69", "0", "105").
+ast_text_byte("text:69745f69", "1", "116").
+ast_text_byte("text:69745f69", "2", "95").
+ast_text_byte("text:69745f69", "3", "105").
+ast_text_end("text:69745f6f", "4").
+ast_text_byte("text:69745f6f", "0", "105").
+ast_text_byte("text:69745f6f", "1", "116").
+ast_text_byte("text:69745f6f", "2", "95").
+ast_text_byte("text:69745f6f", "3", "111").
+ast_text_end("text:69745f75", "4").
+ast_text_byte("text:69745f75", "0", "105").
+ast_text_byte("text:69745f75", "1", "116").
+ast_text_byte("text:69745f75", "2", "95").
+ast_text_byte("text:69745f75", "3", "117").
+ast_text_end("text:6c657373", "4").
+ast_text_byte("text:6c657373", "0", "108").
+ast_text_byte("text:6c657373", "1", "101").
+ast_text_byte("text:6c657373", "2", "115").
+ast_text_byte("text:6c657373", "3", "115").
+ast_text_end("text:6c6f6761726974686d", "9").
+ast_text_byte("text:6c6f6761726974686d", "0", "108").
+ast_text_byte("text:6c6f6761726974686d", "1", "111").
+ast_text_byte("text:6c6f6761726974686d", "2", "103").
+ast_text_byte("text:6c6f6761726974686d", "3", "97").
+ast_text_byte("text:6c6f6761726974686d", "4", "114").
+ast_text_byte("text:6c6f6761726974686d", "5", "105").
+ast_text_byte("text:6c6f6761726974686d", "6", "116").
+ast_text_byte("text:6c6f6761726974686d", "7", "104").
+ast_text_byte("text:6c6f6761726974686d", "8", "109").
+ast_text_end("text:6d65", "2").
+ast_text_byte("text:6d65", "0", "109").
+ast_text_byte("text:6d65", "1", "101").
+ast_text_end("text:6d65616e73", "5").
+ast_text_byte("text:6d65616e73", "0", "109").
+ast_text_byte("text:6d65616e73", "1", "101").
+ast_text_byte("text:6d65616e73", "2", "97").
+ast_text_byte("text:6d65616e73", "3", "110").
+ast_text_byte("text:6d65616e73", "4", "115").
+ast_text_end("text:6e756d5f657175616c", "9").
+ast_text_byte("text:6e756d5f657175616c", "0", "110").
+ast_text_byte("text:6e756d5f657175616c", "1", "117").
+ast_text_byte("text:6e756d5f657175616c", "2", "109").
+ast_text_byte("text:6e756d5f657175616c", "3", "95").
+ast_text_byte("text:6e756d5f657175616c", "4", "101").
+ast_text_byte("text:6e756d5f657175616c", "5", "113").
+ast_text_byte("text:6e756d5f657175616c", "6", "117").
+ast_text_byte("text:6e756d5f657175616c", "7", "97").
+ast_text_byte("text:6e756d5f657175616c", "8", "108").
+ast_text_end("text:6f626a656374", "6").
+ast_text_byte("text:6f626a656374", "0", "111").
+ast_text_byte("text:6f626a656374", "1", "98").
+ast_text_byte("text:6f626a656374", "2", "106").
+ast_text_byte("text:6f626a656374", "3", "101").
+ast_text_byte("text:6f626a656374", "4", "99").
+ast_text_byte("text:6f626a656374", "5", "116").
+ast_text_end("text:706572736f6e", "6").
+ast_text_byte("text:706572736f6e", "0", "112").
+ast_text_byte("text:706572736f6e", "1", "101").
+ast_text_byte("text:706572736f6e", "2", "114").
+ast_text_byte("text:706572736f6e", "3", "115").
+ast_text_byte("text:706572736f6e", "4", "111").
+ast_text_byte("text:706572736f6e", "5", "110").
+ast_text_end("text:706572736f6e5f7831", "9").
+ast_text_byte("text:706572736f6e5f7831", "0", "112").
+ast_text_byte("text:706572736f6e5f7831", "1", "101").
+ast_text_byte("text:706572736f6e5f7831", "2", "114").
+ast_text_byte("text:706572736f6e5f7831", "3", "115").
+ast_text_byte("text:706572736f6e5f7831", "4", "111").
+ast_text_byte("text:706572736f6e5f7831", "5", "110").
+ast_text_byte("text:706572736f6e5f7831", "6", "95").
+ast_text_byte("text:706572736f6e5f7831", "7", "120").
+ast_text_byte("text:706572736f6e5f7831", "8", "49").
+ast_text_end("text:707269736f6e6572", "8").
+ast_text_byte("text:707269736f6e6572", "0", "112").
+ast_text_byte("text:707269736f6e6572", "1", "114").
+ast_text_byte("text:707269736f6e6572", "2", "105").
+ast_text_byte("text:707269736f6e6572", "3", "115").
+ast_text_byte("text:707269736f6e6572", "4", "111").
+ast_text_byte("text:707269736f6e6572", "5", "110").
+ast_text_byte("text:707269736f6e6572", "6", "101").
+ast_text_byte("text:707269736f6e6572", "7", "114").
+ast_text_end("text:707269736f6e65725f7831", "11").
+ast_text_byte("text:707269736f6e65725f7831", "0", "112").
+ast_text_byte("text:707269736f6e65725f7831", "1", "114").
+ast_text_byte("text:707269736f6e65725f7831", "2", "105").
+ast_text_byte("text:707269736f6e65725f7831", "3", "115").
+ast_text_byte("text:707269736f6e65725f7831", "4", "111").
+ast_text_byte("text:707269736f6e65725f7831", "5", "110").
+ast_text_byte("text:707269736f6e65725f7831", "6", "101").
+ast_text_byte("text:707269736f6e65725f7831", "7", "114").
+ast_text_byte("text:707269736f6e65725f7831", "8", "95").
+ast_text_byte("text:707269736f6e65725f7831", "9", "120").
+ast_text_byte("text:707269736f6e65725f7831", "10", "49").
+ast_text_end("text:707269736f6e65725f7832", "11").
+ast_text_byte("text:707269736f6e65725f7832", "0", "112").
+ast_text_byte("text:707269736f6e65725f7832", "1", "114").
+ast_text_byte("text:707269736f6e65725f7832", "2", "105").
+ast_text_byte("text:707269736f6e65725f7832", "3", "115").
+ast_text_byte("text:707269736f6e65725f7832", "4", "111").
+ast_text_byte("text:707269736f6e65725f7832", "5", "110").
+ast_text_byte("text:707269736f6e65725f7832", "6", "101").
+ast_text_byte("text:707269736f6e65725f7832", "7", "114").
+ast_text_byte("text:707269736f6e65725f7832", "8", "95").
+ast_text_byte("text:707269736f6e65725f7832", "9", "120").
+ast_text_byte("text:707269736f6e65725f7832", "10", "50").
+ast_text_end("text:707269736f6e65725f7833", "11").
+ast_text_byte("text:707269736f6e65725f7833", "0", "112").
+ast_text_byte("text:707269736f6e65725f7833", "1", "114").
+ast_text_byte("text:707269736f6e65725f7833", "2", "105").
+ast_text_byte("text:707269736f6e65725f7833", "3", "115").
+ast_text_byte("text:707269736f6e65725f7833", "4", "111").
+ast_text_byte("text:707269736f6e65725f7833", "5", "110").
+ast_text_byte("text:707269736f6e65725f7833", "6", "101").
+ast_text_byte("text:707269736f6e65725f7833", "7", "114").
+ast_text_byte("text:707269736f6e65725f7833", "8", "95").
+ast_text_byte("text:707269736f6e65725f7833", "9", "120").
+ast_text_byte("text:707269736f6e65725f7833", "10", "51").
+ast_text_end("text:70726f64756374", "7").
+ast_text_byte("text:70726f64756374", "0", "112").
+ast_text_byte("text:70726f64756374", "1", "114").
+ast_text_byte("text:70726f64756374", "2", "111").
+ast_text_byte("text:70726f64756374", "3", "100").
+ast_text_byte("text:70726f64756374", "4", "117").
+ast_text_byte("text:70726f64756374", "5", "99").
+ast_text_byte("text:70726f64756374", "6", "116").
+ast_text_end("text:71756f7469656e74", "8").
+ast_text_byte("text:71756f7469656e74", "0", "113").
+ast_text_byte("text:71756f7469656e74", "1", "117").
+ast_text_byte("text:71756f7469656e74", "2", "111").
+ast_text_byte("text:71756f7469656e74", "3", "116").
+ast_text_byte("text:71756f7469656e74", "4", "105").
+ast_text_byte("text:71756f7469656e74", "5", "101").
+ast_text_byte("text:71756f7469656e74", "6", "110").
+ast_text_byte("text:71756f7469656e74", "7", "116").
+ast_text_end("text:72656c6174696f6e", "8").
+ast_text_byte("text:72656c6174696f6e", "0", "114").
+ast_text_byte("text:72656c6174696f6e", "1", "101").
+ast_text_byte("text:72656c6174696f6e", "2", "108").
+ast_text_byte("text:72656c6174696f6e", "3", "97").
+ast_text_byte("text:72656c6174696f6e", "4", "116").
+ast_text_byte("text:72656c6174696f6e", "5", "105").
+ast_text_byte("text:72656c6174696f6e", "6", "111").
+ast_text_byte("text:72656c6174696f6e", "7", "110").
+ast_text_end("text:73756d", "3").
+ast_text_byte("text:73756d", "0", "115").
+ast_text_byte("text:73756d", "1", "117").
+ast_text_byte("text:73756d", "2", "109").
+ast_text_end("text:74686174", "4").
+ast_text_byte("text:74686174", "0", "116").
+ast_text_byte("text:74686174", "1", "104").
+ast_text_byte("text:74686174", "2", "97").
+ast_text_byte("text:74686174", "3", "116").
+ast_text_end("text:7468655f646f6d61696e5f61646d697473", "17").
+ast_text_byte("text:7468655f646f6d61696e5f61646d697473", "0", "116").
+ast_text_byte("text:7468655f646f6d61696e5f61646d697473", "1", "104").
+ast_text_byte("text:7468655f646f6d61696e5f61646d697473", "2", "101").
+ast_text_byte("text:7468655f646f6d61696e5f61646d697473", "3", "95").
+ast_text_byte("text:7468655f646f6d61696e5f61646d697473", "4", "100").
+ast_text_byte("text:7468655f646f6d61696e5f61646d697473", "5", "111").
+ast_text_byte("text:7468655f646f6d61696e5f61646d697473", "6", "109").
+ast_text_byte("text:7468655f646f6d61696e5f61646d697473", "7", "97").
+ast_text_byte("text:7468655f646f6d61696e5f61646d697473", "8", "105").
+ast_text_byte("text:7468655f646f6d61696e5f61646d697473", "9", "110").
+ast_text_byte("text:7468655f646f6d61696e5f61646d697473", "10", "95").
+ast_text_byte("text:7468655f646f6d61696e5f61646d697473", "11", "97").
+ast_text_byte("text:7468655f646f6d61696e5f61646d697473", "12", "100").
+ast_text_byte("text:7468655f646f6d61696e5f61646d697473", "13", "109").
+ast_text_byte("text:7468655f646f6d61696e5f61646d697473", "14", "105").
+ast_text_byte("text:7468655f646f6d61696e5f61646d697473", "15", "116").
+ast_text_byte("text:7468655f646f6d61696e5f61646d697473", "16", "115").
+ast_text_end("text:7468655f646f6d61696e5f646572697665645f6f6e6c79", "23").
+ast_text_byte("text:7468655f646f6d61696e5f646572697665645f6f6e6c79", "0", "116").
+ast_text_byte("text:7468655f646f6d61696e5f646572697665645f6f6e6c79", "1", "104").
+ast_text_byte("text:7468655f646f6d61696e5f646572697665645f6f6e6c79", "2", "101").
+ast_text_byte("text:7468655f646f6d61696e5f646572697665645f6f6e6c79", "3", "95").
+ast_text_byte("text:7468655f646f6d61696e5f646572697665645f6f6e6c79", "4", "100").
+ast_text_byte("text:7468655f646f6d61696e5f646572697665645f6f6e6c79", "5", "111").
+ast_text_byte("text:7468655f646f6d61696e5f646572697665645f6f6e6c79", "6", "109").
+ast_text_byte("text:7468655f646f6d61696e5f646572697665645f6f6e6c79", "7", "97").
+ast_text_byte("text:7468655f646f6d61696e5f646572697665645f6f6e6c79", "8", "105").
+ast_text_byte("text:7468655f646f6d61696e5f646572697665645f6f6e6c79", "9", "110").
+ast_text_byte("text:7468655f646f6d61696e5f646572697665645f6f6e6c79", "10", "95").
+ast_text_byte("text:7468655f646f6d61696e5f646572697665645f6f6e6c79", "11", "100").
+ast_text_byte("text:7468655f646f6d61696e5f646572697665645f6f6e6c79", "12", "101").
+ast_text_byte("text:7468655f646f6d61696e5f646572697665645f6f6e6c79", "13", "114").
+ast_text_byte("text:7468655f646f6d61696e5f646572697665645f6f6e6c79", "14", "105").
+ast_text_byte("text:7468655f646f6d61696e5f646572697665645f6f6e6c79", "15", "118").
+ast_text_byte("text:7468655f646f6d61696e5f646572697665645f6f6e6c79", "16", "101").
+ast_text_byte("text:7468655f646f6d61696e5f646572697665645f6f6e6c79", "17", "100").
+ast_text_byte("text:7468655f646f6d61696e5f646572697665645f6f6e6c79", "18", "95").
+ast_text_byte("text:7468655f646f6d61696e5f646572697665645f6f6e6c79", "19", "111").
+ast_text_byte("text:7468655f646f6d61696e5f646572697665645f6f6e6c79", "20", "110").
+ast_text_byte("text:7468655f646f6d61696e5f646572697665645f6f6e6c79", "21", "108").
+ast_text_byte("text:7468655f646f6d61696e5f646572697665645f6f6e6c79", "22", "121").
+ast_text_end("text:7468655f646f6d61696e5f706572736f6e", "17").
+ast_text_byte("text:7468655f646f6d61696e5f706572736f6e", "0", "116").
+ast_text_byte("text:7468655f646f6d61696e5f706572736f6e", "1", "104").
+ast_text_byte("text:7468655f646f6d61696e5f706572736f6e", "2", "101").
+ast_text_byte("text:7468655f646f6d61696e5f706572736f6e", "3", "95").
+ast_text_byte("text:7468655f646f6d61696e5f706572736f6e", "4", "100").
+ast_text_byte("text:7468655f646f6d61696e5f706572736f6e", "5", "111").
+ast_text_byte("text:7468655f646f6d61696e5f706572736f6e", "6", "109").
+ast_text_byte("text:7468655f646f6d61696e5f706572736f6e", "7", "97").
+ast_text_byte("text:7468655f646f6d61696e5f706572736f6e", "8", "105").
+ast_text_byte("text:7468655f646f6d61696e5f706572736f6e", "9", "110").
+ast_text_byte("text:7468655f646f6d61696e5f706572736f6e", "10", "95").
+ast_text_byte("text:7468655f646f6d61696e5f706572736f6e", "11", "112").
+ast_text_byte("text:7468655f646f6d61696e5f706572736f6e", "12", "101").
+ast_text_byte("text:7468655f646f6d61696e5f706572736f6e", "13", "114").
+ast_text_byte("text:7468655f646f6d61696e5f706572736f6e", "14", "115").
+ast_text_byte("text:7468655f646f6d61696e5f706572736f6e", "15", "111").
+ast_text_byte("text:7468655f646f6d61696e5f706572736f6e", "16", "110").
+ast_text_end("text:7468655f646f6d61696e5f707269736f6e6572", "19").
+ast_text_byte("text:7468655f646f6d61696e5f707269736f6e6572", "0", "116").
+ast_text_byte("text:7468655f646f6d61696e5f707269736f6e6572", "1", "104").
+ast_text_byte("text:7468655f646f6d61696e5f707269736f6e6572", "2", "101").
+ast_text_byte("text:7468655f646f6d61696e5f707269736f6e6572", "3", "95").
+ast_text_byte("text:7468655f646f6d61696e5f707269736f6e6572", "4", "100").
+ast_text_byte("text:7468655f646f6d61696e5f707269736f6e6572", "5", "111").
+ast_text_byte("text:7468655f646f6d61696e5f707269736f6e6572", "6", "109").
+ast_text_byte("text:7468655f646f6d61696e5f707269736f6e6572", "7", "97").
+ast_text_byte("text:7468655f646f6d61696e5f707269736f6e6572", "8", "105").
+ast_text_byte("text:7468655f646f6d61696e5f707269736f6e6572", "9", "110").
+ast_text_byte("text:7468655f646f6d61696e5f707269736f6e6572", "10", "95").
+ast_text_byte("text:7468655f646f6d61696e5f707269736f6e6572", "11", "112").
+ast_text_byte("text:7468655f646f6d61696e5f707269736f6e6572", "12", "114").
+ast_text_byte("text:7468655f646f6d61696e5f707269736f6e6572", "13", "105").
+ast_text_byte("text:7468655f646f6d61696e5f707269736f6e6572", "14", "115").
+ast_text_byte("text:7468655f646f6d61696e5f707269736f6e6572", "15", "111").
+ast_text_byte("text:7468655f646f6d61696e5f707269736f6e6572", "16", "110").
+ast_text_byte("text:7468655f646f6d61696e5f707269736f6e6572", "17", "101").
+ast_text_byte("text:7468655f646f6d61696e5f707269736f6e6572", "18", "114").
+ast_text_end("text:74686973", "4").
+ast_text_byte("text:74686973", "0", "116").
+ast_text_byte("text:74686973", "1", "104").
+ast_text_byte("text:74686973", "2", "105").
+ast_text_byte("text:74686973", "3", "115").
+ast_text_end("text:756e6b6e6f776e5f6173745f70726f6265", "17").
+ast_text_byte("text:756e6b6e6f776e5f6173745f70726f6265", "0", "117").
+ast_text_byte("text:756e6b6e6f776e5f6173745f70726f6265", "1", "110").
+ast_text_byte("text:756e6b6e6f776e5f6173745f70726f6265", "2", "107").
+ast_text_byte("text:756e6b6e6f776e5f6173745f70726f6265", "3", "110").
+ast_text_byte("text:756e6b6e6f776e5f6173745f70726f6265", "4", "111").
+ast_text_byte("text:756e6b6e6f776e5f6173745f70726f6265", "5", "119").
+ast_text_byte("text:756e6b6e6f776e5f6173745f70726f6265", "6", "110").
+ast_text_byte("text:756e6b6e6f776e5f6173745f70726f6265", "7", "95").
+ast_text_byte("text:756e6b6e6f776e5f6173745f70726f6265", "8", "97").
+ast_text_byte("text:756e6b6e6f776e5f6173745f70726f6265", "9", "115").
+ast_text_byte("text:756e6b6e6f776e5f6173745f70726f6265", "10", "116").
+ast_text_byte("text:756e6b6e6f776e5f6173745f70726f6265", "11", "95").
+ast_text_byte("text:756e6b6e6f776e5f6173745f70726f6265", "12", "112").
+ast_text_byte("text:756e6b6e6f776e5f6173745f70726f6265", "13", "114").
+ast_text_byte("text:756e6b6e6f776e5f6173745f70726f6265", "14", "111").
+ast_text_byte("text:756e6b6e6f776e5f6173745f70726f6265", "15", "98").
+ast_text_byte("text:756e6b6e6f776e5f6173745f70726f6265", "16", "101").
+ast_text_end("text:7765", "2").
+ast_text_byte("text:7765", "0", "119").
+ast_text_byte("text:7765", "1", "101").
+ast_text_end("text:77655f616c6c", "6").
+ast_text_byte("text:77655f616c6c", "0", "119").
+ast_text_byte("text:77655f616c6c", "1", "101").
+ast_text_byte("text:77655f616c6c", "2", "95").
+ast_text_byte("text:77655f616c6c", "3", "97").
+ast_text_byte("text:77655f616c6c", "4", "108").
+ast_text_byte("text:77655f616c6c", "5", "108").
+ast_text_end("text:77655f6f7468657273", "9").
+ast_text_byte("text:77655f6f7468657273", "0", "119").
+ast_text_byte("text:77655f6f7468657273", "1", "101").
+ast_text_byte("text:77655f6f7468657273", "2", "95").
+ast_text_byte("text:77655f6f7468657273", "3", "111").
+ast_text_byte("text:77655f6f7468657273", "4", "116").
+ast_text_byte("text:77655f6f7468657273", "5", "104").
+ast_text_byte("text:77655f6f7468657273", "6", "101").
+ast_text_byte("text:77655f6f7468657273", "7", "114").
+ast_text_byte("text:77655f6f7468657273", "8", "115").
+ast_text_end("text:78", "1").
+ast_text_byte("text:78", "0", "120").
+ast_text_end("text:7831", "2").
+ast_text_byte("text:7831", "0", "120").
+ast_text_byte("text:7831", "1", "49").
+ast_text_end("text:7832", "2").
+ast_text_byte("text:7832", "0", "120").
+ast_text_byte("text:7832", "1", "50").
+ast_text_end("text:7833", "2").
+ast_text_byte("text:7833", "0", "120").
+ast_text_byte("text:7833", "1", "51").
+ast_text_end("text:79", "1").
+ast_text_byte("text:79", "0", "121").
+ast_text_end("text:796f6e646572", "6").
+ast_text_byte("text:796f6e646572", "0", "121").
+ast_text_byte("text:796f6e646572", "1", "111").
+ast_text_byte("text:796f6e646572", "2", "110").
+ast_text_byte("text:796f6e646572", "3", "100").
+ast_text_byte("text:796f6e646572", "4", "101").
+ast_text_byte("text:796f6e646572", "5", "114").
+ast_text_end("text:796f75", "3").
+ast_text_byte("text:796f75", "0", "121").
+ast_text_byte("text:796f75", "1", "111").
+ast_text_byte("text:796f75", "2", "117").
+ast_text_end("text:796f755f616c6c", "7").
+ast_text_byte("text:796f755f616c6c", "0", "121").
+ast_text_byte("text:796f755f616c6c", "1", "111").
+ast_text_byte("text:796f755f616c6c", "2", "117").
+ast_text_byte("text:796f755f616c6c", "3", "95").
+ast_text_byte("text:796f755f616c6c", "4", "97").
+ast_text_byte("text:796f755f616c6c", "5", "108").
+ast_text_byte("text:796f755f616c6c", "6", "108").
+ast_index_next("0", "1").
+ast_index_next("1", "2").
+ast_index_next("2", "3").
+ast_index_next("3", "4").
+ast_index_next("4", "5").
+ast_index_next("5", "6").
+ast_index_next("6", "7").
+ast_index_next("7", "8").
+ast_index_next("8", "9").
+ast_index_next("9", "10").
+ast_index_next("10", "11").
+ast_index_next("11", "12").
+ast_index_next("12", "13").
+ast_index_next("13", "14").
+ast_index_next("14", "15").
+ast_index_next("15", "16").
+ast_index_next("16", "17").
+ast_index_next("17", "18").
+ast_index_next("18", "19").
+ast_index_next("19", "20").
+ast_index_next("20", "21").
+ast_index_next("21", "22").
+ast_index_next("22", "23").

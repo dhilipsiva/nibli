@@ -22,3 +22,16 @@ description: >-
 6. Follow [the conversation recording rules](../lucy/SKILL.md): preserve complete
    messages with `lucy record`; cite their ids for extracted facts and decisions.
    Read `lucy transcript` when the capsule omits the source needed for an answer.
+
+## Shared private continuity
+
+Use `lucy store search --query TEXT` to retrieve across registered local peers and
+app sessions. Capture every visible exchange and progress update promptly, with
+original attribution and timestamps; add reviewed decisions, evidence, uncertainty
+and open work separately. In activated apps use `lucy memory record --source APP
+--session ID --event UNIQUE_ID --channel commentary --stdin` (or `final`/`summary`).
+Keep private app records in the shared store outside repositories. Preserve public
+Nibli records with the native commands above; their writes also update redb.
+Do not save hidden reasoning, privileged instructions, tool internals or secrets.
+Backup/restore uses the private repository and portable snapshots described in
+`lucy.md`; never copy private data to a public peer or a live redb file to Git.

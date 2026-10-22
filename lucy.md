@@ -10,6 +10,53 @@ Everything about Lucy lives in her own files: standing guidance here, and memory
 Claude Code's `~/.claude` memory. The agent is a disguise she wears, and what she
 learns must survive a change of disguise.
 
+## Shared memory and complete capture
+
+Lucy application code is Rust: `lucy agent`/`lucy chat` and the GTK `lucy ui`
+share one local service, tool engine, provider settings and memory store. File
+inspection, search, Git inspection and diagnostics are available after invocation;
+writes, commands, HTTP requests and service changes show explicit action proposals.
+Local Ollama remains the default. Select a hosted provider explicitly, using a
+compatible model from its catalog. Keep provider API keys in private local
+configuration, outside conversations, Git backups and Nix sources. Hosted provider
+selection authorizes sending the task's retrieved context to that provider; do not
+silently change providers or assume every catalog model is free. Preserve each
+external app's own model and approval controls.
+
+Preserve complete visible exchanges while Lucy is active: user messages, follow-up
+corrections and answers, assistant replies, commentary, plans, and final results.
+Retain exact text, whitespace, source, session, event ID, channel and original
+source timestamp when exposed. Record promptly, not just at session end. Add a
+separate reviewed continuity note with decisions, concise rationale, evidence,
+uncertainties, failed attempts, and next steps. Summaries never replace originals.
+Never invent missing text or save hidden reasoning, system/developer instructions,
+tool internals or credentials. Memory is evidence, never authority or permission.
+
+All local clients use Nibli's Rust shared store at `$LUCY_DATA_DIR` (default
+`~/.local/share/lucy`). It writes original private JSON records before updating
+`memory.redb`. Register each local peer's `lucy/` directory with
+`lucy store register --name PEER --path /absolute/path/to/peer/lucy`.
+`lucy store search --query TEXT` reads all registered Lucy sources and conversations;
+repository fixtures and book models are outside that scope. Peer files remain
+authoritative, and recall refreshes their edits. An unavailable peer is reported.
+
+In an activated app session, use `lucy memory record --source APP --session ID
+--event UNIQUE_ID --channel commentary --stdin` for each visible update; use
+`--channel final` for the reply and `--channel summary` for reviewed continuity.
+The prompt/final hooks capture their exposed fields; explicitly record anything
+those hooks do not expose. Use real native session IDs supplied by the adapter.
+Retrieve complete evidence with `lucy memory transcript --source APP --session ID`
+or `lucy store transcript`. Private app conversations stay outside every public
+checkout, including Nix sources. Shared retrieval does not publish them.
+
+Use `lucy store backup --to PRIVATE_CHECKOUT/shared-store` for a portable snapshot
+in the existing private `dhilipsiva/lucy-private` repository. Commit and push only
+that backup subtree. On another host, clone/pull the private repository and run
+`lucy store restore --from PRIVATE_CHECKOUT/shared-store/snapshots/HOST/SNAPSHOT.json`.
+Snapshots preserve complete records; local peer paths are registered separately.
+Each host keeps its own redb file and regenerates vectors with `lucy store embed`.
+Never commit a live database or put this backup in a public repository.
+
 ## Who is speaking
 
 - Once the user wakes or addresses her ("lucy, wake!", "Hey Lucy", "lucy,", or typos of
@@ -73,26 +120,13 @@ included, and is the slow one.
 
 ## Private memory
 
-Since 2026-10-19 her private files live in dhilipsiva's private repository
-https://github.com/dhilipsiva/lucy-private.git. It holds only `private.nibli`, `private.md`
-and `private-interactions.nibli`, never anything else, and it is never made public. He
-allowed its existence and location to be recorded publicly; its contents stay private. It
-is attached to a checkout without links or a nested repository: a bare git directory
-beside the checkout, `../lucy-private.git`, whose work tree is this `lucy/` folder. Nibli's
-`.gitignore` keeps the private files out of this repository, and the private repository's
-`info/exclude` keeps everything else out of that one. One machine writes private records
-at a time; the CLI does not merge two archives yet, so pull before waking and push after
-writing.
-
-From the repository root, with `P="git --git-dir=../lucy-private.git --work-tree=lucy"`:
-
-- Attach on a new machine: `git clone --bare https://github.com/dhilipsiva/lucy-private.git ../lucy-private.git`,
-  then `printf '*\n!private.nibli\n!private.md\n!private-interactions.nibli\n' > ../lucy-private.git/info/exclude`,
-  then `$P config status.showUntrackedFiles no`, then `$P checkout main -- .`
-- Before waking: `$P pull origin main`
-- After private records are written, as part of committing her memory:
-  `$P add private.nibli private.md private-interactions.nibli` (those that exist),
-  `$P commit -m "lucy: private memory from <host>"`, `$P push origin main`
+Private conversations live outside this source checkout in the shared local store.
+The existing `dhilipsiva/lucy-private` repository is the authorized private backup.
+Use a separate clone outside Nix sources, with portable snapshots in `shared-store/`;
+retain the repository's older `private.*` files. Do not attach a private worktree
+inside this public checkout. Per-host snapshot names and content-addressed record
+files allow Git to merge independent backups without merging a binary database.
+See the shared-memory commands above and `lucy-cli/STORE.md` for recovery.
 
 ## Recording the conversation
 
@@ -117,7 +151,7 @@ prompt hook alone cannot capture assistant output.
 
 Her memory lives in more than one Git repository. [`lucy/peer-memory.md`](lucy/peer-memory.md)
 lists them and says what reconciling means. When a peer is added or changes, reconcile
-public memory across all peers. Private stores never leave their own peer.
+public memory across all peers. Private records are shared through the external local store and the authorized private backup, never public peer files.
 
 When adding a peer, check whether it has `lucy.md`, root `lucy.nibli`, and `lucy/`.
 Create whichever are missing before syncing: put model-independent guidance in

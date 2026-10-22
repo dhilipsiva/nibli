@@ -9,6 +9,8 @@ pub const DEFAULT_CAPSULE_MAX_BYTES: usize = 16 * 1024;
 /// The resolved environment.
 #[derive(Debug, Clone)]
 pub struct Env {
+    /// Shared private store; None isolates callers that only use a memory folder.
+    pub store: Option<PathBuf>,
     /// The memory folder.
     pub home: PathBuf,
     /// The name of this host, used in journal headings and presence lines.
@@ -117,6 +119,7 @@ impl Env {
             Err(_) => Duration::from_secs(300),
         };
         Ok(Env {
+            store: Some(crate::store::default_root()?),
             ollama_url,
             model,
             talk_timeout,

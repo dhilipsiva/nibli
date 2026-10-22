@@ -565,7 +565,7 @@ test-all: test test-engine test-store test-backend test-validate
 
 # CI gate for the hardened runtime surface (fast; native only — no WASM build).
 # For the WASM behavioral smokes too, run `just ci-all`.
-ci: fmt-check release-check clippy-runtime clippy-lucy test test-lucy verify-lucy-pins verify-lucy-plugin check-lucy-memory test-engine test-host test-validate test-ui test-formalize test-backend test-store test-persistence-replay verify-harness verify-soundness verify-alias-map verify-nibli-kr-seam verify-dict verify-pins verify-adjudication verify-proofs verify-grammar-parity verify-doc-fences verify-book-vocab
+ci: fmt-check release-check clippy-runtime clippy-lucy test test-lucy verify-lucy-pins verify-lucy-plugin check-lucy-memory test-engine test-host test-validate test-ui test-formalize test-backend test-store test-persistence-replay verify-harness verify-soundness verify-self-check verify-alias-map verify-nibli-kr-seam verify-dict verify-pins verify-adjudication verify-proofs verify-grammar-parity verify-doc-fences verify-book-vocab
 
 # WASM behavioral gate (pre-push, NOT part of `ci` — needs the WASM build, like
 # verify-book-capture). Bundles the gasnu smokes; each depends on
@@ -704,6 +704,16 @@ verify-harness:
 # dev shell provides `vampire` + `clingo`; each side skips cleanly if its solver is absent.
 verify-soundness:
     cargo test -p nibli-verify --lib --test differential_gate {{cargo_profile_flag}} -- --nocapture --test-threads=1
+
+# Raw AST export, the self-hosted specification, and native/static differentials.
+verify-self-check:
+    cargo test -p nibli-kr --lib reify::tests
+    cargo test -p nibli --test ast_cli
+    cargo test -p nibli-verify --test self_check -- --test-threads=1
+    cargo build -p nibli --bin nibli-ast --bin nibli-pin
+    @facts=$(mktemp); trap 'rm -f "$facts"' EXIT; \
+        ./target/debug/nibli-ast --emit-ast-facts nibli-verify/spec/nibli_checker.nibli > "$facts" && \
+        ./target/debug/nibli-pin --kb nibli-verify/spec/nibli_checker.nibli --kb "$facts" nibli-verify/spec/self_check.pins.nibli
 
 # Alias-map differential gate: the SHIPPED nibli-lexicon alias map's intra-crate
 # invariants (per-alias arity self-consistency, GISMU_TO_ALIAS round-trips, swap
@@ -1146,6 +1156,20 @@ release-check:
 # end-to-end run in a temporary memory folder)
 test-lucy:
     cargo test -p lucy-cli
+
+# Desktop adapters exercise the same Rust store with a fake local chat model.
+test-lucy-desktop:
+    cargo test -p lucy-cli --features desktop-ui desktop::
+
+# Native GTK build; use `nix develop .#lucy`.
+build-lucy-desktop:
+    cargo build --release -p lucy-cli --features desktop-ui
+
+clippy-lucy-desktop:
+    cargo clippy --no-deps -p lucy-cli --all-targets --features desktop-ui -- -D warnings
+
+test-lucy-window:
+    bash lucy-cli/desktop/test-window.sh target/release/lucy
 
 # Content pins over Lucy's live constitution template, plus the counterfactual
 # with the standing line removed (fixture generated, never copied).
