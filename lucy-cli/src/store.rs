@@ -17,7 +17,8 @@ use sha2::{Digest, Sha256};
 const RECORDS: TableDefinition<&str, &str> = TableDefinition::new("records-v1");
 const VECTORS: TableDefinition<&str, &str> = TableDefinition::new("vectors-v1");
 const META: TableDefinition<&str, &str> = TableDefinition::new("metadata-v1");
-/// The fingerprint of a peer origin indexed from restored copies, never from a local file.
+/// The fingerprint prefix of a peer origin indexed from restored copies, never from a local
+/// file; the digest of the copies follows it, so unchanged copies are not re-indexed.
 const RESTORED: &str = "restored-snapshot";
 type Result<T> = std::result::Result<T, String>;
 
@@ -443,21 +444,44 @@ impl Store {
     /// private files arrive); once one has, an absent file means the origin is empty, so a file
     /// deleted on purpose stays deleted.
     fn absent(&self, origin: &str, restored: &mut BTreeMap<String, Vec<Record>>) -> Result<()> {
-        match self.fingerprint_of(origin)?.as_deref() {
-            None | Some(RESTORED) => {
-                let kept = restored.remove(origin).unwrap_or_default();
-                if !kept.is_empty() {
-                    self.replace(origin, &kept)?;
-                    self.fingerprint(origin, RESTORED)?;
+        let current = self.fingerprint_of(origin)?;
+        match current.as_deref() {
+            Some(seen) if !seen.starts_with(RESTORED) => {
+                if !seen.is_empty() {
+                    self.replace(origin, &[])?;
+                    self.fingerprint(origin, "")?;
                 }
             }
-            Some("") => {}
-            Some(_) => {
-                self.replace(origin, &[])?;
-                self.fingerprint(origin, "")?;
+            _ => {
+                let kept = restored.remove(origin).unwrap_or_default();
+                if kept.is_empty() {
+                    // The restored files are gone too: so are their copies.
+                    if current.is_some() {
+                        self.replace(origin, &[])?;
+                        self.forget(origin)?;
+                    }
+                } else {
+                    let mark = format!(
+                        "{RESTORED}:{}",
+                        digest(serde_json::to_string(&kept).map_err(err)?.as_bytes())
+                    );
+                    if current.as_deref() != Some(mark.as_str()) {
+                        self.replace(origin, &kept)?;
+                        self.fingerprint(origin, &mark)?;
+                    }
+                }
             }
         }
         Ok(())
+    }
+
+    fn forget(&self, origin: &str) -> Result<()> {
+        let tx = self.db.begin_write().map_err(err)?;
+        tx.open_table(META)
+            .map_err(err)?
+            .remove(origin)
+            .map_err(err)?;
+        tx.commit().map_err(err)
     }
 
     fn fingerprint(&self, origin: &str, fingerprint: &str) -> Result<()> {
@@ -539,7 +563,13 @@ impl Store {
                     .and_then(|_| fs::read(&path).map_err(err))
                     .and_then(|bytes| serde_json::from_slice(&bytes).map_err(err))
                     .and_then(|record: Record| record.validate().map(|_| record))
-                {
+                    .and_then(|record| {
+                        if path.file_stem() == Some(std::ffi::OsStr::new(&record.key())) {
+                            Ok(record)
+                        } else {
+                            Err("record file is not named for its record".to_owned())
+                        }
+                    }) {
                     Ok(record) => record,
                     Err(error) => {
                         skip(&path, error);
@@ -555,8 +585,8 @@ impl Store {
                         .entry(record.origin.clone())
                         .or_default()
                         .push(record);
-                } else {
-                    self.upsert(&record)?;
+                } else if let Err(error) = self.upsert(&record) {
+                    skip(&path, error);
                 }
             }
         }

@@ -83,10 +83,13 @@ user cannot read. A file an approved command creates is not masked until the nex
 action. The terminal takes an approval only from a terminal, after discarding input
 typed before the prompt; model text, proposals and memories are shown with control,
 format and line-separator characters escaped. GUI key events are shown by name.
-Synthetic input may hold Shift but no other modifier, must release every key, and
-cannot press Enter or Linefeed or type a line break or backslash; this is best
-effort, and the flushed terminal-only read is what protects the terminal's prompt.
-Approving a GUI action withdraws every pending proposal in every conversation. GUI,
+Synthetic input presses only listed keys (letters, digits, punctuation, Shift,
+Space, Tab, Backspace, Escape, F1–F12, the arrows, Home, End, Page Up/Down,
+Delete), must release every key, clicks only a whole left or right click, and
+cannot type a line break or backslash; this is best effort, and the flushed
+terminal-only read is what protects the terminal's prompt. Approving a GUI action
+withdraws every pending proposal in every conversation, and no proposal can be
+made or approved until it finishes. GUI,
 screenshots, app launches and privileged diagnostics require explicit approval;
 privileged helpers additionally require polkit authentication. GUI actions check
 an active unlocked Wayland login and stop on lock/cancel. This is polling, not a

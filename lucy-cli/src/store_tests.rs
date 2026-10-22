@@ -305,3 +305,44 @@ fn invalid_and_symlinked_records_are_skipped_too() {
     }
     assert_eq!(store.search("findable", "", 8, None).unwrap().len(), 1);
 }
+
+#[test]
+fn restored_copies_whose_files_are_gone_leave_recall_and_conflicts_are_skipped() {
+    let dir = tempfile::tempdir().unwrap();
+    let host_a = Store::open(&dir.path().join("host-a")).unwrap();
+    let mut private = record("p2", "a private fact about kingfishers");
+    private.origin = "peer:nibli/private.nibli".into();
+    host_a.record(&private).unwrap();
+    let manifest = host_a.backup(&dir.path().join("backup")).unwrap();
+    let root = dir.path().join("host-b");
+    let host_b = Store::open(&root).unwrap();
+    host_b.restore(&manifest).unwrap();
+    let home = dir.path().join("checkout/lucy");
+    std::fs::create_dir_all(&home).unwrap();
+    std::fs::write(home.join("constitution.nibli"), "# Lucy\n").unwrap();
+    host_b.register("nibli", &home).unwrap();
+    host_b.sync().unwrap();
+    assert_eq!(host_b.search("kingfishers", "", 8, None).unwrap().len(), 1);
+    // The restored record files are removed: their copies leave recall too.
+    for entry in std::fs::read_dir(root.join("records")).unwrap() {
+        std::fs::remove_file(entry.unwrap().path()).unwrap();
+    }
+    host_b.sync().unwrap();
+    assert!(
+        host_b
+            .search("kingfishers", "", 8, None)
+            .unwrap()
+            .is_empty()
+    );
+    // A record file that conflicts with the index is skipped and named, not fatal.
+    host_b.record(&record("same", "the original text")).unwrap();
+    let mut changed =
+        serde_json::to_value(record("same", "edited behind the store's back")).unwrap();
+    changed["payload"]["text"] = json!("edited behind the store's back");
+    std::fs::write(root.join("records/edited-copy.json"), changed.to_string()).unwrap();
+    let sync = host_b.sync().unwrap();
+    assert!(
+        sync["skipped"].to_string().contains("edited-copy.json"),
+        "{sync}"
+    );
+}

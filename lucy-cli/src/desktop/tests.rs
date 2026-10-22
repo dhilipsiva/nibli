@@ -555,7 +555,7 @@ fn synthetic_input_is_shown_by_name_and_cannot_submit_a_line() {
     let temp = tempfile::tempdir().unwrap();
     let preview = |argv: Value| actions::preview(temp.path(), "gui", json!({"argv":argv}));
     let shown = preview(json!([
-        "key", "42:1", "21:1", "21:0", "42:0", "200:1", "200:0"
+        "key", "42:1", "21:1", "21:0", "42:0", "63:1", "63:0", "103:1", "103:0"
     ]))
     .unwrap();
     assert_eq!(
@@ -565,13 +565,29 @@ fn synthetic_input_is_shown_by_name_and_cannot_submit_a_line() {
             "Y down",
             "Y up",
             "LEFTSHIFT up",
-            "KEY_200 down",
-            "KEY_200 up"
+            "F5 down",
+            "F5 up",
+            "UP down",
+            "UP up"
         ])
     );
     assert!(preview(json!(["type", "--", "hello"])).is_ok());
-    assert!(preview(json!(["click", "0xC0"])).is_ok());
+    for click in ["0xC0", "0xC1"] {
+        assert!(preview(json!(["click", click])).is_ok(), "{click}");
+    }
     for argv in [
+        // Only listed keys: no paste (Shift+Insert), Compose, power or sleep keys,
+        // mouse buttons pressed as keys, or codes the approver cannot read.
+        json!(["key", "42:1", "110:1", "110:0", "42:0"]),
+        json!(["key", "127:1", "127:0"]),
+        json!(["key", "116:1", "116:0"]),
+        json!(["key", "142:1", "142:0"]),
+        json!(["key", "274:1", "274:0"]),
+        json!(["key", "200:1", "200:0"]),
+        // Only a full left or right click: no button left down, no middle-click paste.
+        json!(["click", "0x40"]),
+        json!(["click", "0x80"]),
+        json!(["click", "0xC2"]),
         // Enter, keypad Enter, Linefeed.
         json!(["key", "21:1", "21:0", "28:1", "28:0"]),
         json!(["key", "96:1", "96:0"]),
@@ -1008,4 +1024,118 @@ fn approved_commands_see_neither_sockets_nor_unreadable_directories() {
         std::fs::read_to_string(locked.join(".git/config")).unwrap(),
         "original\n"
     );
+}
+
+#[test]
+fn terminal_text_escapes_variation_selectors_and_other_ignorable_characters() {
+    for c in [
+        '\u{fe0f}',
+        '\u{e0100}',
+        '\u{34f}',
+        '\u{115f}',
+        '\u{3164}',
+        '\u{180b}',
+        '\u{17b4}',
+        '\u{ffa0}',
+    ] {
+        let shown = super::visible(&format!("hi{c}"));
+        assert!(!shown.contains(c), "{c:?} -> {shown}");
+    }
+}
+
+#[test]
+fn proposals_wait_while_synthetic_input_runs() {
+    let temp = tempfile::tempdir().unwrap();
+    let service = Service::new(temp.path().join("memory"), None);
+    let client = service.dispatch(json!({"op":"open"})).unwrap();
+    service
+        .dispatch(request(
+            &client,
+            json!({"op":"begin-archive","workspace":temp.path()}),
+        ))
+        .unwrap();
+    let propose = || {
+        service.dispatch(request(
+            &client,
+            json!({"op":"tool","name":"write","arguments":{"path":"b.txt","text":"x"}}),
+        ))
+    };
+    let pending = propose().unwrap()["pending_action"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    {
+        let _running = service.begin_gui().unwrap();
+        assert!(
+            service.begin_gui().is_err(),
+            "one synthetic input action at a time"
+        );
+        assert!(propose().unwrap_err().contains("synthetic input"));
+        assert!(
+            service
+                .dispatch(request(
+                    &client,
+                    json!({"op":"approve","action":pending,"allow":true})
+                ))
+                .unwrap_err()
+                .contains("synthetic input")
+        );
+    }
+    assert!(propose().is_ok());
+}
+
+#[test]
+fn a_planted_git_file_cannot_bind_another_repository() {
+    if !sandboxed() {
+        return;
+    }
+    let temp = tempfile::tempdir().unwrap();
+    let other = temp.path().join("other");
+    std::fs::create_dir_all(&other).unwrap();
+    std::fs::write(other.join("private.txt"), "PROBE-OTHER-REPO-CONTENT\n").unwrap();
+    git(&other, &["init", "-q"]);
+    git(&other, &["add", "-A"]);
+    git(&other, &["commit", "-q", "-m", "other"]);
+    git(&other, &["worktree", "add", "-q", "../other-linked"]);
+    let admin = std::fs::read_to_string(temp.path().join("other-linked/.git")).unwrap();
+    let workspace = temp.path().join("workspace");
+    std::fs::create_dir_all(&workspace).unwrap();
+    std::fs::write(workspace.join(".git"), &admin).unwrap();
+    let cancel = AtomicBool::new(false);
+    for operation in ["status", "diff", "log"] {
+        let result = actions::execute(
+            &workspace,
+            &cancel,
+            "git",
+            &json!({"operation":operation}),
+            None,
+        );
+        let shown = format!("{result:?}");
+        assert!(
+            !shown.contains("PROBE") && !shown.contains("private.txt"),
+            "{operation}: {shown}"
+        );
+        assert!(result.is_err(), "{operation}: {shown}");
+    }
+}
+
+#[test]
+fn git_inspection_does_not_open_unreadable_tracked_directories() {
+    if !sandboxed() {
+        return;
+    }
+    use std::os::unix::fs::PermissionsExt;
+    let temp = tempfile::tempdir().unwrap();
+    let repo = temp.path().join("repo");
+    std::fs::create_dir_all(repo.join("locked")).unwrap();
+    std::fs::write(repo.join("locked/secret.txt"), "PROBE-LOCKED-CONTENT\n").unwrap();
+    std::fs::write(repo.join("a.txt"), "one\n").unwrap();
+    git(&repo, &["init", "-q"]);
+    git(&repo, &["add", "-A"]);
+    git(&repo, &["commit", "-q", "-m", "one"]);
+    std::fs::set_permissions(repo.join("locked"), std::fs::Permissions::from_mode(0o000)).unwrap();
+    let cancel = AtomicBool::new(false);
+    let diff = actions::execute(&repo, &cancel, "git", &json!({"operation":"diff"}), None);
+    std::fs::set_permissions(repo.join("locked"), std::fs::Permissions::from_mode(0o700)).unwrap();
+    assert!(!format!("{diff:?}").contains("PROBE"), "{diff:?}");
 }

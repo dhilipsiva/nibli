@@ -135,9 +135,9 @@ impl Window {
             return;
         }
         if reply.kind == "catalog" {
-            self.catalog
-                .buffer()
-                .set_text(&serde_json::to_string_pretty(&result).unwrap_or_default());
+            self.catalog.buffer().set_text(&super::visible(
+                &serde_json::to_string_pretty(&result).unwrap_or_default(),
+            ));
             self.status.set_text("Model catalog loaded");
             return;
         }

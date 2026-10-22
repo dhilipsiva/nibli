@@ -197,9 +197,9 @@ fn workspace(root: &Path) -> Result<PathBuf> {
 }
 /// What the sandbox hides, found by a bounded walk that never follows symlinks: every denied
 /// name; every socket and FIFO, each a door to another process (the session bus, Lucy's own
-/// service); and every directory this user cannot read, which an approved command could
-/// otherwise chmod open. Each entry says whether it is a directory.
-fn masks(root: &Path) -> Result<Vec<(PathBuf, bool)>> {
+/// service); and, for a writable sandbox, every directory this user cannot read, which an
+/// approved command could otherwise chmod open. Each entry says whether it is a directory.
+fn masks(root: &Path, writable: bool) -> Result<Vec<(PathBuf, bool)>> {
     use std::os::unix::fs::FileTypeExt;
     let mut found = Vec::new();
     let mut directories = vec![root.to_path_buf()];
@@ -207,8 +207,12 @@ fn masks(root: &Path) -> Result<Vec<(PathBuf, bool)>> {
     while let Some(directory) = directories.pop() {
         let entries = match fs::read_dir(&directory) {
             Ok(entries) => entries,
+            // Read-only, an unreadable directory stays unreadable (a mask over it would show git
+            // its tracked files as deleted); writable, an approved command could chmod it open.
             Err(_) if directory != root => {
-                found.push((directory, true));
+                if writable {
+                    found.push((directory, true));
+                }
                 continue;
             }
             Err(error) => return Err(err(error)),
@@ -287,7 +291,7 @@ fn sandbox(root: &Path, writable: bool, git_dirs: &[PathBuf]) -> Result<Vec<Stri
         "PATH".into(),
         std::env::var("LUCY_COMMAND_PATH").unwrap_or_else(|_| "/run/current-system/sw/bin".into()),
     ]);
-    for (path, directory) in masks(root)? {
+    for (path, directory) in masks(root, writable)? {
         if !writable && path == root.join(".git") {
             continue;
         }
@@ -304,8 +308,9 @@ fn sandbox(root: &Path, writable: bool, git_dirs: &[PathBuf]) -> Result<Vec<Stri
 /// The git directories a read-only inspection needs bound besides the workspace, which must be
 /// the repository's root (from a subdirectory git would need the whole work tree). A linked
 /// worktree's `.git` is a file naming its git directory elsewhere; it is bound, with the
-/// repository's common directory, only when it has a real worktree's layout, so a planted `.git`
-/// file cannot name some other directory into the sandbox.
+/// repository's common directory, only when it has a real worktree's layout and git's own
+/// back-pointer names this workspace's `.git`, so a planted `.git` file cannot name some other
+/// directory, or another repository's worktree, into the sandbox.
 fn git_dirs(root: &Path) -> Result<Vec<PathBuf>> {
     let dot = root.join(".git");
     match fs::symlink_metadata(&dot) {
@@ -320,9 +325,13 @@ fn git_dirs(root: &Path) -> Result<Vec<PathBuf>> {
             let common = fs::read_to_string(gitdir.join("commondir"))
                 .map_err(|_| "the workspace's .git file does not name a linked worktree")?;
             let common = gitdir.join(common.trim()).canonicalize().map_err(err)?;
+            let back = fs::read_to_string(gitdir.join("gitdir"))
+                .ok()
+                .and_then(|back| Path::new(back.trim()).canonicalize().ok());
             if gitdir.parent() != Some(common.join("worktrees").as_path())
                 || !common.join("HEAD").is_file()
                 || !common.join("objects").is_dir()
+                || back != dot.canonicalize().ok()
             {
                 return Err("the workspace's .git file does not name a linked worktree".into());
             }
@@ -497,8 +506,9 @@ fn key_name(code: u16) -> String {
 /// be able to answer an approval prompt, so it may not press Enter, keypad Enter or Linefeed, may
 /// hold no modifier but Shift (Ctrl, Alt, Meta and CapsLock, often remapped to Ctrl, turn
 /// ordinary keys into control characters on any layout), must release every key it presses, and
-/// may not type control characters or backslashes (ydotool expands backslash escapes). This is
-/// best effort: the terminal's flushed, terminal-only read is what protects its prompt.
+/// may not type control characters or backslashes (ydotool expands backslash escapes). Keys come
+/// from a short list and a click is a whole left or right click. This is best effort: the
+/// terminal's flushed, terminal-only read is what protects its prompt.
 fn gui_events(args: &[String]) -> Result<Option<Vec<String>>> {
     let unsupported = || Err::<_, String>("unsupported literal mouse/keyboard action".into());
     match args[0].as_str() {
@@ -533,8 +543,14 @@ fn gui_events(args: &[String]) -> Result<Option<Vec<String>>> {
                 if matches!(code, 28 | 96 | 101) {
                     return Err("synthetic input may not press Enter or submit a line".into());
                 }
-                if matches!(code, 29 | 97 | 56 | 100 | 125 | 126 | 58) {
+                if matches!(code, 29 | 97 | 56 | 100 | 125 | 126 | 58 | 127) {
                     return Err("synthetic input may hold Shift but no other modifier".into());
+                }
+                // Letters, digits, punctuation, Shift, Space, Tab, Backspace, Escape, F1-F12,
+                // the arrows, Home, End, Page Up/Down and Delete: nothing that pastes (Insert),
+                // powers off, sleeps or presses a mouse button.
+                if !matches!(code, 1..=27 | 30..=54 | 57 | 59..=68 | 87 | 88 | 102..=109 | 111) {
+                    return Err(format!("synthetic input may not press key {code}"));
                 }
                 if down {
                     held.insert(code);
@@ -552,11 +568,14 @@ fn gui_events(args: &[String]) -> Result<Option<Vec<String>>> {
             }
             Ok(Some(names))
         }
+        // 0xC0 and 0xC1: the left or right button pressed and released. Not a button left
+        // down, nor the middle button, which pastes.
         "click"
             if args.len() == 2
-                && args[1].strip_prefix("0x").is_some_and(|s| {
-                    s.len() <= 2 && !s.is_empty() && s.bytes().all(|b| b.is_ascii_hexdigit())
-                }) =>
+                && args[1]
+                    .strip_prefix("0x")
+                    .and_then(|hex| u8::from_str_radix(hex, 16).ok())
+                    .is_some_and(|code| matches!(code, 0xC0 | 0xC1)) =>
         {
             Ok(None)
         }
