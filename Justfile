@@ -748,6 +748,17 @@ verify-self-check:
         ./target/debug/nibli-ast --emit-ast-facts nibli-verify/spec/nibli_checker.nibli > "$facts" && \
         ./target/debug/nibli-pin --kb nibli-verify/spec/nibli_checker.nibli --kb "$facts" nibli-verify/spec/self_check.pins.nibli
 
+# Production Rust extraction feasibility. Uses its own pinned nightly toolchain;
+# exit 0 means translation only, never full checker equivalence. Currently blocked.
+verify-self-check-extraction:
+    nix develop ./proofs/self-check --command python3 proofs/self-check/extract.py
+
+# Component proof: regenerate actual Rust verdict combiners, check Lean theorems,
+# and audit their axioms. Missing tools or evidence fail; nothing is skipped.
+verify-self-check-verdicts:
+    nix develop ./proofs/self-check --command python3 -m unittest discover -s proofs/self-check -p 'test_*.py' -v
+    nix develop ./proofs/self-check --command python3 proofs/self-check/verify_verdicts.py
+
 # Alias-map differential gate: the SHIPPED nibli-lexicon alias map's intra-crate
 # invariants (per-alias arity self-consistency, GISMU_TO_ALIAS round-trips, swap
 # validity, reserved/label integrity from the shipped map) plus a behavioral leg,

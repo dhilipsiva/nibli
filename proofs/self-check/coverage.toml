@@ -1,0 +1,156 @@
+# Obligation inventory, not a certificate or an exhaustive call-graph proof.
+# Empty theorem lists are deliberate: model proofs and differential tests do
+# not establish implementation refinement. Extraction reports bind to source
+# hashes; changing this inventory cannot certify the whole engine.
+schema = 1
+profile = "Fresh CoreSession; default compute registry; strict off; existential import off"
+certified_target = "none"
+candidate_target = "x86_64-unknown-linux-gnu"
+parser_boundary = "All parser-produced ASTs; parsing itself remains trusted"
+resource_policy = "Unknown, resource exhaustion, and operational failures are inconclusive"
+external_compute_boundary = "Explicit oracle contract required; dispatch/cache/error handling remains a proof obligation"
+
+[[obligation]]
+id = "reification"
+sources = ["nibli-kr/src/ast.rs", "nibli-kr/src/reify.rs", "nibli-lexicon/src/lib.rs"]
+contract = "Lossless ordered syntax, scalar bytes, deterministic serialization, complete committed lexical metadata"
+probes = ["reification"]
+tests = ["nibli-kr/src/reify.rs", "nibli/tests/ast_cli.rs"]
+theorems = []
+
+[[obligation]]
+id = "resolution"
+sources = ["nibli-kr/src/resolve.rs", "nibli-kr/src/emit.rs"]
+contract = "Vocabulary, arity/place routing, bound slots, pronoun collisions, special-term contexts, flavor compatibility"
+probes = ["emission"]
+tests = ["nibli-kr/src/shape_tests.rs", "nibli-verify/tests/nibli_kr_seam_gate.rs"]
+theorems = []
+
+[[obligation]]
+id = "lowering"
+sources = ["nibli-semantics/src/lib.rs", "nibli-semantics/src/semantic.rs", "nibli-semantics/src/semantic/compile.rs", "nibli-semantics/src/semantic/helpers.rs", "nibli-semantics/src/semantic/predicate.rs"]
+contract = "Scope, co-reference, AST/IR validation, event decomposition, all term/claim constructors and query intent"
+probes = ["lowering"]
+tests = ["nibli-semantics/src/semantic/tests.rs", "nibli-verify/tests/nibli_kr_seam_gate.rs"]
+theorems = []
+
+[[obligation]]
+id = "quotation_identity"
+sources = ["nibli-semantics/src/semantic/predicate.rs", "nibli-types/src/abstraction.rs", "nibli-verify/spec/nibli_checker.nibli"]
+contract = "Independent Nibli encoding equals canonical IR bytes, alpha-renaming, numeric bits, FNV digest plus full key, nested quotation opacity"
+probes = ["quotation_codec", "lowering"]
+tests = ["nibli-semantics/src/semantic/tests/abstractions.rs", "nibli-verify/tests/self_check.rs"]
+theorems = []
+
+[[obligation]]
+id = "static_ingress"
+sources = ["nibli-reason/src/kb.rs", "nibli-reason/src/rules.rs", "nibli-session/src/lib.rs"]
+contract = "Derived-only and admitted sets, ordered declarations, assertion/query distinction, representability, unsupported rule shapes, DNF bound, query-only count/compute/comparison guards"
+probes = ["assertion"]
+tests = ["nibli-reason/src/tests/assertions.rs", "nibli-reason/src/tests/compute_ingest.rs", "nibli-verify/tests/self_check.rs"]
+theorems = []
+
+[[obligation]]
+id = "stratification"
+sources = ["nibli-reason/src/rules.rs", "nibli-reason/src/materialize.rs", "nibli-verify/spec/nibli_checker.nibli"]
+contract = "Production dependency extraction and SCC traversal equal existence of a valid stratum assignment; negative-edge cycles rejected"
+probes = ["stratification"]
+tests = ["nibli-reason/src/rules.rs", "nibli-verify/src/strat_diff.rs", "nibli-verify/tests/self_check.rs"]
+theorems = []
+
+[[obligation]]
+id = "installation"
+sources = ["nibli-session/src/lib.rs", "nibli-reason/src/lib.rs", "nibli-reason/src/kb.rs", "nibli-reason/src/fact_store.rs"]
+contract = "Public adapters preserve prepared results, successful installation, atomic refusal, ordered batch and individual assertion agreement"
+probes = ["assertion"]
+tests = ["nibli-reason/src/tests/lifecycle.rs", "nibli-session/src/lib.rs"]
+theorems = []
+
+[[obligation]]
+id = "verdict_algebra"
+sources = ["nibli-reason/src/reasoning.rs", "nibli-types/src/logic.rs"]
+contract = "Conjunction/disjunction/NAF totality, exact definitive cases, indeterminate and resource precedence with preserved reasons"
+probes = ["verdicts"]
+tests = ["nibli-reason/src/reasoning.rs"]
+theorem_file = "proofs/self-check/Verdicts.lean"
+theorems = [
+  "NibliSelfCheck.conjunction_total", "NibliSelfCheck.disjunction_total",
+  "NibliSelfCheck.negation_total", "NibliSelfCheck.conjunction_true_iff",
+  "NibliSelfCheck.conjunction_false_iff", "NibliSelfCheck.disjunction_true_iff",
+  "NibliSelfCheck.disjunction_false_iff", "NibliSelfCheck.conjunction_true_identity",
+  "NibliSelfCheck.disjunction_false_identity", "NibliSelfCheck.resource_precedes_unknown",
+  "NibliSelfCheck.indeterminate_reasons_left_biased", "NibliSelfCheck.negation_true_iff",
+  "NibliSelfCheck.negation_false_iff", "NibliSelfCheck.negation_preserves_indeterminacy",
+]
+
+[[obligation]]
+id = "unification_equality"
+sources = ["nibli-reason/src/kb.rs", "nibli-reason/src/reasoning.rs"]
+contract = "Substitutions, repeated variables, descriptions, typed Skolems, equality classes and equality-aware lookup"
+probes = ["evaluation"]
+tests = ["nibli-reason/src/tests/unify_equality.rs", "nibli-reason/src/tests/skolem_identity.rs"]
+theorems = []
+
+[[obligation]]
+id = "inference"
+sources = ["nibli-reason/src/reasoning.rs", "nibli-reason/src/rules.rs", "nibli-reason/src/materialize.rs", "nibli-reason/src/domain.rs"]
+contract = "Backward/forward chaining, recursive closure, NAF, domain activation, materialization eligibility and saturation, complete checker fragment"
+probes = ["evaluation", "stratification"]
+tests = ["nibli-reason/src/tests/materialization.rs", "nibli-reason/src/tests/witness_closure.rs", "nibli-verify/src/materialize_diff.rs"]
+theorems = []
+
+[[obligation]]
+id = "quantifiers_aggregates"
+sources = ["nibli-reason/src/reasoning.rs", "nibli-reason/src/domain.rs", "nibli-reason/src/lib.rs"]
+contract = "Exists/forall/count, witness completeness and origins, aggregate results, closed domain and optional profile behavior"
+probes = ["evaluation"]
+tests = ["nibli-reason/src/tests/find_aggregates.rs", "nibli-reason/src/tests/witness_completeness.rs", "nibli-reason/src/tests/existential.rs"]
+theorems = []
+
+[[obligation]]
+id = "flavors"
+sources = ["nibli-reason/src/reasoning.rs", "nibli-reason/src/rules.rs", "nibli-reason/src/kb.rs"]
+contract = "Tense/deontic matching, rule mapping, quotation opacity and mixed-flavor refusal"
+probes = ["evaluation", "assertion"]
+tests = ["nibli-reason/src/tests/tense.rs", "nibli-reason/src/tests/conditionals_deontic.rs"]
+theorems = []
+
+[[obligation]]
+id = "compute"
+sources = ["nibli-types/src/arithmetic.rs", "nibli-reason/src/compute.rs", "nibli-session/src/lib.rs"]
+contract = "IEEE-754 arithmetic/comparisons, non-finite handling, oracle dispatch/cache/errors and opaque witness guards"
+probes = ["arithmetic", "evaluation"]
+tests = ["nibli-types/src/arithmetic.rs", "nibli-reason/src/tests/numeric_compute.rs", "nibli-reason/src/tests/compute_trace.rs"]
+theorems = []
+
+[[obligation]]
+id = "traces_constraints"
+sources = ["nibli-types/src/logic.rs", "nibli-reason/src/reasoning.rs", "nibli-reason/src/contradictions.rs"]
+contract = "Every LogicNode/ProofRule variant, trace validity, provenance, closed-world flags, assumptions and contradiction reports with unresolved cases"
+probes = ["evaluation"]
+tests = ["nibli-reason/src/tests/traces.rs", "nibli-reason/src/tests/provenance.rs", "nibli-reason/src/tests/contradiction_reports.rs"]
+theorems = []
+
+[[obligation]]
+id = "state_lifecycle"
+sources = ["nibli-reason/src/lib.rs", "nibli-reason/src/kb.rs", "nibli-reason/src/fact_store.rs", "nibli-reason/src/materialize.rs"]
+contract = "Retraction/rebuild, cache and index validity, per-query state, provenance preservation and cancellation"
+probes = ["assertion", "evaluation"]
+tests = ["nibli-reason/src/tests/retraction_negation.rs", "nibli-reason/src/tests/memo_regressions.rs", "nibli-verify/src/retract_diff.rs"]
+theorems = []
+
+[[obligation]]
+id = "resources"
+sources = ["nibli-reason/src/reasoning.rs", "nibli-reason/src/domain.rs", "nibli-reason/src/materialize.rs", "nibli-types/src/logic.rs"]
+contract = "Operational soundness and honest inconclusive results at all limits; termination/completeness only for the finite checker fragment"
+probes = ["evaluation"]
+tests = ["nibli-reason/src/tests/witness_completeness.rs", "nibli-reason/src/tests/materialization.rs"]
+theorems = []
+
+[[obligation]]
+id = "composition"
+sources = ["nibli-verify/spec/nibli_checker.nibli", "nibli-kr/src/reify.rs", "nibli-session/src/lib.rs"]
+contract = "All parser-produced programs in the profile: independent checker verdict iff native static acceptance; Stage 1 as an instance; source embedding, finite bounds and public runner correspondence"
+probes = ["reification", "emission", "lowering", "assertion", "evaluation"]
+tests = ["nibli-verify/tests/self_check.rs", "nibli-verify/spec/self_check.pins.nibli"]
+theorems = []

@@ -1,0 +1,16 @@
+name = "nibliSelfCheck"
+version = "0.1.0"
+defaultTargets = ["Verdicts"]
+
+[[require]]
+name = "aeneas"
+git = { url = "https://github.com/AeneasVerif/aeneas", subDir = "backends/lean" }
+rev = "fdebf20d78e8007bb92fc17068f17fc2e6cfbbbf"
+
+# Generated from the production Rust functions before each proof run.
+[[lean_lib]]
+name = "Input"
+srcDir = "../../target/self-check-proof/probes/verdicts/lean"
+
+[[lean_lib]]
+name = "Verdicts"

@@ -5,6 +5,14 @@ key invariants, rather than only testing them. Checked by `just verify-proofs`
 (`lean proofs/*.lean`); the Nix dev shell provides `lean`. No mathlib — the Lean prelude
 suffices, so each file is self-contained and offline.
 
+The separate [`self-check/`](self-check/) checkpoint extracts actual production
+Rust with pinned Charon/Aeneas and proves the verdict algebra over the generated
+Lean definitions (`just verify-self-check-verdicts`). It does not establish
+full compiler/checker equivalence: the other extraction probes are blocked and
+the general evaluator remains unproved. Its toolchain and online bootstrap are
+separate from the model proofs below; see the
+[self-check developer guide](../mdbook/src/developer/self-check.md#production-proof-checkpoint).
+
 ## What's proved
 
 ### `Combiner.lean` — the four-valued verdict combiner

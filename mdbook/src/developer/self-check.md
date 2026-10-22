@@ -127,3 +127,57 @@ Changes to AST constructors must update the exhaustive exporter walk and the
 checker together. Changes to lexical metadata or native static policy must
 update the relevant differential cases. Existing domain specifications are
 inputs to these tests and retain their original semantics.
+
+## Production proof checkpoint
+
+`proofs/self-check/` contains a separate, pinned Charon → Aeneas → Lean
+environment for extracting the production Rust functions. Its Nix lock pins
+Aeneas and its compatible Charon toolchain; the Lake manifest pins the Lean
+libraries. The shipping Rust toolchain is unchanged. This checkpoint targets
+`x86_64-unknown-linux-gnu` under the extraction toolchain, with default crate
+features and debug checks enabled.
+
+The component gate regenerates the verdict combiners and their Nibli
+dependencies, checks `Verdicts.lean` against those generated definitions, and
+audits every theorem's axioms. It proves totality, the exact conditions for
+definitive conjunction/disjunction/NAF verdicts, indeterminate propagation, and
+resource/reason precedence. It does not verify the callers or general evaluator.
+The trusted boundary includes Rust/MIR compilation, Charon and Aeneas translation,
+Lean's kernel, and the imported primitive library specifications; this is not a
+proof of those tools or of the shipping compiler binary.
+
+Bootstrap the pinned Lean dependencies once, then run the gates:
+
+```sh
+nix develop ./proofs/self-check --command elan toolchain install leanprover/lean4:v4.35.0
+nix develop ./proofs/self-check
+cd proofs/self-check
+lake exe cache get
+cd ../..
+just verify-self-check-verdicts
+just verify-self-check-extraction
+```
+
+The extraction gate probes the exporter, validating emitter, semantic compiler,
+quotation codec, stratifier, assertion ingress, evaluator, and arithmetic. Its
+current result is a failure: the pinned Aeneas cannot translate all these paths.
+Observed blockers include nested borrows in the exporter, loop exits in compiler
+and reasoner code, and floating-point operations in native arithmetic. A larger
+timeout does not resolve an unsupported operation. The verdict component gate
+can pass independently; its report always leaves full self-check equivalence
+unverified.
+
+Commands, source hashes, diagnostics, and generated artifacts are written below
+`target/self-check-proof/`. The runners reject missing production roots, opaque
+Nibli dependencies, external-definition templates, stale artifacts, concurrent
+runs, and source changes during a run. Missing tools, an admitted theorem, or an
+unexpected axiom cannot become a passing proof result. The axiom audit permits
+only Lean's `propext`, `Classical.choice`, and `Quot.sound` foundations.
+
+`coverage.toml` maps the remaining obligations to implementation and regression
+sources. It is an obligation inventory, not an exhaustive call-graph certificate.
+Full compiler/checker equivalence, independent quotation identity, a verified
+general evaluator, and a composed Stage 1 theorem remain unproved. The initial
+extraction feasibility milestone is therefore blocked; the full-equivalence
+proof gate and certified CLI are not implemented. The existing Stage 1/Stage 2
+regression gate remains `just verify-self-check`.

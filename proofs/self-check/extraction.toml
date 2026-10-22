@@ -1,0 +1,66 @@
+schema = 1
+target = "x86_64-unknown-linux-gnu"
+aeneas_revision = "fdebf20d78e8007bb92fc17068f17fc2e6cfbbbf"
+charon_revision = "de8736f7c995ac54dc490345cef9ea5143c06c62"
+charon_version = "0.1.293"
+lean_toolchain = "leanprover/lean4:v4.35.0"
+
+# These are production entry points, not copied verification implementations.
+# A successful extraction is necessary, but is not a correctness proof.
+[[probe]]
+name = "verdicts"
+package = "nibli-reason"
+roots = [
+  "nibli_reason::reasoning::combine_conjunction",
+  "nibli_reason::reasoning::combine_disjunction",
+  "nibli_reason::reasoning::negate_result",
+]
+obligation = "Definitive verdicts and indeterminate propagation"
+
+[[probe]]
+name = "reification"
+package = "nibli-kr"
+roots = ["nibli_kr::reify::reify"]
+obligation = "Lossless syntax export, structural AST adapters, lexicon projection"
+
+[[probe]]
+name = "emission"
+package = "nibli-kr"
+roots = ["nibli_kr::emit::emit"]
+obligation = "Native vocabulary, places, arity, and surface-context checks"
+
+[[probe]]
+name = "lowering"
+package = "nibli-semantics"
+roots = ["nibli_semantics::compile_from_ast"]
+obligation = "Native resolution, scope, lowering, and quotation identity"
+
+[[probe]]
+name = "quotation_codec"
+package = "nibli-types"
+roots = ["nibli_types::abstraction::canonicalize_relation"]
+obligation = "Canonical marker bytes, numeric payloads, and full identity"
+
+[[probe]]
+name = "stratification"
+package = "nibli-reason"
+roots = ["nibli_reason::rules::check_stratification"]
+obligation = "Production SCC algorithm equals the negative-cycle criterion"
+
+[[probe]]
+name = "assertion"
+package = "nibli-reason"
+roots = ["nibli_reason::kb::process_assertion"]
+obligation = "Ordered acceptance, declarations, representability, and state changes"
+
+[[probe]]
+name = "evaluation"
+package = "nibli-reason"
+roots = ["nibli_reason::reasoning::check_formula_holds"]
+obligation = "Production evaluator, collections, caches, effects, and resource outcomes"
+
+[[probe]]
+name = "arithmetic"
+package = "nibli-types"
+roots = ["nibli_types::arithmetic::eval_arithmetic"]
+obligation = "Built-in IEEE-754 arithmetic and non-finite outcomes"
