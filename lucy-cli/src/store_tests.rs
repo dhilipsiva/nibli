@@ -346,3 +346,26 @@ fn restored_copies_whose_files_are_gone_leave_recall_and_conflicts_are_skipped()
         "{sync}"
     );
 }
+
+#[test]
+fn restored_copies_whose_files_vanish_before_the_first_sync_leave_recall() {
+    let dir = tempfile::tempdir().unwrap();
+    let host_a = Store::open(&dir.path().join("host-a")).unwrap();
+    let mut private = record("p3", "a private fact about dippers");
+    private.origin = "peer:nibli/private.nibli".into();
+    host_a.record(&private).unwrap();
+    let manifest = host_a.backup(&dir.path().join("backup")).unwrap();
+    let root = dir.path().join("host-b");
+    let host_b = Store::open(&root).unwrap();
+    host_b.restore(&manifest).unwrap();
+    for entry in std::fs::read_dir(root.join("records")).unwrap() {
+        std::fs::remove_file(entry.unwrap().path()).unwrap();
+    }
+    let home = dir.path().join("checkout/lucy");
+    std::fs::create_dir_all(&home).unwrap();
+    std::fs::write(home.join("constitution.nibli"), "# Lucy\n").unwrap();
+    host_b.register("nibli", &home).unwrap();
+    host_b.sync().unwrap();
+    host_b.sync().unwrap();
+    assert!(host_b.search("dippers", "", 8, None).unwrap().is_empty());
+}

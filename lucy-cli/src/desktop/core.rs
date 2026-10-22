@@ -533,19 +533,22 @@ impl Service {
         if cancel.load(Ordering::SeqCst) {
             return Err("request cancelled".into());
         }
-        if self.gui.load(Ordering::SeqCst) {
-            return Err(GUI_RUNNING.into());
-        }
         if actions::needs_approval(name, &args)? {
+            if self.gui.load(Ordering::SeqCst) {
+                return Err(GUI_RUNNING.into());
+            }
             let proposal = actions::preview(&workspace, name, args)?;
             let id = token()?;
             let mut visible = proposal.clone();
             visible.as_object_mut().unwrap().remove("before");
-            session
-                .lock()
-                .map_err(err)?
-                .pending
-                .insert(id.clone(), proposal);
+            let mut s = session.lock().map_err(err)?;
+            // Checked again under the session lock: a `gui` approval sets the flag before it
+            // withdraws, taking each session's lock, so no proposal lands after the withdrawal.
+            if self.gui.load(Ordering::SeqCst) {
+                return Err(GUI_RUNNING.into());
+            }
+            s.pending.insert(id.clone(), proposal);
+            drop(s);
             Ok(json!({"pending_action":id,"preview":visible}))
         } else {
             actions::execute(&workspace, &cancel, name, &args, None)

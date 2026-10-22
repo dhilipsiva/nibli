@@ -197,22 +197,22 @@ fn workspace(root: &Path) -> Result<PathBuf> {
 }
 /// What the sandbox hides, found by a bounded walk that never follows symlinks: every denied
 /// name; every socket and FIFO, each a door to another process (the session bus, Lucy's own
-/// service); and, for a writable sandbox, every directory this user cannot read, which an
-/// approved command could otherwise chmod open. Each entry says whether it is a directory.
-fn masks(root: &Path, writable: bool) -> Result<Vec<(PathBuf, bool)>> {
+/// service); and every directory this user cannot list, which an approved command could chmod
+/// open and a planted git filter could read inside. Each entry says whether it is a directory;
+/// the unlistable directories are also returned on their own, so git can be told to skip them.
+type Masks = (Vec<(PathBuf, bool)>, Vec<PathBuf>);
+fn masks(root: &Path) -> Result<Masks> {
     use std::os::unix::fs::FileTypeExt;
     let mut found = Vec::new();
+    let mut unlistable = Vec::new();
     let mut directories = vec![root.to_path_buf()];
     let mut walked = 0;
     while let Some(directory) = directories.pop() {
         let entries = match fs::read_dir(&directory) {
             Ok(entries) => entries,
-            // Read-only, an unreadable directory stays unreadable (a mask over it would show git
-            // its tracked files as deleted); writable, an approved command could chmod it open.
             Err(_) if directory != root => {
-                if writable {
-                    found.push((directory, true));
-                }
+                found.push((directory.clone(), true));
+                unlistable.push(directory);
                 continue;
             }
             Err(error) => return Err(err(error)),
@@ -238,14 +238,18 @@ fn masks(root: &Path, writable: bool) -> Result<Vec<(PathBuf, bool)>> {
             }
         }
     }
-    Ok(found)
+    Ok((found, unlistable))
 }
 /// bwrap arguments that run a program in the workspace with no network, no environment and none
 /// of the host but the Nix store, the system profile and `git_dirs`, with `masks` hidden.
 /// `writable` is for approved commands; the unapproved git inspection gets a read-only workspace
 /// and keeps the repository's own `.git`, so repository configuration (filters, drivers) can run
-/// nothing that changes or reaches anything.
-fn sandbox(root: &Path, writable: bool, git_dirs: &[PathBuf]) -> Result<Vec<String>> {
+/// nothing that changes or reaches anything. Also returns the unlistable directories it masked.
+fn sandbox(
+    root: &Path,
+    writable: bool,
+    git_dirs: &[PathBuf],
+) -> Result<(Vec<String>, Vec<PathBuf>)> {
     let utf8 = |path: &Path| {
         path.to_str()
             .map(str::to_owned)
@@ -291,7 +295,8 @@ fn sandbox(root: &Path, writable: bool, git_dirs: &[PathBuf]) -> Result<Vec<Stri
         "PATH".into(),
         std::env::var("LUCY_COMMAND_PATH").unwrap_or_else(|_| "/run/current-system/sw/bin".into()),
     ]);
-    for (path, directory) in masks(root, writable)? {
+    let (hidden, unlistable) = masks(root)?;
+    for (path, directory) in hidden {
         if !writable && path == root.join(".git") {
             continue;
         }
@@ -303,7 +308,7 @@ fn sandbox(root: &Path, writable: bool, git_dirs: &[PathBuf]) -> Result<Vec<Stri
         }
     }
     command.push("--".into());
-    Ok(command)
+    Ok((command, unlistable))
 }
 /// The git directories a read-only inspection needs bound besides the workspace, which must be
 /// the repository's root (from a subdirectory git would need the whole work tree). A linked
@@ -327,7 +332,7 @@ fn git_dirs(root: &Path) -> Result<Vec<PathBuf>> {
             let common = gitdir.join(common.trim()).canonicalize().map_err(err)?;
             let back = fs::read_to_string(gitdir.join("gitdir"))
                 .ok()
-                .and_then(|back| Path::new(back.trim()).canonicalize().ok());
+                .and_then(|back| gitdir.join(back.trim()).canonicalize().ok());
             if gitdir.parent() != Some(common.join("worktrees").as_path())
                 || !common.join("HEAD").is_file()
                 || !common.join("objects").is_dir()
@@ -346,10 +351,16 @@ fn git_dirs(root: &Path) -> Result<Vec<PathBuf>> {
         },
     }
 }
-/// Pathspecs that keep every denied name out of git's output: the sandbox masks those paths, so
-/// git would otherwise report them as deleted and print their committed content.
-fn git_pathspecs() -> Vec<String> {
+/// Pathspecs that keep every denied name and every masked unlistable directory out of git's
+/// output: the sandbox masks those paths, so git would otherwise report them as deleted and print
+/// their committed content.
+fn git_pathspecs(root: &Path, unlistable: &[PathBuf]) -> Result<Vec<String>> {
     let mut specs = vec![".".to_owned()];
+    for directory in unlistable {
+        let relative = directory.strip_prefix(root).map_err(err)?;
+        let relative = relative.to_str().ok_or("workspace path is not UTF-8")?;
+        specs.push(format!(":(exclude,literal){relative}"));
+    }
     for name in DENIED
         .iter()
         .copied()
@@ -359,7 +370,7 @@ fn git_pathspecs() -> Vec<String> {
         specs.push(format!(":(exclude,glob)**/{name}"));
         specs.push(format!(":(exclude,glob)**/{name}/**"));
     }
-    specs
+    Ok(specs)
 }
 pub fn path(root: &Path, relative: &str, allow_root: bool) -> Result<PathBuf> {
     let root = workspace(root)?;
@@ -571,11 +582,7 @@ fn gui_events(args: &[String]) -> Result<Option<Vec<String>>> {
         // 0xC0 and 0xC1: the left or right button pressed and released. Not a button left
         // down, nor the middle button, which pastes.
         "click"
-            if args.len() == 2
-                && args[1]
-                    .strip_prefix("0x")
-                    .and_then(|hex| u8::from_str_radix(hex, 16).ok())
-                    .is_some_and(|code| matches!(code, 0xC0 | 0xC1)) =>
+            if args.len() == 2 && matches!(args[1].as_str(), "0xC0" | "0xc0" | "0xC1" | "0xc1") =>
         {
             Ok(None)
         }
@@ -816,7 +823,7 @@ pub fn execute(
         }
         "git" => {
             let root = workspace(root)?;
-            let mut command = sandbox(&root, false, &git_dirs(&root)?)?;
+            let (mut command, unlistable) = sandbox(&root, false, &git_dirs(&root)?)?;
             command.extend(strings(&[
                 "git",
                 "--no-pager",
@@ -840,7 +847,7 @@ pub fn execute(
             });
             if operation != "log" {
                 command.push("--".into());
-                command.extend(git_pathspecs());
+                command.extend(git_pathspecs(&root, &unlistable)?);
             }
             run(&root, cancel, &command, false, 30)
         }
@@ -896,7 +903,7 @@ pub fn execute(
         "command" => {
             let task_args = argv(args)?;
             let root = workspace(root)?;
-            let mut command = sandbox(&root, true, &[])?;
+            let (mut command, _) = sandbox(&root, true, &[])?;
             command.extend(task_args);
             run(&root, cancel, &command, false, 120)
         }

@@ -455,11 +455,11 @@ impl Store {
             _ => {
                 let kept = restored.remove(origin).unwrap_or_default();
                 if kept.is_empty() {
-                    // The restored files are gone too: so are their copies.
-                    if current.is_some() {
-                        self.replace(origin, &[])?;
-                        self.forget(origin)?;
-                    }
+                    // No copy stands in (or its files are gone too): the origin is empty, once.
+                    // A registered peer's records are never restored again (`restore` skips
+                    // them), so the empty mark is final until a local file appears.
+                    self.replace(origin, &[])?;
+                    self.fingerprint(origin, "")?;
                 } else {
                     let mark = format!(
                         "{RESTORED}:{}",
@@ -473,15 +473,6 @@ impl Store {
             }
         }
         Ok(())
-    }
-
-    fn forget(&self, origin: &str) -> Result<()> {
-        let tx = self.db.begin_write().map_err(err)?;
-        tx.open_table(META)
-            .map_err(err)?
-            .remove(origin)
-            .map_err(err)?;
-        tx.commit().map_err(err)
     }
 
     fn fingerprint(&self, origin: &str, fingerprint: &str) -> Result<()> {
