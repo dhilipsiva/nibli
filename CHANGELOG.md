@@ -38,6 +38,14 @@ here first.
 
 ### Changed
 
+- **WIT 0.12.0** (`wit/world.wit`; the engine changes are in
+  [ENGINE_UPGRADE_0_2.md](ENGINE_UPGRADE_0_2.md)): `list-assertion-records`
+  reports every retained assertion identity, active or withdrawn;
+  `restore-withdrawn-assertion` reserves a withdrawn identity during trusted
+  replay without decoding its payload; `set-max-chain-depth` is fallible
+  (zero is refused) and `max-chain-depth` reports the setting. Proof envelopes
+  are schema 2 and carry `profile.max_chain_depth`.
+
 - **Text compute registration is now explicitly corpus-scoped (decided
   2026-08-13; no Rust signature or WIT ABI change).**
   `register_compute_predicate("name")` / `register-compute-predicate(name)` is

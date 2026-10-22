@@ -12,7 +12,8 @@ the `lucy` CLI is Lucy for that session, through the model that session already 
 
 From the nibli checkout: `cargo build --release -p lucy-cli` and put
 `target/release/lucy` (`lucy.exe` on Windows) on your `PATH`, or `cargo install --path lucy-cli`.
-Release builds for Linux, macOS and Windows ship with nibli releases.
+nibli releases do not include a `lucy` binary: they ship `nibli-host` and `nibli` for x86_64
+and aarch64 Linux, so build Lucy as above.
 
 ## Where her memory lives
 
