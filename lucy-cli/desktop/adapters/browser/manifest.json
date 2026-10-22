@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Ask Lucy",
+  "version": "1.0.0",
+  "description": "Explicit page/selection handoff and shared memory context preparation.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "nativeMessaging"
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "lucy@nibli.dev",
+      "strict_min_version": "109.0"
+    }
+  },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAlyegWYIDYU6P8S0iXseZLS0z1w1e8ksT7s/gRHIr0qV0pj6rXdkstzaMoJsxuAYT4hHEtH61DYYzYXV/n155Hf1JbrYHHxe+Zqt8Mhxm5gxouQPXkAH9cU3Ja0/3HDnEy/2uUq53/PDn684TXjkoCML1SXq7K63FrKt3VOo124prSmbeeoBbd+oWLGjbOYYU6wcpQJZVLrxq6BK1VRvpSjT24ckcPPYV4C0GsqETX6KePeRqqiJuCHnseYu5M9ikeCOJmiQC9N3Sw0Dq69HVShJKE/M03x4/XxHvo9S26TIB+sL5s9S0NCneKNaQGIrg937i1m2xKulemIjFFmzEIwIDAQAB"
+}

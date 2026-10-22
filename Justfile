@@ -1147,6 +1147,20 @@ release-check:
 test-lucy:
     cargo test -p lucy-cli
 
+# Desktop adapters exercise the same Rust store with a fake local chat model.
+test-lucy-desktop:
+    cargo test -p lucy-cli --features desktop-ui desktop::
+
+# Native GTK build; use `nix develop .#lucy`.
+build-lucy-desktop:
+    cargo build --release -p lucy-cli --features desktop-ui
+
+clippy-lucy-desktop:
+    cargo clippy --no-deps -p lucy-cli --all-targets --features desktop-ui -- -D warnings
+
+test-lucy-window:
+    bash lucy-cli/desktop/test-window.sh target/release/lucy
+
 # Content pins over Lucy's live constitution template, plus the counterfactual
 # with the standing line removed (fixture generated, never copied).
 verify-lucy-pins:

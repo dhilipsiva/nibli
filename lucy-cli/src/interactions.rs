@@ -397,6 +397,9 @@ pub fn append(
     validate(&additions)?;
     let contents = render(&existing)?;
     files::write_atomic(archive_path(paths, private), &contents)?;
+    crate::store::sync_native(env).map_err(|e| {
+        format!("conversation file saved; shared index needs `lucy store sync`: {e}")
+    })?;
     Ok(incoming)
 }
 

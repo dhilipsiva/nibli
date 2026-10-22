@@ -44,6 +44,11 @@
         devShells.release = pkgs.mkShell {
           buildInputs = [ rustToolchain pkgs.just pkgs.python3 ];
         };
+        devShells.lucy = pkgs.mkShell {
+          nativeBuildInputs = [ rustToolchain pkgs.just pkgs.pkg-config ]
+            ++ pkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.xvfb-run pkgs.xdotool pkgs.dbus ];
+          buildInputs = [ pkgs.gtk4 ];
+        };
 
         # Research artifact: inherit the engine verification environment and its
         # locked toolchain; add compiled Datalog, plotting, and PDF production.

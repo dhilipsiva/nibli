@@ -20,6 +20,7 @@ fn journal_text(paths: &Paths, private: bool) -> String {
 
 pub(crate) fn env_in(dir: &Path) -> Env {
     Env {
+        store: None,
         home: dir.join("lucy"),
         host: "testhost".to_string(),
         capsule_max_bytes: 16 * 1024,
