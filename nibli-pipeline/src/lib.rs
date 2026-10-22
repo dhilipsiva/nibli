@@ -613,4 +613,8 @@ impl GuestSession for Session {
     }
 }
 
+// The component's exports exist only in the wasm build: their symbol names carry the WIT
+// package's `@version`, which a native linker reads as symbol versioning, so a native build
+// (`cargo test --workspace --lib`, `cargo check`) compiles the glue without exporting it.
+#[cfg(target_arch = "wasm32")]
 bindings::export!(NibliPipeline with_types_in bindings);

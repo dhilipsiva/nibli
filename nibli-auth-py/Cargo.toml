@@ -15,4 +15,9 @@ crate-type = ["cdylib"]
 
 [dependencies]
 nibli-auth = { workspace = true }
-pyo3 = { version = "0.24", features = ["extension-module"] }
+pyo3 = "0.24"
+
+[features]
+# Set by maturin (pyproject.toml) for the wheel: an extension module must not link libpython,
+# while a native `cargo test --workspace --lib` must.
+extension-module = ["pyo3/extension-module"]

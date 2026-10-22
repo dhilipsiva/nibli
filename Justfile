@@ -62,6 +62,15 @@ build-wasm: clean-wasm
     # formatting; normalize it so a later `fmt-check` (ci) doesn't trip on the
     # auto-generated file.
     cargo fmt -p nibli-pipeline
+    # Its header lists the `with` remaps in hash order, different on every run: sort them,
+    # so the committed file is reproducible (`just verify-bindings`).
+    @python3 -I -c 'import pathlib; p = pathlib.Path("nibli-pipeline/src/bindings.rs"); lines = p.read_text().split("\n"); at = [i for i, line in enumerate(lines) if line.startswith("//   * with ")]; [lines.__setitem__(i, line) for i, line in zip(at, sorted(lines[i] for i in at))]; p.write_text("\n".join(lines))'
+
+# The committed nibli-pipeline/src/bindings.rs (so a plain checkout builds without
+# cargo-component) must be exactly what cargo-component and rustfmt regenerate from wit/.
+verify-bindings: build-wasm
+    @git diff --quiet -- nibli-pipeline/src/bindings.rs || { echo 'FAIL: nibli-pipeline/src/bindings.rs differs from what wit/ generates; commit the regenerated file'; git diff --stat -- nibli-pipeline/src/bindings.rs; exit 1; }
+    @echo 'PASS: the committed WIT bindings match wit/'
 
 # Compiles the native Wasmtime host gasnu
 build-host:
@@ -591,7 +600,7 @@ ci: fmt-check release-check clippy-workspace clippy-lucy test test-lucy verify-l
 # them all: fuel exhaustion + post-trap recovery + journal replay
 # (trap-recovery), plus the script transcript, persist-replay, NAF-note,
 # :debug round-trip, and the determinism corpus.
-ci-wasm: smoke-component-imports smoke-host-state-controls smoke-host-certify smoke-host-script smoke-host-trap-recovery smoke-host-persist-replay smoke-host-split smoke-host-count-query-only smoke-host-schema-v3-migration smoke-host-naf smoke-host-cwa-false smoke-host-debug smoke-host-collapse smoke-host-backend-unavailable smoke-host-compute-query-only smoke-host-compute-registration-order smoke-host-quiet smoke-host-strict smoke-host-existential-import smoke-host-materialize smoke-host-determinism verify-wasm-node
+ci-wasm: verify-bindings smoke-component-imports smoke-host-state-controls smoke-host-certify smoke-host-script smoke-host-trap-recovery smoke-host-persist-replay smoke-host-split smoke-host-count-query-only smoke-host-schema-v3-migration smoke-host-naf smoke-host-cwa-false smoke-host-debug smoke-host-collapse smoke-host-backend-unavailable smoke-host-compute-query-only smoke-host-compute-registration-order smoke-host-quiet smoke-host-strict smoke-host-existential-import smoke-host-materialize smoke-host-determinism verify-wasm-node
 
 # Envelope smoke: `:certify` binds verdict + trace + host-tracked profile +
 # the lockstep workspace version into one JSON ProofEnvelope — document on

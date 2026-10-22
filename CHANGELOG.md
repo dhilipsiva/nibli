@@ -106,6 +106,11 @@ here first.
   corpus. A query that fit just inside its `NIBLI_FUEL` or `:fuel` budget can now
   stop with `RESOURCE_EXCEEDED (fuel)`.
 
+- **A plain checkout builds:** `nibli-pipeline/src/bindings.rs` is committed and
+  checked against `wit/` (`just verify-bindings`), the component's exports are
+  compiled only for wasm32 so native test binaries link, and nibli-auth-py's PyO3
+  `extension-module` is a crate feature that maturin turns on.
+
 ### Fixed
 
 - **Raw witness collections now fail closed on every non-definitive final leaf.**
