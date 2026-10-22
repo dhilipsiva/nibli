@@ -18,6 +18,11 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
+# A CI build never reuses incremental state, and leaving it out keeps the cached target/ a few GB
+# smaller (the cache shares the repository's quota with the Nix cache).
+env:
+  CARGO_INCREMENTAL: 0
+
 jobs:
   # The native gates (`just ci`), split from the WASM smokes so each finishes inside its hour: the
   # single runtime-ci job took 46 of its 60 minutes when it last passed.

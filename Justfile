@@ -1207,10 +1207,12 @@ verify-lucy-plugin:
     print(f"verify-lucy-plugin PASS: {len(skills)} skills, {len(subs)} subcommands, hook snippet in sync")
     PY
 
-# Lucy's own memory in this repository: every line must compile.
+# Lucy's own memory in this repository: every line must compile. From a release build:
+# compiling the conversation archive grows with every recorded message, and in a debug build it
+# was most of the native gate's time (about 1140 s against 270 s, measured 2026-10-22).
 check-lucy-memory:
-    @cargo build --quiet -p lucy-cli
-    LUCY_HOME=lucy ./target/debug/lucy check
+    @cargo build --quiet --release -p lucy-cli
+    LUCY_HOME=lucy ./target/release/lucy check
 
 # ── Release automation (R3) ────────────────────────────────────────────────
 # `release-check` above is the VERSION-AGNOSTIC structural gate and rides

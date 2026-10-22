@@ -588,7 +588,7 @@ If an external predicate's backend is unreachable (or unconfigured), the query r
 | `just verify-pins` | KB-level behavioural pins (`pins/*.nibli`) |
 | `just release-check` | Release consistency gate (lockstep versions, publish flags, crates.io metadata) — part of `ci` |
 | `just ci` | Fast native gate: fmt, clippy, all native test + verify gates (no WASM build) |
-| `just ci-all` | Comprehensive gate — `ci` + the 16 WASM behavioural smokes. This is what GitHub CI runs |
+| `just ci-all` | Comprehensive gate — `ci` + the 16 WASM behavioural smokes. GitHub CI runs the two halves as parallel jobs |
 | `just clean` | `cargo clean` |
 
 ---
