@@ -68,7 +68,18 @@ JSON body for approval, limit response size and support cancellation. Service to
 show status or propose start/stop/restart; system services retain host authorization.
 Writes
 show a diff and refuse a file changed since preview. Commands require approval and
-run in a bubblewrap workspace sandbox without network or host credentials. GUI,
+run in a bubblewrap workspace sandbox without network or host credentials. Git
+inspection runs in the same sandbox with the workspace read-only, so a repository's
+own configuration (filters, drivers) cannot change or reach anything. The tools
+refuse the home directory, or anything above it, as a workspace; `lucy ui`, `chat`
+and `agent` started there use `~/LucyTasks`. Credential and configuration names
+(`.git`, `.ssh`, `.env*`, `.netrc`, `.docker`, `.kube`, shell histories and the
+rest of the list in `actions.rs`) are refused at any depth and masked inside the
+sandbox. The terminal takes an approval only from a terminal, after discarding
+input typed before the prompt; model text and proposals are shown with control and
+bidirectional-override characters escaped. GUI key events are shown by name,
+synthetic input cannot press Enter or type a line break, and approving a GUI action
+withdraws every other pending proposal. GUI,
 screenshots, app launches and privileged diagnostics require explicit approval;
 privileged helpers additionally require polkit authentication. GUI actions check
 an active unlocked Wayland login and stop on lock/cancel. This is polling, not a

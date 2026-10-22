@@ -296,7 +296,8 @@ pub fn talk(
     let capsule = format!(
         "{}{}",
         capsule::render(&loaded, env),
-        crate::store::context(env, message)?
+        crate::store::context(env, message)
+            .unwrap_or_else(|e| format!("\nShared memory unavailable: {e}\n"))
     );
     let reply = ollama_chat(
         &env.ollama_url,

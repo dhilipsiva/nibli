@@ -486,19 +486,41 @@ impl Store {
     }
 
     /// Replace each peer source atomically so edits/deletions cannot leave
-    /// obsolete text or vectors in recall. Missing/offline peers are reported.
+    /// obsolete text or vectors in recall. Missing/offline peers are reported, and
+    /// so is every file that cannot be read, which is skipped: one bad file must not
+    /// take recall away from every app.
     pub fn sync(&self) -> Result<Value> {
         let config = self.config()?;
         let records = self.root.join("records");
+        let mut skipped = Vec::new();
+        let mut skip = |path: &Path, error: String| {
+            skipped.push(json!({"path": path, "error": error}));
+        };
+        // Restored copies of registered peers' records, by origin: they stand in for a peer
+        // archive that is absent here (a new host, before the peer's private files arrive).
+        let mut restored: BTreeMap<String, Vec<Record>> = BTreeMap::new();
         if records.is_dir() {
             for path in json_files(&records)? {
-                let record: Record =
-                    serde_json::from_slice(&fs::read(path).map_err(err)?).map_err(err)?;
-                if !config
+                let record: Record = match fs::read(&path)
+                    .map_err(err)
+                    .and_then(|bytes| serde_json::from_slice(&bytes).map_err(err))
+                {
+                    Ok(record) => record,
+                    Err(error) => {
+                        skip(&path, error);
+                        continue;
+                    }
+                };
+                if config
                     .peers
                     .iter()
                     .any(|p| record.origin.starts_with(&format!("peer:{}/", p.name)))
                 {
+                    restored
+                        .entry(record.origin.clone())
+                        .or_default()
+                        .push(record);
+                } else {
                     self.upsert(&record)?;
                 }
             }
@@ -526,17 +548,36 @@ impl Store {
                     .path
                     .join(if private { "private.md" } else { "journal.md" });
                 let input = if archive.exists() { archive } else { legacy };
-                plain(&input)?;
+                if let Err(error) = plain(&input) {
+                    skip(&input, error);
+                    continue;
+                }
                 let bytes = match fs::read(&input) {
                     Ok(bytes) => bytes,
-                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
-                    Err(e) => return Err(err(e)),
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                        // Locally registered peer files win over a snapshot, but only once
+                        // they exist: until then the restored copies stay recallable.
+                        let kept = restored.remove(&origin).unwrap_or_default();
+                        self.replace(&origin, &kept)?;
+                        self.fingerprint(&origin, "")?;
+                        continue;
+                    }
+                    Err(e) => {
+                        skip(&input, err(e));
+                        continue;
+                    }
                 };
                 let fingerprint = digest(&bytes);
                 if self.unchanged(&origin, &fingerprint)? {
                     continue;
                 }
-                let entries = crate::interactions::read(&paths, private)?;
+                let entries = match crate::interactions::read(&paths, private) {
+                    Ok(entries) => entries,
+                    Err(error) => {
+                        skip(&input, error);
+                        continue;
+                    }
+                };
                 let records: Vec<_> = entries
                     .into_iter()
                     .map(|entry| Record {
@@ -547,7 +588,14 @@ impl Store {
                 self.replace(&origin, &records)?;
                 self.fingerprint(&origin, &fingerprint)?;
             }
-            for entry in fs::read_dir(&peer.path).map_err(err)? {
+            let entries = match fs::read_dir(&peer.path) {
+                Ok(entries) => entries,
+                Err(error) => {
+                    skip(&peer.path, err(error));
+                    continue;
+                }
+            };
+            for entry in entries {
                 let entry = entry.map_err(err)?;
                 let name = entry.file_name().to_string_lossy().to_string();
                 // Only the explicitly registered Lucy directory; no fixtures,
@@ -566,7 +614,13 @@ impl Store {
                 }
                 let origin = format!("{prefix}{name}");
                 present.insert(origin.clone());
-                let text = fs::read_to_string(entry.path()).map_err(err)?;
+                let text = match fs::read_to_string(entry.path()) {
+                    Ok(text) => text,
+                    Err(error) => {
+                        skip(&entry.path(), err(error));
+                        continue;
+                    }
+                };
                 let fingerprint = digest(text.as_bytes());
                 if self.unchanged(&origin, &fingerprint)? {
                     continue;
@@ -601,7 +655,10 @@ impl Store {
             }
             loaded.push(peer.name);
         }
-        Ok(json!({"peers": loaded, "unavailable_peers": unavailable, "records": self.all()?.len()}))
+        Ok(
+            json!({"peers": loaded, "unavailable_peers": unavailable, "records": self.all()?.len(),
+            "skipped": skipped}),
+        )
     }
 
     pub fn status(&self) -> Result<Value> {

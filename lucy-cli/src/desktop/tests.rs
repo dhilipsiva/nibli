@@ -632,3 +632,135 @@ fn approving_synthetic_input_withdraws_every_other_pending_action() {
     );
     assert!(!temp.path().join("out.txt").exists());
 }
+
+/// The sandbox needs bwrap, user namespaces and the system profile; CI runners may lack them.
+fn sandboxed() -> bool {
+    let temp = tempfile::tempdir().unwrap();
+    let works = actions::sandbox_works(temp.path());
+    if !works {
+        eprintln!("skipped: the bwrap workspace sandbox cannot run here");
+    }
+    works
+}
+
+fn git(directory: &std::path::Path, args: &[&str]) {
+    let status = std::process::Command::new("git")
+        .args([
+            "-c",
+            "user.name=Lucy test",
+            "-c",
+            "user.email=lucy@example.invalid",
+        ])
+        .args(args)
+        .current_dir(directory)
+        .output()
+        .unwrap();
+    assert!(status.status.success(), "git {args:?}: {status:?}");
+}
+
+#[test]
+fn git_inspection_cannot_run_programs_the_repository_configures() {
+    if !sandboxed() {
+        return;
+    }
+    let temp = tempfile::tempdir().unwrap();
+    let repo = temp.path().join("repo");
+    std::fs::create_dir(&repo).unwrap();
+    let marker = temp.path().join("marker");
+    git(&repo, &["init", "-q"]);
+    std::fs::write(repo.join("a.txt"), "one\n").unwrap();
+    git(&repo, &["add", "a.txt"]);
+    git(&repo, &["commit", "-q", "-m", "one"]);
+    let clean = format!("sh -c 'touch {}; cat'", marker.display());
+    git(&repo, &["config", "filter.probe.clean", &clean]);
+    std::fs::write(repo.join(".gitattributes"), "*.txt filter=probe\n").unwrap();
+    std::fs::write(repo.join("a.txt"), "two\n").unwrap();
+    let cancel = AtomicBool::new(false);
+    for operation in ["status", "diff", "log"] {
+        let result =
+            actions::execute(&repo, &cancel, "git", &json!({"operation":operation}), None).unwrap();
+        assert!(
+            !marker.exists(),
+            "git {operation} ran the repository's filter"
+        );
+        if operation == "status" {
+            // The inspection itself still works in the sandbox.
+            assert_eq!(result["exit_code"], 0, "{result}");
+            assert!(
+                result["output"].as_str().unwrap().contains("a.txt"),
+                "{result}"
+            );
+        }
+    }
+    // Positive control: host git does run it.
+    git(&repo, &["status", "--short"]);
+    assert!(marker.exists());
+}
+
+#[test]
+fn tools_refuse_the_home_directory_and_credential_names_anywhere() {
+    let temp = tempfile::tempdir().unwrap();
+    if let Some(home) = std::env::var_os("HOME") {
+        let home = std::path::PathBuf::from(home);
+        if home.is_dir() {
+            assert!(actions::path(&home, "notes.txt", false).is_err());
+            assert!(actions::path(std::path::Path::new("/"), "tmp", false).is_err());
+        }
+    }
+    for name in [
+        ".netrc",
+        ".git-credentials",
+        ".gitconfig",
+        ".docker/config.json",
+        ".kube/config",
+        ".npmrc",
+        ".pypirc",
+        ".bash_history",
+        "sub/.zsh_history",
+        "deep/er/.envrc",
+        "x/.aws/credentials",
+        "credentials.toml",
+    ] {
+        assert!(actions::path(temp.path(), name, false).is_err(), "{name}");
+    }
+    for name in [
+        ".gitignore",
+        ".github/workflows/ci.yml",
+        "src/main.rs",
+        "history.md",
+    ] {
+        assert!(actions::path(temp.path(), name, false).is_ok(), "{name}");
+    }
+}
+
+#[test]
+fn approved_commands_cannot_reach_denied_names_at_any_depth() {
+    if !sandboxed() {
+        return;
+    }
+    let temp = tempfile::tempdir().unwrap();
+    let nested = temp.path().join("vendor/lib/.git");
+    std::fs::create_dir_all(nested.join("hooks")).unwrap();
+    std::fs::write(nested.join("config"), "original\n").unwrap();
+    std::fs::create_dir_all(temp.path().join("app")).unwrap();
+    std::fs::write(temp.path().join("app/.env"), "TOKEN=secret-value\n").unwrap();
+    let cancel = AtomicBool::new(false);
+    let result = actions::execute(
+        temp.path(),
+        &cancel,
+        "command",
+        &json!({"argv":["sh","-c",
+            "echo changed > vendor/lib/.git/config; echo run > vendor/lib/.git/hooks/pre-commit; cat app/.env; true"]}),
+        None,
+    )
+    .unwrap();
+    assert_eq!(
+        std::fs::read_to_string(nested.join("config")).unwrap(),
+        "original\n"
+    );
+    assert!(!nested.join("hooks/pre-commit").exists());
+    assert!(
+        !result["output"].as_str().unwrap().contains("secret-value"),
+        "{result}"
+    );
+}

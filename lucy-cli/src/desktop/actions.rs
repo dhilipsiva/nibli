@@ -10,9 +10,41 @@ use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
+// Names no tool reads, lists, searches or lets a command see, at any depth: credentials, agent
+// state, and configuration other programs execute.
 const DENIED: &[&str] = &[
-    ".git", ".ssh", ".gnupg", ".aws", ".codex", ".claude", ".agents", ".config", ".local", ".env",
+    ".git",
+    ".ssh",
+    ".gnupg",
+    ".aws",
+    ".azure",
+    ".codex",
+    ".claude",
+    ".agents",
+    ".config",
+    ".local",
+    ".env",
+    ".envrc",
+    ".direnv",
+    ".netrc",
+    ".git-credentials",
+    ".gitconfig",
+    ".docker",
+    ".kube",
+    ".npmrc",
+    ".pypirc",
+    ".mozilla",
+    ".var",
+    ".password-store",
+    ".pki",
+    ".terraform.d",
+    ".vault-token",
+    "credentials",
+    "credentials.toml",
 ];
+// A bounded walk finds denied names for the sandbox; a larger workspace is refused, not
+// half-masked.
+const MAX_SANDBOX_DIRECTORIES: usize = 100_000;
 pub fn schemas() -> Value {
     let definitions = [
         (
@@ -125,10 +157,116 @@ pub fn needs_approval(name: &str, args: &Value) -> Result<bool> {
     })
 }
 fn denied(name: &str) -> bool {
-    DENIED.contains(&name) || name.starts_with(".env.")
+    DENIED.contains(&name)
+        || name.starts_with(".env.")
+        || (name.starts_with('.') && name.ends_with("history"))
+}
+/// The canonical workspace. The home directory and its ancestors are refused: they hold the
+/// credentials and shell startup files the deny list can only partly name.
+fn workspace(root: &Path) -> Result<PathBuf> {
+    let root = root.canonicalize().map_err(err)?;
+    if let Some(home) = std::env::var_os("HOME").and_then(|h| Path::new(&h).canonicalize().ok())
+        && home.starts_with(&root)
+    {
+        return Err(
+            "tools need a project directory as the workspace, not the home directory or above it"
+                .into(),
+        );
+    }
+    Ok(root)
+}
+/// Every denied name in the workspace, found without following symlinks.
+fn denied_paths(root: &Path) -> Result<Vec<PathBuf>> {
+    let mut found = Vec::new();
+    let mut directories = vec![root.to_path_buf()];
+    let mut walked = 0;
+    while let Some(directory) = directories.pop() {
+        // A directory this user cannot read is unreadable inside the sandbox too.
+        let Ok(entries) = fs::read_dir(&directory) else {
+            continue;
+        };
+        for entry in entries {
+            let entry = entry.map_err(err)?;
+            let kind = entry.file_type().map_err(err)?;
+            if denied(&entry.file_name().to_string_lossy()) {
+                if kind.is_dir() || kind.is_file() {
+                    found.push(entry.path());
+                }
+            } else if kind.is_dir() {
+                walked += 1;
+                if walked > MAX_SANDBOX_DIRECTORIES {
+                    return Err(
+                        "the workspace is too large to sandbox; choose a smaller one".into(),
+                    );
+                }
+                directories.push(entry.path());
+            }
+        }
+    }
+    Ok(found)
+}
+/// bwrap arguments that run a program in the workspace with no network, no environment and none
+/// of the host but the Nix store and the system profile. Denied names are masked at every depth.
+/// `writable` is for approved commands; the unapproved git inspection gets a read-only workspace,
+/// and keeps `.git` itself, so repository configuration (filters, drivers) can run nothing that
+/// changes or reaches anything.
+fn sandbox(root: &Path, writable: bool) -> Result<Vec<String>> {
+    let workspace = root.to_str().ok_or("workspace is not UTF-8")?;
+    let mut command = strings(&[
+        "bwrap",
+        "--unshare-all",
+        "--die-with-parent",
+        "--new-session",
+        "--ro-bind",
+        "/nix/store",
+        "/nix/store",
+        "--proc",
+        "/proc",
+        "--dev",
+        "/dev",
+        "--tmpfs",
+        "/tmp",
+        "--dir",
+        "/etc",
+        "--dir",
+        "/run",
+        "--dir",
+        "/home",
+        "--ro-bind",
+        "/run/current-system/sw",
+        "/run/current-system/sw",
+        if writable { "--bind" } else { "--ro-bind" },
+        workspace,
+        workspace,
+        "--chdir",
+        workspace,
+        "--clearenv",
+        "--setenv",
+        "PATH",
+        &std::env::var("LUCY_COMMAND_PATH").unwrap_or_else(|_| "/run/current-system/sw/bin".into()),
+    ]);
+    for path in denied_paths(root)? {
+        if !writable && path.file_name().is_some_and(|name| name == ".git") {
+            continue;
+        }
+        let path = path
+            .to_str()
+            .ok_or("workspace path is not UTF-8")?
+            .to_owned();
+        if path_is_dir(&path) {
+            command.extend(["--tmpfs".into(), path]);
+        } else {
+            command.extend(["--ro-bind".into(), "/dev/null".into(), path]);
+        }
+    }
+    command.push("--".into());
+    Ok(command)
+}
+fn path_is_dir(path: &str) -> bool {
+    fs::symlink_metadata(path).is_ok_and(|m| m.is_dir())
 }
 pub fn path(root: &Path, relative: &str, allow_root: bool) -> Result<PathBuf> {
-    let root = root.canonicalize().map_err(err)?;
+    let root = workspace(root)?;
     let mut target = if Path::new(relative).is_absolute() {
         PathBuf::new()
     } else {
@@ -484,6 +622,19 @@ fn strings(args: &[&str]) -> Vec<String> {
     args.iter().map(|s| (*s).into()).collect()
 }
 
+/// Whether the workspace sandbox can run on this host (bwrap, user namespaces, the system
+/// profile).
+pub fn sandbox_works(root: &Path) -> bool {
+    execute(
+        root,
+        &AtomicBool::new(false),
+        "command",
+        &json!({"argv":["true"]}),
+        None,
+    )
+    .is_ok_and(|result| result["exit_code"] == 0)
+}
+
 pub fn execute(
     root: &Path,
     cancel: &AtomicBool,
@@ -538,14 +689,18 @@ pub fn execute(
             command.extend(strings(&[
                 "--glob",
                 "!.env.*",
+                "--glob",
+                "!.*history",
                 "--",
                 string(args, "query")?,
                 ".",
             ]));
-            run(root, cancel, &command, false, 30)
+            run(&workspace(root)?, cancel, &command, false, 30)
         }
         "git" => {
-            let mut command = strings(&[
+            let root = workspace(root)?;
+            let mut command = sandbox(&root, false)?;
+            command.extend(strings(&[
                 "git",
                 "--no-pager",
                 "--no-optional-locks",
@@ -553,14 +708,14 @@ pub fn execute(
                 "core.fsmonitor=false",
                 "-c",
                 "core.hooksPath=/dev/null",
-            ]);
+            ]));
             command.extend(match string(args, "operation")? {
                 "status" => strings(&["status", "--short"]),
                 "diff" => strings(&["diff", "--no-ext-diff", "--no-textconv", "--"]),
                 "log" => strings(&["log", "-10", "--format=%h %s"]),
                 _ => return Err("unsupported Git inspection".into()),
             });
-            run(root, cancel, &command, false, 30)
+            run(&root, cancel, &command, false, 30)
         }
         "diagnostics" => {
             let mut result = json!({});
@@ -613,56 +768,10 @@ pub fn execute(
         }
         "command" => {
             let task_args = argv(args)?;
-            let workspace = root.to_str().ok_or("workspace is not UTF-8")?;
-            let mut command = strings(&[
-                "bwrap",
-                "--unshare-all",
-                "--die-with-parent",
-                "--new-session",
-                "--ro-bind",
-                "/nix/store",
-                "/nix/store",
-                "--proc",
-                "/proc",
-                "--dev",
-                "/dev",
-                "--tmpfs",
-                "/tmp",
-                "--dir",
-                "/etc",
-                "--dir",
-                "/run",
-                "--dir",
-                "/home",
-                "--ro-bind",
-                "/run/current-system/sw",
-                "/run/current-system/sw",
-                "--bind",
-                workspace,
-                workspace,
-                "--chdir",
-                workspace,
-                "--clearenv",
-                "--setenv",
-                "PATH",
-                &std::env::var("LUCY_COMMAND_PATH")
-                    .unwrap_or_else(|_| "/run/current-system/sw/bin".into()),
-            ]);
-            for part in DENIED {
-                let path = root.join(part);
-                if path.is_dir() {
-                    command.extend(["--tmpfs".into(), path.to_string_lossy().into()]);
-                } else if path.is_file() {
-                    command.extend([
-                        "--ro-bind".into(),
-                        "/dev/null".into(),
-                        path.to_string_lossy().into(),
-                    ]);
-                }
-            }
-            command.push("--".into());
+            let root = workspace(root)?;
+            let mut command = sandbox(&root, true)?;
             command.extend(task_args);
-            run(root, cancel, &command, false, 120)
+            run(&root, cancel, &command, false, 120)
         }
         "http" => {
             let method = string(args, "method")?;

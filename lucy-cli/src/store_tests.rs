@@ -208,3 +208,48 @@ fn cosine_search_checks_model_dimensions_and_invalidates_changed_sources() {
             .is_empty()
     );
 }
+
+#[test]
+fn a_bad_file_is_skipped_and_named_never_fatal() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(dir.path()).unwrap();
+    store.record(&record("good", "a findable note")).unwrap();
+    std::fs::write(dir.path().join("records/broken.json"), b"{\"origin\": ").unwrap();
+    let home = dir.path().join("peer/lucy");
+    std::fs::create_dir_all(&home).unwrap();
+    std::fs::write(home.join("constitution.nibli"), "# Lucy\n").unwrap();
+    std::fs::write(home.join("notes.md"), b"caf\xff\n").unwrap();
+    std::fs::write(home.join("memory.nibli"), "bird(Enma).\n").unwrap();
+    store.register("nibli", &home).unwrap();
+    let sync = store.sync().unwrap();
+    let skipped = sync["skipped"].to_string();
+    assert!(skipped.contains("broken.json"), "{sync}");
+    assert!(skipped.contains("notes.md"), "{sync}");
+    assert_eq!(store.search("findable", "", 8, None).unwrap().len(), 1);
+    assert_eq!(store.search("Enma", "", 8, None).unwrap().len(), 1);
+}
+
+#[test]
+fn restored_peer_conversations_stay_recallable_until_the_peer_files_arrive() {
+    let dir = tempfile::tempdir().unwrap();
+    let host_a = Store::open(&dir.path().join("host-a")).unwrap();
+    let mut private = record("p1", "a private conversation about herons");
+    private.origin = "peer:nibli/private-interactions.nibli".into();
+    host_a.record(&private).unwrap();
+    let manifest = host_a.backup(&dir.path().join("backup")).unwrap();
+    let host_b = Store::open(&dir.path().join("host-b")).unwrap();
+    host_b.restore(&manifest).unwrap();
+    assert_eq!(host_b.search("herons", "", 8, None).unwrap().len(), 1);
+    // STORE.md's order on a new host: restore, then register the peers, whose private
+    // archive is not in Git.
+    let home = dir.path().join("checkout/lucy");
+    std::fs::create_dir_all(&home).unwrap();
+    std::fs::write(home.join("constitution.nibli"), "# Lucy\n").unwrap();
+    host_b.register("nibli", &home).unwrap();
+    host_b.sync().unwrap();
+    assert_eq!(host_b.search("herons", "", 8, None).unwrap().len(), 1);
+    // Once the peer's own file exists, it wins.
+    std::fs::write(home.join("private-interactions.nibli"), "").unwrap();
+    host_b.sync().unwrap();
+    assert!(host_b.search("herons", "", 8, None).unwrap().is_empty());
+}

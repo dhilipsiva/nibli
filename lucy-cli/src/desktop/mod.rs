@@ -240,11 +240,14 @@ pub fn run(args: &[String]) -> Result<()> {
         .get("--workspace")
         .map(PathBuf::from)
         .unwrap_or(std::env::current_dir().map_err(err)?);
-    if command == "ui"
+    // The tools refuse the home directory as a workspace, so the desktop commands started there
+    // work in ~/LucyTasks instead.
+    if matches!(command, "ui" | "chat" | "agent")
         && !options.contains_key("--workspace")
         && std::env::var_os("HOME").is_some_and(|home| workspace == home)
     {
         workspace = workspace.join("LucyTasks");
+        std::fs::create_dir_all(&workspace).map_err(err)?;
     }
     match command {
         "serve" => serve(&root, std::env::var_os("LUCY_IDENTITY").map(PathBuf::from)),
