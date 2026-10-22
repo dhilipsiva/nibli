@@ -94,7 +94,7 @@ pub fn parse_url(url: &str) -> Result<(String, u16, String), String> {
     Ok((host, port, path.to_string()))
 }
 
-fn parse_response(raw: &[u8]) -> Result<Http, String> {
+pub(crate) fn parse_response(raw: &[u8]) -> Result<Http, String> {
     let split = find(raw, b"\r\n\r\n").ok_or("malformed HTTP response (no header end)")?;
     let head = String::from_utf8_lossy(&raw[..split]);
     let mut lines = head.lines();
@@ -293,7 +293,12 @@ pub fn talk(
         )?,
     };
     let loaded = load::load(env, paths, Archives::Read)?;
-    let capsule = capsule::render(&loaded, env);
+    let capsule = format!(
+        "{}{}",
+        capsule::render(&loaded, env),
+        crate::store::context(env, message)
+            .unwrap_or_else(|e| format!("\nShared memory unavailable: {e}\n"))
+    );
     let reply = ollama_chat(
         &env.ollama_url,
         &model,

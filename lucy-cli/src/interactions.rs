@@ -397,6 +397,10 @@ pub fn append(
     validate(&additions)?;
     let contents = render(&existing)?;
     files::write_atomic(archive_path(paths, private), &contents)?;
+    // The archive is the durable copy. A shared index that cannot sync now is rebuilt by the
+    // next recall, which syncs first, so it does not undo a saved message (`lucy remember`
+    // reports it).
+    let _ = crate::store::sync_native(env);
     Ok(incoming)
 }
 

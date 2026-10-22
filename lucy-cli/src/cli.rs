@@ -26,6 +26,31 @@ pub struct Outcome {
 /// The usage text.
 pub const USAGE: &str = "lucy — a persistent identity whose memory is nibli text
 
+  lucy store status|sync              inspect or rebuild the shared private redb index
+  lucy store register --name N --path DIR
+                                     read a local peer's Lucy directory on every recall
+  lucy store search --query TEXT      search all local peers and app conversations
+  lucy store embed [--model MODEL]    generate vectors using local Ollama
+  lucy store backup --to DIR         write a portable snapshot for a private Git backup
+  lucy store restore --from FILE     restore a snapshot; embeddings can be rebuilt
+  lucy agent [TASK...] [--workspace DIR]
+                                     run the shared agent in the terminal; approve actions
+  lucy chat                          interactive agent chat in the current directory
+  lucy ui [--workspace DIR]          native GTK desktop with the same agent tools
+  lucy serve                         run the native Rust local service
+  lucy memory prompt|record|recall|transcript --source APP --session ID
+                                     shared app memory; --channel commentary|final|summary
+  lucy sleep --source APP --session ID
+                                     end activation in one app conversation
+  lucy providers list|models|configure|use|key
+                                     select local or hosted inference; keys use --stdin
+  lucy integrations status|install  inspect or enroll app adapters
+  lucy setup-model                   pull and verify the pinned local chat model
+  lucy archive import|reindex        import visible messages or rebuild the local index
+  lucy mcp --source APP --session ID shared recall for an activated app conversation
+  lucy desktop-hook APP              app lifecycle adapter (JSON on stdin)
+  lucy native-host                   browser native messaging adapter
+
   lucy init [--name NAME] [--here]   create the memory folder (--here: ./lucy in this directory)
   lucy check                         compile every line, conversation archives included; list
                                      the ones that fail (exit 1 if any)
@@ -66,7 +91,8 @@ Environment: LUCY_HOME, LUCY_HOST, LUCY_CAPSULE_MAX_BYTES, LUCY_MAX_CHAIN_DEPTH,
 
 /// Whether the command wants stdin.
 pub fn reads_stdin(args: &[String]) -> bool {
-    args.first().map(String::as_str) == Some("hook")
+    (args.first().map(String::as_str) == Some("store") && args.iter().any(|a| a == "--stdin"))
+        || args.first().map(String::as_str) == Some("hook")
         || (args.first().map(String::as_str) == Some("record")
             && args.iter().any(|a| a == "--stdin" || a == "--json"))
 }
@@ -84,6 +110,12 @@ pub fn run(args: &[String], stdin: &str, env_override: Option<Env>) -> Outcome {
         // Takes its folder only from --home: the process's own memory folder,
         // which holds private files, is never resolved for an export.
         "dataset" => return cmd_dataset(&args[1..]),
+        "store" => {
+            return match crate::store::command(&args[1..], stdin) {
+                Ok(value) => json_out(0, value),
+                Err(error) => harness(&error),
+            };
+        }
         _ => {}
     }
     let env = match env_override {
@@ -120,6 +152,16 @@ pub fn run(args: &[String], stdin: &str, env_override: Option<Env>) -> Outcome {
         "hook" => cmd_hook(&env, &paths, rest, stdin),
         other => harness(&format!("unknown command `{other}`\n\n{USAGE}")),
     };
+    if outcome.code == 0
+        && matches!(command.as_str(), "remember" | "forget" | "migrate-journal")
+        && let Err(error) = crate::store::sync_native(&env)
+    {
+        // The memory folder is the durable copy and the index is rebuilt from it, so the
+        // command still succeeded.
+        outcome.stderr.push_str(&format!(
+            "File saved; shared index needs `lucy store sync`: {error}\n"
+        ));
+    }
     if command != "hook" {
         outcome.stderr.insert_str(
             0,
@@ -340,7 +382,12 @@ fn cmd_wake(env: &Env, paths: &Paths, rest: &[String]) -> Outcome {
         Ok(loaded) => loaded,
         Err(e) => return harness(&e),
     };
-    let capsule = capsule::render(&loaded, env);
+    let mut capsule = capsule::render(&loaded, env);
+    // The capsule comes from the memory folder alone; the shared index only adds to it.
+    match crate::store::context(env, "Lucy memory continuity decisions preferences") {
+        Ok(context) => capsule.push_str(&context),
+        Err(error) => capsule.push_str(&format!("\nShared memory unavailable: {error}\n")),
+    }
     if args.has("--markdown") {
         return text(0, &capsule);
     }

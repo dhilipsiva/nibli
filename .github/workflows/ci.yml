@@ -126,6 +126,25 @@ jobs:
       - name: cargo deny
         run: nix develop --extra-experimental-features 'nix-command flakes' --command cargo deny check advisories bans licenses sources
 
+  # Lucy's desktop server and adapters (the `desktop-ui` feature, GTK 4), in the `lucy` shell
+  # that carries GTK: the desktop tests and clippy with -D warnings.
+  lucy-desktop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
+
+      - name: Configure Nix cache
+        uses: DeterminateSystems/magic-nix-cache-action@84c0677f58dcedf3b91f8223ce36a9ea5b3c84b7 # v15
+
+      - name: Desktop tests and clippy (just ci-lucy-desktop)
+        run: nix develop --extra-experimental-features 'nix-command flakes' .#lucy --command just ci-lucy-desktop
+
   # Built-in authorization (nibli-auth + axum example compile). Parallel to
   # the native and WASM gates. The Python bridge has its own `auth-py` job below.
   auth:

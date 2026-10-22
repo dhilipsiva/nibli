@@ -422,6 +422,9 @@ Blocked followers:
 
 ## Lucy D
 
+- **Do not rebase or delete `origin/lucy-desktop` (2026-10-22) until P1-NIXOS-01 re-pins NixOS.**
+  `NixOS/flake.nix` pins its head `0f3a317`. The desktop rewrite that was uncommitted on main is on
+  `lucy-desktop-rust`, from `3516ca7`.
 - **Engine performance finding (2026-09-15, reproducer below).** On a KB holding Lucy's
   constitution (`lucy-cli/constitution/lucy.nibli`: `derived_only` heads, `exist -> person`,
   `leave -> person`, three `entitled(every person, event { P() })` floor lines, two
