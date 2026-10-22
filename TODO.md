@@ -168,6 +168,22 @@ rewriting history. Leave a manifest of sha256 sums and a `paper/README.md` link.
 
 ---
 
+## The red backlog — empty (checked 2026-10-22)
+
+- `nibli-engine/tests/known_failures.rs`, `known_failures_fatal.rs` and
+  `nibli-reason/tests/known_failures_fol.rs` hold no ignored test: every reproducer from the
+  2026-06-10 panel was fixed and promoted to a live guard, and `just verify-harness` (part of
+  `just ci`) runs all three. A new defect joins one of them ignored, with an entry here naming
+  it, and is promoted when fixed.
+- The six ignored tests elsewhere wait on an environment, not a defect: five in
+  `nibli-host/src/recovery_tests.rs` need the built component and run in
+  `just smoke-host-state-controls` (`ci-wasm`). **`native_compute_backend_real_python_tenfa`**
+  *(effort: small)* in `nibli-engine/tests/integration.rs` starts the Python backend and runs
+  only by hand (`cargo test -p nibli-engine --test integration -- --ignored`): wire it into a
+  recipe, or say in its comment why it stays manual.
+
+---
+
 ## Chain — case-study corpora (1 and 2 independent)
 
 The `obliged`-rendering entry that used to head this chain LANDED 2026-08-17, together
