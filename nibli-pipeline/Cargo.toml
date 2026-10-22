@@ -2,6 +2,7 @@
 name = "nibli-pipeline"
 description = "Pipeline orchestrator — chains nibli-kr, smuni, logji into a single WASM component"
 version.workspace = true
+rust-version.workspace = true
 edition = "2024"
 license.workspace = true
 repository.workspace = true

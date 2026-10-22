@@ -2,6 +2,7 @@
 name = "nibli-lexigen"
 description = "Corpus regeneration tool — report-only refresh of the committed lexicon"
 version.workspace = true
+rust-version.workspace = true
 edition = "2024"
 license.workspace = true
 repository.workspace = true

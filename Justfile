@@ -478,6 +478,24 @@ check:
 fmt-check:
     cargo fmt --all --check
 
+# The whole workspace under clippy with -D warnings, as `just ci` runs it. nibli-pipeline
+# (generated WIT bindings) and nibli-auth-py (a PyO3 cdylib built by maturin) stay out.
+clippy-workspace:
+    cargo clippy --workspace --all-targets --exclude nibli-pipeline --exclude nibli-auth-py -- -D warnings
+
+# Build on exactly the declared MSRV: the dev shell's rustc must be `rust-version`, then the
+# workspace checks on it (CI's `msrv` job).
+msrv-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    msrv=$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["workspace"]["package"]["rust-version"])')
+    have=$(rustc --version | cut -d' ' -f2)
+    case "$have" in
+      "$msrv" | "$msrv".*) echo "rustc $have is the declared MSRV $msrv" ;;
+      *) echo "rustc $have is not the declared MSRV $msrv" >&2; exit 1 ;;
+    esac
+    cargo check --locked --workspace --all-targets --exclude nibli-pipeline --exclude nibli-auth-py
+
 # Strict clippy gate for the runtime crates under active hardening
 clippy-runtime:
     cargo clippy --no-deps -p nibli-protocol -p nibli-render -p nibli-store -p nibli-engine -p nibli --all-targets -- -D warnings
@@ -565,7 +583,7 @@ test-all: test test-engine test-store test-backend test-validate
 
 # CI gate for the hardened runtime surface (fast; native only — no WASM build).
 # For the WASM behavioral smokes too, run `just ci-all`.
-ci: fmt-check release-check clippy-runtime clippy-lucy test test-lucy verify-lucy-pins verify-lucy-plugin check-lucy-memory test-engine test-host test-validate test-ui test-formalize test-backend test-store test-persistence-replay verify-harness verify-soundness verify-alias-map verify-nibli-kr-seam verify-dict verify-pins verify-adjudication verify-proofs verify-grammar-parity verify-doc-fences verify-book-vocab
+ci: fmt-check release-check clippy-workspace clippy-lucy test test-lucy verify-lucy-pins verify-lucy-plugin check-lucy-memory test-engine test-host test-validate test-ui test-formalize test-backend test-store test-persistence-replay verify-harness verify-soundness verify-alias-map verify-nibli-kr-seam verify-dict verify-pins verify-adjudication verify-proofs verify-grammar-parity verify-doc-fences verify-book-vocab
 
 # WASM behavioral gate (pre-push, NOT part of `ci` — needs the WASM build, like
 # verify-book-capture). Bundles the gasnu smokes; each depends on

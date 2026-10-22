@@ -109,10 +109,10 @@ fn free_vars_inner(
     match form {
         IrForm::Predicate { args, .. } => {
             for arg in args {
-                if let IrTerm::Variable(spur) = arg {
-                    if !bound.contains(spur) {
-                        out.push(resolve(compiler, spur));
-                    }
+                if let IrTerm::Variable(spur) = arg
+                    && !bound.contains(spur)
+                {
+                    out.push(resolve(compiler, spur));
                 }
             }
         }

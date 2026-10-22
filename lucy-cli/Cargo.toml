@@ -2,6 +2,7 @@
 name = "lucy-cli"
 description = "Lucy D: a persistent identity whose memory is plain nibli text, loaded by whatever agent session runs her"
 version.workspace = true
+rust-version.workspace = true
 edition = "2024"
 license.workspace = true
 repository.workspace = true

@@ -34,6 +34,9 @@ resolver = "2"
 # copies the build (DEPLOY.md §2b) — flip it then.
 [workspace.package]
 version = "0.2.0"
+# The MSRV is the flake-pinned stable toolchain (rust-overlay; rustc 1.94.0), checked by
+# `just msrv-check` in CI. It moves deliberately, with a CHANGELOG line.
+rust-version = "1.94"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/dhilipsiva/nibli"
 homepage = "https://dhilipsiva.github.io/nibli/"

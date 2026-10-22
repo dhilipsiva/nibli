@@ -114,7 +114,6 @@ fn extract(rel: &str, src: &str) -> Vec<Stmt> {
                 }
                 if let Some((fch, flen, rest)) = fence_run(t) {
                     let lang = rest
-                        .trim()
                         .split_whitespace()
                         .next()
                         .unwrap_or("")

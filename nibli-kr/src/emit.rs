@@ -25,6 +25,7 @@
 //! 5. NAME↔PRONOUN COLLISION: a single-word Name that lowercases onto a
 //!    pronoun constant (`Me` → `me`) is rejected — the two would silently
 //!    co-refer in the fact store.
+//!
 //! Tag (`via`) predicates additionally need arity ≥ 2, mirroring
 //! nibli-semantics's fail-closed modal check (spec §5). Error precedence is
 //! the retired pass's source order: per-argument place checks run BEFORE the

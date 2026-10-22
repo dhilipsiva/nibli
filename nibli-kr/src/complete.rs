@@ -162,16 +162,16 @@ pub fn complete(line: &str, cursor: usize, opts: CompleteOpts<'_>) -> CompleteRe
     let mut items: Vec<Completion> = Vec::new();
 
     // Place labels of the open call take priority when the cursor is in args.
-    if let Some(rel) = open_call_relation(line, span_start) {
-        if let Some(places) = places_for_relation(rel) {
-            for p in places {
-                if prefix.is_empty() || p.starts_with(&prefix_lower) || starts_with_ci(p, prefix) {
-                    items.push(Completion {
-                        value: (*p).to_string(),
-                        description: Some(format!("place of {rel}")),
-                        kind: CompletionKind::Place,
-                    });
-                }
+    if let Some(rel) = open_call_relation(line, span_start)
+        && let Some(places) = places_for_relation(rel)
+    {
+        for p in places {
+            if prefix.is_empty() || p.starts_with(&prefix_lower) || starts_with_ci(p, prefix) {
+                items.push(Completion {
+                    value: (*p).to_string(),
+                    description: Some(format!("place of {rel}")),
+                    kind: CompletionKind::Place,
+                });
             }
         }
     }
@@ -314,7 +314,7 @@ fn places_for_relation(rel: &str) -> Option<&'static [&'static str]> {
 }
 
 /// Relation name of the innermost unclosed `name(` to the left of `pos`.
-fn open_call_relation<'a>(line: &'a str, pos: usize) -> Option<&'a str> {
+fn open_call_relation(line: &str, pos: usize) -> Option<&str> {
     let head = &line[..pos];
     let mut depth = 0i32;
     let bytes = head.as_bytes();
@@ -370,13 +370,13 @@ fn token_prefix(line: &str, cursor: usize) -> (usize, usize, &str) {
     // if we have `foo:bar` that's rare; `destination:` means place complete after `:`.
     // When prefix contains `:` not at start, take only the part after the last `:`.
     let raw = &line[start..cursor];
-    if let Some(idx) = raw.rfind(':') {
-        if idx > 0 {
-            // `place:` — completing after colon with empty prefix for place labels
-            // or continuing a typed place. Prefer segment after colon.
-            let after = idx + 1;
-            return (start + after, cursor, &raw[after..]);
-        }
+    if let Some(idx) = raw.rfind(':')
+        && idx > 0
+    {
+        // `place:` — completing after colon with empty prefix for place labels
+        // or continuing a typed place. Prefer segment after colon.
+        let after = idx + 1;
+        return (start + after, cursor, &raw[after..]);
     }
     (start, cursor, raw)
 }
@@ -390,7 +390,7 @@ fn starts_with_ci(s: &str, prefix: &str) -> bool {
         && s.as_bytes()
             .iter()
             .zip(prefix.as_bytes())
-            .all(|(a, b)| a.to_ascii_lowercase() == b.to_ascii_lowercase())
+            .all(|(a, b)| a.eq_ignore_ascii_case(b))
 }
 
 fn floor_char_boundary(s: &str, i: usize) -> usize {
@@ -427,7 +427,7 @@ mod tests {
     #[test]
     fn completes_predicate_dog() {
         let r = complete("do", 2, CompleteOpts::default());
-        assert!(vals(&r).iter().any(|v| *v == "dog"), "{:?}", vals(&r));
+        assert!(vals(&r).contains(&"dog"), "{:?}", vals(&r));
     }
 
     #[test]

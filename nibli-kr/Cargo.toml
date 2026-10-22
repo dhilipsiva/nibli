@@ -2,6 +2,7 @@
 name = "nibli-kr"
 description = "The nibli KR surface-syntax front-end — pest grammar, validating emit, render"
 version.workspace = true
+rust-version.workspace = true
 edition = "2024"
 license.workspace = true
 readme.workspace = true

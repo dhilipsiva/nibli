@@ -72,10 +72,11 @@ fn suffix_rel(rel: &str, f: Flavor) -> String {
     if f == Flavor::Bare {
         return rel.to_string();
     }
-    if let Some((base, n)) = rel.rsplit_once("_x") {
-        if !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()) {
-            return format!("{base}{}_x{n}", f.suffix());
-        }
+    if let Some((base, n)) = rel.rsplit_once("_x")
+        && !n.is_empty()
+        && n.chars().all(|c| c.is_ascii_digit())
+    {
+        return format!("{base}{}_x{n}", f.suffix());
     }
     format!("{rel}{}", f.suffix())
 }
@@ -119,12 +120,12 @@ pub fn flavorize(
     //    exotic placements fail closed inside the rewrite (`copy_suffixed`).
     for buf in kb.iter().chain(std::iter::once(query)) {
         for node in &buf.nodes {
-            if let LogicNode::Predicate((rel, _)) = node {
-                if rel.starts_with("__abs_") {
-                    return Err(
-                        "tense with abstraction (suffix would break opaque identity)".to_string(),
-                    );
-                }
+            if let LogicNode::Predicate((rel, _)) = node
+                && rel.starts_with("__abs_")
+            {
+                return Err(
+                    "tense with abstraction (suffix would break opaque identity)".to_string(),
+                );
             }
         }
         // A top-level negated (`na`) query in a tensed program is not a shape the gate
@@ -159,10 +160,10 @@ pub fn flavorize(
 /// Rewrite one buffer: a fact/query or a rule, always as one output buffer.
 fn rewrite_buffer(buf: &LogicBuffer) -> Result<Vec<LogicBuffer>, String> {
     // Rule shape: sole root ForAll.
-    if let [r] = buf.roots.as_slice() {
-        if matches!(node_at(buf, *r)?, LogicNode::ForAllNode(_)) {
-            return rewrite_rule(buf, *r);
-        }
+    if let [r] = buf.roots.as_slice()
+        && matches!(node_at(buf, *r)?, LogicNode::ForAllNode(_))
+    {
+        return rewrite_rule(buf, *r);
     }
     // Fact/query shape: each root is a (possibly tensed) event group / atom.
     let mut nodes: Vec<LogicNode> = Vec::new();
@@ -363,7 +364,7 @@ mod tests {
         let mut qn = Vec::new();
         let qroot = group1(&mut qn, "_ev0", "gerku", con("adam"));
         let query = buf(qn, vec![qroot]);
-        let (kb2, q2) = flavorize(&[fact.clone()], &query).unwrap();
+        let (kb2, q2) = flavorize(std::slice::from_ref(&fact), &query).unwrap();
         assert_eq!(kb2, vec![fact]);
         assert_eq!(q2, query);
     }

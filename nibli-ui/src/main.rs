@@ -593,7 +593,7 @@ async fn formalize_translate(cfg: &LlmConfig, english: &str) -> Result<String, S
 }
 
 /// The local gates, in the fail-fast order `validate` runs them.
-const GATE_ORDER: [&'static str; 3] = ["nibli-kr", "semantics", "round-trip"];
+const GATE_ORDER: [&str; 3] = ["nibli-kr", "semantics", "round-trip"];
 
 /// Derive the per-gate chips from an attempt's error. `validate` is fail-fast in
 /// [`GATE_ORDER`], so `error.gate()` is the failing gate; earlier gates
@@ -627,15 +627,6 @@ fn gate_chips(error: &Option<nibli_formalize::gates::GateError>) -> Vec<(String,
             (format!("{name} {glyph}"), class)
         })
         .collect()
-}
-
-fn truncate(s: &str, max: usize) -> String {
-    if s.chars().count() > max {
-        let cut: String = s.chars().take(max).collect();
-        format!("{cut}\u{2026}")
-    } else {
-        s.to_string()
-    }
 }
 
 /// Collapse the agent's attempts into UI trace rows (per-gate chips + first
@@ -1286,7 +1277,7 @@ fn QueryTabs(
                     (false, ActiveTab::Source) => {
                         let hint = match settings.read().as_ref().map(|c| c.llm.provider.short_name()) {
                             Some(p) => format!("english claim \u{2192} nibli KR via {p}"),
-                            None => format!("english claim \u{2192} nibli KR \u{2014} configure an llm"),
+                            None => "english claim \u{2192} nibli KR \u{2014} configure an llm".to_string(),
                         };
                         rsx! {
                             span { class: "nb-eyebrow", "query \u{2014} state a claim in english" }
@@ -1670,7 +1661,7 @@ fn SourceTabs(
                         } else {
                             match settings.read().as_ref().map(|c| c.llm.provider.short_name()) {
                                 Some(p) => format!("english \u{2192} nibli KR via {p}"),
-                                None => format!("english \u{2192} nibli KR \u{2014} configure an llm"),
+                                None => "english \u{2192} nibli KR \u{2014} configure an llm".to_string(),
                             }
                         };
                         rsx! {

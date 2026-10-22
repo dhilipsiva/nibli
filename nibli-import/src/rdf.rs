@@ -160,15 +160,14 @@ fn tokenize_triple(
                                     None => break,
                                 }
                             }
-                            if type_iri.contains("integer")
+                            if (type_iri.contains("integer")
                                 || type_iri.contains("decimal")
                                 || type_iri.contains("double")
-                                || type_iri.contains("float")
+                                || type_iri.contains("float"))
+                                && let Ok(n) = lit.parse::<f64>()
                             {
-                                if let Ok(n) = lit.parse::<f64>() {
-                                    tokens.push(Term::NumericLiteral(n));
-                                    is_numeric = true;
-                                }
+                                tokens.push(Term::NumericLiteral(n));
+                                is_numeric = true;
                             }
                         }
                     }

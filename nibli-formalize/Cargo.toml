@@ -1,6 +1,7 @@
 [package]
 name = "nibli-formalize"
 version.workspace = true
+rust-version.workspace = true
 edition = "2024"
 description = "Agentic English-to-KR formalizer: LLM + validation gates + self-correction loop"
 license.workspace = true

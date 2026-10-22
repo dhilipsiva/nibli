@@ -314,6 +314,7 @@ fn project_atoms(atoms: &[StoredFact]) -> Result<(Vec<Atom>, Vec<StoredFact>), P
 
 /// As [`project_atoms`], additionally returning the ABSTRACTION MARKER relations that were
 /// suppressed. The caller must refuse those explicitly — see [`ProjectedRule::suppressed`].
+#[allow(clippy::type_complexity)] // (atoms, suppressed markers, refusals): read where it is built
 fn project_atoms_inner(
     atoms: &[StoredFact],
 ) -> Result<(Vec<Atom>, Vec<StoredFact>, Vec<String>), ProjectErr> {

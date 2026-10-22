@@ -103,10 +103,10 @@ impl Authorizer {
         self.core = CoreSession::new();
         self.core.set_verbose(false);
         self.assert_text_ids(BUILTIN_POLICY)?;
-        if let Some(extra) = extra_kr {
-            if !extra.trim().is_empty() {
-                self.assert_text_ids(extra)?;
-            }
+        if let Some(extra) = extra_kr
+            && !extra.trim().is_empty()
+        {
+            self.assert_text_ids(extra)?;
         }
         self.policy_loaded = true;
         self.policy_version = POLICY_VERSION.to_string();

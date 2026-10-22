@@ -754,14 +754,14 @@ impl KnowledgeBase {
             // Restore the configured depth on EVERY exit, including the error
             // path (e.g. cooperative cancellation), so an aborted query never
             // leaves a reusable KB pinned at a partial deepening depth.
-            let result =
-                match self.run_entailment_check_with_compute_memo(&logic, &mut compute_memo) {
-                    Ok(result) => result,
-                    Err(e) => {
-                        self.inner.borrow_mut().max_chain_depth = configured_max;
-                        return Err(e);
-                    }
-                };
+            let result = match self.run_entailment_check_with_compute_memo(logic, &mut compute_memo)
+            {
+                Ok(result) => result,
+                Err(e) => {
+                    self.inner.borrow_mut().max_chain_depth = configured_max;
+                    return Err(e);
+                }
+            };
             if !matches!(result, QueryResult::ResourceExceeded(ResourceKind::Depth)) {
                 self.inner.borrow_mut().max_chain_depth = configured_max;
                 return Ok(result);
@@ -1184,6 +1184,12 @@ fn reasoning_message(error: NibliError) -> String {
     match error {
         NibliError::Reasoning(message) => message,
         other => other.to_string(),
+    }
+}
+
+impl Default for KnowledgeBase {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -2394,12 +2400,12 @@ impl KnowledgeBase {
         //    Query semantics (NAF/CWA) are unaffected — negatives never enter
         //    the positive store.
         fn flat_equals_pair(group: &[StoredFact]) -> Option<(&GroundTerm, &GroundTerm)> {
-            if group.len() == 1 {
-                if let StoredFact::Bare(gf) = &group[0] {
-                    if gf.relation == "equals" && gf.args.len() == 2 {
-                        return Some((&gf.args[0], &gf.args[1]));
-                    }
-                }
+            if group.len() == 1
+                && let StoredFact::Bare(gf) = &group[0]
+                && gf.relation == "equals"
+                && gf.args.len() == 2
+            {
+                return Some((&gf.args[0], &gf.args[1]));
             }
             None
         }

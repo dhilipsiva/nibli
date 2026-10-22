@@ -586,10 +586,11 @@ impl SemanticCompiler {
             IrForm::Predicate { relation, mut args } => {
                 let rel_name = interner.resolve(&relation);
                 if rel_name.contains("_x") {
-                    if rel_name.ends_with("_x1") && args.len() >= 2 {
-                        if matches!(&args[1], IrTerm::Unspecified) {
-                            args[1] = IrTerm::Variable(var);
-                        }
+                    if rel_name.ends_with("_x1")
+                        && args.len() >= 2
+                        && matches!(&args[1], IrTerm::Unspecified)
+                    {
+                        args[1] = IrTerm::Variable(var);
                     }
                 } else {
                     let first_unspec = args.iter().position(|a| matches!(a, IrTerm::Unspecified));

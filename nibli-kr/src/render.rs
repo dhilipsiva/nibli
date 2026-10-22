@@ -93,7 +93,7 @@ impl<'a> Renderer<'a> {
             Sentence::Simple(proposition) => (self.proposition(proposition)?, PREC_ATOM),
             Sentence::Prenex((vars, body)) => {
                 // The prenex variable names already carry their `$` sigil.
-                let vars = vars.iter().cloned().collect::<Vec<_>>().join(", ");
+                let vars = vars.to_vec().join(", ");
                 (format!("all {vars}: {}", self.sentence(*body, 0)?), 0)
             }
             Sentence::Quantified((kind, var, restr, clause, body)) => {

@@ -191,6 +191,7 @@ mod tests {
     /// are correctly skipped rather than reported as failures:
     ///   1. inside double quotes (`"animal(every dog)."`), and
     ///   2. alone on an indented line (the binder-block demo).
+    ///
     /// A prose sentence that merely ends in `).` — "…or a relative clause
     /// (below)." — carries quotes elsewhere on the line, so rule 1 applies to
     /// it and only its QUOTED spans are considered; none of those terminate.

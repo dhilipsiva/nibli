@@ -2,6 +2,7 @@
 name = "nibli-lexicon"
 description = "The committed English predicate corpus — the dictionary as validated Rust source"
 version.workspace = true
+rust-version.workspace = true
 edition = "2024"
 license.workspace = true
 readme.workspace = true

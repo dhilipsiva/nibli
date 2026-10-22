@@ -382,10 +382,10 @@ mod tests {
         let mut offenders = Vec::new();
         let mut prev: Option<&str> = None;
         for e in corpus_entries() {
-            if let Some(p) = prev {
-                if p >= e.name {
-                    offenders.push(format!("order: {p:?} !< {:?}", e.name));
-                }
+            if let Some(p) = prev
+                && p >= e.name
+            {
+                offenders.push(format!("order: {p:?} !< {:?}", e.name));
             }
             prev = Some(e.name);
             if !ident_ok(e.name) || is_reserved(e.name) || has_double_underscore(e.name) {
@@ -394,10 +394,10 @@ mod tests {
             if !places_ok(e.places) {
                 offenders.push(format!("places: {:?} {:?}", e.name, e.places));
             }
-            if let Some(s) = e.swap {
-                if !(2..=e.places.len() as u8).contains(&s.with) {
-                    offenders.push(format!("swap: {:?} x1↔x{}", e.name, s.with));
-                }
+            if let Some(s) = e.swap
+                && !(2..=e.places.len() as u8).contains(&s.with)
+            {
+                offenders.push(format!("swap: {:?} x1↔x{}", e.name, s.with));
             }
         }
         assert!(offenders.is_empty(), "{}", offenders.join("\n"));
