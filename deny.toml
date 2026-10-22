@@ -53,6 +53,8 @@ exceptions = [
     # Repository-specific, one crate per entry, for example vendored prose or certificates:
     # { allow = ["CC-BY-4.0"], crate = "<crate>" },
     # { allow = ["CDLA-Permissive-2.0"], crate = "webpki-roots" },
+    # Mozilla's root certificates, which lucy-cli's reqwest (rustls) bundles.
+    { allow = ["CDLA-Permissive-2.0"], crate = "webpki-roots" },
 ]
 
 [licenses.private]
