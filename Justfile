@@ -493,7 +493,7 @@ clippy-workspace:
     cargo clippy --workspace --all-targets --exclude nibli-pipeline --exclude nibli-auth-py -- -D warnings
 
 # Build on exactly the declared MSRV: the dev shell's rustc must be `rust-version`, then the
-# workspace checks on it (CI's `msrv` job).
+# whole workspace, committed bindings and the PyO3 crate included, checks on it (CI's `msrv` job).
 msrv-check:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -503,7 +503,7 @@ msrv-check:
       "$msrv" | "$msrv".*) echo "rustc $have is the declared MSRV $msrv" ;;
       *) echo "rustc $have is not the declared MSRV $msrv" >&2; exit 1 ;;
     esac
-    cargo check --locked --workspace --all-targets --exclude nibli-pipeline --exclude nibli-auth-py
+    cargo check --locked --workspace --all-targets
 
 # Strict clippy gate for the runtime crates under active hardening
 clippy-runtime:
