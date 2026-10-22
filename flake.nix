@@ -112,8 +112,10 @@
             lean4
 
             # Node.js runs the wasm-pack test legs (verify-wasm-node; wasm-bindgen
-            # tests under node).
+            # tests under node), and wasm-pack drives them; without it the V8 leg
+            # of the three-way determinism check cannot run in CI.
             nodejs
+            wasm-pack
 
             # libFuzzer harness driver for the three fuzz targets (`just fuzz-ci`);
             # runs against the pinned nightly via NIBLI_NIGHTLY_BIN.

@@ -100,6 +100,11 @@ here first.
   wasmtime advisories `deny.toml` ignored; host errors are now `wasmtime::Error`.
   The toolchain stops at 1.96: from 1.97 the wasm32-wasip2 standard library imports
   a monotonic clock, outside the component's documented import surface.
+  Wasmtime 49 also charges fuel for bulk memory work (`memory.copy`, `memory.fill`,
+  `memory.init`, per byte) and for `memory.grow` (per page), so the same query uses
+  slightly more fuel: +1.4% for a small script and +0.19% for the determinism
+  corpus. A query that fit just inside its `NIBLI_FUEL` or `:fuel` budget can now
+  stop with `RESOURCE_EXCEEDED (fuel)`.
 
 ### Fixed
 

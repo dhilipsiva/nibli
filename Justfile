@@ -644,10 +644,14 @@ smoke-host-determinism: build-wasm build-host
 
 # Three-way determinism, V8 leg: run the nibli-wasm pipeline (wasm32-unknown-unknown)
 # under node via wasm-bindgen-test — the browser-class runtime of the live playground.
-# Skips cleanly when wasm-pack is unavailable.
+# The default dev shell has wasm-pack. Outside it the leg skips locally, but fails in
+# CI (CI set), so a green CI run always includes the V8 leg.
 verify-wasm-node:
     @if ! command -v wasm-pack >/dev/null 2>&1; then \
-        echo 'verify-wasm-node SKIPPED: wasm-pack unavailable (cargo install wasm-pack)'; \
+        if [ -n "${CI:-}" ]; then \
+            echo 'verify-wasm-node FAILED: wasm-pack unavailable in CI; the V8 determinism leg must run'; exit 1; \
+        fi; \
+        echo 'verify-wasm-node SKIPPED: wasm-pack unavailable (nix develop provides it)'; \
     else \
         wasm-pack test --node nibli-wasm; \
     fi
