@@ -1072,3 +1072,29 @@ fn address_command_and_harness_errors() {
     assert_eq!(lucy(&env, &[]).code, 0);
     assert!(lucy(&env, &["--help"]).stdout.contains("lucy wake"));
 }
+
+#[test]
+fn an_unavailable_shared_index_never_costs_the_memory_folder() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut env = env_in(dir.path());
+    // A regular file where the store directory should be: the shared index cannot open.
+    let store = dir.path().join("store");
+    std::fs::write(&store, "not a directory").unwrap();
+    env.store = Some(store);
+    assert_eq!(lucy(&env, &["init"]).code, 0);
+    let wake = lucy(&env, &["wake", "--markdown"]);
+    assert_eq!(wake.code, 0, "{}{}", wake.stdout, wake.stderr);
+    assert!(
+        wake.stdout.contains("Shared memory unavailable"),
+        "{}",
+        wake.stdout
+    );
+    let remember = lucy(&env, &["remember", "The heron came back."]);
+    assert_eq!(remember.code, 0, "{}\n{}", remember.stdout, remember.stderr);
+    assert!(
+        remember.stderr.contains("lucy store sync"),
+        "{}",
+        remember.stderr
+    );
+    assert!(read(&Paths::new(&env.home).interactions).contains("heron"));
+}

@@ -18,3 +18,4 @@ classifiers = [
 [tool.maturin]
 manifest-path = "Cargo.toml"
 module-name = "nibli_auth_native"
+features = ["extension-module"]

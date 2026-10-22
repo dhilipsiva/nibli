@@ -139,6 +139,7 @@ fn schema_to_gemini(t: &ToolDecl) -> Value {
 ///   - a `oneOf`/`anyOf` whose branches are all `{const: …}` (JSON Schema's common
 ///     enum-with-per-value-descriptions shape) → a single `enum`; any other combinator
 ///     is sanitized branch-by-branch under `anyOf` (Gemini's supported combinator).
+///
 /// Only the Gemini path needs this — Anthropic/OpenAI accept the raw JSON Schema.
 fn sanitize_gemini_schema(v: &Value) -> Value {
     match v {

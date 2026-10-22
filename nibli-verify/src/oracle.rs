@@ -86,10 +86,10 @@ fn classify(stdout: &str) -> Oracle {
 /// Extract the token after `SZS status` from a `% SZS status Theorem for foo` line.
 fn parse_szs_status(stdout: &str) -> Option<String> {
     for line in stdout.lines() {
-        if let Some(rest) = line.split("SZS status").nth(1) {
-            if let Some(tok) = rest.split_whitespace().next() {
-                return Some(tok.to_string());
-            }
+        if let Some(rest) = line.split("SZS status").nth(1)
+            && let Some(tok) = rest.split_whitespace().next()
+        {
+            return Some(tok.to_string());
         }
     }
     None

@@ -18,8 +18,13 @@
           inherit system overlays;
         };
 
-        # Latest stable Rust with WASI targets (wasip2 used by cargo-component)
-        rustToolchain = pkgs.rust-bin.stable.latest.default.override {
+        # An exact stable release with WASI targets (wasip2 used by cargo-component), equal to
+        # `rust-version` in Cargo.toml. wasmtime 49 needs rustc 1.96 or later, and from 1.97 the
+        # wasm32-wasip2 standard library imports wasi:clocks/monotonic-clock even for a bare
+        # println!, which `just smoke-component-imports` refuses (the component's documented
+        # surface has no clock): 1.96 is the release that satisfies both. Moving past it means
+        # deciding that surface again. Pinned, so updating rust-overlay never moves it silently.
+        rustToolchain = pkgs.rust-bin.stable."1.96.1".default.override {
           extensions = [ "rust-src" "rust-analyzer" "clippy" "rustfmt" ];
           targets = [ "wasm32-wasip1" "wasm32-wasip2" "wasm32-unknown-unknown" ];
         };
@@ -77,6 +82,8 @@
             # Core Compiler
             rustToolchain
             just
+            # Supply-chain gate (deny.toml): `cargo deny check advisories bans licenses sources`
+            cargo-deny
 
             # WASI Component Model Tooling
             wasm-tools          # Low-level WASM/WIT manipulation
@@ -110,8 +117,10 @@
             lean4
 
             # Node.js runs the wasm-pack test legs (verify-wasm-node; wasm-bindgen
-            # tests under node).
+            # tests under node), and wasm-pack drives them; without it the V8 leg
+            # of the three-way determinism check cannot run in CI.
             nodejs
+            wasm-pack
 
             # libFuzzer harness driver for the three fuzz targets (`just fuzz-ci`);
             # runs against the pinned nightly via NIBLI_NIGHTLY_BIN.

@@ -84,8 +84,10 @@ fn decode_lower_hex(input: &str) -> Option<Vec<u8>> {
     };
     Some(
         bytes
-            .chunks_exact(2)
-            .map(|pair| (nibble(pair[0]) << 4) | nibble(pair[1]))
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|[high, low]| (nibble(*high) << 4) | nibble(*low))
             .collect(),
     )
 }

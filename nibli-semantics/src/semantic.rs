@@ -128,6 +128,12 @@ pub struct SemanticCompiler {
     prenex_vars: std::collections::HashSet<lasso::Spur>,
 }
 
+impl Default for SemanticCompiler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SemanticCompiler {
     /// Creates a new compiler with empty interner and zeroed counters.
     pub fn new() -> Self {

@@ -2,6 +2,7 @@
 name = "nibli-auth-py"
 description = "PyO3 bindings for nibli-auth (module: nibli_auth_native)"
 version.workspace = true
+rust-version.workspace = true
 edition = "2024"
 publish = false
 license.workspace = true
@@ -14,4 +15,9 @@ crate-type = ["cdylib"]
 
 [dependencies]
 nibli-auth = { workspace = true }
-pyo3 = { version = "0.24", features = ["extension-module"] }
+pyo3 = "0.29"
+
+[features]
+# Set by maturin (pyproject.toml) for the wheel: an extension module must not link libpython,
+# while a native `cargo test --workspace --lib` must.
+extension-module = ["pyo3/extension-module"]

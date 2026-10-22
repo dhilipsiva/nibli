@@ -2,6 +2,7 @@
 name = "nibli-session"
 description = "The shared session core: the ONE compile/assert/query chain every runtime surface wraps"
 version.workspace = true
+rust-version.workspace = true
 edition = "2024"
 license.workspace = true
 readme.workspace = true

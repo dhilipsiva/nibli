@@ -14,11 +14,12 @@ truth for recipe contents.
 | `just ci-wasm` | The WASM behavioral gate: builds the component + host once, then runs 15 `smoke-host-*` scripts (trap recovery, persist-replay, statement split, schema-v3 migration, NAF note, CWA-false note, `:debug`, proof collapse, backend-unavailable, quiet, strict, existential-import, materialize, determinism, script) plus `verify-wasm-node` |
 | `just ci-all` | `ci` + `ci-wasm` — the comprehensive pre-push gate |
 
-GitHub Actions (`.github/workflows/ci.yml`) runs four parallel jobs, all
-inside the Nix shell: **runtime-ci** (`just build-wasm` — bindings are
-generated, gitignored, absent on fresh checkouts — then `just ci-all`),
-**auth** (`just test-auth` + `check-auth-axum`), **docs** (`just docs`), and
-**fuzz** (`just fuzz-ci`, time-boxed).
+GitHub Actions (`.github/workflows/ci.yml`) runs parallel jobs, all inside
+the Nix shell: **native** (`just build-wasm` — bindings are generated,
+gitignored, absent on fresh checkouts — then `just ci`), **wasm**
+(`just ci-wasm`), **auth** (`just test-auth` + `check-auth-axum`),
+**auth-py** (`just test-auth-py`), **docs** (`just docs`), and **fuzz**
+(`just fuzz-ci`, time-boxed). Together, native and wasm are `just ci-all`.
 
 ## The `verify-*` gates
 

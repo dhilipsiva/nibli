@@ -2,6 +2,7 @@
 name = "nibli-auth"
 description = "Built-in authorization: warm Authorizer over nibli-session (policy once, ephemeral context, decision cache)"
 version.workspace = true
+rust-version.workspace = true
 edition = "2024"
 publish = false
 license.workspace = true

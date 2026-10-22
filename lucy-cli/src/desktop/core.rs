@@ -24,6 +24,14 @@ pub struct Session {
 }
 type Sessions = BTreeMap<(String, String), Arc<Mutex<Session>>>;
 struct Running(Arc<Mutex<Session>>);
+/// The service-wide mark of a running `gui` action, cleared when dropped.
+pub(super) struct GuiRunning(Arc<AtomicBool>);
+impl Drop for GuiRunning {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::SeqCst);
+    }
+}
+const GUI_RUNNING: &str = "synthetic input is running; try again when it finishes";
 impl Running {
     fn begin(session: &Arc<Mutex<Session>>) -> Result<Self> {
         let mut state = session.lock().map_err(err)?;
@@ -48,6 +56,8 @@ pub struct Service {
     clients: Mutex<BTreeMap<(String, String), String>>,
     inference: Mutex<()>,
     embedding: Arc<AtomicBool>,
+    // Set while an approved `gui` action runs: no proposal can be made or approved meanwhile.
+    gui: Arc<AtomicBool>,
     #[cfg(test)]
     replies: Mutex<Option<std::collections::VecDeque<Value>>>,
 }
@@ -93,6 +103,7 @@ impl Service {
             clients: Mutex::new(BTreeMap::new()),
             inference: Mutex::new(()),
             embedding: Arc::new(AtomicBool::new(false)),
+            gui: Arc::new(AtomicBool::new(false)),
             #[cfg(test)]
             replies: Mutex::new(None),
         }
@@ -409,16 +420,28 @@ impl Service {
             "tool" => self.propose(&session, string(&req, "name")?, req["arguments"].clone()),
             "approve" => {
                 self.controlled(&req)?;
+                if self.gui.load(Ordering::SeqCst) {
+                    return Err(GUI_RUNNING.into());
+                }
                 let _running = Running::begin(&session)?;
                 let (proposal, workspace) = {
                     let mut s = session.lock().map_err(err)?;
-                    (
-                        s.pending
-                            .remove(string(&req, "action")?)
-                            .ok_or("action expired or already handled")?,
-                        s.workspace.clone(),
-                    )
+                    let proposal = s
+                        .pending
+                        .remove(string(&req, "action")?)
+                        .ok_or("action expired or already handled")?;
+                    (proposal, s.workspace.clone())
                 };
+                // Synthetic input reaches whatever window has focus, the approval controls of
+                // any Lucy window or terminal included, so an approved `gui` action first
+                // withdraws every pending proposal in every conversation, and no proposal can be
+                // made or approved until it finishes: none can be approved by it.
+                let gui = (proposal["tool"] == "gui" && req["allow"].as_bool() == Some(true))
+                    .then(|| self.begin_gui())
+                    .transpose()?;
+                if gui.is_some() {
+                    self.withdraw_everywhere()?;
+                }
                 let tool = string(&proposal, "tool")?;
                 let result = if req["allow"].as_bool() == Some(true) {
                     actions::execute(
@@ -431,6 +454,7 @@ impl Service {
                 } else {
                     json!({"denied":true})
                 };
+                drop(gui);
                 {
                     let mut s = session.lock().map_err(err)?;
                     if let Some(last) = s.messages.last_mut()
@@ -456,6 +480,27 @@ impl Service {
             }
             _ => Err("unsupported operation".into()),
         }
+    }
+    pub(super) fn begin_gui(&self) -> Result<GuiRunning> {
+        if self.gui.swap(true, Ordering::SeqCst) {
+            return Err(GUI_RUNNING.into());
+        }
+        Ok(GuiRunning(self.gui.clone()))
+    }
+    /// Clears every conversation's pending proposals. The sessions are collected first and locked
+    /// one at a time, never while the map is held (`status` takes the map, then each session).
+    fn withdraw_everywhere(&self) -> Result<()> {
+        let sessions: Vec<_> = self
+            .sessions
+            .lock()
+            .map_err(err)?
+            .values()
+            .cloned()
+            .collect();
+        for session in sessions {
+            session.lock().map_err(err)?.pending.clear();
+        }
+        Ok(())
     }
     fn create(&self, source: &str, id: &str, workspace: &str) -> Result<Arc<Mutex<Session>>> {
         let workspace = std::fs::canonicalize(workspace).map_err(err)?;
@@ -489,15 +534,21 @@ impl Service {
             return Err("request cancelled".into());
         }
         if actions::needs_approval(name, &args)? {
+            if self.gui.load(Ordering::SeqCst) {
+                return Err(GUI_RUNNING.into());
+            }
             let proposal = actions::preview(&workspace, name, args)?;
             let id = token()?;
             let mut visible = proposal.clone();
             visible.as_object_mut().unwrap().remove("before");
-            session
-                .lock()
-                .map_err(err)?
-                .pending
-                .insert(id.clone(), proposal);
+            let mut s = session.lock().map_err(err)?;
+            // Checked again under the session lock: a `gui` approval sets the flag before it
+            // withdraws, taking each session's lock, so no proposal lands after the withdrawal.
+            if self.gui.load(Ordering::SeqCst) {
+                return Err(GUI_RUNNING.into());
+            }
+            s.pending.insert(id.clone(), proposal);
+            drop(s);
             Ok(json!({"pending_action":id,"preview":visible}))
         } else {
             actions::execute(&workspace, &cancel, name, &args, None)

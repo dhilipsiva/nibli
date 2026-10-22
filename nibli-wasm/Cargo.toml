@@ -1,6 +1,7 @@
 [package]
 name = "nibli-wasm"
 version.workspace = true
+rust-version.workspace = true
 edition = "2021"
 description = "Browser wasm wrapper — gerna/nibli-semantics/logji + nibli-lexicon behind wasm-bindgen, no persistence. Powers the live Transparency Triad demo at dhilipsiva.dev/nibli."
 license.workspace = true

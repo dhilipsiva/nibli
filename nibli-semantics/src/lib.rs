@@ -66,14 +66,14 @@ fn validate_ast_buffer(ast: &flat_ast::AstBuffer) -> Result<(), NibliError> {
     // compile as a variable those passes ignore (a free-variable leak) and a
     // pronoun-spelled one would re-render as a reparse-flipping pronoun.
     for (i, argument) in ast.arguments.iter().enumerate() {
-        if let Argument::Variable(v) = argument {
-            if !v.starts_with('$') {
-                return Err(NibliError::Semantic(format!(
-                    "corrupt AST buffer: argument index {i} is a Variable \
+        if let Argument::Variable(v) = argument
+            && !v.starts_with('$')
+        {
+            return Err(NibliError::Semantic(format!(
+                "corrupt AST buffer: argument index {i} is a Variable \
                      without its `$` sigil ({v:?}) — rejecting the whole \
                      buffer (fail closed)"
-                )));
-            }
+            )));
         }
     }
 

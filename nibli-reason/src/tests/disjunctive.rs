@@ -461,8 +461,8 @@ fn test_disjunctive_conclusion_registers_constraint() {
         "a disjunctive conclusion registers one integrity constraint"
     );
     assert!(
-        inner.universal_rules.get("danlu").is_none()
-            && inner.universal_rules.get("xanlu").is_none(),
+        !inner.universal_rules.contains_key("danlu")
+            && !inner.universal_rules.contains_key("xanlu"),
         "no Horn rule is registered for a disjunctive head (deriving a disjunct is unsound)"
     );
 }
@@ -574,7 +574,7 @@ fn test_mixed_conclusion_registers_horn_and_constraint() {
     );
     let inner = kb.inner.borrow();
     assert!(
-        inner.universal_rules.get("broda").is_some(),
+        inner.universal_rules.contains_key("broda"),
         "the non-Or conjunct compiles to a Horn rule"
     );
     assert_eq!(
@@ -583,8 +583,8 @@ fn test_mixed_conclusion_registers_horn_and_constraint() {
         "the Or conjunct compiles to one integrity constraint"
     );
     assert!(
-        inner.universal_rules.get("danlu").is_none()
-            && inner.universal_rules.get("xanlu").is_none(),
+        !inner.universal_rules.contains_key("danlu")
+            && !inner.universal_rules.contains_key("xanlu"),
         "no Horn rule is registered for a disjunct (deriving one is unsound)"
     );
 }
@@ -620,7 +620,7 @@ fn test_mixed_conclusion_derives_horn_and_fires_constraint() {
         "retraction clears the constraint"
     );
     assert!(
-        inner.universal_rules.get("broda").is_none(),
+        !inner.universal_rules.contains_key("broda"),
         "retraction clears the Horn rule"
     );
 }
@@ -723,7 +723,7 @@ fn test_mixed_conclusion_event_decomposed_no_registry_pollution() {
     );
     let inner = kb.inner.borrow();
     assert!(
-        inner.universal_rules.get("broda").is_some(),
+        inner.universal_rules.contains_key("broda"),
         "the Horn conjunct (broda) compiles"
     );
     assert_eq!(

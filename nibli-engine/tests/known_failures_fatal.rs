@@ -27,8 +27,8 @@
 //! process-crash DoS.
 //!
 //! Post-fix behaviour (asserted below): the query returns gracefully with a
-//! non-True result instead of aborting. The `#[ignore]` has been removed, so this
-//! is now a normal regression test, safe to run alongside the rest of the suite.
+//! non-True result instead of aborting. It is no longer ignored, so this is a normal
+//! regression test, safe to run alongside the rest of the suite (`just verify-harness`).
 
 use nibli_engine::{EngineLogicalTerm, NibliEngine};
 

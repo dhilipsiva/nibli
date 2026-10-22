@@ -68,7 +68,28 @@ JSON body for approval, limit response size and support cancellation. Service to
 show status or propose start/stop/restart; system services retain host authorization.
 Writes
 show a diff and refuse a file changed since preview. Commands require approval and
-run in a bubblewrap workspace sandbox without network or host credentials. GUI,
+run in a bubblewrap workspace sandbox without network or host credentials. Git
+inspection runs in the same sandbox with the workspace read-only, so a repository's
+own configuration (filters, drivers) cannot change or reach anything; it needs the
+repository's root (or a linked worktree's) as the workspace, and never prints paths
+under a denied name. The tools refuse as a workspace the home directory or anything
+above it, anything inside a denied name (`~/.ssh`, a repository's `.git`), and the
+runtime and kernel trees (`/run`, `$XDG_RUNTIME_DIR`, `/proc`, `/sys`, `/dev`);
+`lucy ui`, `chat` and `agent` started in the home directory use `~/LucyTasks`.
+Credential and configuration names (`.git`, `.ssh`, `.env*`, `.netrc`, `.docker`,
+`.kube`, shell histories and the rest of the list in `actions.rs`) are refused at
+any depth and masked inside the sandbox, as are sockets, FIFOs and directories the
+user cannot read. A file an approved command creates is not masked until the next
+action. The terminal takes an approval only from a terminal, after discarding input
+typed before the prompt; model text, proposals and memories are shown with control,
+format and line-separator characters escaped. GUI key events are shown by name.
+Synthetic input presses only listed keys (letters, digits, punctuation, Shift,
+Space, Tab, Backspace, Escape, F1–F12, the arrows, Home, End, Page Up/Down,
+Delete), must release every key, clicks only a whole left or right click, and
+types no text containing a line break or a backslash; this is best effort, and the flushed
+terminal-only read is what protects the terminal's prompt. Approving a GUI action
+withdraws every pending proposal in every conversation, and no proposal can be
+made or approved until it finishes. GUI,
 screenshots, app launches and privileged diagnostics require explicit approval;
 privileged helpers additionally require polkit authentication. GUI actions check
 an active unlocked Wayland login and stop on lock/cancel. This is polling, not a

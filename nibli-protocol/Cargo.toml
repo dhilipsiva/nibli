@@ -2,6 +2,7 @@
 name = "nibli-protocol"
 description = "Shared wire-format proof-trace types and the JSON helpers"
 version.workspace = true
+rust-version.workspace = true
 edition = "2024"
 license.workspace = true
 readme.workspace = true

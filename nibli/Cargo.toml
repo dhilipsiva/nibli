@@ -2,6 +2,7 @@
 name = "nibli"
 description = "Native debug REPL and validation tooling"
 version.workspace = true
+rust-version.workspace = true
 edition = "2024"
 license.workspace = true
 readme.workspace = true

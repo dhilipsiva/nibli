@@ -38,6 +38,14 @@ here first.
 
 ### Changed
 
+- **WIT 0.12.0** (`wit/world.wit`; the engine changes are in
+  [ENGINE_UPGRADE_0_2.md](ENGINE_UPGRADE_0_2.md)): `list-assertion-records`
+  reports every retained assertion identity, active or withdrawn;
+  `restore-withdrawn-assertion` reserves a withdrawn identity during trusted
+  replay without decoding its payload; `set-max-chain-depth` is fallible
+  (zero is refused) and `max-chain-depth` reports the setting. Proof envelopes
+  are schema 2 and carry `profile.max_chain_depth`.
+
 - **Text compute registration is now explicitly corpus-scoped (decided
   2026-08-13; no Rust signature or WIT ABI change).**
   `register_compute_predicate("name")` / `register-compute-predicate(name)` is
@@ -93,6 +101,26 @@ here first.
   `smoke-host-compute-registration-order` gates. GUARANTEES §Compute Result
   Lifecycle states the contract; §Disclosed Sharp Edges carries the residuals
   and the re-open trigger.
+
+- **Toolchain and Wasmtime:** the flake pins rustc 1.96.1, and `rust-version` is
+  1.96 (it was the flake's stable, 1.94.0). nibli-host moves from wasmtime and
+  wasmtime-wasi 41.0.3 to 49.0.4, which needs rustc 1.96 or later, closing the 30
+  wasmtime advisories `deny.toml` ignored; host errors are now `wasmtime::Error`.
+  The toolchain stops at 1.96: from 1.97 the wasm32-wasip2 standard library imports
+  a monotonic clock, outside the component's documented import surface.
+  Wasmtime 49 also charges fuel for bulk memory work (`memory.copy`, `memory.fill`,
+  `memory.init`, per byte) and for `memory.grow` (per page), so the same query uses
+  slightly more fuel: +1.4% for a small script and +0.19% for the determinism
+  corpus. A query that fit just inside its `NIBLI_FUEL` or `:fuel` budget can now
+  stop with `RESOURCE_EXCEEDED (fuel)`.
+
+- **A plain checkout builds:** `nibli-pipeline/src/bindings.rs` is committed and
+  checked against `wit/` (`just verify-bindings`), the component's exports are
+  compiled only for wasm32 so native test binaries link, and nibli-auth-py's PyO3
+  `extension-module` is a crate feature that maturin turns on.
+- **No open advisories:** PyO3 0.24 → 0.29 (nibli-auth-py), crossbeam-epoch,
+  memmap2 and rand patch releases; `deny.toml`'s ignore list is empty and the CI
+  `deny` job is blocking.
 
 ### Fixed
 

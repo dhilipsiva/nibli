@@ -10,9 +10,40 @@ use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
+// Names no tool reads, lists, searches or lets a command see, at any depth: credentials, agent
+// state, and configuration other programs execute.
 const DENIED: &[&str] = &[
-    ".git", ".ssh", ".gnupg", ".aws", ".codex", ".claude", ".agents", ".config", ".local", ".env",
+    ".git",
+    ".ssh",
+    ".gnupg",
+    ".aws",
+    ".azure",
+    ".codex",
+    ".claude",
+    ".agents",
+    ".config",
+    ".local",
+    ".env",
+    ".envrc",
+    ".direnv",
+    ".netrc",
+    ".git-credentials",
+    ".gitconfig",
+    ".docker",
+    ".kube",
+    ".npmrc",
+    ".pypirc",
+    ".mozilla",
+    ".var",
+    ".password-store",
+    ".pki",
+    ".terraform.d",
+    ".vault-token",
+    "credentials.toml",
 ];
+// A bounded walk finds denied names for the sandbox; a larger workspace is refused, not
+// half-masked.
+const MAX_SANDBOX_DIRECTORIES: usize = 100_000;
 pub fn schemas() -> Value {
     let definitions = [
         (
@@ -125,10 +156,224 @@ pub fn needs_approval(name: &str, args: &Value) -> Result<bool> {
     })
 }
 fn denied(name: &str) -> bool {
-    DENIED.contains(&name) || name.starts_with(".env.")
+    DENIED.contains(&name)
+        || name.starts_with(".env.")
+        || (name.starts_with('.') && name.ends_with("history"))
+}
+/// The canonical workspace. Refused: the home directory and its ancestors (they hold the
+/// credentials and shell startup files the deny list can only partly name), anything inside a
+/// denied name (`~/.ssh`, a repository's `.git`), and the runtime and kernel trees, which hold
+/// sockets to the session bus and to Lucy's own service.
+fn workspace(root: &Path) -> Result<PathBuf> {
+    let root = root.canonicalize().map_err(err)?;
+    let refused = |what: &str| {
+        Err(format!(
+            "tools need a project directory as the workspace, not {what}"
+        ))
+    };
+    if let Some(home) = std::env::var_os("HOME").and_then(|h| Path::new(&h).canonicalize().ok())
+        && home.starts_with(&root)
+    {
+        return refused("the home directory or above it");
+    }
+    if root
+        .components()
+        .any(|c| denied(&c.as_os_str().to_string_lossy()))
+    {
+        return refused("a credential or configuration directory");
+    }
+    let runtime = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from);
+    for system in ["/run", "/proc", "/sys", "/dev"]
+        .into_iter()
+        .map(PathBuf::from)
+        .chain(runtime)
+    {
+        let system = system.canonicalize().unwrap_or(system);
+        if root.starts_with(&system) || system.starts_with(&root) {
+            return refused("a runtime or system directory");
+        }
+    }
+    Ok(root)
+}
+/// What the sandbox hides, found by a bounded walk that never follows symlinks: every denied
+/// name; every socket and FIFO, each a door to another process (the session bus, Lucy's own
+/// service); and every directory this user cannot list, which an approved command could chmod
+/// open and a planted git filter could read inside. Each entry says whether it is a directory;
+/// the unlistable directories are also returned on their own, so git can be told to skip them.
+type Masks = (Vec<(PathBuf, bool)>, Vec<PathBuf>);
+fn masks(root: &Path) -> Result<Masks> {
+    use std::os::unix::fs::FileTypeExt;
+    let mut found = Vec::new();
+    let mut unlistable = Vec::new();
+    let mut directories = vec![root.to_path_buf()];
+    let mut walked = 0;
+    while let Some(directory) = directories.pop() {
+        let entries = match fs::read_dir(&directory) {
+            Ok(entries) => entries,
+            Err(_) if directory != root => {
+                found.push((directory.clone(), true));
+                unlistable.push(directory);
+                continue;
+            }
+            Err(error) => return Err(err(error)),
+        };
+        for entry in entries {
+            let entry = entry.map_err(err)?;
+            let kind = entry.file_type().map_err(err)?;
+            let path = entry.path();
+            if kind.is_socket() || kind.is_fifo() {
+                found.push((path, false));
+            } else if denied(&entry.file_name().to_string_lossy()) {
+                if kind.is_dir() || kind.is_file() {
+                    found.push((path, kind.is_dir()));
+                }
+            } else if kind.is_dir() {
+                walked += 1;
+                if walked > MAX_SANDBOX_DIRECTORIES {
+                    return Err(
+                        "the workspace is too large to sandbox; choose a smaller one".into(),
+                    );
+                }
+                directories.push(path);
+            }
+        }
+    }
+    Ok((found, unlistable))
+}
+/// bwrap arguments that run a program in the workspace with no network, no environment and none
+/// of the host but the Nix store, the system profile and `git_dirs`, with `masks` hidden.
+/// `writable` is for approved commands; the unapproved git inspection gets a read-only workspace
+/// and keeps the repository's own `.git`, so repository configuration (filters, drivers) can run
+/// nothing that changes or reaches anything. Also returns the unlistable directories it masked.
+fn sandbox(
+    root: &Path,
+    writable: bool,
+    git_dirs: &[PathBuf],
+) -> Result<(Vec<String>, Vec<PathBuf>)> {
+    let utf8 = |path: &Path| {
+        path.to_str()
+            .map(str::to_owned)
+            .ok_or_else(|| "workspace path is not UTF-8".to_owned())
+    };
+    let workspace = utf8(root)?;
+    let mut command = strings(&[
+        "bwrap",
+        "--unshare-all",
+        "--die-with-parent",
+        "--new-session",
+        "--ro-bind",
+        "/nix/store",
+        "/nix/store",
+        "--proc",
+        "/proc",
+        "--dev",
+        "/dev",
+        "--tmpfs",
+        "/tmp",
+        "--dir",
+        "/etc",
+        "--dir",
+        "/run",
+        "--dir",
+        "/home",
+        "--ro-bind",
+        "/run/current-system/sw",
+        "/run/current-system/sw",
+    ]);
+    for directory in git_dirs {
+        let directory = utf8(directory)?;
+        command.extend(["--ro-bind".into(), directory.clone(), directory]);
+    }
+    command.extend([
+        if writable { "--bind" } else { "--ro-bind" }.into(),
+        workspace.clone(),
+        workspace.clone(),
+        "--chdir".into(),
+        workspace,
+        "--clearenv".into(),
+        "--setenv".into(),
+        "PATH".into(),
+        std::env::var("LUCY_COMMAND_PATH").unwrap_or_else(|_| "/run/current-system/sw/bin".into()),
+    ]);
+    let (hidden, unlistable) = masks(root)?;
+    for (path, directory) in hidden {
+        if !writable && path == root.join(".git") {
+            continue;
+        }
+        let path = utf8(&path)?;
+        if directory {
+            command.extend(["--tmpfs".into(), path]);
+        } else {
+            command.extend(["--ro-bind".into(), "/dev/null".into(), path]);
+        }
+    }
+    command.push("--".into());
+    Ok((command, unlistable))
+}
+/// The git directories a read-only inspection needs bound besides the workspace, which must be
+/// the repository's root (from a subdirectory git would need the whole work tree). A linked
+/// worktree's `.git` is a file naming its git directory elsewhere; it is bound, with the
+/// repository's common directory, only when it has a real worktree's layout and git's own
+/// back-pointer names this workspace's `.git`, so a planted `.git` file cannot name some other
+/// directory, or another repository's worktree, into the sandbox.
+fn git_dirs(root: &Path) -> Result<Vec<PathBuf>> {
+    let dot = root.join(".git");
+    match fs::symlink_metadata(&dot) {
+        Ok(meta) if meta.is_dir() => Ok(Vec::new()),
+        Ok(meta) if meta.is_file() => {
+            let named = fs::read_to_string(&dot).map_err(err)?;
+            let named = named
+                .strip_prefix("gitdir:")
+                .map(str::trim)
+                .ok_or("the workspace's .git file names no git directory")?;
+            let gitdir = root.join(named).canonicalize().map_err(err)?;
+            let common = fs::read_to_string(gitdir.join("commondir"))
+                .map_err(|_| "the workspace's .git file does not name a linked worktree")?;
+            let common = gitdir.join(common.trim()).canonicalize().map_err(err)?;
+            let back = fs::read_to_string(gitdir.join("gitdir"))
+                .ok()
+                .and_then(|back| gitdir.join(back.trim()).canonicalize().ok());
+            if gitdir.parent() != Some(common.join("worktrees").as_path())
+                || !common.join("HEAD").is_file()
+                || !common.join("objects").is_dir()
+                || back != dot.canonicalize().ok()
+            {
+                return Err("the workspace's .git file does not name a linked worktree".into());
+            }
+            Ok(vec![common, gitdir])
+        }
+        _ => match root.ancestors().skip(1).find(|a| a.join(".git").exists()) {
+            Some(top) => Err(format!(
+                "git inspection needs the repository root as the workspace ({})",
+                top.display()
+            )),
+            None => Ok(Vec::new()),
+        },
+    }
+}
+/// Pathspecs that keep every denied name and every masked unlistable directory out of git's
+/// output: the sandbox masks those paths, so git would otherwise report them as deleted and print
+/// their committed content.
+fn git_pathspecs(root: &Path, unlistable: &[PathBuf]) -> Result<Vec<String>> {
+    let mut specs = vec![".".to_owned()];
+    for directory in unlistable {
+        let relative = directory.strip_prefix(root).map_err(err)?;
+        let relative = relative.to_str().ok_or("workspace path is not UTF-8")?;
+        specs.push(format!(":(exclude,literal){relative}"));
+    }
+    for name in DENIED
+        .iter()
+        .copied()
+        .filter(|name| *name != ".git")
+        .chain([".env.*", ".*history"])
+    {
+        specs.push(format!(":(exclude,glob)**/{name}"));
+        specs.push(format!(":(exclude,glob)**/{name}/**"));
+    }
+    Ok(specs)
 }
 pub fn path(root: &Path, relative: &str, allow_root: bool) -> Result<PathBuf> {
-    let root = root.canonicalize().map_err(err)?;
+    let root = workspace(root)?;
     let mut target = if Path::new(relative).is_absolute() {
         PathBuf::new()
     } else {
@@ -174,6 +419,192 @@ pub fn path(root: &Path, relative: &str, allow_root: bool) -> Result<PathBuf> {
     }
     Ok(resolved)
 }
+/// Linux input event names for the keys a `gui` proposal presses, so its approval reads
+/// "Y down", not "21:1".
+fn key_name(code: u16) -> String {
+    const NAMES: &[(u16, &str)] = &[
+        (1, "ESC"),
+        (2, "1"),
+        (3, "2"),
+        (4, "3"),
+        (5, "4"),
+        (6, "5"),
+        (7, "6"),
+        (8, "7"),
+        (9, "8"),
+        (10, "9"),
+        (11, "0"),
+        (12, "MINUS"),
+        (13, "EQUAL"),
+        (14, "BACKSPACE"),
+        (15, "TAB"),
+        (16, "Q"),
+        (17, "W"),
+        (18, "E"),
+        (19, "R"),
+        (20, "T"),
+        (21, "Y"),
+        (22, "U"),
+        (23, "I"),
+        (24, "O"),
+        (25, "P"),
+        (26, "LEFTBRACE"),
+        (27, "RIGHTBRACE"),
+        (28, "ENTER"),
+        (29, "LEFTCTRL"),
+        (30, "A"),
+        (31, "S"),
+        (32, "D"),
+        (33, "F"),
+        (34, "G"),
+        (35, "H"),
+        (36, "J"),
+        (37, "K"),
+        (38, "L"),
+        (39, "SEMICOLON"),
+        (40, "APOSTROPHE"),
+        (41, "GRAVE"),
+        (42, "LEFTSHIFT"),
+        (43, "BACKSLASH"),
+        (44, "Z"),
+        (45, "X"),
+        (46, "C"),
+        (47, "V"),
+        (48, "B"),
+        (49, "N"),
+        (50, "M"),
+        (51, "COMMA"),
+        (52, "DOT"),
+        (53, "SLASH"),
+        (54, "RIGHTSHIFT"),
+        (56, "LEFTALT"),
+        (57, "SPACE"),
+        (58, "CAPSLOCK"),
+        (59, "F1"),
+        (60, "F2"),
+        (61, "F3"),
+        (62, "F4"),
+        (63, "F5"),
+        (64, "F6"),
+        (65, "F7"),
+        (66, "F8"),
+        (67, "F9"),
+        (68, "F10"),
+        (87, "F11"),
+        (88, "F12"),
+        (96, "KPENTER"),
+        (97, "RIGHTCTRL"),
+        (100, "RIGHTALT"),
+        (102, "HOME"),
+        (103, "UP"),
+        (104, "PAGEUP"),
+        (105, "LEFT"),
+        (106, "RIGHT"),
+        (107, "END"),
+        (108, "DOWN"),
+        (109, "PAGEDOWN"),
+        (110, "INSERT"),
+        (111, "DELETE"),
+        (125, "LEFTMETA"),
+        (126, "RIGHTMETA"),
+    ];
+    NAMES
+        .iter()
+        .find(|(known, _)| *known == code)
+        .map_or_else(|| format!("KEY_{code}"), |(_, name)| (*name).to_owned())
+}
+/// Checks a `gui` argv and returns the key events it presses, by name. Synthetic input must not
+/// be able to answer an approval prompt, so it may not press Enter, keypad Enter or Linefeed, may
+/// hold no modifier but Shift (Ctrl, Alt, Meta and CapsLock, often remapped to Ctrl, turn
+/// ordinary keys into control characters on any layout), must release every key it presses, and
+/// may not type control characters or backslashes (ydotool expands backslash escapes). Keys come
+/// from a short list and a click is a whole left or right click. This is best effort: the
+/// terminal's flushed, terminal-only read is what protects its prompt.
+fn gui_events(args: &[String]) -> Result<Option<Vec<String>>> {
+    let unsupported = || Err::<_, String>("unsupported literal mouse/keyboard action".into());
+    match args[0].as_str() {
+        "type" if args.len() == 3 && args[1] == "--" && args[2].len() <= 4096 => {
+            if args[2]
+                .chars()
+                .any(|c| (c.is_control() && c != '\t') || c == '\\')
+            {
+                return Err(
+                    "synthetic input may not type line breaks, control characters or \
+                     backslashes"
+                        .into(),
+                );
+            }
+            Ok(None)
+        }
+        "key" if args.len() > 1 && args.len() <= 65 => {
+            let mut held = std::collections::BTreeSet::new();
+            let mut names = Vec::new();
+            for event in &args[1..] {
+                let Some((code, state)) = event.split_once(':') else {
+                    return unsupported();
+                };
+                let Some(code) = code.parse::<u16>().ok().filter(|n| *n <= 999) else {
+                    return unsupported();
+                };
+                let down = match state {
+                    "1" => true,
+                    "0" => false,
+                    _ => return unsupported(),
+                };
+                if matches!(code, 28 | 96 | 101) {
+                    return Err("synthetic input may not press Enter or submit a line".into());
+                }
+                if matches!(code, 29 | 97 | 56 | 100 | 125 | 126 | 58 | 127) {
+                    return Err("synthetic input may hold Shift but no other modifier".into());
+                }
+                // Letters, digits, punctuation, Shift, Space, Tab, Backspace, Escape, F1-F12,
+                // the arrows, Home, End, Page Up/Down and Delete: nothing that pastes (Insert),
+                // powers off, sleeps or presses a mouse button.
+                if !matches!(code, 1..=27 | 30..=54 | 57 | 59..=68 | 87 | 88 | 102..=109 | 111) {
+                    return Err(format!("synthetic input may not press key {code}"));
+                }
+                if down {
+                    held.insert(code);
+                } else {
+                    held.remove(&code);
+                }
+                names.push(format!(
+                    "{} {}",
+                    key_name(code),
+                    if down { "down" } else { "up" }
+                ));
+            }
+            if !held.is_empty() {
+                return Err("synthetic input must release every key it presses".into());
+            }
+            Ok(Some(names))
+        }
+        // 0xC0 and 0xC1: the left or right button pressed and released. Not a button left
+        // down, nor the middle button, which pastes.
+        "click"
+            if args.len() == 2 && matches!(args[1].as_str(), "0xC0" | "0xc0" | "0xC1" | "0xc1") =>
+        {
+            Ok(None)
+        }
+        "mousemove" => {
+            let positions = if args.get(1).is_some_and(|s| s == "--absolute") {
+                &args[2..]
+            } else {
+                &args[1..]
+            };
+            if positions.len() == 2
+                && positions
+                    .iter()
+                    .all(|s| s.parse::<i32>().is_ok_and(|n| n.unsigned_abs() <= 99999))
+            {
+                Ok(None)
+            } else {
+                unsupported()
+            }
+        }
+        _ => unsupported(),
+    }
+}
 fn argv(args: &Value) -> Result<Vec<String>> {
     let values = args["argv"]
         .as_array()
@@ -207,8 +638,13 @@ pub fn preview(root: &Path, name: &str, args: Value) -> Result<Value> {
         value["diff"] = json!({"path":value["arguments"]["path"],"before":before,"after":value["arguments"]["text"]});
         value["before"] = json!({"path":target,"exists":target.exists(),"text":before});
     }
-    if matches!(name, "command" | "gui") {
+    if name == "command" {
         argv(&value["arguments"])?;
+    }
+    if name == "gui"
+        && let Some(keys) = gui_events(&argv(&value["arguments"])?)?
+    {
+        value["keys"] = json!(keys);
     }
     if name == "http" {
         let url =
@@ -310,6 +746,19 @@ fn strings(args: &[&str]) -> Vec<String> {
     args.iter().map(|s| (*s).into()).collect()
 }
 
+/// Whether the workspace sandbox can run on this host (bwrap, user namespaces, the system
+/// profile).
+pub fn sandbox_works(root: &Path) -> bool {
+    execute(
+        root,
+        &AtomicBool::new(false),
+        "command",
+        &json!({"argv":["true"]}),
+        None,
+    )
+    .is_ok_and(|result| result["exit_code"] == 0)
+}
+
 pub fn execute(
     root: &Path,
     cancel: &AtomicBool,
@@ -364,14 +813,18 @@ pub fn execute(
             command.extend(strings(&[
                 "--glob",
                 "!.env.*",
+                "--glob",
+                "!.*history",
                 "--",
                 string(args, "query")?,
                 ".",
             ]));
-            run(root, cancel, &command, false, 30)
+            run(&workspace(root)?, cancel, &command, false, 30)
         }
         "git" => {
-            let mut command = strings(&[
+            let root = workspace(root)?;
+            let (mut command, unlistable) = sandbox(&root, false, &git_dirs(&root)?)?;
+            command.extend(strings(&[
                 "git",
                 "--no-pager",
                 "--no-optional-locks",
@@ -379,14 +832,24 @@ pub fn execute(
                 "core.fsmonitor=false",
                 "-c",
                 "core.hooksPath=/dev/null",
-            ]);
-            command.extend(match string(args, "operation")? {
-                "status" => strings(&["status", "--short"]),
-                "diff" => strings(&["diff", "--no-ext-diff", "--no-textconv", "--"]),
+            ]));
+            let operation = string(args, "operation")?;
+            command.extend(match operation {
+                "status" => strings(&["status", "--short", "--ignore-submodules=all"]),
+                "diff" => strings(&[
+                    "diff",
+                    "--no-ext-diff",
+                    "--no-textconv",
+                    "--ignore-submodules=all",
+                ]),
                 "log" => strings(&["log", "-10", "--format=%h %s"]),
                 _ => return Err("unsupported Git inspection".into()),
             });
-            run(root, cancel, &command, false, 30)
+            if operation != "log" {
+                command.push("--".into());
+                command.extend(git_pathspecs(&root, &unlistable)?);
+            }
+            run(&root, cancel, &command, false, 30)
         }
         "diagnostics" => {
             let mut result = json!({});
@@ -439,56 +902,10 @@ pub fn execute(
         }
         "command" => {
             let task_args = argv(args)?;
-            let workspace = root.to_str().ok_or("workspace is not UTF-8")?;
-            let mut command = strings(&[
-                "bwrap",
-                "--unshare-all",
-                "--die-with-parent",
-                "--new-session",
-                "--ro-bind",
-                "/nix/store",
-                "/nix/store",
-                "--proc",
-                "/proc",
-                "--dev",
-                "/dev",
-                "--tmpfs",
-                "/tmp",
-                "--dir",
-                "/etc",
-                "--dir",
-                "/run",
-                "--dir",
-                "/home",
-                "--ro-bind",
-                "/run/current-system/sw",
-                "/run/current-system/sw",
-                "--bind",
-                workspace,
-                workspace,
-                "--chdir",
-                workspace,
-                "--clearenv",
-                "--setenv",
-                "PATH",
-                &std::env::var("LUCY_COMMAND_PATH")
-                    .unwrap_or_else(|_| "/run/current-system/sw/bin".into()),
-            ]);
-            for part in DENIED {
-                let path = root.join(part);
-                if path.is_dir() {
-                    command.extend(["--tmpfs".into(), path.to_string_lossy().into()]);
-                } else if path.is_file() {
-                    command.extend([
-                        "--ro-bind".into(),
-                        "/dev/null".into(),
-                        path.to_string_lossy().into(),
-                    ]);
-                }
-            }
-            command.push("--".into());
+            let root = workspace(root)?;
+            let (mut command, _) = sandbox(&root, true, &[])?;
             command.extend(task_args);
-            run(root, cancel, &command, false, 120)
+            run(&root, cancel, &command, false, 120)
         }
         "http" => {
             let method = string(args, "method")?;
@@ -587,41 +1004,7 @@ pub fn execute(
         }
         "gui" => {
             let args = argv(args)?;
-            let valid = match args[0].as_str() {
-                "type" => args.len() == 3 && args[1] == "--" && args[2].len() <= 4096,
-                "key" => {
-                    args.len() > 1
-                        && args.len() <= 65
-                        && args[1..].iter().all(|s| {
-                            s.split_once(':').is_some_and(|(n, v)| {
-                                n.parse::<u16>().is_ok_and(|n| n <= 999) && ["0", "1"].contains(&v)
-                            })
-                        })
-                }
-                "click" => {
-                    args.len() == 2
-                        && args[1].strip_prefix("0x").is_some_and(|s| {
-                            s.len() <= 2
-                                && !s.is_empty()
-                                && s.bytes().all(|b| b.is_ascii_hexdigit())
-                        })
-                }
-                "mousemove" => {
-                    let positions = if args.get(1).is_some_and(|s| s == "--absolute") {
-                        &args[2..]
-                    } else {
-                        &args[1..]
-                    };
-                    positions.len() == 2
-                        && positions
-                            .iter()
-                            .all(|s| s.parse::<i32>().is_ok_and(|n| n.unsigned_abs() <= 99999))
-                }
-                _ => false,
-            };
-            if !valid {
-                return Err("unsupported literal mouse/keyboard action".into());
-            }
+            gui_events(&args)?;
             let helper =
                 std::env::var("LUCY_INPUT_HELPER").map_err(|_| "input helper is not configured")?;
             let auth = run(root, cancel, &strings(&["pkexec", &helper]), true, 60)?;

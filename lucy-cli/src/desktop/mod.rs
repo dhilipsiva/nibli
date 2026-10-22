@@ -13,7 +13,7 @@ mod ui;
 pub use core::Service;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{BufRead, BufReader, IsTerminal, Read, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
@@ -40,6 +40,83 @@ pub fn token() -> Result<String> {
 }
 pub fn model() -> String {
     std::env::var("LUCY_CHAT_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.into())
+}
+
+/// Text from the model, memory or a proposal, made inert for a terminal or a text view: control
+/// characters other than newline and tab, line and paragraph separators, and the invisible format
+/// and default-ignorable characters (bidirectional controls, zero-width characters, the soft
+/// hyphen, variation selectors, Hangul fillers, tags) are shown as
+/// `\u{..}` escapes, so they cannot move the cursor, fake a line, hide text or reorder it.
+pub fn visible(text: &str) -> String {
+    let mut shown = String::with_capacity(text.len());
+    for c in text.chars() {
+        if (c.is_control() && c != '\n' && c != '\t')
+            || matches!(
+                c,
+                '\u{ad}'
+                    | '\u{34f}'
+                    | '\u{115f}'..='\u{1160}'
+                    | '\u{17b4}'..='\u{17b5}'
+                    | '\u{180b}'..='\u{180f}'
+                    | '\u{3164}'
+                    | '\u{fe00}'..='\u{fe0f}'
+                    | '\u{ffa0}'
+                    | '\u{fff0}'..='\u{fff8}'
+                    | '\u{e0000}'..='\u{e0fff}'
+                    | '\u{600}'..='\u{605}'
+                    | '\u{61c}'
+                    | '\u{6dd}'
+                    | '\u{70f}'
+                    | '\u{890}'..='\u{891}'
+                    | '\u{8e2}'
+                    | '\u{200b}'..='\u{200f}'
+                    | '\u{2028}'..='\u{202e}'
+                    | '\u{2060}'..='\u{206f}'
+                    | '\u{feff}'
+                    | '\u{fff9}'..='\u{fffb}'
+                    | '\u{110bd}'
+                    | '\u{110cd}'
+                    | '\u{13430}'..='\u{1343f}'
+                    | '\u{1bca0}'..='\u{1bca3}'
+                    | '\u{1d173}'..='\u{1d17a}'
+            )
+        {
+            shown.push_str(&format!("\\u{{{:x}}}", c as u32));
+        } else {
+            shown.push(c);
+        }
+    }
+    shown
+}
+
+/// What the terminal agent prints before it asks: the model's text, then the pending proposal.
+fn screen(text: Option<&str>, proposal: Option<&Value>) -> Result<String> {
+    let mut shown = String::new();
+    if let Some(text) = text {
+        shown.push_str(&format!("Lucy: {}\n", visible(text)));
+    }
+    if let Some(proposal) = proposal {
+        shown.push_str(&visible(
+            &serde_json::to_string_pretty(proposal).map_err(err)?,
+        ));
+        shown.push('\n');
+    }
+    Ok(shown)
+}
+
+/// The answer to an approval prompt. Only a person at a terminal can give one: piped input is
+/// denied unread, and keys queued before the prompt (typed ahead, or injected by an approved
+/// `gui` action into the focused terminal) are discarded first.
+fn read_approval(
+    terminal: bool,
+    flush: impl FnOnce() -> Result<()>,
+    read: impl FnOnce() -> Result<String>,
+) -> Result<bool> {
+    if !terminal {
+        return Ok(false);
+    }
+    flush()?;
+    Ok(read()?.trim().eq_ignore_ascii_case("y"))
 }
 
 pub fn socket_path() -> Result<PathBuf> {
@@ -190,11 +267,14 @@ pub fn run(args: &[String]) -> Result<()> {
         .get("--workspace")
         .map(PathBuf::from)
         .unwrap_or(std::env::current_dir().map_err(err)?);
-    if command == "ui"
+    // The tools refuse the home directory as a workspace, so the desktop commands started there
+    // work in ~/LucyTasks instead.
+    if matches!(command, "ui" | "chat" | "agent")
         && !options.contains_key("--workspace")
         && std::env::var_os("HOME").is_some_and(|home| workspace == home)
     {
         workspace = workspace.join("LucyTasks");
+        std::fs::create_dir_all(&workspace).map_err(err)?;
     }
     match command {
         "serve" => serve(&root, std::env::var_os("LUCY_IDENTITY").map(PathBuf::from)),
@@ -393,24 +473,39 @@ fn agent(workspace: &Path, task: Option<String>) -> Result<()> {
             request["workspace"] = json!(workspace);
             let mut response = call(request)?;
             loop {
-                if let Some(text) = response["text"].as_str() {
-                    println!("Lucy: {text}");
-                }
+                print!("{}", screen(response["text"].as_str(), None)?);
                 let Some((id, proposal)) = response["pending"]
                     .as_object()
                     .and_then(|p| p.iter().next())
                 else {
                     break;
                 };
-                println!("{}", serde_json::to_string_pretty(proposal).map_err(err)?);
+                print!("{}", screen(None, Some(proposal))?);
+                let terminal = std::io::stdin().is_terminal();
+                if !terminal {
+                    println!("Approval needs a terminal; denied.");
+                }
                 print!("Approve this exact action? [y/N] ");
                 std::io::stdout().flush().map_err(err)?;
-                let mut answer = String::new();
-                std::io::stdin().read_line(&mut answer).map_err(err)?;
+                let allow = read_approval(
+                    terminal,
+                    || {
+                        nix::sys::termios::tcflush(
+                            std::io::stdin(),
+                            nix::sys::termios::FlushArg::TCIFLUSH,
+                        )
+                        .map_err(err)
+                    },
+                    || {
+                        let mut answer = String::new();
+                        std::io::stdin().read_line(&mut answer).map_err(err)?;
+                        Ok(answer)
+                    },
+                )?;
                 let mut request = client.clone();
                 request["op"] = json!("approve");
                 request["action"] = json!(id);
-                request["allow"] = json!(answer.trim().eq_ignore_ascii_case("y"));
+                request["allow"] = json!(allow);
                 response = call(request)?;
             }
             if once {

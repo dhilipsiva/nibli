@@ -62,6 +62,15 @@ build-wasm: clean-wasm
     # formatting; normalize it so a later `fmt-check` (ci) doesn't trip on the
     # auto-generated file.
     cargo fmt -p nibli-pipeline
+    # Its header lists the `with` remaps in hash order, different on every run: sort them,
+    # so the committed file is reproducible (`just verify-bindings`).
+    @python3 -I -c 'import pathlib; p = pathlib.Path("nibli-pipeline/src/bindings.rs"); lines = p.read_text().split("\n"); at = [i for i, line in enumerate(lines) if line.startswith("//   * with ")]; [lines.__setitem__(i, line) for i, line in zip(at, sorted(lines[i] for i in at))]; p.write_text("\n".join(lines))'
+
+# The committed nibli-pipeline/src/bindings.rs (so a plain checkout builds without
+# cargo-component) must be exactly what cargo-component and rustfmt regenerate from wit/.
+verify-bindings: build-wasm
+    @git diff --quiet -- nibli-pipeline/src/bindings.rs || { echo 'FAIL: nibli-pipeline/src/bindings.rs differs from what wit/ generates; commit the regenerated file'; git diff --stat -- nibli-pipeline/src/bindings.rs; exit 1; }
+    @echo 'PASS: the committed WIT bindings match wit/'
 
 # Compiles the native Wasmtime host gasnu
 build-host:
@@ -478,6 +487,24 @@ check:
 fmt-check:
     cargo fmt --all --check
 
+# The whole workspace under clippy with -D warnings, as `just ci` runs it. nibli-pipeline
+# (generated WIT bindings) and nibli-auth-py (a PyO3 cdylib built by maturin) stay out.
+clippy-workspace:
+    cargo clippy --workspace --all-targets --exclude nibli-pipeline --exclude nibli-auth-py -- -D warnings
+
+# Build on exactly the declared MSRV: the dev shell's rustc must be `rust-version`, then the
+# whole workspace, committed bindings and the PyO3 crate included, checks on it (CI's `msrv` job).
+msrv-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    msrv=$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["workspace"]["package"]["rust-version"])')
+    have=$(rustc --version | cut -d' ' -f2)
+    case "$have" in
+      "$msrv" | "$msrv".*) echo "rustc $have is the declared MSRV $msrv" ;;
+      *) echo "rustc $have is not the declared MSRV $msrv" >&2; exit 1 ;;
+    esac
+    cargo check --locked --workspace --all-targets
+
 # Strict clippy gate for the runtime crates under active hardening
 clippy-runtime:
     cargo clippy --no-deps -p nibli-protocol -p nibli-render -p nibli-store -p nibli-engine -p nibli --all-targets -- -D warnings
@@ -565,7 +592,7 @@ test-all: test test-engine test-store test-backend test-validate
 
 # CI gate for the hardened runtime surface (fast; native only — no WASM build).
 # For the WASM behavioral smokes too, run `just ci-all`.
-ci: fmt-check release-check clippy-runtime clippy-lucy test test-lucy verify-lucy-pins verify-lucy-plugin check-lucy-memory test-engine test-host test-validate test-ui test-formalize test-backend test-store test-persistence-replay verify-harness verify-soundness verify-self-check verify-alias-map verify-nibli-kr-seam verify-dict verify-pins verify-adjudication verify-proofs verify-grammar-parity verify-doc-fences verify-book-vocab
+ci: fmt-check release-check clippy-workspace clippy-lucy test test-lucy verify-lucy-pins verify-lucy-plugin check-lucy-memory test-engine test-host test-validate test-ui test-formalize test-backend test-store test-persistence-replay verify-harness verify-soundness verify-self-check verify-alias-map verify-nibli-kr-seam verify-dict verify-pins verify-adjudication verify-proofs verify-grammar-parity verify-doc-fences verify-book-vocab
 
 # WASM behavioral gate (pre-push, NOT part of `ci` — needs the WASM build, like
 # verify-book-capture). Bundles the gasnu smokes; each depends on
@@ -573,7 +600,7 @@ ci: fmt-check release-check clippy-runtime clippy-lucy test test-lucy verify-luc
 # them all: fuel exhaustion + post-trap recovery + journal replay
 # (trap-recovery), plus the script transcript, persist-replay, NAF-note,
 # :debug round-trip, and the determinism corpus.
-ci-wasm: smoke-component-imports smoke-host-state-controls smoke-host-certify smoke-host-script smoke-host-trap-recovery smoke-host-persist-replay smoke-host-split smoke-host-count-query-only smoke-host-schema-v3-migration smoke-host-naf smoke-host-cwa-false smoke-host-debug smoke-host-collapse smoke-host-backend-unavailable smoke-host-compute-query-only smoke-host-compute-registration-order smoke-host-quiet smoke-host-strict smoke-host-existential-import smoke-host-materialize smoke-host-determinism verify-wasm-node
+ci-wasm: verify-bindings smoke-component-imports smoke-host-state-controls smoke-host-certify smoke-host-script smoke-host-trap-recovery smoke-host-persist-replay smoke-host-split smoke-host-count-query-only smoke-host-schema-v3-migration smoke-host-naf smoke-host-cwa-false smoke-host-debug smoke-host-collapse smoke-host-backend-unavailable smoke-host-compute-query-only smoke-host-compute-registration-order smoke-host-quiet smoke-host-strict smoke-host-existential-import smoke-host-materialize smoke-host-determinism verify-wasm-node
 
 # Envelope smoke: `:certify` binds verdict + trace + host-tracked profile +
 # the lockstep workspace version into one JSON ProofEnvelope — document on
@@ -626,10 +653,14 @@ smoke-host-determinism: build-wasm build-host
 
 # Three-way determinism, V8 leg: run the nibli-wasm pipeline (wasm32-unknown-unknown)
 # under node via wasm-bindgen-test — the browser-class runtime of the live playground.
-# Skips cleanly when wasm-pack is unavailable.
+# The default dev shell has wasm-pack. Outside it the leg skips locally, but fails in
+# CI (CI set), so a green CI run always includes the V8 leg.
 verify-wasm-node:
     @if ! command -v wasm-pack >/dev/null 2>&1; then \
-        echo 'verify-wasm-node SKIPPED: wasm-pack unavailable (cargo install wasm-pack)'; \
+        if [ -n "${CI:-}" ]; then \
+            echo 'verify-wasm-node FAILED: wasm-pack unavailable in CI; the V8 determinism leg must run'; exit 1; \
+        fi; \
+        echo 'verify-wasm-node SKIPPED: wasm-pack unavailable (nix develop provides it)'; \
     else \
         wasm-pack test --node nibli-wasm; \
     fi
@@ -690,13 +721,15 @@ verify-book-capture: build-wasm
     NIBLI_WASM_PATH={{wasm_dir}}/nibli.wasm python3 book/tools/capture_book.py --check
 
 # Step-zero regression guard (run by `ci`). The logji FOL control test proves the
-# deep-chain reasoning path stays sound (it must PASS). The RED known-failure
-# backlog (known_failures*) stays opt-in via `-- --ignored` and is NOT run here.
+# deep-chain reasoning path stays sound (it must PASS). The known-failure files hold
+# the panel's reproducers, all fixed and promoted to live guards, so all three run
+# here; a new defect joins one of them ignored (opt in with `-- --ignored`).
 # The book vocab gate (`verify-book-vocab`) joins `ci` once the `xanlu` non-word
 # is fixed (revisions P0.2) — it is intentionally red until then.
 verify-harness:
     cargo test -p nibli-reason --test known_failures_fol {{cargo_profile_flag}} -- --test-threads=1
     cargo test -p nibli-engine --test known_failures {{cargo_profile_flag}} -- --test-threads=1
+    cargo test -p nibli-engine --test known_failures_fatal {{cargo_profile_flag}} -- --test-threads=1
 
 # Differential SOUNDNESS gate (Track A), two oracles: nibli's verdict must agree with
 # (1) the Vampire FOL prover over the Horn/NAF-free fragment, and (2) the clingo ASP solver
@@ -1168,6 +1201,10 @@ build-lucy-desktop:
 clippy-lucy-desktop:
     cargo clippy --no-deps -p lucy-cli --all-targets --features desktop-ui -- -D warnings
 
+# The desktop gates CI runs in their own job, in the GTK shell: `nix develop .#lucy --command just
+# ci-lucy-desktop` (the default shell carries no GTK, so these stay out of `ci`).
+ci-lucy-desktop: test-lucy-desktop clippy-lucy-desktop
+
 test-lucy-window:
     bash lucy-cli/desktop/test-window.sh target/release/lucy
 
@@ -1231,10 +1268,12 @@ verify-lucy-plugin:
     print(f"verify-lucy-plugin PASS: {len(skills)} skills, {len(subs)} subcommands, hook snippet in sync")
     PY
 
-# Lucy's own memory in this repository: every line must compile.
+# Lucy's own memory in this repository: every line must compile. From a release build:
+# compiling the conversation archive grows with every recorded message, and in a debug build it
+# was most of the native gate's time (about 1140 s against 270 s, measured 2026-10-22).
 check-lucy-memory:
-    @cargo build --quiet -p lucy-cli
-    LUCY_HOME=lucy ./target/debug/lucy check
+    @cargo build --quiet --release -p lucy-cli
+    LUCY_HOME=lucy ./target/release/lucy check
 
 # ── Release automation (R3) ────────────────────────────────────────────────
 # `release-check` above is the VERSION-AGNOSTIC structural gate and rides

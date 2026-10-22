@@ -135,9 +135,9 @@ impl Window {
             return;
         }
         if reply.kind == "catalog" {
-            self.catalog
-                .buffer()
-                .set_text(&serde_json::to_string_pretty(&result).unwrap_or_default());
+            self.catalog.buffer().set_text(&super::visible(
+                &serde_json::to_string_pretty(&result).unwrap_or_default(),
+            ));
             self.status.set_text("Model catalog loaded");
             return;
         }
@@ -148,19 +148,19 @@ impl Window {
             "Asleep"
         });
         if let Some(text) = result["text"].as_str().filter(|s| !s.is_empty()) {
-            self.append(&format!("Lucy: {text}"));
+            self.append(&format!("Lucy: {}", super::visible(text)));
         }
         if let Some(memories) = result["memories"].as_array() {
             self.memories.buffer().set_text(
                 &memories
                     .iter()
                     .map(|m| {
-                        format!(
+                        super::visible(&format!(
                             "{} · {}\n{}",
                             m["source"].as_str().unwrap_or("memory"),
                             m["id"].as_str().unwrap_or(""),
                             m["excerpt"].as_str().unwrap_or("")
-                        )
+                        ))
                     })
                     .collect::<Vec<_>>()
                     .join("\n\n"),
@@ -168,9 +168,9 @@ impl Window {
         }
         for (id, proposal) in result["pending"].as_object().into_iter().flatten() {
             let preview = view();
-            preview
-                .buffer()
-                .set_text(&serde_json::to_string_pretty(proposal).unwrap_or_default());
+            preview.buffer().set_text(&super::visible(
+                &serde_json::to_string_pretty(proposal).unwrap_or_default(),
+            ));
             self.pending.append(&scroll(&preview, 140));
             let buttons = gtk::Box::new(gtk::Orientation::Horizontal, 8);
             for (label, allow) in [("Approve this action", true), ("Deny", false)] {

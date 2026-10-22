@@ -156,10 +156,11 @@ pub fn run(args: &[String], stdin: &str, env_override: Option<Env>) -> Outcome {
         && matches!(command.as_str(), "remember" | "forget" | "migrate-journal")
         && let Err(error) = crate::store::sync_native(&env)
     {
+        // The memory folder is the durable copy and the index is rebuilt from it, so the
+        // command still succeeded.
         outcome.stderr.push_str(&format!(
             "File saved; shared index needs `lucy store sync`: {error}\n"
         ));
-        outcome.code = 1;
     }
     if command != "hook" {
         outcome.stderr.insert_str(
@@ -382,9 +383,10 @@ fn cmd_wake(env: &Env, paths: &Paths, rest: &[String]) -> Outcome {
         Err(e) => return harness(&e),
     };
     let mut capsule = capsule::render(&loaded, env);
+    // The capsule comes from the memory folder alone; the shared index only adds to it.
     match crate::store::context(env, "Lucy memory continuity decisions preferences") {
         Ok(context) => capsule.push_str(&context),
-        Err(error) => return harness(&format!("shared memory unavailable: {error}")),
+        Err(error) => capsule.push_str(&format!("\nShared memory unavailable: {error}\n")),
     }
     if args.has("--markdown") {
         return text(0, &capsule);

@@ -103,10 +103,10 @@ impl Authorizer {
         self.core = CoreSession::new();
         self.core.set_verbose(false);
         self.assert_text_ids(BUILTIN_POLICY)?;
-        if let Some(extra) = extra_kr {
-            if !extra.trim().is_empty() {
-                self.assert_text_ids(extra)?;
-            }
+        if let Some(extra) = extra_kr
+            && !extra.trim().is_empty()
+        {
+            self.assert_text_ids(extra)?;
         }
         self.policy_loaded = true;
         self.policy_version = POLICY_VERSION.to_string();
@@ -318,10 +318,7 @@ impl Authorizer {
     ) -> Result<T, AuthError> {
         self.clear_ephemeral_inner();
         if !context_kr.trim().is_empty() {
-            match self.assert_text_ids(context_kr) {
-                Ok(ids) => self.ephemeral_ids = ids,
-                Err(e) => return Err(e),
-            }
+            self.ephemeral_ids = self.assert_text_ids(context_kr)?;
         }
         let result = f(self);
         self.clear_ephemeral_inner();

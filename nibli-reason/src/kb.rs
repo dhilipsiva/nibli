@@ -3456,13 +3456,13 @@ pub(super) fn process_preflighted_assertion(
         let conditional_binders = conditional_existential_binders(logic, root_id);
         let quoted_binders = quoted_only_existential_binders(logic, root_id);
         for (var, gt) in &skolem_subs {
-            if !is_skdep(gt) {
-                if let GroundTerm::Skolem(symbol) = gt {
-                    if var.starts_with("_ev") {
-                        inner.note_event_entity(GroundTerm::Skolem(*symbol));
-                    } else if !conditional_binders.contains(var) && !quoted_binders.contains(var) {
-                        inner.note_entity(GroundTerm::Skolem(*symbol));
-                    }
+            if !is_skdep(gt)
+                && let GroundTerm::Skolem(symbol) = gt
+            {
+                if var.starts_with("_ev") {
+                    inner.note_event_entity(GroundTerm::Skolem(*symbol));
+                } else if !conditional_binders.contains(var) && !quoted_binders.contains(var) {
+                    inner.note_entity(GroundTerm::Skolem(*symbol));
                 }
             }
         }
@@ -3620,16 +3620,17 @@ pub(super) fn process_preflighted_assertion(
             // declarations. That is checkable without knowing the rest of the block
             // (which has not been read yet), and it makes the reading order the
             // writing order.
-            if !pending_admits.is_empty() && inner.admitted.is_empty() {
-                if let Some(rel) = first_non_declaration_relation(inner) {
-                    return Err(format!(
-                        "`admits(\"{}\")` comes too late: `{rel}` was already asserted, so \
+            if !pending_admits.is_empty()
+                && inner.admitted.is_empty()
+                && let Some(rel) = first_non_declaration_relation(inner)
+            {
+                return Err(format!(
+                    "`admits(\"{}\")` comes too late: `{rel}` was already asserted, so \
                          closing the vocabulary here would silently admit it along with \
                          everything else above. Move the whole `admits` block ABOVE the \
                          first ordinary assertion.",
-                        pending_admits[0]
-                    ));
-                }
+                    pending_admits[0]
+                ));
             }
             for rel in pending_admits {
                 inner.admitted.insert(rel);
@@ -3683,7 +3684,7 @@ pub(super) fn process_preflighted_assertion(
     // assertion, and the replay runs with `rebuilding = true`, where strict is
     // inert (previously-accepted facts restore faithfully).
     if !inner.strict_violations.is_empty() {
-        let joined = inner.strict_violations.drain(..).collect::<Vec<_>>();
+        let joined = std::mem::take(&mut inner.strict_violations);
         return Err(format!("strict mode rejected: {}", joined.join("; ")));
     }
     Ok(())
@@ -4406,7 +4407,7 @@ fn extract_rule_candidates_for_entailment_bounded(
                     for combo in GroundTermCartesianProduct::new(members, unresolved.len()) {
                         note_entailment_candidate_cartesian_step(&anchor.relation);
                         let bindings: HashMap<String, GroundTerm> =
-                            unresolved.iter().cloned().zip(combo.into_iter()).collect();
+                            unresolved.iter().cloned().zip(combo).collect();
                         if insert_bounded_candidate(
                             candidates,
                             substitute_term(&structured, &bindings).into_owned(),
@@ -4508,6 +4509,7 @@ fn extract_from_index_bounded(
 
     for stored_fact in facts {
         // Check tense matches
+        #[allow(clippy::match_like_matches_macro)] // one arm per tense reads as the table it is
         let tense_matches = match (anchor.tense, stored_fact) {
             (None, StoredFact::Bare(_)) => true,
             (Some("Past"), StoredFact::Past(_)) => true,

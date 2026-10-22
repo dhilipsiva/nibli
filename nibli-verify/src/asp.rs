@@ -114,14 +114,13 @@ impl DuClasses {
 /// `Some((c1, c2))` iff the buffer is exactly one sole-root ground `du(c1, c2)` fact —
 /// the only `du` shape the filter admits into this fragment.
 fn du_fact_args(buf: &LogicBuffer) -> Option<(String, String)> {
-    if let [r] = buf.roots.as_slice() {
-        if let Some(LogicNode::Predicate((rel, args))) = buf.nodes.get(*r as usize) {
-            if rel == "equals" && args.len() == 2 {
-                if let (LogicalTerm::Constant(a), LogicalTerm::Constant(b)) = (&args[0], &args[1]) {
-                    return Some((a.clone(), b.clone()));
-                }
-            }
-        }
+    if let [r] = buf.roots.as_slice()
+        && let Some(LogicNode::Predicate((rel, args))) = buf.nodes.get(*r as usize)
+        && rel == "equals"
+        && args.len() == 2
+        && let (LogicalTerm::Constant(a), LogicalTerm::Constant(b)) = (&args[0], &args[1])
+    {
+        return Some((a.clone(), b.clone()));
     }
     None
 }
@@ -206,10 +205,7 @@ impl BodyLit {
 /// `~($a = $b)` (utopia's multi-sig void needs two DISTINCT auditors) would fire for a
 /// single auditor signing twice, clingo would report the void, and the differential would
 /// blame the engine for the one guarantee that rule exists to enforce.
-fn equals_args<'a>(
-    buf: &'a LogicBuffer,
-    id: u32,
-) -> Result<Option<(&'a LogicalTerm, &'a LogicalTerm)>, String> {
+fn equals_args(buf: &LogicBuffer, id: u32) -> Result<Option<(&LogicalTerm, &LogicalTerm)>, String> {
     match node_at(buf, id)? {
         LogicNode::Predicate((rel, args)) if rel == "equals" && args.len() == 2 => {
             Ok(Some((&args[0], &args[1])))
@@ -251,21 +247,21 @@ pub fn render_program(kb: &[LogicBuffer], query: &LogicBuffer) -> Result<String,
     // stable model, which equals the clean-core verifier engine's entity count:
     // universals create no implicit witnesses and `du` classes are canonicalized
     // on both sides (see `filter::count_case_guard`).
-    if let [r] = query.roots.as_slice() {
-        if let LogicNode::CountNode((v, n, body)) = node_at(query, *r)? {
-            let mut vars = VarMap::new();
-            let cv = vars.bind(v);
-            let mut lits: Vec<String> = Vec::new();
-            for c in flatten_and(query, *body)? {
-                lits.push(regroup_event(query, c, &mut vars)?.render());
-            }
-            out.push_str(&format!(
-                "goal :- #count {{ {cv} : {} }} = {n}.\n",
-                lits.join(", ")
-            ));
-            out.push_str("#show goal/0.\n");
-            return Ok(out);
+    if let [r] = query.roots.as_slice()
+        && let LogicNode::CountNode((v, n, body)) = node_at(query, *r)?
+    {
+        let mut vars = VarMap::new();
+        let cv = vars.bind(v);
+        let mut lits: Vec<String> = Vec::new();
+        for c in flatten_and(query, *body)? {
+            lits.push(regroup_event(query, c, &mut vars)?.render());
         }
+        out.push_str(&format!(
+            "goal :- #count {{ {cv} : {} }} = {n}.\n",
+            lits.join(", ")
+        ));
+        out.push_str("#show goal/0.\n");
+        return Ok(out);
     }
 
     // Query → goal reification. The query's event groups become the body of a rule deriving
@@ -300,6 +296,7 @@ fn translate_root(buf: &LogicBuffer, root: u32) -> Result<Vec<String>, String> {
         LogicNode::ForAllNode((v, body)) => {
             let mut binders: Vec<String> = vec![v.clone()];
             let mut cur = *body;
+            #[allow(clippy::while_let_loop)] // the match also handles the terminal shapes
             loop {
                 match node_at(buf, cur)? {
                     LogicNode::ForAllNode((v2, b2)) => {
@@ -354,6 +351,7 @@ fn translate_rule(buf: &LogicBuffer, binders: &[&str], body: u32) -> Result<Vec<
 
     let mut antecedent: Vec<BodyLit> = Vec::new();
     let mut cur = body;
+    #[allow(clippy::while_let_loop)] // the match also handles the terminal shapes
     loop {
         match node_at(buf, cur)? {
             LogicNode::OrNode((neg, rest)) => {
@@ -518,10 +516,11 @@ fn regroup_event(buf: &LogicBuffer, id: u32, vars: &mut VarMap) -> Result<Surfac
             let mut using: Vec<u32> = Vec::new();
             for c in flatten_and(buf, *body)? {
                 // Skip a bare abstraction-typing marker (`nu(absvar)` / `__abs_<id>(absvar)`).
-                if let LogicNode::Predicate((_, cargs)) = node_at(buf, c)? {
-                    if cargs.len() == 1 && is_var(&cargs[0], ev) {
-                        continue;
-                    }
+                if let LogicNode::Predicate((_, cargs)) = node_at(buf, c)?
+                    && cargs.len() == 1
+                    && is_var(&cargs[0], ev)
+                {
+                    continue;
                 }
                 if references_var(buf, c, ev) {
                     using.push(c); // the atom that fills a role with the referent
@@ -595,12 +594,12 @@ fn check_safety(head: &SurfaceAtom, body: &[BodyLit]) -> Result<(), String> {
     }
     let unbound = |atom: &SurfaceAtom, kind: &str| -> Result<(), String> {
         for t in &atom.args {
-            if let AspTerm::Var(v) = t {
-                if !pos_vars.contains(v.as_str()) {
-                    return Err(format!(
-                        "unsafe rule: {kind} variable {v} not bound by a positive body literal"
-                    ));
-                }
+            if let AspTerm::Var(v) = t
+                && !pos_vars.contains(v.as_str())
+            {
+                return Err(format!(
+                    "unsafe rule: {kind} variable {v} not bound by a positive body literal"
+                ));
             }
         }
         Ok(())
@@ -668,10 +667,12 @@ fn term(buf: &LogicBuffer, t: &LogicalTerm, vars: &mut VarMap) -> AspTerm {
 /// constant matches across them.
 fn abs_const_of(buf: &LogicBuffer, var: &str) -> Option<String> {
     for node in &buf.nodes {
-        if let LogicNode::Predicate((rel, args)) = node {
-            if rel.starts_with("__abs_") && args.len() == 1 && is_var(&args[0], var) {
-                return Some(sanitize(rel));
-            }
+        if let LogicNode::Predicate((rel, args)) = node
+            && rel.starts_with("__abs_")
+            && args.len() == 1
+            && is_var(&args[0], var)
+        {
+            return Some(sanitize(rel));
         }
     }
     None

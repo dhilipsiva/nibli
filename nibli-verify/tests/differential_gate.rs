@@ -590,7 +590,7 @@ fn stratification_rejection_matches_independent_criterion() {
     use nibli_verify::strat_diff::{self, SpecRule, StratCase, StratOutcome};
 
     // Curated boundary shapes (each hand-checked against the criterion statement).
-    let curated = vec![
+    let curated = [
         StratCase {
             name: "self_negation".into(),
             facts: vec!["person(Adam).".into()],
@@ -674,7 +674,7 @@ fn stratification_rejection_matches_independent_criterion() {
     let mut rejected_total = 0usize;
     let mut divergences: Vec<String> = Vec::new();
     let mut errors: Vec<String> = Vec::new();
-    let cases = curated.iter().map(|c| strat_diff::run_strat_case(c)).chain(
+    let cases = curated.iter().map(strat_diff::run_strat_case).chain(
         (0..count).map(|seed| strat_diff::run_strat_case(&strat_diff::random_strat_case(seed))),
     );
     for outcome in cases {

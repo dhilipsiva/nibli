@@ -242,13 +242,11 @@ pub fn run_retract_case(case: &RetractCase) -> RetractOutcome {
                 let fresh = crate::kr_engine();
                 apply_exec_settings(&fresh);
                 for (l, _, alive) in &asserts {
-                    if *alive {
-                        if let Err(e) = fresh.assert_text(l) {
-                            return RetractOutcome::Error {
-                                name,
-                                error: format!("replay '{l}': {e:?}"),
-                            };
-                        }
+                    if *alive && let Err(e) = fresh.assert_text(l) {
+                        return RetractOutcome::Error {
+                            name,
+                            error: format!("replay '{l}': {e:?}"),
+                        };
                     }
                 }
                 let mut battery: Vec<String> = Vec::new();

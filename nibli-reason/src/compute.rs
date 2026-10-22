@@ -85,7 +85,7 @@ pub(super) fn try_numeric_comparison(
     args: &[LogicalTerm],
     subs: &HashMap<String, GroundTerm>,
 ) -> Option<QueryResult> {
-    let a = extract_num_value(args.get(0)?, subs)?;
+    let a = extract_num_value(args.first()?, subs)?;
     let b = extract_num_value(args.get(1)?, subs)?;
     let holds = match rel {
         "greater" => a > b,
@@ -108,7 +108,7 @@ pub(super) fn try_arithmetic_evaluation(
     args: &[LogicalTerm],
     subs: &HashMap<String, GroundTerm>,
 ) -> Option<bool> {
-    let x1 = extract_num_value(args.get(0)?, subs)?;
+    let x1 = extract_num_value(args.first()?, subs)?;
     let x2 = extract_num_value(args.get(1)?, subs)?;
     let x3 = extract_num_value(args.get(2)?, subs)?;
     // The relation match + tolerant-equality comparison is shared with the nibli-host

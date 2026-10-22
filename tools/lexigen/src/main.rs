@@ -190,6 +190,8 @@ fn build_candidate(name: &str, lens: &LensiskuEntry) -> Candidate {
     let prose = nibli_lexigen::label::prose_labels(&lens.definition, arity as u8);
     let mut places: Vec<String> = Vec::with_capacity(arity);
     let mut tiers: Vec<Tier> = Vec::with_capacity(arity);
+    // `i` indexes three parallel sources (keywords, prose labels, the places built so far).
+    #[allow(clippy::needless_range_loop)]
     for i in 0..arity {
         let taken: Vec<String> = places.clone();
         let mut filled: Option<(String, Tier)> = None;

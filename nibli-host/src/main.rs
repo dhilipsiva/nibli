@@ -600,7 +600,7 @@ fn refuel(store: &mut Store<HostState>, budget: u64) {
 /// non-query trap renders the `[Limit]`/`[Host Error]` message via
 /// `format_host_error`. (Depth is never a host trap — the engine returns it
 /// directly — so this only ever yields Fuel/Memory.)
-fn classify_resource_trap(e: &anyhow::Error) -> Option<EngineResourceKind> {
+fn classify_resource_trap(e: &wasmtime::Error) -> Option<EngineResourceKind> {
     if let Some(wasmtime::Trap::OutOfFuel) = e.downcast_ref::<wasmtime::Trap>() {
         return Some(EngineResourceKind::Fuel);
     }
@@ -637,7 +637,7 @@ fn resource_hint(kind: EngineResourceKind) -> &'static str {
 /// friendly message: a resource trap becomes a `[Limit]` line, a genuine trap
 /// becomes `[Host Error]`. A QUERY trap is instead translated into a
 /// RESOURCE_EXCEEDED verdict at the `?` handler.
-fn format_host_error(e: &anyhow::Error) -> String {
+fn format_host_error(e: &wasmtime::Error) -> String {
     match classify_resource_trap(e) {
         Some(EngineResourceKind::Fuel) => {
             "[Limit] Execution fuel exhausted. Increase with NIBLI_FUEL env var or :fuel command."
@@ -2468,7 +2468,7 @@ mod tests {
 
     #[test]
     fn test_format_host_error_memory() {
-        let e = anyhow::anyhow!("memory allocation limit exceeded");
+        let e = wasmtime::Error::msg("memory allocation limit exceeded");
         let out = format_host_error(&e);
         assert!(out.starts_with("[Limit]"));
         assert!(out.contains("Memory limit"));
@@ -2478,7 +2478,7 @@ mod tests {
 
     #[test]
     fn test_format_host_error_memory_uppercase() {
-        let e = anyhow::anyhow!("Memory allocation failed");
+        let e = wasmtime::Error::msg("Memory allocation failed");
         let out = format_host_error(&e);
         assert!(out.starts_with("[Limit]"));
         assert!(out.contains("Memory limit"));
@@ -2486,7 +2486,7 @@ mod tests {
 
     #[test]
     fn test_format_host_error_fuel_unchanged() {
-        let e = anyhow::anyhow!("all fuel consumed");
+        let e = wasmtime::Error::msg("all fuel consumed");
         let out = format_host_error(&e);
         assert!(out.starts_with("[Limit]"));
         assert!(out.contains("fuel"));
@@ -2495,7 +2495,7 @@ mod tests {
 
     #[test]
     fn test_format_host_error_other_unchanged() {
-        let e = anyhow::anyhow!("something else broke");
+        let e = wasmtime::Error::msg("something else broke");
         let out = format_host_error(&e);
         assert!(out.starts_with("[Host Error]"));
     }
@@ -2506,7 +2506,7 @@ mod tests {
         // line (contains neither "fuel" nor "memory"); the typed Trap is the
         // root cause. The old top-line substring match misclassified this as
         // [Host Error].
-        let e = anyhow::Error::from(wasmtime::Trap::OutOfFuel)
+        let e = wasmtime::Error::from(wasmtime::Trap::OutOfFuel)
             .context("error while executing at wasm backtrace: ...");
         let out = format_host_error(&e);
         assert!(out.starts_with("[Limit]"), "got: {out}");
@@ -2518,7 +2518,7 @@ mod tests {
     fn test_format_host_error_memory_grow_denial_chain() {
         // StoreLimits with trap_on_grow_failure(true) denies growth with this
         // message as the CAUSE under a backtrace context line.
-        let e = anyhow::anyhow!("forcing trap when growing memory to 1073741824 bytes")
+        let e = wasmtime::Error::msg("forcing trap when growing memory to 1073741824 bytes")
             .context("error while executing at wasm backtrace: ...");
         let out = format_host_error(&e);
         assert!(out.starts_with("[Limit]"), "got: {out}");
@@ -2529,7 +2529,7 @@ mod tests {
     #[test]
     fn test_format_host_error_cannot_enter_is_host_error() {
         // The post-trap re-entry error must NOT classify as a resource limit.
-        let e = anyhow::anyhow!("wasm trap: cannot enter component instance");
+        let e = wasmtime::Error::msg("wasm trap: cannot enter component instance");
         let out = format_host_error(&e);
         assert!(out.starts_with("[Host Error]"), "got: {out}");
     }
@@ -2546,7 +2546,7 @@ mod tests {
     fn test_classify_resource_trap_memory_grow_denial() {
         // StoreLimits with trap_on_grow_failure(true) denies growth with this
         // message as the CAUSE under a backtrace context line.
-        let e = anyhow::anyhow!("forcing trap when growing memory to 1073741824 bytes")
+        let e = wasmtime::Error::msg("forcing trap when growing memory to 1073741824 bytes")
             .context("error while executing at wasm backtrace: ...");
         assert!(matches!(
             classify_resource_trap(&e),
@@ -2557,7 +2557,7 @@ mod tests {
     #[test]
     fn test_classify_resource_trap_fuel_typed() {
         // The real shape of a fuel trap: the typed Trap::OutOfFuel is the root cause.
-        let e = anyhow::Error::from(wasmtime::Trap::OutOfFuel)
+        let e = wasmtime::Error::from(wasmtime::Trap::OutOfFuel)
             .context("error while executing at wasm backtrace: ...");
         assert!(matches!(
             classify_resource_trap(&e),
@@ -2568,7 +2568,7 @@ mod tests {
     #[test]
     fn test_classify_resource_trap_other_is_none() {
         // A genuine non-resource trap (post-trap re-entry) is not a resource limit.
-        let e = anyhow::anyhow!("wasm trap: cannot enter component instance");
+        let e = wasmtime::Error::msg("wasm trap: cannot enter component instance");
         assert!(classify_resource_trap(&e).is_none());
     }
 
@@ -2873,7 +2873,7 @@ mod tests {
 
     #[test]
     fn test_format_host_error_generic_error() {
-        let e = anyhow::anyhow!("unknown wasm trap");
+        let e = wasmtime::Error::msg("unknown wasm trap");
         let out = format_host_error(&e);
         assert!(out.starts_with("[Host Error]"));
         assert!(out.contains("unknown wasm trap"));
@@ -2882,7 +2882,7 @@ mod tests {
     #[test]
     fn test_format_host_error_fuel_case_insensitive() {
         // "fuel" match should be case insensitive or at least match lower case
-        let e = anyhow::anyhow!("all fuel consumed by execution");
+        let e = wasmtime::Error::msg("all fuel consumed by execution");
         let out = format_host_error(&e);
         assert!(out.starts_with("[Limit]"));
     }

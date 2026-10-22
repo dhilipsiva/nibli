@@ -807,10 +807,10 @@ fn trace_soundness_conformance() {
                 // Other false leaves & failures: must not hold.
                 ProofRule::RuleAttemptFailed { .. }
                 | ProofRule::ExistsFailed
-                | ProofRule::ForallCounterexample { .. } => {
-                    if step.holds {
-                        return Err(format!("step #{i} {:?} but holds=true", step.rule));
-                    }
+                | ProofRule::ForallCounterexample { .. }
+                    if step.holds =>
+                {
+                    return Err(format!("step #{i} {:?} but holds=true", step.rule));
                 }
                 // Other variants carry no core logical structure the certificate models — checked
                 // only for verdict/root consistency by `assert_trace_consistent`.

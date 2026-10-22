@@ -2,6 +2,7 @@
 name = "lucy-cli"
 description = "Lucy D: a persistent identity whose memory is plain nibli text, loaded by whatever agent session runs her"
 version.workspace = true
+rust-version.workspace = true
 edition = "2024"
 license.workspace = true
 repository.workspace = true
@@ -32,7 +33,7 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 tokio = { version = "1", features = ["rt", "time", "macros"] }
 
 [target.'cfg(unix)'.dependencies]
-nix = { version = "0.30", features = ["socket", "user", "signal", "process"] }
+nix = { version = "0.30", features = ["socket", "user", "signal", "process", "term"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk4 = { version = "0.10", optional = true }

@@ -2,6 +2,7 @@
 name = "nibli-store"
 description = "Persistent redb-backed knowledge-base store with tombstone retraction"
 version.workspace = true
+rust-version.workspace = true
 edition = "2024"
 license.workspace = true
 readme.workspace = true

@@ -208,3 +208,194 @@ fn cosine_search_checks_model_dimensions_and_invalidates_changed_sources() {
             .is_empty()
     );
 }
+
+#[test]
+fn a_bad_file_is_skipped_and_named_never_fatal() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(dir.path()).unwrap();
+    store.record(&record("good", "a findable note")).unwrap();
+    std::fs::write(dir.path().join("records/broken.json"), b"{\"origin\": ").unwrap();
+    let home = dir.path().join("peer/lucy");
+    std::fs::create_dir_all(&home).unwrap();
+    std::fs::write(home.join("constitution.nibli"), "# Lucy\n").unwrap();
+    std::fs::write(home.join("notes.md"), b"caf\xff\n").unwrap();
+    std::fs::write(home.join("memory.nibli"), "bird(Enma).\n").unwrap();
+    store.register("nibli", &home).unwrap();
+    let sync = store.sync().unwrap();
+    let skipped = sync["skipped"].to_string();
+    assert!(skipped.contains("broken.json"), "{sync}");
+    assert!(skipped.contains("notes.md"), "{sync}");
+    assert_eq!(store.search("findable", "", 8, None).unwrap().len(), 1);
+    assert_eq!(store.search("Enma", "", 8, None).unwrap().len(), 1);
+}
+
+#[test]
+fn restored_peer_conversations_stay_recallable_until_the_peer_files_arrive() {
+    let dir = tempfile::tempdir().unwrap();
+    let host_a = Store::open(&dir.path().join("host-a")).unwrap();
+    let mut private = record("p1", "a private conversation about herons");
+    private.origin = "peer:nibli/private-interactions.nibli".into();
+    host_a.record(&private).unwrap();
+    let manifest = host_a.backup(&dir.path().join("backup")).unwrap();
+    let host_b = Store::open(&dir.path().join("host-b")).unwrap();
+    host_b.restore(&manifest).unwrap();
+    assert_eq!(host_b.search("herons", "", 8, None).unwrap().len(), 1);
+    // STORE.md's order on a new host: restore, then register the peers, whose private
+    // archive is not in Git.
+    let home = dir.path().join("checkout/lucy");
+    std::fs::create_dir_all(&home).unwrap();
+    std::fs::write(home.join("constitution.nibli"), "# Lucy\n").unwrap();
+    host_b.register("nibli", &home).unwrap();
+    host_b.sync().unwrap();
+    assert_eq!(host_b.search("herons", "", 8, None).unwrap().len(), 1);
+    // Once the peer's own file exists, it wins.
+    std::fs::write(home.join("private-interactions.nibli"), "").unwrap();
+    host_b.sync().unwrap();
+    assert!(host_b.search("herons", "", 8, None).unwrap().is_empty());
+}
+
+#[test]
+fn restored_copies_stand_in_only_until_a_local_file_has_existed() {
+    let dir = tempfile::tempdir().unwrap();
+    let host_a = Store::open(&dir.path().join("host-a")).unwrap();
+    let mut archive = record("p1", "a private conversation about herons");
+    archive.origin = "peer:nibli/private-interactions.nibli".into();
+    host_a.record(&archive).unwrap();
+    let mut private = record("p2", "a private fact about kingfishers");
+    private.origin = "peer:nibli/private.nibli".into();
+    host_a.record(&private).unwrap();
+    let manifest = host_a.backup(&dir.path().join("backup")).unwrap();
+    let host_b = Store::open(&dir.path().join("host-b")).unwrap();
+    host_b.restore(&manifest).unwrap();
+    let home = dir.path().join("checkout/lucy");
+    std::fs::create_dir_all(&home).unwrap();
+    std::fs::write(home.join("constitution.nibli"), "# Lucy\n").unwrap();
+    host_b.register("nibli", &home).unwrap();
+    host_b.sync().unwrap();
+    // Every gitignored private file of the peer, not only the archives.
+    assert_eq!(host_b.search("herons", "", 8, None).unwrap().len(), 1);
+    assert_eq!(host_b.search("kingfishers", "", 8, None).unwrap().len(), 1);
+    std::fs::write(home.join("private-interactions.nibli"), "").unwrap();
+    host_b.sync().unwrap();
+    assert!(host_b.search("herons", "", 8, None).unwrap().is_empty());
+    // A local file has existed, so deleting it empties the origin; the snapshot does not return.
+    std::fs::remove_file(home.join("private-interactions.nibli")).unwrap();
+    host_b.sync().unwrap();
+    assert!(host_b.search("herons", "", 8, None).unwrap().is_empty());
+    assert_eq!(host_b.search("kingfishers", "", 8, None).unwrap().len(), 1);
+}
+
+#[test]
+fn invalid_and_symlinked_records_are_skipped_too() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(dir.path()).unwrap();
+    store.record(&record("good", "a findable note")).unwrap();
+    let records = dir.path().join("records");
+    let mut empty = serde_json::to_value(record("empty", "x")).unwrap();
+    empty["payload"]["text"] = json!("");
+    std::fs::write(records.join("invalid.json"), empty.to_string()).unwrap();
+    let mut tool = serde_json::to_value(record("tool", "tool output")).unwrap();
+    tool["payload"]["role"] = json!("tool");
+    std::fs::write(records.join("tool.json"), tool.to_string()).unwrap();
+    std::os::unix::fs::symlink("/etc/hostname", records.join("linked.json")).unwrap();
+    let sync = store.sync().unwrap();
+    let skipped = sync["skipped"].to_string();
+    for name in ["invalid.json", "tool.json", "linked.json"] {
+        assert!(skipped.contains(name), "{name}: {sync}");
+    }
+    assert_eq!(store.search("findable", "", 8, None).unwrap().len(), 1);
+}
+
+#[test]
+fn restored_copies_whose_files_are_gone_leave_recall_and_conflicts_are_skipped() {
+    let dir = tempfile::tempdir().unwrap();
+    let host_a = Store::open(&dir.path().join("host-a")).unwrap();
+    let mut private = record("p2", "a private fact about kingfishers");
+    private.origin = "peer:nibli/private.nibli".into();
+    host_a.record(&private).unwrap();
+    let manifest = host_a.backup(&dir.path().join("backup")).unwrap();
+    let root = dir.path().join("host-b");
+    let host_b = Store::open(&root).unwrap();
+    host_b.restore(&manifest).unwrap();
+    let home = dir.path().join("checkout/lucy");
+    std::fs::create_dir_all(&home).unwrap();
+    std::fs::write(home.join("constitution.nibli"), "# Lucy\n").unwrap();
+    host_b.register("nibli", &home).unwrap();
+    host_b.sync().unwrap();
+    assert_eq!(host_b.search("kingfishers", "", 8, None).unwrap().len(), 1);
+    // The restored record files are removed: their copies leave recall too.
+    for entry in std::fs::read_dir(root.join("records")).unwrap() {
+        std::fs::remove_file(entry.unwrap().path()).unwrap();
+    }
+    host_b.sync().unwrap();
+    assert!(
+        host_b
+            .search("kingfishers", "", 8, None)
+            .unwrap()
+            .is_empty()
+    );
+    // A record file that conflicts with the index is skipped and named, not fatal.
+    host_b.record(&record("same", "the original text")).unwrap();
+    let mut changed =
+        serde_json::to_value(record("same", "edited behind the store's back")).unwrap();
+    changed["payload"]["text"] = json!("edited behind the store's back");
+    std::fs::write(root.join("records/edited-copy.json"), changed.to_string()).unwrap();
+    let sync = host_b.sync().unwrap();
+    assert!(
+        sync["skipped"].to_string().contains("edited-copy.json"),
+        "{sync}"
+    );
+}
+
+#[test]
+fn restored_copies_whose_files_vanish_before_the_first_sync_leave_recall() {
+    let dir = tempfile::tempdir().unwrap();
+    let host_a = Store::open(&dir.path().join("host-a")).unwrap();
+    let mut private = record("p3", "a private fact about dippers");
+    private.origin = "peer:nibli/private.nibli".into();
+    host_a.record(&private).unwrap();
+    let manifest = host_a.backup(&dir.path().join("backup")).unwrap();
+    let root = dir.path().join("host-b");
+    let host_b = Store::open(&root).unwrap();
+    host_b.restore(&manifest).unwrap();
+    for entry in std::fs::read_dir(root.join("records")).unwrap() {
+        std::fs::remove_file(entry.unwrap().path()).unwrap();
+    }
+    let home = dir.path().join("checkout/lucy");
+    std::fs::create_dir_all(&home).unwrap();
+    std::fs::write(home.join("constitution.nibli"), "# Lucy\n").unwrap();
+    host_b.register("nibli", &home).unwrap();
+    host_b.sync().unwrap();
+    host_b.sync().unwrap();
+    assert!(host_b.search("dippers", "", 8, None).unwrap().is_empty());
+}
+
+#[test]
+fn a_record_reaching_an_emptied_origin_still_leaves_with_its_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("store");
+    let store = Store::open(&root).unwrap();
+    let home = dir.path().join("checkout/lucy");
+    std::fs::create_dir_all(&home).unwrap();
+    std::fs::write(home.join("constitution.nibli"), "# Lucy\n").unwrap();
+    store.register("nibli", &home).unwrap();
+    // An origin the peer has no file for is emptied and marked once.
+    let mut first = record("p4", "a note about wagtails");
+    first.origin = "peer:nibli/notes.md".into();
+    store.record(&first).unwrap();
+    for entry in std::fs::read_dir(root.join("records")).unwrap() {
+        std::fs::remove_file(entry.unwrap().path()).unwrap();
+    }
+    store.sync().unwrap();
+    assert!(store.search("wagtails", "", 8, None).unwrap().is_empty());
+    // A later record under the same origin, whose file then goes too, leaves recall as well.
+    let mut second = record("p5", "a note about ouzels");
+    second.origin = "peer:nibli/notes.md".into();
+    store.record(&second).unwrap();
+    for entry in std::fs::read_dir(root.join("records")).unwrap() {
+        std::fs::remove_file(entry.unwrap().path()).unwrap();
+    }
+    store.sync().unwrap();
+    store.sync().unwrap();
+    assert!(store.search("ouzels", "", 8, None).unwrap().is_empty());
+}

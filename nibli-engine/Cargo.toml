@@ -2,6 +2,7 @@
 name = "nibli-engine"
 description = "Native engine wrapper library (in-process embedding of the nibli pipeline)"
 version.workspace = true
+rust-version.workspace = true
 edition = "2024"
 license.workspace = true
 readme.workspace = true

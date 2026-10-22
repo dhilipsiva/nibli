@@ -261,12 +261,13 @@ fn bind_join_vars_from_index(
             if matching.len() == 1 {
                 let fa = &matching[0].inner().args;
                 for (i, a) in gf.args.iter().enumerate() {
-                    if let GroundTerm::PatternVar(s) = a {
-                        if s.starts_with("x__") && !bindings.contains_key(s) {
-                            bindings.insert(s.clone(), fa[i].clone());
-                            newly_bound.push(s.clone());
-                            changed = true;
-                        }
+                    if let GroundTerm::PatternVar(s) = a
+                        && s.starts_with("x__")
+                        && !bindings.contains_key(s)
+                    {
+                        bindings.insert(s.clone(), fa[i].clone());
+                        newly_bound.push(s.clone());
+                        changed = true;
                     }
                 }
             }
@@ -586,6 +587,7 @@ pub(super) fn check_formula_holds(
 /// (verdict) + `check_formula_holds_traced` (trace) double evaluation — the
 /// trace's per-node `holds` is now natively the four-valued verdict's
 /// `is_true()`, so no root reconciliation is needed.
+#[allow(clippy::too_many_arguments)] // the recursion's state, threaded explicitly
 pub(super) fn check_formula_holds_recording(
     buffer: &LogicBuffer,
     node_id: u32,
@@ -935,87 +937,87 @@ fn check_formula_holds_core_impl<S: TraceSink>(
         }
         LogicNode::ExistsNode((v, body)) => {
             // Try batch compute fast path first (uses slice, no .to_vec()).
-            if let Ok(body_node) = get_node(buffer, *body) {
-                if let LogicNode::ComputeNode((rel, args)) = body_node {
-                    let members = if v.starts_with("_ev") {
-                        inner.all_typed_domain_members()
-                    } else {
-                        inner.all_non_event_domain_members()
-                    };
-                    if let Some(batch) = batch_evaluate_compute_for_members_with_memo(
-                        &*inner,
-                        rel,
-                        args,
-                        v,
-                        members,
-                        subs,
-                        compute_memo,
-                    ) {
-                        // Clone the winning member before releasing the slice borrow.
-                        let winner = batch
-                            .results
-                            .iter()
-                            .position(|r| *r)
-                            .map(|i| members[i].clone());
-                        if let Some(winning_member) = winner {
-                            let idx = if S::RECORDING {
-                                let body_idx = with_sub(subs, v, winning_member.clone(), |s| {
-                                    check_formula_holds_core::<S>(
-                                        buffer,
-                                        *body,
-                                        s,
-                                        inner,
-                                        tense,
-                                        compute_memo,
-                                        sink,
-                                    )
-                                })?
-                                .1;
-                                sink.push(ProofStep {
-                                    rule: ProofRule::ExistsWitness {
-                                        var: v.clone(),
-                                        term: witness_term_to_logical_term(&winning_member),
-                                        origin: witness_origin(&winning_member),
-                                    },
-                                    holds: true,
-                                    children: vec![body_idx],
-                                })
-                            } else {
-                                0
-                            };
-                            return Ok((QueryResult::True, idx));
-                        }
-                        // The batch decided every candidate false. Preserve that
-                        // evidence in the trace instead of falling through to a
-                        // second candidate walk and emitting an empty
-                        // `ExistsFailed`, which would make a compute-decided
-                        // failure look like a closed-world absence.
+            if let Ok(body_node) = get_node(buffer, *body)
+                && let LogicNode::ComputeNode((rel, args)) = body_node
+            {
+                let members = if v.starts_with("_ev") {
+                    inner.all_typed_domain_members()
+                } else {
+                    inner.all_non_event_domain_members()
+                };
+                if let Some(batch) = batch_evaluate_compute_for_members_with_memo(
+                    &*inner,
+                    rel,
+                    args,
+                    v,
+                    members,
+                    subs,
+                    compute_memo,
+                ) {
+                    // Clone the winning member before releasing the slice borrow.
+                    let winner = batch
+                        .results
+                        .iter()
+                        .position(|r| *r)
+                        .map(|i| members[i].clone());
+                    if let Some(winning_member) = winner {
                         let idx = if S::RECORDING {
-                            let children = batch
-                                .methods
-                                .iter()
-                                .zip(&batch.results)
-                                .map(|(method, holds)| {
-                                    sink.push(ProofStep {
-                                        rule: ProofRule::ComputeCheck {
-                                            method: (*method).to_string(),
-                                            detail: rel.clone(),
-                                        },
-                                        holds: *holds,
-                                        children: vec![],
-                                    })
-                                })
-                                .collect();
+                            let body_idx = with_sub(subs, v, winning_member.clone(), |s| {
+                                check_formula_holds_core::<S>(
+                                    buffer,
+                                    *body,
+                                    s,
+                                    inner,
+                                    tense,
+                                    compute_memo,
+                                    sink,
+                                )
+                            })?
+                            .1;
                             sink.push(ProofStep {
-                                rule: ProofRule::ExistsFailed,
-                                holds: false,
-                                children,
+                                rule: ProofRule::ExistsWitness {
+                                    var: v.clone(),
+                                    term: witness_term_to_logical_term(&winning_member),
+                                    origin: witness_origin(&winning_member),
+                                },
+                                holds: true,
+                                children: vec![body_idx],
                             })
                         } else {
                             0
                         };
-                        return Ok((QueryResult::False, idx));
+                        return Ok((QueryResult::True, idx));
                     }
+                    // The batch decided every candidate false. Preserve that
+                    // evidence in the trace instead of falling through to a
+                    // second candidate walk and emitting an empty
+                    // `ExistsFailed`, which would make a compute-decided
+                    // failure look like a closed-world absence.
+                    let idx = if S::RECORDING {
+                        let children = batch
+                            .methods
+                            .iter()
+                            .zip(&batch.results)
+                            .map(|(method, holds)| {
+                                sink.push(ProofStep {
+                                    rule: ProofRule::ComputeCheck {
+                                        method: (*method).to_string(),
+                                        detail: rel.clone(),
+                                    },
+                                    holds: *holds,
+                                    children: vec![],
+                                })
+                            })
+                            .collect();
+                        sink.push(ProofStep {
+                            rule: ProofRule::ExistsFailed,
+                            holds: false,
+                            children,
+                        })
+                    } else {
+                        0
+                    };
+                    return Ok((QueryResult::False, idx));
                 }
             }
             // Decomposed numeric/compute group: gather the surface operands
@@ -1212,77 +1214,77 @@ fn check_formula_holds_core_impl<S: TraceSink>(
                 return Ok((QueryResult::True, idx));
             }
             // Batch compute fast path (slice, no .to_vec()).
-            if let Ok(body_node) = get_node(buffer, *body) {
-                if let LogicNode::ComputeNode((rel, args)) = body_node {
-                    let members_slice = inner.all_non_event_domain_members();
-                    if let Some(batch) = batch_evaluate_compute_for_members_with_memo(
-                        &*inner,
-                        rel,
-                        args,
-                        v,
-                        members_slice,
-                        subs,
-                        compute_memo,
-                    ) {
-                        let fail_member = batch
-                            .results
-                            .iter()
-                            .position(|r| !*r)
-                            .map(|i| members_slice[i].clone());
-                        if let Some(counter) = fail_member {
-                            let idx = if S::RECORDING {
-                                let body_idx = with_sub(subs, v, counter.clone(), |s| {
-                                    check_formula_holds_core::<S>(
-                                        buffer,
-                                        *body,
-                                        s,
-                                        inner,
-                                        tense,
-                                        compute_memo,
-                                        sink,
-                                    )
-                                })?
-                                .1;
-                                sink.push(ProofStep {
-                                    rule: ProofRule::ForallCounterexample {
-                                        entity: WitnessBinding {
-                                            variable: v.clone(),
-                                            term: witness_term_to_logical_term(&counter),
-                                            origin: witness_origin(&counter),
-                                        },
-                                    },
-                                    holds: false,
-                                    children: vec![body_idx],
-                                })
-                            } else {
-                                0
-                            };
-                            return Ok((QueryResult::False, idx));
-                        }
+            if let Ok(body_node) = get_node(buffer, *body)
+                && let LogicNode::ComputeNode((rel, args)) = body_node
+            {
+                let members_slice = inner.all_non_event_domain_members();
+                if let Some(batch) = batch_evaluate_compute_for_members_with_memo(
+                    &*inner,
+                    rel,
+                    args,
+                    v,
+                    members_slice,
+                    subs,
+                    compute_memo,
+                ) {
+                    let fail_member = batch
+                        .results
+                        .iter()
+                        .position(|r| !*r)
+                        .map(|i| members_slice[i].clone());
+                    if let Some(counter) = fail_member {
                         let idx = if S::RECORDING {
-                            let (child_indices, entity_terms) = forall_record_all_members::<S>(
-                                buffer,
-                                *body,
-                                v,
-                                &members,
-                                subs,
-                                inner,
-                                tense,
-                                compute_memo,
-                                sink,
-                            )?;
+                            let body_idx = with_sub(subs, v, counter.clone(), |s| {
+                                check_formula_holds_core::<S>(
+                                    buffer,
+                                    *body,
+                                    s,
+                                    inner,
+                                    tense,
+                                    compute_memo,
+                                    sink,
+                                )
+                            })?
+                            .1;
                             sink.push(ProofStep {
-                                rule: ProofRule::ForallVerified {
-                                    entities: entity_terms,
+                                rule: ProofRule::ForallCounterexample {
+                                    entity: WitnessBinding {
+                                        variable: v.clone(),
+                                        term: witness_term_to_logical_term(&counter),
+                                        origin: witness_origin(&counter),
+                                    },
                                 },
-                                holds: true,
-                                children: child_indices,
+                                holds: false,
+                                children: vec![body_idx],
                             })
                         } else {
                             0
                         };
-                        return Ok((QueryResult::True, idx));
+                        return Ok((QueryResult::False, idx));
                     }
+                    let idx = if S::RECORDING {
+                        let (child_indices, entity_terms) = forall_record_all_members::<S>(
+                            buffer,
+                            *body,
+                            v,
+                            &members,
+                            subs,
+                            inner,
+                            tense,
+                            compute_memo,
+                            sink,
+                        )?;
+                        sink.push(ProofStep {
+                            rule: ProofRule::ForallVerified {
+                                entities: entity_terms,
+                            },
+                            holds: true,
+                            children: child_indices,
+                        })
+                    } else {
+                        0
+                    };
+                    return Ok((QueryResult::True, idx));
                 }
             }
             // Slow path: untraced verdict semantics (short-circuit on a
@@ -1429,63 +1431,62 @@ fn check_formula_holds_core_impl<S: TraceSink>(
             };
 
             // Batch compute fast path.
-            if let Ok(body_node) = get_node(buffer, *body) {
-                if let LogicNode::ComputeNode((rel, args)) = body_node {
-                    if let Some(batch) = batch_evaluate_compute_for_members_with_memo(
-                        &*inner,
-                        rel,
-                        args,
-                        v,
-                        &members,
-                        subs,
-                        compute_memo,
-                    ) {
-                        let satisfying = batch.results.iter().filter(|r| **r).count() as u32;
-                        let existential_imported = members
-                            .iter()
-                            .zip(&batch.results)
-                            .filter(|(member, holds)| {
-                                **holds
-                                    && witness_origin(member)
-                                        == nibli_types::logic::WitnessOrigin::ExistentialImport
-                            })
-                            .count() as u32;
-                        let verdict = if satisfying == *count {
-                            QueryResult::True
-                        } else {
-                            QueryResult::False
-                        };
-                        let idx = if S::RECORDING {
-                            let children = batch
-                                .methods
-                                .iter()
-                                .zip(&batch.results)
-                                .map(|(method, holds)| {
-                                    sink.push(ProofStep {
-                                        rule: ProofRule::ComputeCheck {
-                                            method: (*method).to_string(),
-                                            detail: rel.clone(),
-                                        },
-                                        holds: *holds,
-                                        children: vec![],
-                                    })
-                                })
-                                .collect();
+            if let Ok(body_node) = get_node(buffer, *body)
+                && let LogicNode::ComputeNode((rel, args)) = body_node
+                && let Some(batch) = batch_evaluate_compute_for_members_with_memo(
+                    &*inner,
+                    rel,
+                    args,
+                    v,
+                    &members,
+                    subs,
+                    compute_memo,
+                )
+            {
+                let satisfying = batch.results.iter().filter(|r| **r).count() as u32;
+                let existential_imported = members
+                    .iter()
+                    .zip(&batch.results)
+                    .filter(|(member, holds)| {
+                        **holds
+                            && witness_origin(member)
+                                == nibli_types::logic::WitnessOrigin::ExistentialImport
+                    })
+                    .count() as u32;
+                let verdict = if satisfying == *count {
+                    QueryResult::True
+                } else {
+                    QueryResult::False
+                };
+                let idx = if S::RECORDING {
+                    let children = batch
+                        .methods
+                        .iter()
+                        .zip(&batch.results)
+                        .map(|(method, holds)| {
                             sink.push(ProofStep {
-                                rule: ProofRule::CountResult {
-                                    expected: *count,
-                                    actual: satisfying,
-                                    existential_imported,
+                                rule: ProofRule::ComputeCheck {
+                                    method: (*method).to_string(),
+                                    detail: rel.clone(),
                                 },
-                                holds: verdict.is_true(),
-                                children,
+                                holds: *holds,
+                                children: vec![],
                             })
-                        } else {
-                            0
-                        };
-                        return Ok((verdict, idx));
-                    }
-                }
+                        })
+                        .collect();
+                    sink.push(ProofStep {
+                        rule: ProofRule::CountResult {
+                            expected: *count,
+                            actual: satisfying,
+                            existential_imported,
+                        },
+                        holds: verdict.is_true(),
+                        children,
+                    })
+                } else {
+                    0
+                };
+                return Ok((verdict, idx));
             }
             let mut satisfying = 0u32;
             let mut existential_imported = 0u32;
@@ -3011,18 +3012,15 @@ pub(super) fn witness_activation_holds(
         && inner.materialization
         && rule.negated_condition_indices.is_empty()
         && rule.negated_exists_groups.is_empty()
-    {
-        if let Some((relation, tuple)) =
+        && let Some((relation, tuple)) =
             crate::materialize::probe_positive_rule_conditions(&rule.typed_conditions, bindings)
+    {
+        let materialized = inner.materialized.borrow();
+        if let Some(complete) = materialized.as_ref()
+            && complete.is_complete_for(&relation, tuple.len())
+            && !complete.contains(&relation, &tuple)
         {
-            let materialized = inner.materialized.borrow();
-            if let Some(complete) = materialized.as_ref() {
-                if complete.is_complete_for(&relation, tuple.len())
-                    && !complete.contains(&relation, &tuple)
-                {
-                    return QueryResult::False;
-                }
-            }
+            return QueryResult::False;
         }
     }
     let event_vars: Vec<String> = rule
@@ -3360,8 +3358,8 @@ fn process_phase<S: TraceSink>(
                 .cloned()
                 .collect();
 
-            if !unbound_event_vars.is_empty() {
-                if let EventBindingSearch::Exhausted(pending) = search_event_bindings(
+            if !unbound_event_vars.is_empty()
+                && let EventBindingSearch::Exhausted(pending) = search_event_bindings(
                     rule,
                     &unbound_event_vars,
                     &mut bindings,
@@ -3369,27 +3367,27 @@ fn process_phase<S: TraceSink>(
                     depth,
                     visited,
                     candidates_slot,
-                ) {
-                    if matches!(
-                        pending,
-                        Some(QueryResult::ResourceExceeded(ResourceKind::Depth))
-                    ) && !S::RECORDING
-                        && let Some(conditions_hold) =
-                            materialized_positive_rule_conditions(rule, &bindings, inner)
-                    {
-                        if conditions_hold {
-                            return Some(None);
-                        }
-                        continue;
-                    }
-                    // Merge any pending non-definitive result WITHOUT wiping an
-                    // already-pending one: if every branch failed definitively,
-                    // keep best_result intact.
-                    if let Some(r) = pending {
-                        *best_result = prefer_non_definitive(best_result.take(), r);
+                )
+            {
+                if matches!(
+                    pending,
+                    Some(QueryResult::ResourceExceeded(ResourceKind::Depth))
+                ) && !S::RECORDING
+                    && let Some(conditions_hold) =
+                        materialized_positive_rule_conditions(rule, &bindings, inner)
+                {
+                    if conditions_hold {
+                        return Some(None);
                     }
                     continue;
                 }
+                // Merge any pending non-definitive result WITHOUT wiping an
+                // already-pending one: if every branch failed definitively,
+                // keep best_result intact.
+                if let Some(r) = pending {
+                    *best_result = prefer_non_definitive(best_result.take(), r);
+                }
+                continue;
             }
 
             let mut all_conditions_hold = true;
@@ -3801,46 +3799,45 @@ pub(super) fn trace_predicate_provenance_typed(
     // sidecar decide whether that variant is Asserted, Derived, Presupposed, or
     // Internal. A purely backward-derived equivalent variant is not in the store
     // and therefore flows to the derivation fallback further down.
-    if !inner.equivalence_parent.is_empty() {
-        if let Some(variant) = typed_fact_is_stored_with_equivalence(fact, inner) {
-            if let Some(equality_facts) = equality_support_facts(fact, &variant, inner) {
-                let equals_note = equals_substitution_note(fact, &variant);
-                let substituted = variant.to_display_string();
-                let child = trace_predicate_provenance_typed(
-                    &variant,
-                    inner,
-                    steps,
-                    depth,
-                    memo,
-                    &mut HashSet::new(),
-                );
-                let mut children = vec![child];
-                children.extend(equality_facts.iter().map(|equality| {
-                    trace_predicate_provenance_typed(
-                        equality,
-                        inner,
-                        steps,
-                        depth,
-                        memo,
-                        &mut HashSet::new(),
-                    )
-                }));
-                let idx = push_proof_step(
-                    steps,
-                    ProofStep {
-                        rule: ProofRule::EqualitySubstitution {
-                            original: display.clone(),
-                            equality_facts: equals_note,
-                            substituted,
-                        },
-                        holds: true,
-                        children,
-                    },
-                );
-                memo.insert(fact.clone(), idx);
-                return idx;
-            }
-        }
+    if !inner.equivalence_parent.is_empty()
+        && let Some(variant) = typed_fact_is_stored_with_equivalence(fact, inner)
+        && let Some(equality_facts) = equality_support_facts(fact, &variant, inner)
+    {
+        let equals_note = equals_substitution_note(fact, &variant);
+        let substituted = variant.to_display_string();
+        let child = trace_predicate_provenance_typed(
+            &variant,
+            inner,
+            steps,
+            depth,
+            memo,
+            &mut HashSet::new(),
+        );
+        let mut children = vec![child];
+        children.extend(equality_facts.iter().map(|equality| {
+            trace_predicate_provenance_typed(
+                equality,
+                inner,
+                steps,
+                depth,
+                memo,
+                &mut HashSet::new(),
+            )
+        }));
+        let idx = push_proof_step(
+            steps,
+            ProofStep {
+                rule: ProofRule::EqualitySubstitution {
+                    original: display.clone(),
+                    equality_facts: equals_note,
+                    substituted,
+                },
+                holds: true,
+                children,
+            },
+        );
+        memo.insert(fact.clone(), idx);
+        return idx;
     }
 
     if depth < inner.max_chain_depth {
@@ -3918,44 +3915,44 @@ pub(super) fn trace_predicate_provenance_typed(
             if owns_budget {
                 inner.du_variant_budget.set(None);
             }
-            if let Some(variant) = satisfying {
-                if let Some(equality_facts) = equality_support_facts(fact, &variant, inner) {
-                    let equals_note = equals_substitution_note(fact, &variant);
-                    let substituted = variant.to_display_string();
-                    let child = trace_predicate_provenance_typed(
-                        &variant,
+            if let Some(variant) = satisfying
+                && let Some(equality_facts) = equality_support_facts(fact, &variant, inner)
+            {
+                let equals_note = equals_substitution_note(fact, &variant);
+                let substituted = variant.to_display_string();
+                let child = trace_predicate_provenance_typed(
+                    &variant,
+                    inner,
+                    steps,
+                    depth,
+                    memo,
+                    &mut HashSet::new(),
+                );
+                let mut children = vec![child];
+                children.extend(equality_facts.iter().map(|equality| {
+                    trace_predicate_provenance_typed(
+                        equality,
                         inner,
                         steps,
                         depth,
                         memo,
                         &mut HashSet::new(),
-                    );
-                    let mut children = vec![child];
-                    children.extend(equality_facts.iter().map(|equality| {
-                        trace_predicate_provenance_typed(
-                            equality,
-                            inner,
-                            steps,
-                            depth,
-                            memo,
-                            &mut HashSet::new(),
-                        )
-                    }));
-                    let idx = push_proof_step(
-                        steps,
-                        ProofStep {
-                            rule: ProofRule::EqualitySubstitution {
-                                original: display.clone(),
-                                equality_facts: equals_note,
-                                substituted,
-                            },
-                            holds: true,
-                            children,
+                    )
+                }));
+                let idx = push_proof_step(
+                    steps,
+                    ProofStep {
+                        rule: ProofRule::EqualitySubstitution {
+                            original: display.clone(),
+                            equality_facts: equals_note,
+                            substituted,
                         },
-                    );
-                    memo.insert(fact.clone(), idx);
-                    return idx;
-                }
+                        holds: true,
+                        children,
+                    },
+                );
+                memo.insert(fact.clone(), idx);
+                return idx;
             }
         }
     }
@@ -3972,15 +3969,15 @@ pub(super) fn trace_predicate_provenance_typed(
     // Re-emitting a fresh leaf each time is strictly honest; the only cost is a few extra
     // leaves in pathological traces. With this omitted, every memo entry — and therefore
     // every `ProofRef` — points at a `holds:true` derivation.
-    let idx = push_proof_step(
+
+    push_proof_step(
         steps,
         ProofStep {
             rule: ProofRule::PredicateNotFound { predicate: display },
             holds: false,
             children: vec![],
         },
-    );
-    idx
+    )
 }
 
 // ─── End Typed Backward-Chaining ─────────────────────────────────

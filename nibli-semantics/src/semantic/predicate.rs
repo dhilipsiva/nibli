@@ -350,10 +350,10 @@ impl SemanticCompiler {
                 };
 
                 let outer_ka_var = self.property_open_var;
-                if *kind == AbstractionKind::Property {
-                    if let Some(IrTerm::Variable(v)) = args.first() {
-                        self.property_open_var = Some(*v);
-                    }
+                if *kind == AbstractionKind::Property
+                    && let Some(IrTerm::Variable(v)) = args.first()
+                {
+                    self.property_open_var = Some(*v);
                 }
 
                 let inner_form =
@@ -486,7 +486,7 @@ mod abstraction_identity_tests {
         nested_key.extend_from_slice(&0_u64.to_be_bytes());
         let nested_marker = compiler
             .interner
-            .get_or_intern(&encode_abstraction_marker_v1(&nested_key));
+            .get_or_intern(encode_abstraction_marker_v1(&nested_key));
         let dog = compiler.interner.get_or_intern("dog");
         let body = IrForm::And(
             Box::new(IrForm::Predicate {

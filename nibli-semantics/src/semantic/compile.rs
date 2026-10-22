@@ -60,11 +60,10 @@ impl SemanticCompiler {
             && target_arity >= 1
             && self.pending_clause_subject.is_some()
             && !Self::terms_contain_explicit_kea(&proposition.terms, arguments)
+            && let Some(subject) = self.pending_clause_subject.take()
         {
-            if let Some(subject) = self.pending_clause_subject.take() {
-                positioned[0] = Some(IrTerm::Variable(subject));
-                self.ref_used = true;
-            }
+            positioned[0] = Some(IrTerm::Variable(subject));
+            self.ref_used = true;
         }
 
         // Surface-ordered scope introductions (descriptions + bare da/de/di),

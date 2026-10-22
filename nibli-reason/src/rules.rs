@@ -157,25 +157,12 @@ pub(super) fn decompose_implication(buffer: &LogicBuffer, body_id: u32) -> Optio
     let mut conditions = Vec::new();
     let mut current = body_id;
 
-    loop {
-        let Ok(node) = get_node(buffer, current) else {
-            break;
-        };
-        match node {
-            LogicNode::OrNode((left, right)) => {
-                let Ok(left_node) = get_node(buffer, *left) else {
-                    break;
-                };
-                match left_node {
-                    LogicNode::NotNode(inner) => {
-                        conditions.push(*inner);
-                        current = *right;
-                    }
-                    _ => break,
-                }
-            }
-            _ => break,
-        }
+    // Peel `¬c ∨ rest` links: each negated left side is a condition, the right side continues.
+    while let Ok(LogicNode::OrNode((left, right))) = get_node(buffer, current)
+        && let Ok(LogicNode::NotNode(inner)) = get_node(buffer, *left)
+    {
+        conditions.push(*inner);
+        current = *right;
     }
 
     if conditions.is_empty() {
@@ -642,6 +629,7 @@ pub(super) struct RuleRegistration {
     pub(super) rule_source: Option<RuleSourceId>,
 }
 
+#[allow(clippy::too_many_arguments)] // the rule's parts, as the callers hold them
 pub(super) fn register_rule(
     inner: &mut KnowledgeBaseInner,
     kind: RuleKind,
@@ -672,6 +660,7 @@ pub(super) fn register_rule(
 /// Keep quoted-body dependencies in the stratification graph without making
 /// those atoms executable. Content-addressed abstraction markers remain among
 /// executable heads and therefore bind quoted content into the rule identity.
+#[allow(clippy::too_many_arguments)] // as register_rule, plus the dependency set
 fn register_rule_with_dependencies(
     inner: &mut KnowledgeBaseInner,
     kind: RuleKind,
@@ -758,19 +747,20 @@ fn register_rule_with_dependencies(
     }
 
     // Check stratification (skip during rebuild — same rules passed before).
-    if !inner.rebuilding && !inner.deferred_stratification {
-        if let Err(e) = check_stratification(&inner.pred_dep_graph) {
-            // Restore exact pre-registration lengths, including absent nodes.
-            for (head, length) in previous {
-                match length {
-                    Some(length) => inner.pred_dep_graph.get_mut(head).unwrap().truncate(length),
-                    None => {
-                        inner.pred_dep_graph.remove(head);
-                    }
+    if !inner.rebuilding
+        && !inner.deferred_stratification
+        && let Err(e) = check_stratification(&inner.pred_dep_graph)
+    {
+        // Restore exact pre-registration lengths, including absent nodes.
+        for (head, length) in previous {
+            match length {
+                Some(length) => inner.pred_dep_graph.get_mut(head).unwrap().truncate(length),
+                None => {
+                    inner.pred_dep_graph.remove(head);
                 }
             }
-            return Err(e);
         }
+        return Err(e);
     }
 
     // The digest is only a bucket selector. Full canonical equality above is
@@ -1123,27 +1113,27 @@ pub(super) fn assert_typed_fact_with_origin(
     }
 
     // Sort validation (permissive mode: warn on mismatch).
-    if let Some(sig) = inner.predicate_registry.get(rel) {
-        if !sig.arg_sorts.is_empty() && !inner.rebuilding {
-            let gf_check = fact.inner();
-            for (pos, arg) in gf_check.args.iter().enumerate() {
-                if pos >= sig.arg_sorts.len() {
-                    break;
-                }
-                let expected_sort = &sig.arg_sorts[pos];
-                if expected_sort.is_empty() {
-                    continue; // No sort constraint for this position.
-                }
-                if let GroundTerm::Constant(name) = arg {
-                    if let Some(actual_sort) = inner.entity_sorts.get(name.as_str()) {
-                        if !is_sort_compatible(&inner.sort_hierarchy, actual_sort, expected_sort) {
-                            eprintln!(
-                                "[Sort Warning] '{}' arg {}: entity '{}' has sort '{}', expected '{}'",
-                                rel, pos, name, actual_sort, expected_sort
-                            );
-                        }
-                    }
-                }
+    if let Some(sig) = inner.predicate_registry.get(rel)
+        && !sig.arg_sorts.is_empty()
+        && !inner.rebuilding
+    {
+        let gf_check = fact.inner();
+        for (pos, arg) in gf_check.args.iter().enumerate() {
+            if pos >= sig.arg_sorts.len() {
+                break;
+            }
+            let expected_sort = &sig.arg_sorts[pos];
+            if expected_sort.is_empty() {
+                continue; // No sort constraint for this position.
+            }
+            if let GroundTerm::Constant(name) = arg
+                && let Some(actual_sort) = inner.entity_sorts.get(name.as_str())
+                && !is_sort_compatible(&inner.sort_hierarchy, actual_sort, expected_sort)
+            {
+                eprintln!(
+                    "[Sort Warning] '{}' arg {}: entity '{}' has sort '{}', expected '{}'",
+                    rel, pos, name, actual_sort, expected_sort
+                );
             }
         }
     }
@@ -1203,26 +1193,27 @@ pub(super) fn assert_typed_fact_with_origin(
 
     // Check integrity constraints (permissive default: warn, don't reject;
     // STRICT MODE: roll the fact back out and record the violation).
-    if !inner.integrity_constraints.is_empty() && !inner.rebuilding {
-        if let Some(violation) = check_constraints_for_predicate(&rel_owned, inner) {
-            if let Some(rejected) = fact_for_rollback.as_ref() {
-                let msg = format!(
-                    "integrity constraint violated: {violation} — fact '{}' rejected",
-                    rejected.to_display_string()
-                );
-                eprintln!("[Strict] {msg}");
-                inner.strict_violations.push(msg);
-                // Only a fact this call actually ADDED is rolled back; a
-                // duplicate re-ingest of a pre-existing fact means the KB was
-                // already in violation before this call.
-                if was_new {
-                    unassert_typed_fact(rejected, inner);
-                }
-                // The fact is rejected: nothing to forward-chain on.
-                return;
+    if !inner.integrity_constraints.is_empty()
+        && !inner.rebuilding
+        && let Some(violation) = check_constraints_for_predicate(&rel_owned, inner)
+    {
+        if let Some(rejected) = fact_for_rollback.as_ref() {
+            let msg = format!(
+                "integrity constraint violated: {violation} — fact '{}' rejected",
+                rejected.to_display_string()
+            );
+            eprintln!("[Strict] {msg}");
+            inner.strict_violations.push(msg);
+            // Only a fact this call actually ADDED is rolled back; a
+            // duplicate re-ingest of a pre-existing fact means the KB was
+            // already in violation before this call.
+            if was_new {
+                unassert_typed_fact(rejected, inner);
             }
-            eprintln!("[Constraint] {}", violation);
+            // The fact is rejected: nothing to forward-chain on.
+            return;
         }
+        eprintln!("[Constraint] {}", violation);
     }
 
     // Commit support only after every fail-closed acceptance check.  A rejected
@@ -2531,6 +2522,7 @@ mod stratification_conformance {
 
     /// The shared corpus: hand-crafted pathological graphs (self-loops, positive/negative cycles,
     /// negative-edge-into-cycle, DAG) + 300 deterministic random small graphs.
+    #[allow(clippy::type_complexity)] // (name, graph) pairs, local to these tests
     fn corpus() -> Vec<(String, HashMap<String, Vec<(String, bool)>>)> {
         let mut corpus: Vec<(String, HashMap<String, Vec<(String, bool)>>)> = vec![
             ("empty".into(), graph_of(&[])),

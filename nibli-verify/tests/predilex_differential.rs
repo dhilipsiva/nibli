@@ -3,7 +3,7 @@
 //! Cross-validates the SHIPPED corpus arities (the values that drive event
 //! decomposition and strict-mode arity rejection) against Predilex, an
 //! independent human-curated CC0 thesaurus of sememes-as-predicates (vendored
-//! + pinned in `nibli-verify/vendor/predilex/`). Predilex lemmas are Lojban;
+//! and pinned in `nibli-verify/vendor/predilex/`). Predilex lemmas are Lojban;
 //! the corpus is English-keyed, so the gate keys each lemma through the
 //! PERMANENT provenance bridge (`nibli_lexicon::by_provenance`) — exactly the
 //! mapping the corpus records for every entry.
