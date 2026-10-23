@@ -61,6 +61,9 @@ here first.
   contain an internal negative edge exactly when the checker's inductive Horn
   closure criterion contains a negative self-path. A source-drift check covers
   the modeled clauses; production evaluation of those clauses remains unproved.
+  The native stratification diagnostic now uses explicit string appends,
+  preserving its text while avoiding the extractor library's erased formatting
+  arguments.
 
 - **WIT 0.12.0** (`wit/world.wit`; the engine changes are in
   [ENGINE_UPGRADE_0_2.md](ENGINE_UPGRADE_0_2.md)): `list-assertion-records`

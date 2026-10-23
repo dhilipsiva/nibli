@@ -179,9 +179,15 @@ The name adapter and negative-edge scan use owned temporary names and explicit
 loops. The scan retains the first diagnostic in the existing traversal order
 and returns it after the loops. This lets the named stratifier pass Aeneas's
 translation stages, but its extraction gate still fails: external templates for
-maps, sets, sorting, string operations, formatting, and iterator adapters need
+maps, sets, sorting, string operations, and iterator adapters need
 explicit library models. These templates are unimplemented and are rejected by
 the gate; they do not extend the trusted boundary silently.
+
+The diagnostic uses explicit string appends with the same text and predicate
+names. The pinned Aeneas formatting model represents arguments as `Unit`, erasing
+their contents before the external formatting call. Avoiding that call keeps the
+diagnostic values available to a future proof; it does not itself verify string
+operations or their allocation behavior.
 
 `just verify-self-check-scc-stack` regenerates the kernel and checks
 `SccGraph.lean`, `SccKernelProofs.lean`, `SccInvariant.lean`, `SccTermination.lean`,

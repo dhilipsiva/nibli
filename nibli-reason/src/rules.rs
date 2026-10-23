@@ -933,11 +933,16 @@ pub(super) fn check_stratification(
                 if let Some(edges) = graph.get(node) {
                     for (dep, is_neg) in edges {
                         if violation.is_none() && *is_neg && members.contains(dep) {
-                            violation = Some(format!(
-                                "Unstratifiable negation: strongly-connected component \
-                                 containing '{}' -> '{}' (negative)",
-                                node, dep
-                            ));
+                            // Keep the diagnostic arguments visible to extraction;
+                            // the primitive format-arguments model erases them.
+                            let mut message = String::from(
+                                "Unstratifiable negation: strongly-connected component containing '",
+                            );
+                            message.push_str(node);
+                            message.push_str("' -> '");
+                            message.push_str(dep);
+                            message.push_str("' (negative)");
+                            violation = Some(message);
                         }
                     }
                 }
