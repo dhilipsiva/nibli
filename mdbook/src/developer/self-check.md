@@ -175,6 +175,14 @@ the traversal within the extractor's supported operations. The kernel translates
 without opaque Nibli definitions or external stubs; the surrounding name adapter
 is still outside the completed extraction.
 
+The name adapter and negative-edge scan use owned temporary names and explicit
+loops. The scan retains the first diagnostic in the existing traversal order
+and returns it after the loops. This lets the named stratifier pass Aeneas's
+translation stages, but its extraction gate still fails: external templates for
+maps, sets, sorting, string operations, formatting, and iterator adapters need
+explicit library models. These templates are unimplemented and are rejected by
+the gate; they do not extend the trusted boundary silently.
+
 `just verify-self-check-scc-stack` regenerates the kernel and checks
 `SccGraph.lean`, `SccKernelProofs.lean`, `SccInvariant.lean`, `SccTermination.lean`,
 and `SccTraversal.lean`.

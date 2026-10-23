@@ -241,7 +241,10 @@ When analyzing or searching the codebase:
   in-bounds edge targets. The name adapter, negative-edge decision, and dependency
   extraction remain open. `just verify-self-check-extraction`
   probes the remaining implementation and currently fails on unsupported Aeneas
-  constructs. These component proofs do not establish full checker equivalence. See
+  constructs or unimplemented external-library templates. The named stratifier
+  translates after replacing borrowed-name containers and iterator closures with
+  owned names and explicit loops; its maps/sets/sorting/string/formatting models
+  remain unimplemented. These component proofs do not establish full checker equivalence. See
   `mdbook/src/developer/self-check.md`; keep that boundary explicit.
 
 ## Docs Conventions

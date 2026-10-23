@@ -53,7 +53,11 @@ here first.
   and outer-scan coverage compose into total correctness of the production
   indexed kernel: every graph vertex occurs exactly once in a maximal SCC, for
   graphs with in-bounds edge targets. The predicate-name adapter, negative-edge
-  decision, and compiler/checker equivalence remain unproved.
+  decision, and compiler/checker equivalence remain unproved. The named adapter
+  now uses owned temporary names and explicit loops, and the negative-edge scan
+  preserves its first diagnostic without returning from nested loops. Aeneas
+  translates that path, but the extraction gate still rejects its unimplemented
+  external-library templates.
 
 - **WIT 0.12.0** (`wit/world.wit`; the engine changes are in
   [ENGINE_UPGRADE_0_2.md](ENGINE_UPGRADE_0_2.md)): `list-assertion-records`

@@ -868,44 +868,45 @@ fn register_dependent_skolem_functions(
 pub(super) fn compute_sccs(graph: &HashMap<String, Vec<(String, bool)>>) -> Vec<Vec<String>> {
     use std::collections::BTreeSet;
 
-    let mut node_set: BTreeSet<&str> = BTreeSet::new();
+    let mut node_set: BTreeSet<String> = BTreeSet::new();
     for (name, edges) in graph {
-        node_set.insert(name.as_str());
+        node_set.insert(name.clone());
         for (target, _) in edges {
-            node_set.insert(target.as_str());
+            node_set.insert(target.clone());
         }
     }
-    let nodes: Vec<&str> = node_set.into_iter().collect();
-    let indices: HashMap<&str, usize> = nodes
-        .iter()
-        .enumerate()
-        .map(|(index, &name)| (name, index))
-        .collect();
-    let adjacency: Vec<Vec<usize>> = nodes
-        .iter()
-        .map(|name| {
-            let mut targets: Vec<usize> = graph
-                .get(*name)
-                .into_iter()
-                .flatten()
-                .map(|(target, _)| indices[target.as_str()])
-                .collect();
-            targets.sort_unstable();
-            targets
-        })
-        .collect();
+    let mut nodes = Vec::with_capacity(node_set.len());
+    for name in node_set {
+        nodes.push(name);
+    }
+    let mut indices = HashMap::new();
+    let mut index = 0;
+    while index < nodes.len() {
+        indices.insert(nodes[index].clone(), index);
+        index += 1;
+    }
+    let mut adjacency = Vec::with_capacity(nodes.len());
+    for name in &nodes {
+        let mut targets = Vec::new();
+        if let Some(edges) = graph.get(name) {
+            for (target, _) in edges {
+                targets.push(indices[target]);
+            }
+        }
+        targets.sort_unstable();
+        adjacency.push(targets);
+    }
 
-    crate::dependency_graph::compute_sccs(&adjacency)
-        .into_iter()
-        .map(|component| {
-            let mut names: Vec<String> = component
-                .into_iter()
-                .map(|index| nodes[index].to_string())
-                .collect();
-            names.sort();
-            names
-        })
-        .collect()
+    let mut components = Vec::new();
+    for component in crate::dependency_graph::compute_sccs(&adjacency) {
+        let mut names = Vec::new();
+        for index in component {
+            names.push(nodes[index].clone());
+        }
+        names.sort();
+        components.push(names);
+    }
+    components
 }
 
 /// Check the predicate dependency graph for negative cycles.
@@ -919,23 +920,34 @@ pub(super) fn compute_sccs(graph: &HashMap<String, Vec<(String, bool)>>) -> Vec<
 pub(super) fn check_stratification(
     graph: &HashMap<String, Vec<(String, bool)>>,
 ) -> Result<(), String> {
+    // Retain the first diagnostic in traversal order. Returning after the loops
+    // keeps this path within the production extractor's supported control flow.
+    let mut violation = None;
     for scc in compute_sccs(graph) {
-        let members: std::collections::HashSet<&str> = scc.iter().map(|s| s.as_str()).collect();
-        for node in &scc {
-            if let Some(edges) = graph.get(node.as_str()) {
-                for (dep, is_neg) in edges {
-                    if *is_neg && members.contains(dep.as_str()) {
-                        return Err(format!(
-                            "Unstratifiable negation: strongly-connected component \
-                             containing '{}' -> '{}' (negative)",
-                            node, dep
-                        ));
+        if violation.is_none() {
+            let mut members = std::collections::HashSet::new();
+            for node in &scc {
+                members.insert(node.clone());
+            }
+            for node in &scc {
+                if let Some(edges) = graph.get(node) {
+                    for (dep, is_neg) in edges {
+                        if violation.is_none() && *is_neg && members.contains(dep) {
+                            violation = Some(format!(
+                                "Unstratifiable negation: strongly-connected component \
+                                 containing '{}' -> '{}' (negative)",
+                                node, dep
+                            ));
+                        }
                     }
                 }
             }
         }
     }
-    Ok(())
+    match violation {
+        Some(message) => Err(message),
+        None => Ok(()),
+    }
 }
 
 /// Assert a typed fact into the fact store.
@@ -2545,6 +2557,25 @@ mod stratification_conformance {
             checked >= 300,
             "corpus too small ({checked}); gate near-vacuous"
         );
+    }
+
+    #[test]
+    fn stratification_reports_first_internal_negative_edge() {
+        let mut graph = graph_of(&[
+            ("a", "b", true),
+            ("a", "a", true),
+            ("b", "a", true),
+            ("c", "c", true),
+        ]);
+        let expected = |target| {
+            Err(format!(
+                "Unstratifiable negation: strongly-connected component \
+                 containing 'a' -> '{target}' (negative)"
+            ))
+        };
+        assert_eq!(check_stratification(&graph), expected("b"));
+        graph.get_mut("a").unwrap().reverse();
+        assert_eq!(check_stratification(&graph), expected("a"));
     }
 
     /// Bridge from the SCC-decomposition proof (`proofs/Scc.lean`) to the real Tarjan
