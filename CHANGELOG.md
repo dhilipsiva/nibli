@@ -49,7 +49,9 @@ here first.
   and exit, including the caller's use of the SCC emission theorem and parent
   update. The production allocation prefix establishes a DFS invariant that
   implies single-step safety and root readiness; every inner DFS branch preserves
-  it, including root/nonroot completion. Outer-loop invariants, complete
+  it, including root/nonroot completion. A lexicographic measure proves the
+  production inner loop terminates with both logical stacks empty from any
+  invariant state. Outer-loop invariants, complete
   SCC correctness, and compiler/checker equivalence remain unproved.
 
 - **WIT 0.12.0** (`wit/world.wit`; the engine changes are in

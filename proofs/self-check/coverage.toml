@@ -69,13 +69,15 @@ discovery, visited edges, completion, and exit. The production allocation prefix
 establishes the DFS invariant; it implies single-step safety and root readiness,
 and every inner DFS branch preserves it. Nonroot completion merges the child's
 active interval into its parent's; root completion preserves the invariant while
-emitting a maximal SCC. Empty DFS implies no active vertices. Outer-loop invariants, complete
-termination/coverage, and the name adapter remain separate obligations."""
+emitting a maximal SCC. A lexicographic measure proves that the production inner
+DFS loop terminates from an invariant state with both logical stacks empty.
+Outer-loop initialization/preservation/termination, complete partition coverage,
+and the name adapter remain separate obligations."""
 probes = ["scc_kernel"]
 tests = ["nibli-reason/src/dependency_graph.rs", "nibli-reason/src/rules.rs"]
 theorem_files = [
   "proofs/self-check/SccGraph.lean", "proofs/self-check/SccKernelProofs.lean",
-  "proofs/self-check/SccInvariant.lean",
+  "proofs/self-check/SccInvariant.lean", "proofs/self-check/SccTermination.lean",
 ]
 theorems = [
   "NibliSelfCheck.Scc.reach_closed", "NibliSelfCheck.Scc.seal_component",
@@ -93,6 +95,7 @@ theorems = [
   "NibliSelfCheck.Scc.invariant_discover_preserved",
   "NibliSelfCheck.Scc.invariant_nonroot_preserved", "NibliSelfCheck.Scc.invariant_root_preserved",
   "NibliSelfCheck.Scc.invariant_step_preserved",
+  "NibliSelfCheck.Scc.dfs_step_decreases", "NibliSelfCheck.Scc.dfs_total",
 ]
 
 [[obligation]]

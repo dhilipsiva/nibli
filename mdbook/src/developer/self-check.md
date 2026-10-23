@@ -176,7 +176,7 @@ without opaque Nibli definitions or external stubs; the surrounding name adapter
 is still outside the completed extraction.
 
 `just verify-self-check-scc-stack` regenerates the kernel and checks
-`SccGraph.lean`, `SccKernelProofs.lean`, and `SccInvariant.lean`.
+`SccGraph.lean`, `SccKernelProofs.lean`, `SccInvariant.lean`, and `SccTermination.lean`.
 The proofs establish component-removal termination, the
 topmost-root stopping position, the exact reversed active suffix returned, and
 preservation of the state-buffer length. The complete removal preserves every
@@ -223,11 +223,19 @@ SCC, moves its vertices to the completed set, and preserves witnesses for retain
 vertices. The parent-lowlink write after root emission leaves its state unchanged.
 The combined `invariant_step_preserved` theorem covers every inner-loop branch.
 
-The outer-loop invariant, traversal termination and complete partition coverage,
-and the predicate-name adapter remain open. The initialization theorem takes the
-outer-loop proof as an explicit premise; invariant preservation alone does not
-establish termination. The component report does not certify the complete
-traversal or checker equivalence.
+`SccTermination.lean` proves termination of the actual inner DFS loop from any
+state satisfying the invariant. Its lexicographic measure tracks undiscovered
+vertices, the remaining cursor increments allowed by the work buffer's machine
+word bounds, and live DFS depth. Discovery decreases the first part, inspecting a
+visited target decreases the second, and completion decreases the third. The
+`dfs_total` theorem combines these decreases with invariant preservation through
+the extracted loop's well-founded recursion and returns with both logical stacks
+empty.
+
+The outer-loop initialization, preservation, termination, and complete partition
+coverage, plus the predicate-name adapter, remain open. The allocation-prefix
+theorem takes the outer-loop proof as an explicit premise. The component report
+does not certify the complete traversal or checker equivalence.
 
 The shared component runner regenerates each component in its own Lean module,
 checks every local proof file's public theorem inventory, rechecks helpers with warnings fatal,
