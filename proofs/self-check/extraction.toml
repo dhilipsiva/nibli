@@ -44,6 +44,8 @@ obligation = "Canonical marker bytes, numeric payloads, and full identity"
 [[probe]]
 name = "stratification"
 package = "nibli-reason"
+lean_module = "Stratification"
+library_boundary = "stratifier-std-v1"
 roots = ["nibli_reason::rules::check_stratification"]
 obligation = "Production SCC algorithm equals the negative-cycle criterion"
 
@@ -51,7 +53,8 @@ obligation = "Production SCC algorithm equals the negative-cycle criterion"
 name = "scc_kernel"
 package = "nibli-reason"
 lean_module = "SccKernel"
-roots = ["nibli_reason::dependency_graph::compute_sccs"]
+library_boundary = "stratifier-std-v1"
+roots = ["nibli_reason::dependency_graph::compute_sccs", "nibli_reason::rules::check_stratification"]
 obligation = "Production indexed Tarjan traversal, shared by stratification and materialization"
 
 [[probe]]

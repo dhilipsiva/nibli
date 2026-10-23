@@ -21,6 +21,8 @@ import sys
 import time
 import tomllib
 
+import std_boundary
+
 
 ROOT = Path(__file__).resolve().parents[2]
 CONFIG = Path(__file__).with_name("extraction.toml")
@@ -210,7 +212,45 @@ def extract(probe, config, env, timeout):
         result["diagnostic"] = diagnostics(directory / "aeneas.log")
         return result
     templates = sorted(str(p.relative_to(ROOT)) for p in lean.rglob("*Template*.lean"))
-    if templates:
+    profile = probe.get("library_boundary")
+    if profile:
+        try:
+            result["library_boundary"] = std_boundary.install(lean, profile, probe)
+            import verify_models
+            if [module for _, module in verify_models.MODELS.values()] != std_boundary.MODELS:
+                raise ValueError("Library boundary and audited model inventory differ")
+            audits = {}
+            result["library_boundary"]["model_audits"] = audits
+            for name in verify_models.MODELS:
+                audit = verify_models.initial_report(config, source_hashes(), name)
+                audits[name] = audit
+                verify_models.prove(config, env, audit, name)
+                audit["model_contracts_verified"] = True
+            compiled = run(["lake", "build", module], CONFIG.parent,
+                           directory / "library-build.log", env, 1800)
+            result["library_boundary"]["build"] = compiled
+            if compiled["status"] != "ok":
+                raise ValueError("Bound library definitions or extracted functions failed Lean compilation")
+            result["library_boundary"]["bindings_typechecked"] = True
+            from verify_component import audit_axioms, check_proof_sources
+            check_proof_sources(sorted(lean.rglob("*.lean")))
+            expected = list(std_boundary.TYPE_BODIES) + list(std_boundary.FUN_BODIES)
+            audit_file = directory / "LibraryBoundaryAudit.lean"
+            audit_file.write_text(f"import {module}.FunsExternal\n" +
+                                  "".join(f"#print axioms {name}\n" for name in expected))
+            checked = run(["lake", "env", "lean", "-DwarningAsError=true", str(audit_file)],
+                          CONFIG.parent, directory / "library-audit.log", env, 300)
+            result["library_boundary"]["audit"] = checked
+            if checked["status"] != "ok":
+                raise ValueError("Library binding assumption audit failed")
+            result["library_boundary"]["axioms"] = audit_axioms(
+                (directory / "library-audit.log").read_text(), expected)
+            result["library_boundary"]["audit_sha256"] = hashlib.sha256(audit_file.read_bytes()).hexdigest()
+            result["library_boundary"]["binding_assumptions_audited"] = True
+        except (ValueError, RuntimeError, OSError, KeyError, StopIteration) as error:
+            result["reason"] = f"Library boundary rejected: {error}"
+            return result
+    elif templates:
         result["reason"] = "Unimplemented external definitions require an explicit proof boundary"
         result["templates"] = templates
         return result

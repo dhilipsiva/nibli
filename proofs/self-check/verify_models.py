@@ -3,7 +3,7 @@
 
 The models are not installed into extraction by this command. Successful checks
 prove their stated mathematical contracts; they do not verify Rust std internals
-or discharge the named stratifier's external-definition boundary.
+or, by themselves, verify the extraction bindings.
 """
 
 import argparse
@@ -22,6 +22,8 @@ MODELS = {
     "strings": ("primitive_strings", "StdStrings"),
     "maps": ("primitive_maps", "StdMaps"),
     "sets-sort": ("primitive_sets_sort", "StdSetsSort"),
+    "hash": ("primitive_hash", "StdHash"),
+    "bounded": ("primitive_bounded", "StdBounded"),
 }
 
 
@@ -37,9 +39,10 @@ def obligations(model="strings"):
 def initial_report(config, sources, model="strings"):
     return {
         "schema": 1, "model": MODELS[model][0], "model_contracts_verified": False,
-        "native_implementation_verified": False, "extraction_replacements_installed": False,
+        "scope": "model_contracts_only",
+        "native_implementation_verified": False, "extraction_bindings_verified": False,
         "self_check_equivalence_verified": False,
-        "notice": f"Candidate {model} model contracts only; Rust std implementation and extraction bindings remain unverified.",
+        "notice": f"{model} model contracts only; this audit does not verify Rust std implementation or extraction bindings.",
         "sources": sources, "lean_toolchain": config["lean_toolchain"], "target": config["target"],
         "aeneas_revision": config["aeneas_revision"],
     }
@@ -96,7 +99,7 @@ def main(selected):
                 if not report["model_contracts_verified"]:
                     print(report["error"], file=sys.stderr)
                     return 1
-                print(f"Verified: candidate {model} model contracts. Native std, extraction bindings, and full self-check equivalence are NOT proved.", flush=True)
+                print(f"Verified: {model} model contracts. This audit does not certify native std, extraction bindings, or full self-check equivalence.", flush=True)
     except (RuntimeError, OSError, ValueError) as error:
         print(error, file=sys.stderr)
         return 2

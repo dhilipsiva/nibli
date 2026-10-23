@@ -247,12 +247,16 @@ When analyzing or searching the codebase:
   constructs or unimplemented external-library templates. The named stratifier
   translates after replacing borrowed-name containers and iterator closures with
   owned names and explicit loops. Explicit string appends preserve diagnostic
-  arguments that the extractor's formatting model erases; maps/sets/sorting/string
-  models remain outside completed extraction. `just verify-self-check-library-models`
-  audits candidate UTF-8 string, finite-map, set, sorting, and iterator contracts,
-  including byte identity, exact membership and updates, and ordering. Its reports
-  explicitly leave Rust std implementation, extraction bindings,
-  and full equivalence unverified. These component proofs do not establish full checker equivalence. See
+  arguments that the extractor's formatting model erases. The named path now
+  passes fresh extraction and Lean compilation with the explicit `stratifier-std-v1`
+  library boundary. Its closed inventory pins Rust identities and Lean signatures;
+  unexpected declarations or extraction roots fail. It audits every model and
+  bound external declaration. The combined SCC extraction includes the named path
+  so proofs share generated definitions. `just verify-self-check-library-models`
+  separately audits UTF-8 strings, finite maps, sets, sorting, iteration, a
+  parameterized hash byte stream, and machine-word count bounds. These models do
+  not verify Rust std internals, concrete allocator behavior, SipHash, or quotation
+  identities. Full compiler/checker equivalence remains unproved. See
   `mdbook/src/developer/self-check.md`; keep that boundary explicit.
 
 ## Docs Conventions

@@ -46,3 +46,14 @@ name = "StdMaps"
 
 [[lean_lib]]
 name = "StdSetsSort"
+
+[[lean_lib]]
+name = "StdHash"
+
+[[lean_lib]]
+name = "StdBounded"
+
+[[lean_lib]]
+name = "Stratification"
+srcDir = "../../target/self-check-proof/probes/stratification/lean"
+globs = ["Stratification.+"]

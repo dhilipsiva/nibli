@@ -118,8 +118,8 @@ sources = ["proofs/self-check/StdStrings.lean", "nibli-reason/src/rules.rs"]
 contract = """Candidate library model contracts for exact UTF-8 byte views,
 conversion, cloning, bytewise comparison, and append. Invalid UTF-8 is refused;
 byte-vector allocation size is bounded by the target's isize maximum. Model
-proofs do not verify Rust std internals or host allocation success, and these
-models are not yet installed as extraction replacements."""
+proofs do not verify Rust std internals or host allocation success. The named
+extraction uses them through the reviewed standard-library boundary."""
 probes = ["stratification"]
 tests = ["proofs/self-check/test_models.py"]
 theorem_files = ["proofs/self-check/StdStrings.lean"]
@@ -170,6 +170,50 @@ theorems = [
   "NibliSelfCheck.StdSetsSort.sort_eq", "NibliSelfCheck.StdSetsSort.sort_spec",
   "NibliSelfCheck.StdSetsSort.ordered_set_insert_eq", "NibliSelfCheck.StdSetsSort.ordered_set_insert_spec",
 ]
+
+[[obligation]]
+id = "primitive_hash"
+sources = ["proofs/self-check/StdHash.lean", "nibli-reason/src/rules.rs"]
+contract = """Standard-collection hashing interface with an explicit parameterized
+digest and exact byte-stream accumulation. String hashing appends UTF-8 bytes and
+the 0xff delimiter. No SipHash implementation, randomness, collision property or
+quotation identity is assumed or certified by this boundary."""
+probes = ["stratification"]
+tests = ["proofs/self-check/test_models.py"]
+theorem_files = ["proofs/self-check/StdHash.lean"]
+theorems = [
+  "NibliSelfCheck.StdHash.build_spec", "NibliSelfCheck.StdHash.write_spec",
+  "NibliSelfCheck.StdHash.finish_spec", "NibliSelfCheck.StdHash.hash_string_stream",
+  "NibliSelfCheck.StdHash.hash_string_digest",
+]
+
+[[obligation]]
+id = "primitive_bounded"
+sources = ["proofs/self-check/StdBounded.lean", "nibli-reason/src/rules.rs"]
+contract = """Explicit machine-word element-count checks for collection lists,
+slices and lengths, with overflow failure. Comparator adaptation preserves its
+result. These do not specify concrete allocator layout, capacity or resources."""
+probes = ["stratification"]
+tests = ["proofs/self-check/test_models.py"]
+theorem_files = ["proofs/self-check/StdBounded.lean"]
+theorems = [
+  "NibliSelfCheck.StdBounded.checked_list_spec", "NibliSelfCheck.StdBounded.checked_slice_spec",
+  "NibliSelfCheck.StdBounded.checked_length_spec", "NibliSelfCheck.StdBounded.checked_list_overflow",
+  "NibliSelfCheck.StdBounded.checked_slice_overflow", "NibliSelfCheck.StdBounded.checked_length_overflow",
+  "NibliSelfCheck.StdBounded.less_equal_eq",
+]
+
+[[obligation]]
+id = "stdlib_boundary"
+sources = ["proofs/self-check/std_boundary.py", "proofs/self-check/std_boundary_signatures.json", "proofs/self-check/extract.py", "proofs/self-check/extraction.toml"]
+contract = """Restricted external model bindings pin Rust identities and Lean
+signatures, reject unknown definitions/files/probes, audit every imported model,
+compile the generated bindings and native code, and audit every bound external
+declaration's transitive assumptions. Only library specifications are supplied;
+Rust std internals and concrete allocation remain a stated trusted boundary."""
+probes = ["stratification", "scc_kernel"]
+tests = ["proofs/self-check/test_std_boundary.py", "proofs/self-check/test_extract.py"]
+theorems = []
 
 [[obligation]]
 id = "installation"

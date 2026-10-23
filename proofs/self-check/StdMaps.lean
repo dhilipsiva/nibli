@@ -1,4 +1,6 @@
-import Aeneas
+module
+public import Aeneas
+@[expose] public section
 
 /- Finite-map and iterator contracts for candidate library bindings. Entries
    retain an arbitrary input order: the model does not assume that HashMap

@@ -1,0 +1,191 @@
+{
+  "profile": "stratifier-std-v1",
+  "Types": {
+    "std.collections.hash.map.HashMap": {
+      "signature": "axiom std.collections.hash.map.HashMap (K : Type _) (V : Type _) (S : Type _) (A : Type _) : Type",
+      "rust_kind": "rust_type",
+      "rust_pattern": "std::collections::hash::map::HashMap"
+    },
+    "std.hash.random.RandomState": {
+      "signature": "axiom std.hash.random.RandomState : Type",
+      "rust_kind": "rust_type",
+      "rust_pattern": "std::hash::random::RandomState"
+    },
+    "std.collections.hash.map.Iter": {
+      "signature": "axiom std.collections.hash.map.Iter (K : Type _) (V : Type _) : Type",
+      "rust_kind": "rust_type",
+      "rust_pattern": "std::collections::hash::map::Iter"
+    },
+    "std.collections.hash.set.HashSet": {
+      "signature": "axiom std.collections.hash.set.HashSet (T : Type _) (S : Type _) (A : Type _) : Type",
+      "rust_kind": "rust_type",
+      "rust_pattern": "std::collections::hash::set::HashSet"
+    },
+    "std.hash.random.DefaultHasher": {
+      "signature": "axiom std.hash.random.DefaultHasher : Type",
+      "rust_kind": "rust_type",
+      "rust_pattern": "std::hash::random::DefaultHasher"
+    },
+    "alloc.collections.btree.set.BTreeSet": {
+      "signature": "axiom alloc.collections.btree.set.BTreeSet (T : Type _) (A : Type _) : Type",
+      "rust_kind": "rust_type",
+      "rust_pattern": "alloc::collections::btree::set::BTreeSet"
+    },
+    "alloc.collections.btree.set.IntoIter": {
+      "signature": "axiom alloc.collections.btree.set.IntoIter (T : Type _) (A : Type _) : Type",
+      "rust_kind": "rust_type",
+      "rust_pattern": "alloc::collections::btree::set::IntoIter"
+    }
+  },
+  "Funs": {
+    "core.borrow.Borrow.Blanket.borrow": {
+      "signature": "axiom core.borrow.Borrow.Blanket.borrow {T : Type _} : T → Result T",
+      "rust_kind": "rust_fun",
+      "rust_pattern": "core::borrow::{core::borrow::Borrow<@T, @T>}::borrow"
+    },
+    "core.slice.Slice.sort_unstable": {
+      "signature": "axiom core.slice.Slice.sort_unstable {T : Type _} (cmpOrdInst : core.cmp.Ord T) : Slice T → Result (Slice T)",
+      "rust_kind": "rust_fun",
+      "rust_pattern": "core::slice::{[@T]}::sort_unstable"
+    },
+    "std.collections.hash.map.HashMapKVRandomStateGlobal.new": {
+      "signature": "axiom std.collections.hash.map.HashMapKVRandomStateGlobal.new (K : Type _) (V : Type _) : Result (std.collections.hash.map.HashMap K V std.hash.random.RandomState alloc.alloc.Global)",
+      "rust_kind": "rust_fun",
+      "rust_pattern": "std::collections::hash::map::{std::collections::hash::map::HashMap<@K, @V, std::hash::random::RandomState, alloc::alloc::Global>}::new"
+    },
+    "std.collections.hash.map.HashMap.get": {
+      "signature": "axiom std.collections.hash.map.HashMap.get {K : Type _} {V : Type _} {S : Type _} {A : Type _} {Q : Type _} {Clause2_Hasher : Type _} (corecmpEqInst : core.cmp.Eq K) (corehashHashInst : core.hash.Hash K) (corehashBuildHasherInst : core.hash.BuildHasher S Clause2_Hasher) (coreborrowBorrowInst : core.borrow.Borrow K Q) (corehashHashInst1 : core.hash.Hash Q) (corecmpEqInst1 : core.cmp.Eq Q) : std.collections.hash.map.HashMap K V S A → Q → Result (Option V)",
+      "rust_kind": "rust_fun",
+      "rust_pattern": "std::collections::hash::map::{std::collections::hash::map::HashMap<@K, @V, @S, @A>}::get"
+    },
+    "std.collections.hash.map.HashMap.insert": {
+      "signature": "axiom std.collections.hash.map.HashMap.insert {K : Type _} {V : Type _} {S : Type _} {A : Type _} {Clause2_Hasher : Type _} (corecmpEqInst : core.cmp.Eq K) (corehashHashInst : core.hash.Hash K) (corehashBuildHasherInst : core.hash.BuildHasher S Clause2_Hasher) : std.collections.hash.map.HashMap K V S A → K → V → Result ((Option V) × (std.collections.hash.map.HashMap K V S A))",
+      "rust_kind": "rust_fun",
+      "rust_pattern": "std::collections::hash::map::{std::collections::hash::map::HashMap<@K, @V, @S, @A>}::insert"
+    },
+    "std.collections.hash.map.HashMap.Insts.CoreOpsIndexIndexShared0QV.index": {
+      "signature": "axiom std.collections.hash.map.HashMap.Insts.CoreOpsIndexIndexShared0QV.index {K : Type _} {Q : Type _} {V : Type _} {S : Type _} {A : Type _} {Clause5_Hasher : Type _} (corecmpEqInst : core.cmp.Eq K) (corehashHashInst : core.hash.Hash K) (coreborrowBorrowInst : core.borrow.Borrow K Q) (corecmpEqInst1 : core.cmp.Eq Q) (corehashHashInst1 : core.hash.Hash Q) (corehashBuildHasherInst : core.hash.BuildHasher S Clause5_Hasher) : std.collections.hash.map.HashMap K V S A → Q → Result V",
+      "rust_kind": "rust_fun",
+      "rust_pattern": "std::collections::hash::map::{core::ops::index::Index<std::collections::hash::map::HashMap<@K, @V, @S, @A>, &'0 @Q, @V>}::index"
+    },
+    "SharedAHashMap.Insts.CoreIterTraitsCollectIntoIteratorPairSharedAKSharedAVIter.into_iter": {
+      "signature": "axiom SharedAHashMap.Insts.CoreIterTraitsCollectIntoIteratorPairSharedAKSharedAVIter.into_iter {K : Type _} {V : Type _} {S : Type _} {A : Type _} : std.collections.hash.map.HashMap K V S A → Result (std.collections.hash.map.Iter K V)",
+      "rust_kind": "rust_fun",
+      "rust_pattern": "std::collections::hash::map::{core::iter::traits::collect::IntoIterator<&'a std::collections::hash::map::HashMap<@K, @V, @S, @A>, (&'a @K, &'a @V), std::collections::hash::map::Iter<'a, @K, @V>>}::into_iter"
+    },
+    "std.collections.hash.map.Iter.Insts.CoreIterTraitsIteratorIteratorPairSharedAKSharedAV.next": {
+      "signature": "axiom std.collections.hash.map.Iter.Insts.CoreIterTraitsIteratorIteratorPairSharedAKSharedAV.next {K : Type _} {V : Type _} : std.collections.hash.map.Iter K V → Result ((Option (K × V)) × (std.collections.hash.map.Iter K V))",
+      "rust_kind": "rust_fun",
+      "rust_pattern": "std::collections::hash::map::{core::iter::traits::iterator::Iterator<std::collections::hash::map::Iter<'a, @K, @V>, (&'a @K, &'a @V)>}::next"
+    },
+    "std.collections.hash.set.HashSetTRandomStateGlobal.new": {
+      "signature": "axiom std.collections.hash.set.HashSetTRandomStateGlobal.new (T : Type _) : Result (std.collections.hash.set.HashSet T std.hash.random.RandomState alloc.alloc.Global)",
+      "rust_kind": "rust_fun",
+      "rust_pattern": "std::collections::hash::set::{std::collections::hash::set::HashSet<@T, std::hash::random::RandomState, alloc::alloc::Global>}::new"
+    },
+    "std.collections.hash.set.HashSet.contains": {
+      "signature": "axiom std.collections.hash.set.HashSet.contains {T : Type _} {S : Type _} {A : Type _} {Q : Type _} {Clause2_Hasher : Type _} (corecmpEqInst : core.cmp.Eq T) (corehashHashInst : core.hash.Hash T) (corehashBuildHasherInst : core.hash.BuildHasher S Clause2_Hasher) (coreborrowBorrowInst : core.borrow.Borrow T Q) (corehashHashInst1 : core.hash.Hash Q) (corecmpEqInst1 : core.cmp.Eq Q) : std.collections.hash.set.HashSet T S A → Q → Result Bool",
+      "rust_kind": "rust_fun",
+      "rust_pattern": "std::collections::hash::set::{std::collections::hash::set::HashSet<@T, @S, @A>}::contains"
+    },
+    "std.collections.hash.set.HashSet.insert": {
+      "signature": "axiom std.collections.hash.set.HashSet.insert {T : Type _} {S : Type _} {A : Type _} {Clause2_Hasher : Type _} (corecmpEqInst : core.cmp.Eq T) (corehashHashInst : core.hash.Hash T) (corehashBuildHasherInst : core.hash.BuildHasher S Clause2_Hasher) : std.collections.hash.set.HashSet T S A → T → Result (Bool × (std.collections.hash.set.HashSet T S A))",
+      "rust_kind": "rust_fun",
+      "rust_pattern": "std::collections::hash::set::{std::collections::hash::set::HashSet<@T, @S, @A>}::insert"
+    },
+    "std.hash.random.DefaultHasher.Insts.CoreHashHasher.finish": {
+      "signature": "axiom std.hash.random.DefaultHasher.Insts.CoreHashHasher.finish : std.hash.random.DefaultHasher → Result Std.U64",
+      "rust_kind": "rust_fun",
+      "rust_pattern": "std::hash::random::{core::hash::Hasher<std::hash::random::DefaultHasher>}::finish"
+    },
+    "std.hash.random.DefaultHasher.Insts.CoreHashHasher.write": {
+      "signature": "axiom std.hash.random.DefaultHasher.Insts.CoreHashHasher.write : std.hash.random.DefaultHasher → Slice Std.U8 → Result std.hash.random.DefaultHasher",
+      "rust_kind": "rust_fun",
+      "rust_pattern": "std::hash::random::{core::hash::Hasher<std::hash::random::DefaultHasher>}::write"
+    },
+    "std.hash.random.RandomState.Insts.CoreHashBuildHasherDefaultHasher.build_hasher": {
+      "signature": "axiom std.hash.random.RandomState.Insts.CoreHashBuildHasherDefaultHasher.build_hasher : std.hash.random.RandomState → Result std.hash.random.DefaultHasher",
+      "rust_kind": "rust_fun",
+      "rust_pattern": "std::hash::random::{core::hash::BuildHasher<std::hash::random::RandomState, std::hash::random::DefaultHasher>}::build_hasher"
+    },
+    "alloc.collections.btree.set.BTreeSetTGlobal.new": {
+      "signature": "axiom alloc.collections.btree.set.BTreeSetTGlobal.new (T : Type _) : Result (alloc.collections.btree.set.BTreeSet T alloc.alloc.Global)",
+      "rust_kind": "rust_fun",
+      "rust_pattern": "alloc::collections::btree::set::{alloc::collections::btree::set::BTreeSet<@T, alloc::alloc::Global>}::new"
+    },
+    "alloc.collections.btree.set.BTreeSet.insert": {
+      "signature": "axiom alloc.collections.btree.set.BTreeSet.insert {T : Type _} {A : Type _} (coreallocAllocatorCloneInst : core.alloc.AllocatorClone A) (corecmpOrdInst : core.cmp.Ord T) : alloc.collections.btree.set.BTreeSet T A → T → Result (Bool × (alloc.collections.btree.set.BTreeSet T A))",
+      "rust_kind": "rust_fun",
+      "rust_pattern": "alloc::collections::btree::set::{alloc::collections::btree::set::BTreeSet<@T, @A>}::insert"
+    },
+    "alloc.collections.btree.set.BTreeSet.len": {
+      "signature": "axiom alloc.collections.btree.set.BTreeSet.len {T : Type _} {A : Type _} (coreallocAllocatorCloneInst : core.alloc.AllocatorClone A) : alloc.collections.btree.set.BTreeSet T A → Result Std.Usize",
+      "rust_kind": "rust_fun",
+      "rust_pattern": "alloc::collections::btree::set::{alloc::collections::btree::set::BTreeSet<@T, @A>}::len"
+    },
+    "alloc.collections.btree.set.BTreeSet.Insts.CoreIterTraitsCollectIntoIteratorTIntoIter.into_iter": {
+      "signature": "axiom alloc.collections.btree.set.BTreeSet.Insts.CoreIterTraitsCollectIntoIteratorTIntoIter.into_iter {T : Type _} {A : Type _} (coreallocAllocatorCloneInst : core.alloc.AllocatorClone A) : alloc.collections.btree.set.BTreeSet T A → Result (alloc.collections.btree.set.IntoIter T A)",
+      "rust_kind": "rust_fun",
+      "rust_pattern": "alloc::collections::btree::set::{core::iter::traits::collect::IntoIterator<alloc::collections::btree::set::BTreeSet<@T, @A>, @T, alloc::collections::btree::set::IntoIter<@T, @A>>}::into_iter"
+    },
+    "alloc.collections.btree.set.IntoIter.Insts.CoreIterTraitsIteratorIterator.next": {
+      "signature": "axiom alloc.collections.btree.set.IntoIter.Insts.CoreIterTraitsIteratorIterator.next {T : Type _} {A : Type _} (coreallocAllocatorCloneInst : core.alloc.AllocatorClone A) : alloc.collections.btree.set.IntoIter T A → Result ((Option T) × (alloc.collections.btree.set.IntoIter T A))",
+      "rust_kind": "rust_fun",
+      "rust_pattern": "alloc::collections::btree::set::{core::iter::traits::iterator::Iterator<alloc::collections::btree::set::IntoIter<@T, @A>, @T>}::next"
+    },
+    "alloc.slice.Slice.sort": {
+      "signature": "axiom alloc.slice.Slice.sort {T : Type _} (corecmpOrdInst : core.cmp.Ord T) : Slice T → Result (Slice T)",
+      "rust_kind": "rust_fun",
+      "rust_pattern": "alloc::slice::{[@T]}::sort"
+    },
+    "alloc.string.String.Insts.CoreCmpPartialEqString.eq": {
+      "signature": "axiom alloc.string.String.Insts.CoreCmpPartialEqString.eq : String → String → Result Bool",
+      "rust_kind": "rust_fun",
+      "rust_pattern": "alloc::string::{core::cmp::PartialEq<alloc::string::String, alloc::string::String>}::eq"
+    },
+    "alloc.string.String.Insts.CoreCmpPartialOrdString.partial_cmp": {
+      "signature": "axiom alloc.string.String.Insts.CoreCmpPartialOrdString.partial_cmp : String → String → Result (Option Ordering)",
+      "rust_kind": "rust_fun",
+      "rust_pattern": "alloc::string::{core::cmp::PartialOrd<alloc::string::String, alloc::string::String>}::partial_cmp"
+    },
+    "alloc.string.String.Insts.CoreCmpOrd.cmp": {
+      "signature": "axiom alloc.string.String.Insts.CoreCmpOrd.cmp : String → String → Result Ordering",
+      "rust_kind": "rust_fun",
+      "rust_pattern": "alloc::string::{core::cmp::Ord<alloc::string::String>}::cmp"
+    },
+    "alloc.string.String.push_str": {
+      "signature": "axiom alloc.string.String.push_str : String → Str → Result String",
+      "rust_kind": "rust_fun",
+      "rust_pattern": "alloc::string::{alloc::string::String}::push_str"
+    },
+    "alloc.string.String.Insts.CoreCloneClone.clone": {
+      "signature": "axiom alloc.string.String.Insts.CoreCloneClone.clone : String → Result String",
+      "rust_kind": "rust_fun",
+      "rust_pattern": "alloc::string::{core::clone::Clone<alloc::string::String>}::clone"
+    },
+    "alloc.string.String.Insts.CoreHashHash.hash": {
+      "signature": "axiom alloc.string.String.Insts.CoreHashHash.hash {H : Type _} (corehashHasherInst : core.hash.Hasher H) : String → H → Result H",
+      "rust_kind": "rust_fun",
+      "rust_pattern": "alloc::string::{core::hash::Hash<alloc::string::String>}::hash"
+    },
+    "alloc.string.String.Insts.CoreOpsDerefDerefStr.deref": {
+      "signature": "axiom alloc.string.String.Insts.CoreOpsDerefDerefStr.deref : String → Result Str",
+      "rust_kind": "rust_fun",
+      "rust_pattern": "alloc::string::{core::ops::deref::Deref<alloc::string::String, str>}::deref"
+    },
+    "alloc.string.String.Insts.CoreConvertFromShared0Str.from": {
+      "signature": "axiom alloc.string.String.Insts.CoreConvertFromShared0Str.from : Str → Result String",
+      "rust_kind": "rust_fun",
+      "rust_pattern": "alloc::string::{core::convert::From<alloc::string::String, &'0 str>}::from"
+    },
+    "SharedAVec.Insts.CoreIterTraitsCollectIntoIteratorSharedATIter.into_iter": {
+      "signature": "axiom SharedAVec.Insts.CoreIterTraitsCollectIntoIteratorSharedATIter.into_iter {T : Type _} (A : Type _) : alloc.vec.Vec T → Result (core.slice.iter.Iter T)",
+      "rust_kind": "rust_fun",
+      "rust_pattern": "alloc::vec::{core::iter::traits::collect::IntoIterator<&'a alloc::vec::Vec<@T>, &'a @T, core::slice::iter::Iter<'a, @T>>}::into_iter"
+    }
+  },
+  "headers": {
+    "Types": "module\npublic import Aeneas\n@[expose] public section\nopen Aeneas Aeneas.Std Result ControlFlow Error\nset_option linter.dupNamespace false\nset_option linter.hashCommand false\nset_option linter.unusedVariables false\nset_option linter.style.whitespace false\nset_option linter.style.setOption false\nset_option linter.style.longLine false\nset_option linter.internalConstructors false\n\n\nset_option maxHeartbeats 1000000\n\n\nset_option maxRecDepth 2048",
+    "Funs": "module\npublic import Aeneas\npublic import __INPUT__.Types\n@[expose] public section\nopen Aeneas Aeneas.Std Result ControlFlow Error\nset_option linter.dupNamespace false\nset_option linter.hashCommand false\nset_option linter.unusedVariables false\nset_option linter.style.whitespace false\nset_option linter.style.setOption false\nset_option linter.style.longLine false\nset_option linter.internalConstructors false\n\n\nset_option maxHeartbeats 1000000\n\n\nset_option maxRecDepth 2048\nopen nibli_reason"
+  }
+}

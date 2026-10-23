@@ -1,5 +1,7 @@
-import Aeneas
-import Mathlib.Data.List.Sort
+module
+public import Aeneas
+public import Mathlib.Data.List.Sort
+@[expose] public section
 
 /- Candidate set and sort specifications. Their list representation records
    observable membership and ordering, not the implementation of Rust trees,
@@ -94,16 +96,16 @@ theorem ordered_insert_eq {T : Type} (r : T → T → Prop) [DecidableRel r]
     (value : T) (entries : List T) :
     orderedInsert le value entries = .ok (List.orderedInsert r value entries) := by
   induction entries with
-  | nil => rfl
+  | nil => simp [orderedInsert]
   | cons first rest ih =>
     simp only [orderedInsert, hle]
-    by_cases h : r value first <;> simp [h, List.orderedInsert, ih]
+    by_cases h : r value first <;> simp [h, List.orderedInsert_cons, ih]
 
 theorem sort_eq {T : Type} (r : T → T → Prop) [DecidableRel r]
     (le : T → T → Result Bool) (hle : ∀ left right, le left right = .ok (decide (r left right)))
     (entries : List T) : sort le entries = .ok (List.insertionSort r entries) := by
   induction entries with
-  | nil => rfl
+  | nil => simp [sort]
   | cons first rest ih =>
     simp [sort, ih, ordered_insert_eq r le hle, List.insertionSort_cons]
 

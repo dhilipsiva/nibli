@@ -56,8 +56,7 @@ here first.
   decision, and compiler/checker equivalence remain unproved. The named adapter
   now uses owned temporary names and explicit loops, and the negative-edge scan
   preserves its first diagnostic without returning from nested loops. Aeneas
-  translates that path, but the extraction gate still rejects its unimplemented
-  external-library templates. The indexed kernel's output is now proved to
+  translates that path. The indexed kernel's output is now proved to
   contain an internal negative edge exactly when the checker's inductive Horn
   closure criterion contains a negative self-path. A source-drift check covers
   the modeled clauses; production evaluation of those clauses remains unproved.
@@ -69,7 +68,13 @@ here first.
   replacements. Finite-map, set, sorting, and iterator contracts now cover exact
   updates and membership, key uniqueness, iteration-order-independent lookup,
   sorting permutations and order, and cardinality changes. Comparator contracts
-  are explicit; allocation and extraction binding obligations remain open.
+  are explicit. The named stratifier now passes fresh extraction and Lean
+  compilation with a closed standard-library model profile that pins Rust
+  identities and Lean signatures, audits models and every external declaration,
+  and rejects unknown declarations or extraction roots. The hash interface has
+  an explicit parameterized byte-stream digest, and count conversions check word
+  bounds. Rust std internals, concrete allocation, native adapter/decision
+  correctness, and full equivalence remain unproved.
 
 - **WIT 0.12.0** (`wit/world.wit`; the engine changes are in
   [ENGINE_UPGRADE_0_2.md](ENGINE_UPGRADE_0_2.md)): `list-assertion-records`

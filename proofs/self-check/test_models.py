@@ -23,7 +23,8 @@ class ModelAuditTests(unittest.TestCase):
                 "lean_toolchain": "test", "target": "test", "aeneas_revision": "test",
             }, {}, model)
             report["model_contracts_verified"] = True
-            for key in ("native_implementation_verified", "extraction_replacements_installed",
+            self.assertEqual(report["scope"], "model_contracts_only")
+            for key in ("native_implementation_verified", "extraction_bindings_verified",
                         "self_check_equivalence_verified"):
                 self.assertIs(report[key], False)
 

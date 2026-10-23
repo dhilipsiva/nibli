@@ -171,17 +171,17 @@ unverified.
 The production SCC traversal now lives in `nibli-reason/src/dependency_graph.rs`.
 Both stratification and materialization call this indexed, iterative Tarjan
 kernel through the existing predicate-name adapter. Fixed stack buffers keep
-the traversal within the extractor's supported operations. The kernel translates
-without opaque Nibli definitions or external stubs; the surrounding name adapter
-is still outside the completed extraction.
+the traversal within the extractor's supported operations. The kernel and named
+stratifier now translate without opaque Nibli definitions. The named path uses
+the explicit standard-library boundary described below.
 
 The name adapter and negative-edge scan use owned temporary names and explicit
 loops. The scan retains the first diagnostic in the existing traversal order
-and returns it after the loops. This lets the named stratifier pass Aeneas's
-translation stages, but its extraction gate still fails: external templates for
-maps, sets, sorting, string operations, and iterator adapters need
-explicit library models. These templates are unimplemented and are rejected by
-the gate; they do not extend the trusted boundary silently.
+and returns it after the loops. The named path passes fresh Charon/Aeneas
+extraction, Lean compilation, and binding assumption audits using the reviewed
+`stratifier-std-v1` profile. This is extraction under library specifications;
+the predicate-name adapter and negative-edge decision still need correctness
+proofs.
 
 The diagnostic uses explicit string appends with the same text and predicate
 names. The pinned Aeneas formatting model represents arguments as `Unit`, erasing
@@ -189,9 +189,8 @@ their contents before the external formatting call. Avoiding that call keeps the
 diagnostic values available to a future proof; it does not itself verify string
 operations or their allocation behavior.
 
-`just verify-self-check-library-models` checks the candidate library models.
-The string models in
-`StdStrings.lean`. Their contracts preserve exact UTF-8 bytes, including Unicode
+`just verify-self-check-library-models` checks the library model contracts.
+`StdStrings.lean` preserves exact UTF-8 bytes, including Unicode
 and embedded NULs, through borrowing, conversion, cloning, and appending.
 Comparison uses unsigned UTF-8 bytes, and equality of the byte representations
 implies equality of the strings. Invalid UTF-8 is refused, and modeled byte-vector
@@ -200,8 +199,9 @@ allocation model, not a guarantee that the host can satisfy an allocation.
 The command checks the complete public theorem inventory, re-elaborates with
 warnings fatal, binds the report to source hashes, and audits transitive proof
 assumptions. Its report verifies model contracts only: it leaves native std
-implementation, extraction replacement installation, and full self-check
-equivalence false.
+implementation, extraction binding verification, and full self-check equivalence
+false. The extraction report separately records installed models, successful
+binding typechecking, and completed binding assumption audits.
 
 `StdMaps.lean` models finite-map entries in arbitrary enumeration order. Its
 contracts prove exact lookup, replacement of only the selected binding, return
@@ -213,10 +213,33 @@ for set insertion; ordered insertion preserves order. Sorting produces a
 permutation in comparator order with unchanged length. Comparisons remain
 monadic, and the proofs require explicit success, totality, and transitivity
 contracts rather than assuming arbitrary comparisons behave correctly.
-These collection models operate on mathematical lists. Binding their allocation
-and representation invariants to the extracted external calls remains open.
+These collection models operate on mathematical lists. Proving the named
+stratifier establishes their representation invariants remains open.
 The model runner audits each selected module separately and clears all selected
 reports before starting, so an early failure cannot leave a later stale success.
+
+`StdHash.lean` records a hashing byte stream and takes its digest function as a
+parameter. Its string contract appends the exact UTF-8 bytes and the `0xff`
+delimiter. This specifies the collection-hashing interface; it does not prove
+SipHash, randomness, collision resistance, or quotation identity. The finite-map
+and set models expose equality and membership without physical hash buckets.
+`StdBounded.lean` checks that element counts and slice lengths fit the extracted
+machine word, failing explicitly on overflow. Concrete allocator capacity,
+layout, and host resource behavior remain outside these models.
+
+`std_boundary.py` supplies only the reviewed standard-library bindings.
+`std_boundary_signatures.json` pins every Lean signature and corresponding Rust
+identity, together with the template preambles. The profile is restricted to the
+named-stratifier and combined SCC extraction roots. Missing or additional
+declarations, changed Rust identities or types, extra header/inter-declaration
+code, unexpected template files, and use from another probe all fail. Both
+template inventories are checked before either replacement is written. Each
+profiled extraction audits every model, compiles the bound generated modules,
+and checks the transitive assumptions of every external type and function.
+The extraction report records this boundary and leaves native standard-library
+implementation verification false. Nibli compiler functions cannot be replaced
+through this profile. The combined SCC extraction includes the named path so
+later proofs can use one set of generated kernel and adapter definitions.
 
 `just verify-self-check-scc-stack` regenerates the kernel and checks
 `SccGraph.lean`, `SccKernelProofs.lean`, `SccInvariant.lean`, `SccTermination.lean`,
@@ -311,7 +334,7 @@ and cycles, and the existing compiler/checker differential corpus.
 
 Commands, source hashes, diagnostics, and generated artifacts are written below
 `target/self-check-proof/`. The runners reject missing production roots, opaque
-Nibli dependencies, external-definition templates, stale artifacts, concurrent
+Nibli dependencies, unreviewed external-definition templates, stale artifacts, concurrent
 runs, and source changes during a run. Missing tools, an admitted theorem, or an
 unexpected axiom cannot become a passing proof result. The axiom audit permits
 only Lean's `propext`, `Classical.choice`, and `Quot.sound` foundations.

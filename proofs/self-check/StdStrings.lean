@@ -1,8 +1,10 @@
-import Aeneas
+module
+public import Aeneas
+@[expose] public section
 
-/- Candidate primitive-library models for the named stratifier. The contracts
+/- Primitive-library models for the named stratifier. The contracts
    below prove properties of these definitions, not of Rust's standard-library
-   implementation. They are not yet installed as extraction replacements.
+   implementation. The named extraction uses them through a reviewed boundary.
    Allocation success remains conditional on the library/resource boundary. -/
 namespace NibliSelfCheck.StdStrings
 
@@ -65,7 +67,7 @@ theorem represents_unique {view : Str} {left right : String}
   exact String.toByteArray_inj.mp (hleft.symm.trans hright)
 
 theorem borrow_spec (s : String) (h : Fits s) :
-    borrow s ⦃ view => Represents view s ∧ view.length = s.utf8ByteSize ⦄ := by
+    borrow s ⦃ view => Represents view s ∧ view.length = s.utf8ByteSize ∧ view.val = bytes s ⦄ := by
   have hsize : (bytes s).length ≤ Usize.max := by
     rw [bytes_length]
     unfold Fits at h
@@ -75,9 +77,9 @@ theorem borrow_spec (s : String) (h : Fits s) :
     omega
   rw [borrow, dite_eq_left hsize]
   change (Result.ok (.from (bytes s) hsize) : Result (Slice U8))
-    ⦃ view => Represents view s ∧ view.length = s.utf8ByteSize ⦄
+    ⦃ view => Represents view s ∧ view.length = s.utf8ByteSize ∧ view.val = bytes s ⦄
   simp only [WP.spec_ok]
-  exact ⟨bytes_round_trip s hsize, by simp [Slice.length, bytes_length]⟩
+  exact ⟨bytes_round_trip s hsize, by simp [Slice.length, bytes_length], by simp⟩
 
 theorem from_str_eq (view : Str) (s : String) (hview : Represents view s) (hfits : Fits s) :
     fromStr view = .ok s := by
