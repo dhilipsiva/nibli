@@ -666,4 +666,380 @@ theorem invariant_seen_preserved (graph : Slice (alloc.vec.Vec Usize)) (s : DfsS
       hlower hwitness hknown htarget_bound
   · simpa only [heffect, advanceState] using hresult
 
+private theorem take_set_push {α : Type} (values : List α) (position : Nat) (value : α)
+    (h : position < values.length) :
+    (values.set position value).take (position + 1) = values.take position ++ [value] := by
+  rw [List.take_succ_eq_append_getElem (by simpa using h), List.take_set_of_le (by omega)]
+  simp
+
+/-- Names the native discovery branch's writes without introducing a traversal. -/
+def discoverState (s : DfsState) (top cursor next stack_len depth : Usize)
+    (frame : Frame) (target : Usize) : DfsState := { s with
+  state := s.state.set target
+    { index := some s.next_index, lowlink := s.next_index, on_stack := true }
+  stack := s.stack.set s.stack_len target
+  stack_len := stack_len
+  work := (s.work.set top { frame with cursor := cursor }).set s.depth
+    { node := target, cursor := 0#usize }
+  depth := depth
+  next_index := next }
+
+private theorem active_discovered (graph : Slice (alloc.vec.Vec Usize)) (s : DfsState)
+    (h : DfsInvariant graph s) (vertex : Usize) (hvertex : vertex ∈ s.active) :
+    Discovered s.state vertex := (h.colors vertex).mpr (Or.inl hvertex)
+
+private theorem discovered_rank_bound (graph : Slice (alloc.vec.Vec Usize)) (s : DfsState)
+    (h : DfsInvariant graph s) (vertex : Usize) (hvertex : Discovered s.state vertex) :
+    rank s.state vertex < s.next_index.val := by
+  obtain ⟨entry, index, hentry, hindex⟩ := hvertex
+  simpa [rank, hentry, hindex] using h.indices_bounded vertex entry index hentry hindex
+
+private theorem discover_invariant (graph : Slice (alloc.vec.Vec Usize)) (s : DfsState)
+    (h : DfsInvariant graph s) (top cursor next stack_len depth : Usize)
+    (frame : Frame) (successors : alloc.vec.Vec Usize) (target : Usize) (entry : NodeState)
+    (htop : top.val + 1 = s.depth.val)
+    (hframe : s.work.val[top.val]? = some frame)
+    (hedges : graph.val[frame.node.val]? = some successors)
+    (htarget : successors.val[frame.cursor.val]? = some target)
+    (hentry : s.state.val[target.val]? = some entry) (hnew : entry.index = none)
+    (hcursor : cursor.val = frame.cursor.val + 1)
+    (hnext : next.val = s.next_index.val + 1)
+    (hstack_len : stack_len.val = s.stack_len.val + 1)
+    (hdepth : depth.val = s.depth.val + 1)
+    (hstack : s.stack_len.val < s.stack.length)
+    (hwork : s.depth.val < s.work.length) :
+    DfsInvariant graph (discoverState s top cursor next stack_len depth frame target) := by
+  let updated := discoverState s top cursor next stack_len depth frame target
+  let fresh : NodeState :=
+    { index := some s.next_index, lowlink := s.next_index, on_stack := true }
+  change DfsInvariant graph updated
+  have htarget_size := (List.getElem?_eq_some_iff.mp hentry).1
+  have hnot_seen : ¬ Discovered s.state target := by
+    rintro ⟨old, index, hold, hindex⟩
+    have heq : old = entry := Option.some.inj (hold.symm.trans hentry)
+    simp [heq, hnew] at hindex
+  have hold_ne : ∀ vertex, Discovered s.state vertex → vertex ≠ target := by
+    intro vertex hvertex heq
+    exact hnot_seen (heq ▸ hvertex)
+  have hlookup : ∀ (vertex : Usize), updated.state.val[vertex.val]? =
+      if vertex = target then some fresh else s.state.val[vertex.val]? := by
+    intro vertex
+    change (s.state.set target fresh).val[vertex.val]? = _
+    rw [alloc.vec.Vec.set_val_eq]
+    by_cases heq : vertex = target
+    · subst vertex
+      simp [htarget_size]
+    · have hne : target.val ≠ vertex.val := fun equal => heq (UScalar.eq_of_val_eq equal.symm)
+      simp [heq, List.getElem?_set_ne hne]
+  have hdiscovered : ∀ vertex, Discovered updated.state vertex ↔
+      vertex = target ∨ Discovered s.state vertex := by
+    intro vertex
+    by_cases heq : vertex = target
+    · subst vertex
+      simp [Discovered, hlookup, fresh]
+    · simp [Discovered, hlookup, heq]
+  have hrank : ∀ vertex, rank updated.state vertex =
+      if vertex = target then s.next_index.val else rank s.state vertex := by
+    intro vertex
+    by_cases heq : vertex = target <;> simp [rank, hlookup, heq, fresh]
+  have hrank_old : ∀ vertex, Discovered s.state vertex →
+      rank updated.state vertex = rank s.state vertex := by
+    intro vertex hvertex
+    simp [hrank, hold_ne vertex hvertex]
+  have hlowlink : ∀ vertex, lowlink updated.state vertex =
+      if vertex = target then s.next_index.val else lowlink s.state vertex := by
+    intro vertex
+    by_cases heq : vertex = target <;> simp [lowlink, hlookup, heq, fresh]
+  have hlowlink_old : ∀ vertex, Discovered s.state vertex →
+      lowlink updated.state vertex = lowlink s.state vertex := by
+    intro vertex hvertex
+    simp [hlowlink, hold_ne vertex hvertex]
+  have hactive : updated.active = s.active ++ [target] := by
+    change (s.stack.set s.stack_len target).val.take stack_len.val = _
+    rw [hstack_len, alloc.vec.Vec.set_val_eq, take_set_push _ _ _ hstack]
+    rfl
+  have hframes : updated.frames =
+      s.frames.set top.val { frame with cursor := cursor } ++ [{ node := target, cursor := 0#usize }] := by
+    change (((s.work.set top { frame with cursor := cursor }).set s.depth
+      { node := target, cursor := 0#usize }).val.take depth.val) = _
+    rw [hdepth, alloc.vec.Vec.set_val_eq, take_set_push _ _ _ (by simpa using hwork)]
+    simp [alloc.vec.Vec.set_val_eq, List.take_set, DfsState.frames]
+  have hgray : updated.gray = s.gray ++ [target] := by
+    change updated.frames.map (fun frame => frame.node) = _
+    rw [hframes, List.map_append]
+    have hcursor_gray := cursor_set_gray s top cursor frame (by omega) hframe
+    simpa [alloc.vec.Vec.set_val_eq, List.take_set, DfsState.frames] using
+      congrArg (fun vertices => vertices ++ [target]) hcursor_gray
+  have hframe_mem : frame ∈ s.frames := by
+    apply top_frame_member s frame (by omega)
+    simpa [show top.val = s.depth.val - 1 by omega] using hframe
+  have hframe_gray : frame.node ∈ s.gray := List.mem_map.mpr ⟨frame, hframe_mem, rfl⟩
+  have hframe_seen := frame_discovered graph s h frame hframe_mem
+  have htopmost := topmost_rank graph s h frame (by omega)
+    (by simpa [show top.val = s.depth.val - 1 by omega] using hframe)
+  have hedge : Edge graph frame.node target :=
+    ⟨successors, hedges, List.mem_iff_getElem?.mpr ⟨frame.cursor.val, htarget⟩⟩
+  have hfinished : updated.finished = s.finished := rfl
+  have hactive_seen := active_discovered graph s h
+  have hgray_seen : ∀ vertex ∈ s.gray, Discovered s.state vertex :=
+    fun vertex hvertex => hactive_seen vertex (h.gray_sublist.subset hvertex)
+  have hrank_bound := discovered_rank_bound graph s h
+  have hold_owns : ∀ owner ∈ s.gray, ∀ vertex, Owns updated owner vertex → Owns s owner vertex := by
+    intro owner howner vertex ⟨hvertex, hranks, hlater⟩
+    have howner_seen := hgray_seen owner howner
+    have hvertex_old : vertex ∈ s.active := by
+      rw [hactive, List.mem_append, List.mem_singleton] at hvertex
+      rcases hvertex with hold | heq
+      · exact hold
+      · subst vertex
+        have himpossible := hlater target (by simp [hgray])
+          (by simpa [hrank, hold_ne owner howner_seen] using hrank_bound owner howner_seen)
+        omega
+    have hvertex_seen := hactive_seen vertex hvertex_old
+    refine ⟨hvertex_old, ?_, ?_⟩
+    · simpa [hrank_old owner howner_seen, hrank_old vertex hvertex_seen] using hranks
+    · intro later hmember hless
+      have hlater_seen := hgray_seen later hmember
+      have hbound := hlater later (by simp [hgray, hmember])
+        (by simpa [hrank_old owner howner_seen, hrank_old later hlater_seen] using hless)
+      simpa [hrank_old vertex hvertex_seen, hrank_old later hlater_seen] using hbound
+  have hold_processed : ∀ current ∈ s.frames, ∀ vertex, Owns updated current.node vertex →
+      ∀ neighbor, ProcessedEdge graph current vertex neighbor →
+        (neighbor ∈ updated.active ∨ updated.finished neighbor) ∧
+        (neighbor ∈ updated.active → lowlink updated.state current.node ≤ rank updated.state neighbor) := by
+    intro current hcurrent vertex howner neighbor hprocessed
+    have hcurrent_gray : current.node ∈ s.gray := List.mem_map.mpr ⟨current, hcurrent, rfl⟩
+    have hold := h.processed current hcurrent vertex
+      (hold_owns current.node hcurrent_gray vertex howner) neighbor hprocessed
+    have hneighbor_seen := (h.colors neighbor).mpr hold.1
+    refine ⟨hold.1.imp (fun hmem => by simp [hactive, hmem]) id, ?_⟩
+    intro hneighbor
+    have hneighbor_old : neighbor ∈ s.active := by
+      simpa [hactive, hold_ne neighbor hneighbor_seen] using hneighbor
+    rw [hlowlink_old current.node (hgray_seen current.node hcurrent_gray),
+      hrank_old neighbor hneighbor_seen]
+    exact hold.2 hneighbor_old
+  refine {
+    graph_valid := h.graph_valid
+    state_size := by simpa [updated, discoverState] using h.state_size
+    stack_size := by simpa [updated, discoverState] using h.stack_size
+    work_size := by simpa [updated, discoverState] using h.work_size
+    stack_bound := by simpa [updated, discoverState, hstack_len] using hstack
+    work_bound := by simpa [updated, discoverState, hdepth] using hwork
+    component_count := by
+      change s.components.length + stack_len.val ≤ next.val
+      have := h.component_count
+      omega
+    discovery_count := ?_
+    indices_bounded := ?_
+    indices_unique := ?_
+    lowlinks_bounded := ?_
+    flags := ?_
+    ordered := ?_
+    gray_sublist := by rw [hgray, hactive]; exact h.gray_sublist.append_right _
+    frame_bounds := ?_
+    colors := ?_
+    disjoint := ?_
+    components_unique := h.components_unique
+    components_correct := h.components_correct
+    finished_closed := h.finished_closed
+    reaches_later := ?_
+    returns_to_gray := ?_
+    lowlink_witness := ?_
+    processed := ?_ }
+  · change next.val = ((s.state.set target fresh).val.filter
+      (fun entry => entry.index.isSome)).length
+    rw [alloc.vec.Vec.set_val_eq, ← List.countP_eq_length_filter, List.countP_set htarget_size]
+    simpa [fresh, (List.getElem?_eq_some_iff.mp hentry).2, hnew,
+      List.countP_eq_length_filter, ← h.discovery_count] using hnext
+  · intro vertex current index hcurrent hindex
+    rw [hlookup] at hcurrent
+    by_cases heq : vertex = target
+    · simp only [heq, ↓reduceIte, Option.some.injEq] at hcurrent
+      have hi : index = s.next_index := by simpa [← hcurrent, fresh] using hindex.symm
+      change index.val < next.val
+      rw [hi, hnext]
+      omega
+    · simp only [heq, ↓reduceIte] at hcurrent
+      have := h.indices_bounded vertex current index hcurrent hindex
+      change index.val < next.val
+      omega
+  · intro left right le re index hleft hright hle hre
+    rw [hlookup] at hleft hright
+    by_cases hl : left = target <;> by_cases hr : right = target
+    · exact hl.trans hr.symm
+    · simp only [hl, ↓reduceIte, Option.some.injEq] at hleft
+      simp only [hr, ↓reduceIte] at hright
+      have hi : index = s.next_index := by simpa [← hleft, fresh] using hle.symm
+      have := h.indices_bounded right re index hright hre
+      simp [hi] at this
+    · simp only [hr, ↓reduceIte, Option.some.injEq] at hright
+      simp only [hl, ↓reduceIte] at hleft
+      have hi : index = s.next_index := by simpa [← hright, fresh] using hre.symm
+      have := h.indices_bounded left le index hleft hle
+      simp [hi] at this
+    · simp only [hl, ↓reduceIte] at hleft
+      simp only [hr, ↓reduceIte] at hright
+      exact h.indices_unique left right le re index hleft hright hle hre
+  · intro vertex current index hcurrent hindex
+    rw [hlookup] at hcurrent
+    by_cases heq : vertex = target
+    · simp only [heq, ↓reduceIte, Option.some.injEq] at hcurrent
+      have hi : index = s.next_index := by simpa [← hcurrent, fresh] using hindex.symm
+      simp [← hcurrent, fresh, hi]
+    · simp only [heq, ↓reduceIte] at hcurrent
+      exact h.lowlinks_bounded vertex current index hcurrent hindex
+  · intro vertex current hcurrent
+    rw [hlookup] at hcurrent
+    by_cases heq : vertex = target
+    · simp only [heq, ↓reduceIte, Option.some.injEq] at hcurrent
+      simp [← hcurrent, fresh, hactive, heq]
+    · simp only [heq, ↓reduceIte] at hcurrent
+      simpa [hactive, heq] using h.flags vertex current hcurrent
+  · rw [hactive, List.pairwise_append]
+    refine ⟨?_, by simp, ?_⟩
+    · apply h.ordered.imp_of_mem
+      intro left right hleft hright hless
+      simpa [hrank_old left (hactive_seen left hleft), hrank_old right (hactive_seen right hright)]
+        using hless
+    · intro left hleft right hright
+      have heq : right = target := by simpa using hright
+      subst right
+      simpa [hrank, hold_ne left (hactive_seen left hleft)] using
+        hrank_bound left (hactive_seen left hleft)
+  · intro current hcurrent
+    rw [hframes, List.mem_append, List.mem_singleton] at hcurrent
+    rcases hcurrent with hold | rfl
+    · rcases List.mem_or_eq_of_mem_set hold with hold | rfl
+      · exact h.frame_bounds current hold
+      · refine ⟨successors, hedges, ?_⟩
+        have : frame.cursor.val < successors.length := (List.getElem?_eq_some_iff.mp htarget).1
+        change cursor.val ≤ successors.length
+        omega
+    · have hvalid := h.graph_valid frame.node.val successors hedges target
+        (List.mem_iff_getElem?.mpr ⟨frame.cursor.val, htarget⟩)
+      exact ⟨graph.val[target.val]'hvalid, by simp, by simp⟩
+  · intro vertex
+    rw [hdiscovered, hactive, hfinished, h.colors]
+    simp only [List.mem_append, List.mem_singleton]
+    tauto
+  · intro vertex hvertex hdone
+    rw [hactive, List.mem_append, List.mem_singleton] at hvertex
+    rcases hvertex with hold | heq
+    · exact h.disjoint vertex hold hdone
+    · subst vertex
+      exact hnot_seen ((h.colors target).mpr (Or.inr hdone))
+  · intro ancestor hancestor vertex hvertex hless
+    rw [hgray, List.mem_append, List.mem_singleton] at hancestor
+    rw [hactive, List.mem_append, List.mem_singleton] at hvertex
+    rcases hancestor with ha | rfl <;> rcases hvertex with hv | rfl
+    · apply h.reaches_later ancestor ha vertex hv
+      simpa [hrank_old ancestor (hgray_seen ancestor ha), hrank_old vertex (hactive_seen vertex hv)]
+        using hless
+    · exact (h.reaches_later ancestor ha frame.node (h.gray_sublist.subset hframe_gray)
+        (htopmost ancestor ha)).tail hedge
+    · have hbound := hrank_bound vertex (hactive_seen vertex hv)
+      rw [hrank_old vertex (hactive_seen vertex hv), hrank] at hless
+      simp only [↓reduceIte] at hless
+      omega
+    · exact Relation.ReflTransGen.refl
+  · intro vertex hvertex
+    rw [hactive, List.mem_append, List.mem_singleton] at hvertex
+    rcases hvertex with hold | heq
+    · obtain ⟨ancestor, ha, hle, hreach⟩ := h.returns_to_gray vertex hold
+      refine ⟨ancestor, by simp [hgray, ha], ?_, hreach⟩
+      simpa [hrank_old ancestor (hgray_seen ancestor ha), hrank_old vertex (hactive_seen vertex hold)]
+        using hle
+    · subst vertex
+      exact ⟨target, by simp [hgray], Nat.le_refl _, Relation.ReflTransGen.refl⟩
+  · intro current hcurrent
+    rw [hframes, List.mem_append, List.mem_singleton] at hcurrent
+    rcases hcurrent with hold | rfl
+    · have hnode : ∃ old ∈ s.frames, current.node = old.node := by
+        rcases List.mem_or_eq_of_mem_set hold with hold | rfl
+        · exact ⟨current, hold, rfl⟩
+        · exact ⟨frame, hframe_mem, rfl⟩
+      obtain ⟨old, hold, hnode⟩ := hnode
+      obtain ⟨vertex, hvertex, hvalue, hreach⟩ := h.lowlink_witness old hold
+      refine ⟨vertex, by simp [hactive, hvertex], ?_, by simpa [hnode] using hreach⟩
+      simpa [hnode, hlowlink_old old.node (frame_discovered graph s h old hold),
+        hrank_old vertex (hactive_seen vertex hvertex)] using hvalue
+    · exact ⟨target, by simp [hactive], by simp [hlowlink, hrank], Relation.ReflTransGen.refl⟩
+  · intro current hcurrent vertex howner neighbor hprocessed
+    rw [hframes, List.mem_append, List.mem_singleton] at hcurrent
+    rcases hcurrent with hold | rfl
+    · rcases List.mem_or_eq_of_mem_set hold with hold | rfl
+      · exact hold_processed current hold vertex howner neighbor hprocessed
+      · by_cases heq : vertex = frame.node
+        · subst vertex
+          obtain ⟨neighbors, hneighbors, hneighbor⟩ := hprocessed.2.resolve_left (by simp)
+          have heq : neighbors = successors := Option.some.inj (hneighbors.symm.trans hedges)
+          subst neighbors
+          have hbound := (List.getElem?_eq_some_iff.mp htarget).1
+          have hsplit : neighbor ∈ successors.val.take frame.cursor.val ∨ neighbor = target := by
+            simpa [hcursor, List.take_succ_eq_append_getElem hbound,
+              (List.getElem?_eq_some_iff.mp htarget).2] using hneighbor
+          rcases hsplit with hold | rfl
+          · exact hold_processed frame hframe_mem frame.node howner neighbor
+              ⟨hprocessed.1, Or.inr ⟨successors, hedges, hold⟩⟩
+          · refine ⟨Or.inl (by simp [hactive]), ?_⟩
+            intro _
+            obtain ⟨source, index, hsource, hindex⟩ := hframe_seen
+            have hle := h.lowlinks_bounded frame.node source index hsource hindex
+            have hlt := h.indices_bounded frame.node source index hsource hindex
+            simp only [hlowlink_old frame.node ⟨source, index, hsource, hindex⟩, hrank,
+              ↓reduceIte]
+            simpa [lowlink, hsource] using Nat.le_trans hle (Nat.le_of_lt hlt)
+        · exact hold_processed frame hframe_mem vertex howner neighbor ⟨hprocessed.1, Or.inl heq⟩
+    · have hvertex : vertex = target := by
+        have hmember := howner.1
+        rw [hactive, List.mem_append, List.mem_singleton] at hmember
+        rcases hmember with hold | heq
+        · have hbound := hrank_bound vertex (hactive_seen vertex hold)
+          have hless := howner.2.1
+          rw [hrank_old vertex (hactive_seen vertex hold), hrank] at hless
+          simp only [↓reduceIte] at hless
+          omega
+        · exact heq
+      subst vertex
+      obtain ⟨_, _, himpossible⟩ := hprocessed.2.resolve_left (by simp)
+      simp at himpossible
+
+theorem invariant_discover_preserved (graph : Slice (alloc.vec.Vec Usize)) (s : DfsState)
+    (h : DfsInvariant graph s) (frame : Frame) (successors : alloc.vec.Vec Usize)
+    (target : Usize) (entry : NodeState)
+    (hpositive : 0 < s.depth.val)
+    (hframe : s.work.val[s.depth.val - 1]? = some frame)
+    (hedges : graph.val[frame.node.val]? = some successors)
+    (htarget : successors.val[frame.cursor.val]? = some target)
+    (hentry : s.state.val[target.val]? = some entry) (hnew : entry.index = none) :
+    dfs_body graph s ⦃ result => ∃ updated, DfsInvariant graph updated ∧ result = .cont updated.pack ⦄ := by
+  have hnext_bound : s.next_index.val < s.state.length := by
+    rw [h.discovery_count]
+    apply List.length_filter_lt_length_iff_exists.mpr
+    refine ⟨entry, List.mem_iff_getElem?.mpr ⟨target.val, hentry⟩, ?_⟩
+    simp [hnew]
+  have hgray_length : s.gray.length = s.depth.val := by
+    simp [DfsState.gray, Nat.min_eq_left h.work_bound]
+  have hactive_length : s.active.length = s.stack_len.val := by
+    simp [DfsState.active, Nat.min_eq_left h.stack_bound]
+  have hdepth_stack : s.depth.val ≤ s.stack_len.val := by
+    have := h.gray_sublist.length_le
+    omega
+  have hcounts := h.component_count
+  have hstate_size := h.state_size
+  have hstack_size := h.stack_size
+  have hwork_size := h.work_size
+  have hmachine : s.state.length ≤ Usize.max := s.state.property
+  have hstack : s.stack_len.val < s.stack.length := by omega
+  have hwork : s.depth.val < s.work.length := by omega
+  apply WP.spec_mono (dfs_discover_step graph s frame successors target entry
+    hpositive hframe hedges htarget hentry hnew (by omega) hstack hwork)
+  rintro result ⟨top, cursor, next, stack_len, depth, htop, hcursor, hnext,
+    hstack_len, hdepth, hresult⟩
+  refine ⟨discoverState s top cursor next stack_len depth frame target, ?_, hresult⟩
+  exact discover_invariant graph s h top cursor next stack_len depth frame successors target entry
+    htop (by simpa [show top.val = s.depth.val - 1 by omega] using hframe)
+    hedges htarget hentry hnew hcursor hnext hstack_len hdepth hstack hwork
+
 end NibliSelfCheck.Scc

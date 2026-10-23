@@ -212,9 +212,11 @@ invariant. From it, the proofs derive every local branch's bounds and the root
 emission preconditions, so one iteration of the extracted DFS body cannot fail.
 An empty DFS stack also implies no active vertices remain. Inspecting an already
 visited target preserves the complete invariant, both for active targets and
-targets in completed components.
+targets in completed components. Discovery also preserves it: the fresh index,
+both stack pushes, and the parent's advanced cursor maintain discovery order,
+reachability witnesses, and the processed-edge bounds.
 
-Preservation through discovery and frame completion, the outer-loop invariant,
+Preservation through frame completion, the outer-loop invariant,
 traversal termination and complete partition coverage, and the predicate-name
 adapter remain open. The initialization theorem takes the outer-loop proof as an
 explicit premise; single-step safety does not establish repeated-step safety

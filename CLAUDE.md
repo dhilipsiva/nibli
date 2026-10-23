@@ -235,8 +235,8 @@ When analyzing or searching the codebase:
   maximal SCC emission under explicit DFS frontier preconditions, and local DFS
   branch contracts for discovery, edge handling, completion and exit. The DFS
   invariant is established by the production allocation prefix, implies single-step
-  safety/root readiness, and is preserved by visited-edge handling. Preservation
-  through discovery/completion, outer-loop invariants, termination/coverage, and
+  safety/root readiness, and is preserved by discovery and visited-edge handling.
+  Preservation through completion, outer-loop invariants, termination/coverage, and
   the name adapter remain open. `just verify-self-check-extraction`
   probes the remaining implementation and currently fails on unsupported Aeneas
   constructs. These component proofs do not establish full checker equivalence. See

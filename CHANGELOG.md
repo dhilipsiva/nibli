@@ -48,8 +48,8 @@ here first.
   Local DFS branch contracts now cover discovery, visited targets, completion,
   and exit, including the caller's use of the SCC emission theorem and parent
   update. The production allocation prefix establishes a DFS invariant that
-  implies single-step safety and root readiness; visited-edge handling preserves
-  it. Preservation through discovery/completion, outer-loop invariants, complete
+  implies single-step safety and root readiness; discovery and visited-edge
+  handling preserve it. Preservation through completion, outer-loop invariants, complete
   SCC correctness, and compiler/checker equivalence remain unproved.
 
 - **WIT 0.12.0** (`wit/world.wit`; the engine changes are in
