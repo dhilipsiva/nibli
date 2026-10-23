@@ -61,13 +61,16 @@ theorems = []
 [[obligation]]
 id = "scc_stack"
 sources = ["nibli-reason/src/dependency_graph.rs"]
-contract = "Production component removal terminates at the topmost active root, returns exactly the reversed active suffix, and preserves state entries except the emitted members' stack flags. Under explicit ordered-stack and root-frontier preconditions the emitted list is a maximal SCC without duplicates, the completed set remains forward closed, and remaining stack flags/order and discovery metadata are preserved. Establishing these preconditions throughout DFS and verifying the name adapter remain separate obligations."
+contract = "Production component removal terminates at the topmost active root, returns exactly the reversed active suffix, and preserves state entries except the emitted members' stack flags. Under explicit ordered-stack and root-frontier preconditions the emitted list is a maximal SCC without duplicates, the completed set remains forward closed, and remaining stack flags/order and discovery metadata are preserved. Local DFS branch contracts prove exact discovery, visited-edge, root/nonroot completion and empty-stack exit behavior, including arithmetic and buffer bounds. Root completion applies the SCC theorem to actual live and completed buffers. Establishing these preconditions throughout DFS, complete traversal termination/coverage, and the name adapter remain separate obligations."
 probes = ["scc_kernel"]
 tests = ["nibli-reason/src/dependency_graph.rs", "nibli-reason/src/rules.rs"]
 theorem_file = "proofs/self-check/SccKernelProofs.lean"
 theorems = [
   "NibliSelfCheck.Scc.pop_done", "NibliSelfCheck.Scc.pop_step",
   "NibliSelfCheck.Scc.pop_component_total", "NibliSelfCheck.Scc.pop_component_scc",
+  "NibliSelfCheck.Scc.dfs_done", "NibliSelfCheck.Scc.dfs_discover_step",
+  "NibliSelfCheck.Scc.dfs_seen_step", "NibliSelfCheck.Scc.dfs_finish_nonroot",
+  "NibliSelfCheck.Scc.dfs_finish_root",
 ]
 
 [[obligation]]

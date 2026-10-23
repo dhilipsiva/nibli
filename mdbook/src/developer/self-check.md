@@ -192,10 +192,23 @@ lowlink bound, and completed vertices form a disjoint forward-closed set. Remova
 preserves discovery metadata, the remaining stack's order and membership flags,
 and forward closure after adding the emitted component to the completed set.
 
+The DFS branch contracts also refer directly to the extracted loop body. They
+prove exact updates for discovering a vertex, inspecting a visited target,
+finishing a nonroot frame, completing a root, and exiting with an empty DFS
+stack. These contracts cover arithmetic and buffer bounds, parent edge-cursor
+advancement, both stack pushes, and parent-lowlink propagation. Edges to completed
+components leave the current lowlink unchanged. The root-completion contract
+applies `pop_component_scc`, appends its output, and preserves its graph result
+through the caller's parent update. `DfsState` only names the native tuple's
+fields; it defines no replacement traversal. `EmissionReady` binds the root
+preconditions to the actual active stack, DFS frames, and completed-component
+buffer.
+
 Establishing these preconditions throughout every DFS branch, proving traversal
 termination and complete partition coverage, and verifying the predicate-name
 adapter remain open. The component report covers emission under these
-preconditions; it does not certify the complete traversal or checker equivalence.
+preconditions and the local branch contracts; it does not certify the complete
+traversal or checker equivalence.
 
 The shared component runner regenerates each component in its own Lean module,
 checks its theorem inventory, rechecks local proof helpers with warnings fatal,

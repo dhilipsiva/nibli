@@ -26,7 +26,7 @@ COMPONENTS = {
     "scc_stack": {
         "probe": "scc_kernel", "module": "SccKernelProofs", "namespace": "NibliSelfCheck.Scc",
         "helpers": ["SccGraph"],
-        "label": "production SCC emission under frontier preconditions (not the complete traversal)",
+        "label": "production SCC emission and DFS branch contracts (not the complete traversal)",
     },
 }
 

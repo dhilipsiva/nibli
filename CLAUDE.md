@@ -232,9 +232,10 @@ When analyzing or searching the codebase:
   pinned Nix/Lake environment. `just verify-self-check-verdicts` regenerates and
   proves the production verdict algebra; `just verify-self-check-scc-stack` extracts
   the shared indexed Tarjan kernel and proves component removal, state preservation,
-  and maximal SCC emission under explicit DFS frontier preconditions. Establishing
-  those preconditions throughout traversal and verifying the name adapter remain
-  open. `just verify-self-check-extraction`
+  maximal SCC emission under explicit DFS frontier preconditions, and local DFS
+  branch contracts for discovery, edge handling, completion and exit. Establishing
+  the preconditions throughout traversal, termination/coverage, and the name
+  adapter remain open. `just verify-self-check-extraction`
   probes the remaining implementation and currently fails on unsupported Aeneas
   constructs. These component proofs do not establish full checker equivalence. See
   `mdbook/src/developer/self-check.md`; keep that boundary explicit.
