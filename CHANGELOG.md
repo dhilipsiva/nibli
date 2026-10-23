@@ -40,9 +40,13 @@ here first.
 
 - Stratification and materialization share an indexed, iterative Tarjan kernel
   that can be extracted from production Rust into Lean. The new
-  `verify-self-check-scc-stack` gate proves component-removal termination and exact
-  stack-suffix output, with source hashes and an axiom audit. Complete SCC
-  correctness and compiler/checker equivalence remain unproved.
+  `verify-self-check-scc-stack` gate proves component-removal termination, exact
+  stack-suffix output, and preserved discovery metadata and stack flags. Under
+  explicit DFS frontier preconditions it also proves maximal SCC emission and
+  preservation of the completed set's forward closure. Source hashes, helper
+  checks, and a transitive axiom audit bind the result to production extraction.
+  Establishing those preconditions throughout traversal, complete SCC correctness,
+  and compiler/checker equivalence remain unproved.
 
 - **WIT 0.12.0** (`wit/world.wit`; the engine changes are in
   [ENGINE_UPGRADE_0_2.md](ENGINE_UPGRADE_0_2.md)): `list-assertion-records`

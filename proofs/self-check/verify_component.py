@@ -25,7 +25,8 @@ COMPONENTS = {
     },
     "scc_stack": {
         "probe": "scc_kernel", "module": "SccKernelProofs", "namespace": "NibliSelfCheck.Scc",
-        "label": "production SCC stack removal (not the complete SCC algorithm)",
+        "helpers": ["SccGraph"],
+        "label": "production SCC emission under frontier preconditions (not the complete traversal)",
     },
 }
 
@@ -84,6 +85,12 @@ def check_artifacts(result):
         raise ValueError("LLBC changed during proof")
 
 
+def check_proof_sources(paths):
+    for path in paths:
+        if re.search(r"\b(sorry|admit|axiom|opaque)\b", path.read_text()):
+            raise ValueError(f"Unproved or opaque definition in {path}")
+
+
 def prove(config, env, report, component_id):
     component = COMPONENTS[component_id]
     expected = obligations(component_id)
@@ -94,9 +101,11 @@ def prove(config, env, report, component_id):
     report["extraction"] = result
     if result["status"] != "translated":
         raise ValueError(result["reason"])
-    for path in [DIRECTORY / f"{component['module']}.lean"] + [extract.ROOT / p for p in result["artifacts"]]:
-        if re.search(r"\b(sorry|admit|axiom|opaque)\b", path.read_text()):
-            raise ValueError(f"Unproved or opaque definition in {path}")
+    # Include local helpers, not just the public theorem file. The axiom audit
+    # below also follows all transitive dependencies of the required theorems.
+    check_proof_sources(
+        sorted(DIRECTORY.glob("*.lean")) + [extract.ROOT / p for p in result["artifacts"]]
+    )
 
     def command(name, argv, timeout=300):
         log = extract.OUTPUT / f"{component['probe']}-{name}.log"
@@ -112,8 +121,10 @@ def prove(config, env, report, component_id):
         raise ValueError("Lean version/target does not match the pinned profile")
     print("Checking the extracted definitions and component theorems", flush=True)
     command("build", ["lake", "build", component["module"]], 1800)
-    # Re-elaborate the local proof with warnings fatal even if Lake has an
-    # up-to-date cache; an admitted theorem must never count as a passing gate.
+    # Re-elaborate local helpers and the proof with warnings fatal even if Lake
+    # has an up-to-date cache; an admitted theorem cannot count as a passing gate.
+    for module in component.get("helpers", []):
+        command(f"proof-{module}", ["lake", "env", "lean", "-DwarningAsError=true", f"{module}.lean"])
     command("proof", ["lake", "env", "lean", "-DwarningAsError=true", f"{component['module']}.lean"])
     audit = extract.OUTPUT / f"{component['module']}Audit.lean"
     audit.write_text(f"import {component['module']}\n" + "".join(f"#print axioms {name}\n" for name in expected))

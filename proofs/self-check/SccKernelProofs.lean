@@ -1,4 +1,4 @@
-import SccKernel.Funs
+import SccGraph
 
 /- Proofs about the extracted production traversal. These local obligations
    are building blocks for SCC correctness, not a proof of the complete
@@ -7,6 +7,90 @@ namespace NibliSelfCheck.Scc
 
 open Aeneas Aeneas.Std Aeneas.Std.Result Aeneas.Std.ControlFlow
 open nibli_reason.dependency_graph
+
+/-- The only state change licensed by emitting a component. -/
+def clearEntry (removed : List Usize) (index : Nat) (entry : NodeState) : NodeState :=
+  { entry with on_stack :=
+      if removed.any (fun member => member.val == index) then false else entry.on_stack }
+
+/-- Pointwise equality includes untouched entries and out-of-bounds lookups. -/
+def Clears (before after : alloc.vec.Vec NodeState) (removed : List Usize) : Prop :=
+  ∀ index, after.val[index]? = (before.val[index]?).map (clearEntry removed index)
+
+/-- The flags in Rust state agree with membership of the logical stack. -/
+def StackFlags (state : alloc.vec.Vec NodeState) (active : List Usize) : Prop :=
+  ∀ vertex entry, state.val[vertex.val]? = some entry →
+    (entry.on_stack = true ↔ vertex ∈ active)
+
+private theorem any_index (removed : List Usize) (vertex : Usize) :
+    removed.any (fun member => member.val == vertex.val) = decide (vertex ∈ removed) := by
+  apply Bool.eq_iff_iff.mpr
+  simp only [List.any_eq_true, beq_iff_eq, decide_eq_true_eq]
+  constructor
+  · rintro ⟨member, hmember, heq⟩
+    exact UScalar.eq_of_val_eq heq ▸ hmember
+  · intro hmember
+    exact ⟨vertex, hmember, rfl⟩
+
+private theorem clears_flags (before after : alloc.vec.Vec NodeState)
+    (active removed : List Usize) (hclear : Clears before after removed)
+    (hflags : StackFlags before active) :
+    StackFlags after (active.filter (fun vertex => decide (vertex ∉ removed))) := by
+  intro vertex entry hentry
+  have hlookup := hclear vertex.val
+  rw [hentry] at hlookup
+  cases hold : before.val[vertex.val]? with
+  | none => simp [hold] at hlookup
+  | some original =>
+    have heq : entry = clearEntry removed vertex.val original := by
+      simpa [hold] using hlookup
+    rw [heq]
+    simp only [clearEntry, any_index]
+    by_cases hremoved : vertex ∈ removed
+    · simp [hremoved]
+    · simpa [hremoved] using hflags vertex original hold
+
+private theorem clears_rank (before after : alloc.vec.Vec NodeState)
+    (removed : List Usize) (hclear : Clears before after removed) (vertex : Usize) :
+    rank after vertex = rank before vertex := by
+  simp only [rank, hclear vertex.val]
+  cases before.val[vertex.val]? <;> simp [clearEntry]
+
+private theorem clears_lowlink (before after : alloc.vec.Vec NodeState)
+    (removed : List Usize) (hclear : Clears before after removed) (vertex : Usize) :
+    lowlink after vertex = lowlink before vertex := by
+  simp only [lowlink, hclear vertex.val]
+  cases before.val[vertex.val]? <;> simp [clearEntry]
+
+private theorem clears_empty (state : alloc.vec.Vec NodeState) : Clears state state [] := by
+  intro index
+  cases h : state.val[index]? with
+  | none => simp
+  | some entry => simp [clearEntry]
+
+private theorem clears_step (before after : alloc.vec.Vec NodeState)
+    (removed : List Usize) (member : Usize) (entry : NodeState)
+    (hclear : Clears before after removed)
+    (hentry : after.val[member.val]? = some entry) :
+    Clears before (after.set member { entry with on_stack := false }) (removed ++ [member]) := by
+  intro index
+  simp only [alloc.vec.Vec.set_val_eq]
+  by_cases heq : member.val = index
+  · subst index
+    have hbound := (List.getElem?_eq_some_iff.mp hentry).1
+    rw [List.getElem?_set_self hbound]
+    have hbefore := hclear member.val
+    rw [hentry] at hbefore
+    cases hold : before.val[member.val]? with
+    | none => simp [hold] at hbefore
+    | some original =>
+      have he : entry = clearEntry removed member.val original := by
+        simpa [hold] using hbefore
+      simp [he, clearEntry]
+  · rw [List.getElem?_set_ne heq, hclear index]
+    cases hold : before.val[index]? with
+    | none => simp
+    | some original => simp [clearEntry, heq]
 
 theorem pop_done (state : alloc.vec.Vec NodeState) (stack : Slice Usize)
     (length root : Usize) (component : alloc.vec.Vec Usize) :
@@ -72,26 +156,28 @@ theorem pop_component_total (state : alloc.vec.Vec NodeState) (stack : Slice Usi
     pop_component state stack length root ⦃ updated remaining output =>
       updated.length = state.length ∧ remaining.val = position ∧
       output.length + position = length.val ∧
-      output.val = ((stack.val.take length.val).drop position).reverse ⦄ := by
+      output.val = ((stack.val.take length.val).drop position).reverse ∧
+      Clears state updated output.val ⦄ := by
   let inv := fun (current : alloc.vec.Vec NodeState × Usize × alloc.vec.Vec Usize × Bool) =>
     match current with
     | (updated, remaining, output, complete) =>
       updated.length = state.length ∧ position ≤ remaining.val ∧
       remaining.val ≤ length.val ∧ output.length + remaining.val = length.val ∧
       (complete = true ↔ remaining.val = position) ∧
-      output.val = ((stack.val.take length.val).drop remaining.val).reverse
+      output.val = ((stack.val.take length.val).drop remaining.val).reverse ∧
+      Clears state updated output.val
   unfold pop_component pop_component_loop
   apply loop.spec_decr_nat (measure := fun (_, remaining, _, _) => remaining.val)
     (inv := inv)
   · rintro ⟨updated, remaining, output, complete⟩ hinv
-    rcases hinv with ⟨hsize, hlow, hhigh, hcount, hcomplete, horder⟩
+    rcases hinv with ⟨hsize, hlow, hhigh, hcount, hcomplete, horder, hflags⟩
     dsimp only
     cases complete with
     | true =>
       rw [pop_done]
       simp only [WP.spec_ok]
       have heq := hcomplete.mp rfl
-      exact ⟨hsize, heq, by omega, by simpa [heq] using horder⟩
+      exact ⟨hsize, heq, by omega, by simpa [heq] using horder, hflags⟩
     | false =>
       have hpositive : 0 < remaining.val := by simp at hcomplete; omega
       have habove : position < remaining.val := by simp at hcomplete; omega
@@ -131,15 +217,105 @@ theorem pop_component_total (state : alloc.vec.Vec NodeState) (stack : Slice Usi
       change inv (_, next, appended, decide (member = root)) ∧ next.val < remaining.val
       constructor
       · dsimp only [inv]
-        refine ⟨?_, by omega, by omega, by omega, ?_, hnew_order⟩
+        refine ⟨?_, by omega, by omega, by omega, ?_, hnew_order, ?_⟩
         · simpa using hsize
         · simpa using heq
+        · rw [happended]
+          exact clears_step state updated output.val member entry hflags hentry
       · omega
   · dsimp only [inv]
-    refine ⟨rfl, Nat.le_of_lt hposition, Nat.le_refl _, ?_, ?_, ?_⟩
+    refine ⟨rfl, Nat.le_of_lt hposition, Nat.le_refl _, ?_, ?_, ?_, ?_⟩
     · simp [alloc.vec.Vec.new]
     · simp only [Bool.false_eq_true, false_iff]
       omega
     · simp [alloc.vec.Vec.new]
+    · exact clears_empty state
+
+/-- The actual extracted removal emits a maximal SCC when the DFS root
+    invariants hold. Establishing those invariants for every traversal branch
+    remains a separate obligation. -/
+theorem pop_component_scc (graph : Slice (alloc.vec.Vec Usize))
+    (state : alloc.vec.Vec NodeState) (stack : Slice Usize)
+    (length root : Usize) (position : Nat) (gray : List Usize) (finished : Usize → Prop)
+    (hposition : position < length.val)
+    (hlength : length.val ≤ stack.length)
+    (hroot : stack.val[position]? = some root)
+    (htargets : ∀ i, i < length.val → ∀ member,
+      stack.val[i]? = some member → member.val < state.length)
+    (hflags : StackFlags state (stack.val.take length.val))
+    (horder : (stack.val.take length.val).Pairwise
+      (fun left right => rank state left < rank state right))
+    (hfrontier : RootFrontier graph state (stack.val.take length.val) gray finished root) :
+    pop_component state stack length root ⦃ updated remaining output =>
+      updated.length = state.length ∧ remaining.val = position ∧
+      output.length + position = length.val ∧
+      output.val = ((stack.val.take length.val).drop position).reverse ∧
+      Clears state updated output.val ∧ output.val.Nodup ∧ IsScc graph output.val ∧
+      Closed graph (fun vertex => vertex ∈ output.val ∨ finished vertex) ∧
+      (∀ vertex, rank updated vertex = rank state vertex ∧
+        lowlink updated vertex = lowlink state vertex) ∧
+      StackFlags updated (stack.val.take remaining.val) ∧
+      (stack.val.take remaining.val).Pairwise
+        (fun left right => rank updated left < rank updated right) ⦄ := by
+  let active := stack.val.take length.val
+  have hactive_root : active[position]? = some root := by
+    dsimp only [active]
+    rw [List.getElem?_take_of_lt hposition]
+    exact hroot
+  have hlast : ∀ i, position < i → i < length.val → stack.val[i]? ≠ some root := by
+    intro index habove hbelow heq
+    have hindex : active[index]? = some root := by
+      dsimp only [active]
+      rw [List.getElem?_take_of_lt hbelow]
+      exact heq
+    have hlt := horder.rel_getElem_of_lt
+      ((List.getElem?_eq_some_iff.mp hactive_root).1)
+      ((List.getElem?_eq_some_iff.mp hindex).1) habove
+    rw [(List.getElem?_eq_some_iff.mp hactive_root).2,
+      (List.getElem?_eq_some_iff.mp hindex).2] at hlt
+    omega
+  apply WP.spec_mono (pop_component_total state stack length root position
+    hposition hlength hroot hlast htargets)
+  rintro ⟨updated, remaining, output⟩ ⟨hsize, hremaining, hcount, hsuffix, hclear⟩
+  refine ⟨hsize, hremaining, hcount, hsuffix, hclear, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  · have hnodup : active.Nodup := by
+      apply List.Pairwise.imp _ horder
+      intro left right hlt heq
+      subst right
+      omega
+    rw [hsuffix]
+    exact List.nodup_reverse.mpr (hnodup.drop)
+  · apply scc_of_same_members graph _ output.val _
+      (root_frontier_scc graph state active gray finished root hfrontier)
+    intro vertex
+    simp only [List.mem_filter, decide_eq_true_eq, hsuffix, List.mem_reverse]
+    exact (rank_suffix_membership state active position root hactive_root horder vertex).symm
+  · have hclosed := root_frontier_closed graph state active gray finished root hfrontier
+    have hmembers : ∀ vertex, vertex ∈ output.val ↔
+        vertex ∈ active.filter (fun vertex => decide (rank state root ≤ rank state vertex)) := by
+      intro vertex
+      simp only [List.mem_filter, decide_eq_true_eq, hsuffix, List.mem_reverse]
+      exact rank_suffix_membership state active position root hactive_root horder vertex
+    intro source target hsource hedge
+    have hsource' : source ∈ active.filter
+        (fun vertex => decide (rank state root ≤ rank state vertex)) ∨ finished source :=
+      hsource.imp (hmembers source).mp id
+    exact (hclosed source target hsource' hedge).imp (hmembers target).mpr id
+  · intro vertex
+    exact ⟨clears_rank state updated output.val hclear vertex,
+      clears_lowlink state updated output.val hclear vertex⟩
+  · have hnew_flags := clears_flags state updated active output.val hclear hflags
+    intro vertex entry hentry
+    rw [hnew_flags vertex entry hentry, hremaining]
+    simp only [List.mem_filter, decide_eq_true_eq, hsuffix, List.mem_reverse]
+    have hprefix := rank_prefix_membership state active position horder vertex
+    have htake : active.take position = stack.val.take position := by
+      simp [active, List.take_take, Nat.min_eq_left (Nat.le_of_lt hposition)]
+    simpa [htake] using hprefix.symm
+  · have hprefix : (stack.val.take position).Pairwise
+        (fun left right => rank state left < rank state right) := by
+      have h := horder.take (i := position)
+      simpa [List.take_take, Nat.min_eq_left (Nat.le_of_lt hposition)] using h
+    simpa [hremaining, clears_rank state updated output.val hclear] using hprefix
 
 end NibliSelfCheck.Scc

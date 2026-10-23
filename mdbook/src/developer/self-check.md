@@ -178,16 +178,29 @@ is still outside the completed extraction.
 `just verify-self-check-scc-stack` regenerates the kernel and checks
 `SccKernelProofs.lean`. The proofs establish component-removal termination, the
 topmost-root stopping position, the exact reversed active suffix returned, and
-preservation of the state-buffer length. A local step theorem also specifies the
-exact update to the popped node's stack flag. Preconditions require a root in
-the active stack prefix and valid state indices. Establishing those preconditions
-throughout DFS, proving that the returned components equal mutual reachability,
-and verifying the name adapter remain open. The report verifies only this stack
-operation, not the whole SCC algorithm or checker equivalence.
+preservation of the state-buffer length. The complete removal preserves every
+state entry except the emitted nodes' stack flags, which it clears. These
+preconditions require a root in the active stack prefix and valid state indices.
+
+The `pop_component_scc` theorem connects that extracted operation to graph
+reachability. It proves that the emitted list is exactly a maximal mutual-
+reachability class, without duplicates, under explicit `RootFrontier` and ordered-
+stack preconditions. `SccGraph.lean` defines these conditions over the extracted
+graph and Rust discovery indices and lowlinks: live DFS ancestors reach later
+active nodes, active nodes return to an ancestor, processed edges respect the
+lowlink bound, and completed vertices form a disjoint forward-closed set. Removal
+preserves discovery metadata, the remaining stack's order and membership flags,
+and forward closure after adding the emitted component to the completed set.
+
+Establishing these preconditions throughout every DFS branch, proving traversal
+termination and complete partition coverage, and verifying the predicate-name
+adapter remain open. The component report covers emission under these
+preconditions; it does not certify the complete traversal or checker equivalence.
 
 The shared component runner regenerates each component in its own Lean module,
-checks its theorem inventory, and applies the same source/artifact drift and
-axiom audits to both gates. The ordinary Rust suite also checks the indexed
+checks its theorem inventory, rechecks local proof helpers with warnings fatal,
+and applies the same source/artifact drift and transitive axiom audits to both
+gates. The ordinary Rust suite also checks the indexed
 kernel against independent reachability on exhaustive small graphs, long chains
 and cycles, and the existing compiler/checker differential corpus.
 

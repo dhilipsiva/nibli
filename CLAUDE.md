@@ -231,8 +231,10 @@ When analyzing or searching the codebase:
   `proofs/self-check/` is a separate production-extraction checkpoint with its own
   pinned Nix/Lake environment. `just verify-self-check-verdicts` regenerates and
   proves the production verdict algebra; `just verify-self-check-scc-stack` extracts
-  the shared indexed Tarjan kernel and proves its component-removal operation
-  (not the full SCC algorithm or name adapter). `just verify-self-check-extraction`
+  the shared indexed Tarjan kernel and proves component removal, state preservation,
+  and maximal SCC emission under explicit DFS frontier preconditions. Establishing
+  those preconditions throughout traversal and verifying the name adapter remain
+  open. `just verify-self-check-extraction`
   probes the remaining implementation and currently fails on unsupported Aeneas
   constructs. These component proofs do not establish full checker equivalence. See
   `mdbook/src/developer/self-check.md`; keep that boundary explicit.

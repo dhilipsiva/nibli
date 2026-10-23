@@ -22,3 +22,6 @@ globs = ["SccKernel.+"]
 
 [[lean_lib]]
 name = "SccKernelProofs"
+
+[[lean_lib]]
+name = "SccGraph"

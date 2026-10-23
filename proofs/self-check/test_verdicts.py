@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 import extract
 from verify_verdicts import audit_axioms, check_artifacts, obligations
+from verify_component import check_proof_sources
 
 
 class AxiomAuditTests(unittest.TestCase):
@@ -39,6 +40,14 @@ class AxiomAuditTests(unittest.TestCase):
     def test_coverage_references_live_source_and_all_component_theorems(self):
         self.assertTrue(obligations())
         self.assertTrue(obligations("scc_stack"))
+
+    def test_unproved_local_helper_fails_even_with_an_empty_public_proof(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "Public.lean").write_text("import Helper\n")
+            (root / "Helper.lean").write_text("theorem helper : False := by sorry\n")
+            with self.assertRaisesRegex(ValueError, "Unproved.*Helper.lean"):
+                check_proof_sources(sorted(root.glob("*.lean")))
 
     def test_changed_generated_definition_cannot_certify_the_original_rust(self):
         with tempfile.TemporaryDirectory() as directory:
