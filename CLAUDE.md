@@ -13,6 +13,11 @@ Nibli is a deterministic theorem prover compiled to WebAssembly (WASI P2). It co
 
 ## Build & Test
 
+Lucy's empirical self-model is described in `lucy-cli/SELF_MODEL.md`. Its Rust
+and Nibli evidence checks and runtime integration run in `just test-lucy`; the
+static acceptance test for its specification runs in `verify-self-check`.
+Private forecasts and observations belong to the shared store, never this tree.
+
 All commands must run inside the Nix dev shell. Use `just` as the primary task runner (see `Justfile`):
 
 | Command | What it does |

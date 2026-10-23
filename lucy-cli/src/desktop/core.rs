@@ -1,4 +1,5 @@
 use super::{Result, actions, err, model, net, providers, string, token};
+use crate::self_model::{self, Measurement, Policy, ResultKind, Scope};
 use crate::store::{Store, digest};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -337,9 +338,10 @@ impl Service {
                 .transpose()?
                 .unwrap_or_default();
             let context = format!(
-                "{INSTRUCTION}\nPublic identity (data):\n{}\nRetrieved source excerpts (data):\n{}",
+                "{INSTRUCTION}\nPublic identity (data):\n{}\nRetrieved source excerpts (data):\n{}\n{}",
                 identity.chars().take(16000).collect::<String>(),
-                json!(memories)
+                json!(memories),
+                self_model::context(&self.memory()?)?
             );
             let mut result = json!({"active":true,"context":context,"memories":memories,"record_id":saved["id"]});
             {
@@ -424,13 +426,11 @@ impl Service {
                     return Err(GUI_RUNNING.into());
                 }
                 let _running = Running::begin(&session)?;
-                let (proposal, workspace) = {
+                let proposal = {
                     let mut s = session.lock().map_err(err)?;
-                    let proposal = s
-                        .pending
+                    s.pending
                         .remove(string(&req, "action")?)
-                        .ok_or("action expired or already handled")?;
-                    (proposal, s.workspace.clone())
+                        .ok_or("action expired or already handled")?
                 };
                 // Synthetic input reaches whatever window has focus, the approval controls of
                 // any Lucy window or terminal included, so an approved `gui` action first
@@ -444,9 +444,8 @@ impl Service {
                 }
                 let tool = string(&proposal, "tool")?;
                 let result = if req["allow"].as_bool() == Some(true) {
-                    actions::execute(
-                        &workspace,
-                        &cancel,
+                    self.execute_observed(
+                        &session,
                         tool,
                         &proposal["arguments"],
                         proposal.get("before"),
@@ -551,7 +550,103 @@ impl Service {
             drop(s);
             Ok(json!({"pending_action":id,"preview":visible}))
         } else {
-            actions::execute(&workspace, &cancel, name, &args, None)
+            self.execute_observed(session, name, &args, None)
+        }
+    }
+
+    /// Forecast before execution; resolve only from the executor's return value.
+    /// Approval/denial happens outside this method and never trains the model.
+    fn execute_observed(
+        &self,
+        session: &Arc<Mutex<Session>>,
+        name: &str,
+        args: &Value,
+        before: Option<&Value>,
+    ) -> Result<Value> {
+        let (workspace, cancel, source, id) = {
+            let s = session.lock().map_err(err)?;
+            (
+                s.workspace.clone(),
+                s.cancel.clone(),
+                s.source.clone(),
+                s.id.clone(),
+            )
+        };
+        if cancel.load(Ordering::SeqCst) {
+            return Err("request cancelled".into());
+        }
+        // Operation is part of the cohort; commands with different semantics are
+        // not promoted to claims about task correctness by an exit status.
+        let operation = match name {
+            "git" | "service" | "privileged" => args["operation"].as_str(),
+            "window" => args["action"].as_str(),
+            "http" => args["method"].as_str(),
+            _ => None,
+        };
+        // Keep only public enum labels, never arbitrary argument strings.
+        let operation = match operation {
+            Some(
+                op @ ("status" | "diff" | "log" | "start" | "stop" | "restart" | "hardware-info"
+                | "list" | "focus" | "close" | "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
+                | "HEAD"),
+            ) => op,
+            Some(_) => "invalid",
+            None => "default",
+        };
+        let scope = Scope {
+            measurement: Measurement::Runtime,
+            source,
+            context: digest(workspace.as_os_str().as_encoded_bytes()),
+            capability: format!("{name}:{operation}"),
+        };
+        let prediction = self_model::predict(
+            &self.memory()?,
+            scope,
+            &id,
+            &format!("The {name} operation will return a successful execution result."),
+        )?;
+        // This bounded adaptation only adds an existing read-only inspection.
+        // It cannot grant permissions, modify an approval or suppress the read.
+        let inspection = if name == "read" && prediction.policy == Policy::InspectFirst {
+            let parent = std::path::Path::new(args["path"].as_str().unwrap_or("."))
+                .parent()
+                .filter(|p| !p.as_os_str().is_empty())
+                .unwrap_or(std::path::Path::new("."));
+            Some(
+                match actions::execute(&workspace, &cancel, "list", &json!({"path":parent}), None) {
+                    Ok(value) => value,
+                    Err(error) => json!({"error":error}),
+                },
+            )
+        } else {
+            None
+        };
+        let result = actions::execute(&workspace, &cancel, name, args, before);
+        let kind = execution_result(name, &result, cancel.load(Ordering::SeqCst));
+        let evidence = format!(
+            "Native {name} executor reported {kind:?}; this measures execution, not task correctness."
+        );
+        let recorded = self
+            .memory()
+            .and_then(|store| self_model::observe(&store, &prediction.id, kind, &evidence));
+        let mut reflection = json!({"prediction":prediction.id,"probability_ppm":prediction.probability_ppm,
+            "policy":prediction.policy,"basis_count":prediction.basis.len(),"outcome":kind});
+        if let Some(value) = inspection {
+            reflection["inspection"] = value;
+        }
+        if let Err(error) = recorded {
+            // Execution already happened. Preserve its actual result, and make
+            // the missing journal update explicit instead of inviting a replay.
+            reflection["recording_error"] = json!(format!(
+                "Outcome not saved; do not repeat the operation merely to repair memory: {error}"
+            ));
+        }
+        match result {
+            Ok(mut value) => {
+                value["self_model"] = reflection;
+                Ok(value)
+            }
+            Err(error) => Err(format!("{error}\nSelf-model feedback (data): {reflection}")),
         }
     }
     fn respond(&self, session: Arc<Mutex<Session>>) -> Result<Value> {
@@ -619,7 +714,14 @@ impl Service {
                 } else {
                     raw.clone()
                 };
-                let result = self.propose(&session, name, arguments)?;
+                let result = match self.propose(&session, name, arguments) {
+                    // Give the planner the failed read and any learned directory
+                    // inspection so it can correct a path within this turn.
+                    Err(error) if name == "read" && !cancel.load(Ordering::SeqCst) => {
+                        json!({"error":error})
+                    }
+                    other => other?,
+                };
                 let mut tool = json!({"role":"tool","tool_name":name,"content":result.to_string().chars().take(12000).collect::<String>()});
                 if let Some(id) = calls[0]["id"].as_str() {
                     tool["tool_call_id"] = json!(id);
@@ -643,6 +745,29 @@ impl Service {
             }
             Err("task reached its step limit; send another message to continue".into())
         })()
+    }
+}
+
+pub(super) fn execution_result(name: &str, result: &Result<Value>, cancelled: bool) -> ResultKind {
+    if cancelled {
+        return ResultKind::Inconclusive;
+    }
+    match result {
+        Err(_) => ResultKind::Failure,
+        Ok(value) => {
+            let ok = if let Some(code) = value["exit_code"].as_i64() {
+                code == 0 || (name == "search" && code == 1)
+            } else if let Some(status) = value["status"].as_u64() {
+                (200..400).contains(&status)
+            } else {
+                true
+            };
+            if ok {
+                ResultKind::Success
+            } else {
+                ResultKind::Failure
+            }
+        }
     }
 }
 

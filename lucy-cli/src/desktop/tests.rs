@@ -178,7 +178,16 @@ fn agent_reads_then_returns_visible_response_without_provider_internals() {
         .unwrap();
     assert_eq!(reply["text"], "The note says: a small note.");
     let records = Store::open(&root).unwrap().all().unwrap();
-    assert_eq!(records.len(), 2);
+    assert_eq!(
+        records
+            .iter()
+            .filter(|r| r.origin.starts_with("conversation:"))
+            .count(),
+        2
+    );
+    let history = crate::self_model::History::read(&Store::open(&root).unwrap()).unwrap();
+    assert_eq!(history.predictions.len(), 1);
+    assert_eq!(history.observations.len(), 1);
     assert!(!json!(records).to_string().contains("provider internals"));
 }
 
@@ -203,6 +212,12 @@ fn agent_write_needs_the_exact_ui_approval_and_can_only_run_once() {
     assert!(preview.get("before").is_none());
     assert_eq!(preview["diff"]["after"], "approved content");
     assert!(!temp.path().join("out.txt").exists());
+    assert!(
+        crate::self_model::History::read(&Store::open(&service.root).unwrap())
+            .unwrap()
+            .predictions
+            .is_empty()
+    );
     let approval = request(&client, json!({"op":"approve","action":id,"allow":true}));
     let mut fake = approval.clone();
     fake["control"] = json!("model-supplied");
@@ -217,6 +232,124 @@ fn agent_write_needs_the_exact_ui_approval_and_can_only_run_once() {
         "approved content"
     );
     assert!(service.dispatch(approval).is_err());
+    let history = crate::self_model::History::read(&Store::open(&service.root).unwrap()).unwrap();
+    assert_eq!(history.predictions.len(), 1);
+    assert_eq!(history.observations.len(), 1);
+}
+
+#[test]
+fn learned_read_policy_survives_restart_and_changes_inspection() {
+    let temp = tempfile::tempdir().unwrap();
+    let workspace = temp.path().join("workspace");
+    std::fs::create_dir(&workspace).unwrap();
+    std::fs::write(workspace.join("actual.txt"), "available evidence").unwrap();
+    let root = temp.path().join("memory");
+    let service = Service::new(root.clone(), None);
+    prompt(
+        &service,
+        &workspace,
+        "codex",
+        "first",
+        "Lucy, read the note.",
+    );
+    for _ in 0..2 {
+        let error = service
+            .dispatch(json!({"op":"tool","source":"codex","session":"first",
+            "name":"read","arguments":{"path":"missing.txt"}}))
+            .unwrap_err();
+        assert!(!error.contains("actual.txt"));
+    }
+    drop(service);
+    let service = Service::new(root.clone(), None);
+    let wake = prompt(&service, &workspace, "codex", "second", "Lucy, continue.");
+    assert!(wake["context"].as_str().unwrap().contains("inspect_first"));
+    let read = |path: &str| {
+        json!({"op":"tool","source":"codex","session":"second",
+        "name":"read","arguments":{"path":path}})
+    };
+    let error = service.dispatch(read("missing.txt")).unwrap_err();
+    // The same failed request now carries an actual directory observation.
+    assert!(error.contains("actual.txt"));
+    assert!(error.contains("inspect_first"));
+    for _ in 0..3 {
+        let read = service.dispatch(read("actual.txt")).unwrap();
+        assert_eq!(read["text"], "available evidence");
+        assert!(read["self_model"]["inspection"].is_object());
+    }
+    // Success is contrary evidence; the policy does not get stuck in caution.
+    let read = service.dispatch(read("actual.txt")).unwrap();
+    assert_eq!(read["self_model"]["policy"], "direct");
+    assert!(read["self_model"].get("inspection").is_none());
+    let history = crate::self_model::History::read(&Store::open(&root).unwrap()).unwrap();
+    history.audit().unwrap();
+    assert!(
+        history
+            .observations
+            .values()
+            .all(|o| !o.evidence.contains("available evidence"))
+    );
+    let transcript = service
+        .dispatch(json!({"op":"transcript","source":"codex","session":"second"}))
+        .unwrap();
+    assert!(
+        transcript["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|m| matches!(m["role"].as_str(), Some("user" | "assistant")))
+    );
+}
+
+#[test]
+fn failed_reads_return_evidence_to_the_planner_within_the_turn() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("memory");
+    let service = Service::new(root.clone(), None);
+    service.scripted(vec![
+        json!({"content":"","tool_calls":[{"id":"missing","type":"function",
+            "function":{"name":"read","arguments":{"path":"missing.txt"}}}]}),
+        json!({"content":"That path is missing; I need a corrected path."}),
+    ]);
+    let client = service.dispatch(json!({"op":"open"})).unwrap();
+    let reply = service
+        .dispatch(request(
+            &client,
+            json!({"op":"chat","workspace":temp.path(),
+        "event":"missing","text":"Read missing.txt"}),
+        ))
+        .unwrap();
+    assert_eq!(
+        reply["text"],
+        "That path is missing; I need a corrected path."
+    );
+    let history = crate::self_model::History::read(&Store::open(&root).unwrap()).unwrap();
+    assert_eq!(
+        history.observations.values().next().unwrap().result,
+        crate::self_model::ResultKind::Failure
+    );
+}
+
+#[test]
+fn execution_measurements_use_exit_status_and_exclude_cancellation() {
+    use crate::self_model::ResultKind::{Failure, Inconclusive, Success};
+    for (name, value, expected) in [
+        ("command", json!({"exit_code":0}), Success),
+        ("command", json!({"exit_code":1}), Failure),
+        ("search", json!({"exit_code":1}), Success),
+        ("search", json!({"exit_code":2}), Failure),
+        ("http", json!({"status":200}), Success),
+        ("http", json!({"status":503}), Failure),
+    ] {
+        assert_eq!(core::execution_result(name, &Ok(value), false), expected);
+    }
+    assert_eq!(
+        core::execution_result("read", &Err("missing".into()), false),
+        Failure
+    );
+    assert_eq!(
+        core::execution_result("read", &Err("cancelled".into()), true),
+        Inconclusive
+    );
 }
 
 #[test]

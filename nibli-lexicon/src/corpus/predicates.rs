@@ -2366,6 +2366,17 @@ pub(crate) static PREDICATES: &[PredicateEntry] = &[
     PredicateEntry { name: "skirt", source_gismu: "skaci", swap: None, places: &["skirt", "material"], gloss: "skirt", template: None, tier: CorpusTier::GlossDerived },
     // TODO(corpus): guessed places [x1:gloss, x2:prose] — lensisku: "$x_{1}$ is an expanse of sky/the heavens at place $x_{2}$; [celestial]."
     PredicateEntry { name: "sky", source_gismu: "tsani", swap: None, places: &["expanse", "place"], gloss: "sky", template: None, tier: CorpusTier::GlossDerived },
+    // Lucy's empirical self-model evidence graph (lucy-cli/constitution/self_model.nibli).
+    PredicateEntry { name: "sl_basis", source_gismu: "zzself_sl_basis", swap: None, places: &["prediction", "observation"], gloss: "forecast evidence", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sl_dep", source_gismu: "zzself_sl_dep", swap: None, places: &["prediction", "prior"], gloss: "forecast dependency", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sl_invalid", source_gismu: "zzself_sl_invalid", swap: None, places: &["history"], gloss: "invalid evidence history", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sl_known_observation", source_gismu: "zzself_sl_known_observation", swap: None, places: &["observation"], gloss: "recorded observation", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sl_observation", source_gismu: "zzself_sl_observation", swap: None, places: &["observation", "prediction", "outcome"], gloss: "forecast observation", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sl_path", source_gismu: "zzself_sl_path", swap: None, places: &["prediction", "ancestor"], gloss: "evidence dependency path", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sl_precedes", source_gismu: "zzself_sl_precedes", swap: None, places: &["earlier", "later"], gloss: "record timestamp order", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sl_prediction", source_gismu: "zzself_sl_prediction", swap: None, places: &["prediction"], gloss: "recorded prediction", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sl_scope", source_gismu: "zzself_sl_scope", swap: None, places: &["prediction", "scope"], gloss: "prediction evidence scope", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "sl_violation", source_gismu: "zzself_sl_violation", swap: None, places: &["subject", "kind"], gloss: "self-model evidence violation", template: None, tier: CorpusTier::Curated },
     // TODO(corpus): guessed places [x1:generic, x2:prose] — lensisku: "$x_{1}$ reflects Slavic language/culture/ethos in aspect $x_{2}$."
     PredicateEntry { name: "slavic", source_gismu: "slovo", swap: None, places: &["subject", "aspect"], gloss: "Slavic", template: None, tier: CorpusTier::Generic },
     // TODO(corpus): guessed places [x1:gloss] — lensisku: "$x_{1}$ is asleep (adjective); $x_{1}$ sleeps/is sleeping."

@@ -163,6 +163,22 @@ fn stage_one_self_check() {
 }
 
 #[test]
+fn lucy_evidence_checker_passes_the_static_self_checker() {
+    let source = include_str!("../../lucy-cli/constitution/self_model.nibli");
+    let check = checker(source, InputIntent::Assertion);
+    assert!(verdict(&check, "checker_complete(\"program:0\")."));
+    assert!(verdict(&check, "checker_accepts(\"program:0\")."));
+    assert!(!verdict(
+        &check,
+        "advisory_kind(\"program:0\", \"range_restriction\")."
+    ));
+    assert!(!verdict(
+        &check,
+        "advisory_kind(\"program:0\", \"schema_conflict\")."
+    ));
+}
+
+#[test]
 fn language_profiles() {
     let accepted = [
         "",

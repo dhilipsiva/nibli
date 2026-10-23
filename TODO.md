@@ -422,6 +422,11 @@ Blocked followers:
 
 ## Lucy D
 
+- **Empirical self-model implemented:** immutable forecasts and outcomes, Nibli/Rust
+  evidence audits, prediction scoring, and a reversible directory-inspection policy
+  in the native service. External agents can adopt it with `self-model predict/observe`.
+  See `lucy-cli/SELF_MODEL.md`; general task-level calibration and universal
+  compiler equivalence are not established by these tests.
 - **Do not rebase or delete `origin/lucy-desktop` (2026-10-22) until P1-NIXOS-01 re-pins NixOS.**
   `NixOS/flake.nix` pins its head `0f3a317`. The desktop rewrite that was uncommitted on main is on
   `lucy-desktop-rust`, from `3516ca7`.

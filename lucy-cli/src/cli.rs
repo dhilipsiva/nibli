@@ -26,6 +26,10 @@ pub struct Outcome {
 /// The usage text.
 pub const USAGE: &str = "lucy — a persistent identity whose memory is nibli text
 
+  lucy self-model status|audit|events|facts [--root DIR]
+                                     inspect my empirical self-model and its evidence
+  lucy self-model predict|observe --stdin [--root DIR]
+                                     record a forecast or an attributed outcome as JSON
   lucy store status|sync              inspect or rebuild the shared private redb index
   lucy store register --name N --path DIR
                                      read a local peer's Lucy directory on every recall
@@ -91,7 +95,10 @@ Environment: LUCY_HOME, LUCY_HOST, LUCY_CAPSULE_MAX_BYTES, LUCY_MAX_CHAIN_DEPTH,
 
 /// Whether the command wants stdin.
 pub fn reads_stdin(args: &[String]) -> bool {
-    (args.first().map(String::as_str) == Some("store") && args.iter().any(|a| a == "--stdin"))
+    (matches!(
+        args.first().map(String::as_str),
+        Some("store" | "self-model")
+    ) && args.iter().any(|a| a == "--stdin"))
         || args.first().map(String::as_str) == Some("hook")
         || (args.first().map(String::as_str) == Some("record")
             && args.iter().any(|a| a == "--stdin" || a == "--json"))
@@ -112,6 +119,12 @@ pub fn run(args: &[String], stdin: &str, env_override: Option<Env>) -> Outcome {
         "dataset" => return cmd_dataset(&args[1..]),
         "store" => {
             return match crate::store::command(&args[1..], stdin) {
+                Ok(value) => json_out(0, value),
+                Err(error) => harness(&error),
+            };
+        }
+        "self-model" => {
+            return match crate::self_model::command(&args[1..], stdin) {
                 Ok(value) => json_out(0, value),
                 Err(error) => harness(&error),
             };

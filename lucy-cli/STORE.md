@@ -6,6 +6,12 @@ private root: `$LUCY_DATA_DIR`, or `$XDG_DATA_HOME/lucy`, or
 `~/.local/share/lucy`. The service and CLI call the same Rust store directly.
 No separate database service is required.
 
+My [empirical self-model](SELF_MODEL.md) uses a separate record origin in this
+same store. Immutable forecasts and observations are included in sync, backup,
+and restore; they are not relabeled as conversation messages. Its checked
+summary accompanies memory context, while complete events remain inspectable
+with `lucy self-model events`.
+
 Original app messages are immutable JSON files in `records/`, written and
 fsynced before the index transaction. Existing desktop SQLite payloads migrate
 on the first activated access; the old database remains intact. Native Nibli

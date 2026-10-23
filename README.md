@@ -113,6 +113,10 @@ building alternative front-ends or consumers against it).
 - **`nibli-engine`** — The native embedding library, published on crates.io: a library to build on rather than a runtime to launch ([Install](#install)).
 - **`nibli-wasm`** — wasm-bindgen wrapper exposing the in-browser pipeline (it powers the demo page at dhilipsiva.dev/nibli, whose Lojban-era page script breaks until the site repository migrates; see [`DEPLOY.md`](DEPLOY.md)).
 - **`nibli`** — Native direct-crate REPL and `nibli-validate`. Developer tooling, not the canonical production path.
+- **`lucy-cli`** — Lucy's local memory and agent service, with an
+  [empirical self-model](lucy-cli/SELF_MODEL.md): durable forecasts, observed
+  outcomes, Nibli evidence checks, and bounded adaptation of tool planning.
+  The committed `sl_*` relations describe its evidence graph.
 
 Validation names have different scopes. `NibliEngine::validate` is parse+compile only:
 it does not mutate the KB and accepts legal query-only IR such as exact counts and
