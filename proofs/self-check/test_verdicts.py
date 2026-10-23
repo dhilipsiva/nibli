@@ -1,5 +1,6 @@
 """The proof gate must reject missing evidence and additional assumptions."""
 
+import hashlib
 import unittest
 from pathlib import Path
 import tempfile
@@ -37,6 +38,7 @@ class AxiomAuditTests(unittest.TestCase):
 
     def test_coverage_references_live_source_and_all_component_theorems(self):
         self.assertTrue(obligations())
+        self.assertTrue(obligations("scc_stack"))
 
     def test_changed_generated_definition_cannot_certify_the_original_rust(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -45,6 +47,18 @@ class AxiomAuditTests(unittest.TestCase):
             with patch.object(extract, "ROOT", root):
                 with self.assertRaisesRegex(ValueError, "changed during proof"):
                     check_artifacts({"artifacts": {"Funs.lean": "original digest"}})
+
+    def test_named_component_llbc_is_checked_for_drift(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "SccKernel.llbc"
+            path.write_text("changed input")
+            with patch.object(extract, "ROOT", root):
+                with self.assertRaisesRegex(ValueError, "LLBC changed"):
+                    check_artifacts({
+                        "artifacts": {}, "llbc_file": "SccKernel.llbc",
+                        "llbc_sha256": hashlib.sha256(b"original input").hexdigest(),
+                    })
 
 
 if __name__ == "__main__":

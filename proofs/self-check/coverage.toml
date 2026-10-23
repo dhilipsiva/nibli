@@ -52,11 +52,23 @@ theorems = []
 
 [[obligation]]
 id = "stratification"
-sources = ["nibli-reason/src/rules.rs", "nibli-reason/src/materialize.rs", "nibli-verify/spec/nibli_checker.nibli"]
+sources = ["nibli-reason/src/rules.rs", "nibli-reason/src/dependency_graph.rs", "nibli-reason/src/materialize.rs", "nibli-verify/spec/nibli_checker.nibli"]
 contract = "Production dependency extraction and SCC traversal equal existence of a valid stratum assignment; negative-edge cycles rejected"
-probes = ["stratification"]
+probes = ["stratification", "scc_kernel"]
 tests = ["nibli-reason/src/rules.rs", "nibli-verify/src/strat_diff.rs", "nibli-verify/tests/self_check.rs"]
 theorems = []
+
+[[obligation]]
+id = "scc_stack"
+sources = ["nibli-reason/src/dependency_graph.rs"]
+contract = "Production component removal terminates at the topmost active root, returns exactly the reversed active suffix and preserves state size; local pop steps update only the member's stack flag. Full DFS/SCC correctness and the name adapter remain separate obligations."
+probes = ["scc_kernel"]
+tests = ["nibli-reason/src/dependency_graph.rs", "nibli-reason/src/rules.rs"]
+theorem_file = "proofs/self-check/SccKernelProofs.lean"
+theorems = [
+  "NibliSelfCheck.Scc.pop_done", "NibliSelfCheck.Scc.pop_step",
+  "NibliSelfCheck.Scc.pop_component_total",
+]
 
 [[obligation]]
 id = "installation"

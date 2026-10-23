@@ -43,6 +43,7 @@ thread_local! {
 }
 mod compute;
 mod contradictions;
+mod dependency_graph;
 mod domain;
 pub use contradictions::{ContradictionGap, ContradictionGapReason, ContradictionReport};
 /// Fact store abstraction (trait + in-memory implementation).

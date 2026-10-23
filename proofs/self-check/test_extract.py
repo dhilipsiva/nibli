@@ -47,6 +47,31 @@ class ExtractionTests(unittest.TestCase):
         self.assertEqual(result["status"], "blocked")
         self.assertNotIn("aeneas", result)
 
+    def test_module_cannot_escape_output_directory(self):
+        for module in ("../Input", "Input.Types", "input", ""):
+            with self.subTest(module=module):
+                with self.assertRaisesRegex(ValueError, "single capitalized identifier"):
+                    extract.extract({**self.probe, "lean_module": module}, self.config, {}, 1)
+
+    def test_named_module_uses_its_own_llbc_and_import_directory(self):
+        self.probe["lean_module"] = "SccKernel"
+
+        def fake_run(command, cwd, log, env, timeout):
+            directory = self.output / "probes" / "sample"
+            if command[0] == "charon":
+                path, _ = self.write_llbc(directory)
+                path.rename(directory / "SccKernel.llbc")
+                self.assertIn(f"--dest-file={directory / 'SccKernel.llbc'}", command)
+            else:
+                (directory / "lean" / "SccKernel" / "Funs.lean").write_text("-- fixture")
+            return {"status": "ok"}
+
+        with patch.object(extract, "run", side_effect=fake_run):
+            result = extract.extract(self.probe, self.config, {}, 1)
+        self.assertEqual(result["status"], "translated")
+        self.assertEqual(result["lean_module"], "SccKernel")
+        self.assertTrue(result["llbc_file"].endswith("SccKernel.llbc"))
+
     def test_failed_extraction_discards_previous_artifacts(self):
         directory = self.output / "probes" / "sample"
         directory.mkdir(parents=True)

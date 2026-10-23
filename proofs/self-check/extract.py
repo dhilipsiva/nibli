@@ -158,13 +158,16 @@ def diagnostics(log):
 
 
 def extract(probe, config, env, timeout):
+    module = probe.get("lean_module", "Input")
+    if not re.fullmatch(r"[A-Z][A-Za-z0-9]*", module):
+        raise ValueError("Lean module must be a single capitalized identifier")
     directory = OUTPUT / "probes" / probe["name"]
     # Only remove this probe's generated output. Failed runs cannot reuse stale
     # successful files; no checked-in proof or source is an extraction target.
     if directory.exists():
         shutil.rmtree(directory)
     directory.mkdir(parents=True)
-    llbc = directory / "input.llbc"
+    llbc = directory / ("input.llbc" if module == "Input" else f"{module}.llbc")
     command = [
         "charon", "cargo", "--preset=aeneas", "--error-on-warnings",
         f"--dest-file={llbc}",
@@ -190,8 +193,11 @@ def extract(probe, config, env, timeout):
         result["reason"] = f"Incomplete LLBC: {error}"
         return result
     result["llbc_sha256"] = hashlib.sha256(llbc.read_bytes()).hexdigest()
-    # With split files Aeneas imports Input.Types, named after input.llbc.
-    lean = directory / "lean" / "Input"
+    result["llbc_file"] = str(llbc.relative_to(ROOT))
+    result["lean_module"] = module
+    # With split files Aeneas names imports after the LLBC file. Distinct
+    # modules let component proofs coexist in one Lake project.
+    lean = directory / "lean" / module
     lean.mkdir(parents=True)
     aeneas = run(
         ["aeneas", "-backend", "lean", "-abort-on-error", "-warnings-as-errors",

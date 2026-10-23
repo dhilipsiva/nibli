@@ -856,103 +856,56 @@ fn register_dependent_skolem_functions(
     }
 }
 
-/// Generated ground Skolem names that are safe to alpha-normalize in a rule
-/// identity. A user can legally supply a constant such as `sk_0`; if the
-/// counter mints that same spelling in this buffer, the runtime `GroundTerm`
-/// no longer carries enough provenance to distinguish the two occurrences.
-/// Leave that name literal rather than risk conflating it with user data.
 /// Compute the strongly-connected components of the predicate dependency graph.
 ///
-/// Iterative (explicit-stack) Tarjan — a recursive DFS would risk a stack
-/// overflow on a long positive dependency chain. The node set is the graph keys
+/// This name adapter delegates to the indexed, explicit-stack Tarjan kernel in
+/// `dependency_graph`; recursive DFS would risk a stack overflow on a long
+/// positive dependency chain. The node set is the graph keys
 /// PLUS every edge target (a condition-only leaf predicate is never a key but is
 /// still a node), and both the node scan and each node's neighbor list are taken
 /// in SORTED order, so the partition is canonical regardless of HashMap layout or
 /// rule-registration order.
 pub(super) fn compute_sccs(graph: &HashMap<String, Vec<(String, bool)>>) -> Vec<Vec<String>> {
-    use std::collections::{BTreeSet, HashSet};
+    use std::collections::BTreeSet;
 
     let mut node_set: BTreeSet<&str> = BTreeSet::new();
-    for (k, edges) in graph {
-        node_set.insert(k.as_str());
-        for (dep, _) in edges {
-            node_set.insert(dep.as_str());
+    for (name, edges) in graph {
+        node_set.insert(name.as_str());
+        for (target, _) in edges {
+            node_set.insert(target.as_str());
         }
     }
     let nodes: Vec<&str> = node_set.into_iter().collect();
+    let indices: HashMap<&str, usize> = nodes
+        .iter()
+        .enumerate()
+        .map(|(index, &name)| (name, index))
+        .collect();
+    let adjacency: Vec<Vec<usize>> = nodes
+        .iter()
+        .map(|name| {
+            let mut targets: Vec<usize> = graph
+                .get(*name)
+                .into_iter()
+                .flatten()
+                .map(|(target, _)| indices[target.as_str()])
+                .collect();
+            targets.sort_unstable();
+            targets
+        })
+        .collect();
 
-    let neighbors = |n: &str| -> Vec<&str> {
-        match graph.get(n) {
-            Some(edges) => {
-                let mut out: Vec<&str> = edges.iter().map(|(d, _)| d.as_str()).collect();
-                out.sort_unstable();
-                out
-            }
-            None => Vec::new(),
-        }
-    };
-
-    let mut index_of: HashMap<&str, usize> = HashMap::new();
-    let mut lowlink: HashMap<&str, usize> = HashMap::new();
-    let mut on_stack: HashSet<&str> = HashSet::new();
-    let mut tarjan_stack: Vec<&str> = Vec::new();
-    let mut next_index = 0usize;
-    let mut sccs: Vec<Vec<String>> = Vec::new();
-
-    for &start in &nodes {
-        if index_of.contains_key(start) {
-            continue;
-        }
-        index_of.insert(start, next_index);
-        lowlink.insert(start, next_index);
-        next_index += 1;
-        tarjan_stack.push(start);
-        on_stack.insert(start);
-        // Each work frame is (node, neighbor cursor, sorted neighbors).
-        let mut work: Vec<(&str, usize, Vec<&str>)> = vec![(start, 0, neighbors(start))];
-
-        while let Some(&(node, _, _)) = work.last() {
-            let cursor = work.last().unwrap().1;
-            let nlen = work.last().unwrap().2.len();
-            if cursor < nlen {
-                let w = work.last().unwrap().2[cursor];
-                work.last_mut().unwrap().1 += 1;
-                if !index_of.contains_key(w) {
-                    index_of.insert(w, next_index);
-                    lowlink.insert(w, next_index);
-                    next_index += 1;
-                    tarjan_stack.push(w);
-                    on_stack.insert(w);
-                    work.push((w, 0, neighbors(w)));
-                } else if on_stack.contains(w) {
-                    let wi = index_of[w];
-                    let cur = lowlink[node];
-                    lowlink.insert(node, cur.min(wi));
-                }
-            } else {
-                // `node` is fully explored; if it roots an SCC, pop the component.
-                if lowlink[node] == index_of[node] {
-                    let mut comp: Vec<String> = Vec::new();
-                    while let Some(w) = tarjan_stack.pop() {
-                        on_stack.remove(w);
-                        comp.push(w.to_string());
-                        if w == node {
-                            break;
-                        }
-                    }
-                    comp.sort();
-                    sccs.push(comp);
-                }
-                work.pop();
-                if let Some(&(parent, _, _)) = work.last() {
-                    let cur = lowlink[parent];
-                    let child = lowlink[node];
-                    lowlink.insert(parent, cur.min(child));
-                }
-            }
-        }
-    }
-    sccs
+    crate::dependency_graph::compute_sccs(&adjacency)
+        .into_iter()
+        .map(|component| {
+            let mut names: Vec<String> = component
+                .into_iter()
+                .map(|index| nodes[index].to_string())
+                .collect();
+            names.sort();
+            names
+        })
+        .collect()
 }
 
 /// Check the predicate dependency graph for negative cycles.

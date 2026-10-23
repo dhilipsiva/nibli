@@ -155,17 +155,41 @@ cd proofs/self-check
 lake exe cache get
 cd ../..
 just verify-self-check-verdicts
+just verify-self-check-scc-stack
 just verify-self-check-extraction
 ```
 
 The extraction gate probes the exporter, validating emitter, semantic compiler,
-quotation codec, stratifier, assertion ingress, evaluator, and arithmetic. Its
-current result is a failure: the pinned Aeneas cannot translate all these paths.
+quotation codec, stratifier, indexed SCC kernel, assertion ingress, evaluator,
+and arithmetic. Its current result is a failure: the pinned Aeneas cannot translate all these paths.
 Observed blockers include nested borrows in the exporter, loop exits in compiler
 and reasoner code, and floating-point operations in native arithmetic. A larger
 timeout does not resolve an unsupported operation. The verdict component gate
 can pass independently; its report always leaves full self-check equivalence
 unverified.
+
+The production SCC traversal now lives in `nibli-reason/src/dependency_graph.rs`.
+Both stratification and materialization call this indexed, iterative Tarjan
+kernel through the existing predicate-name adapter. Fixed stack buffers keep
+the traversal within the extractor's supported operations. The kernel translates
+without opaque Nibli definitions or external stubs; the surrounding name adapter
+is still outside the completed extraction.
+
+`just verify-self-check-scc-stack` regenerates the kernel and checks
+`SccKernelProofs.lean`. The proofs establish component-removal termination, the
+topmost-root stopping position, the exact reversed active suffix returned, and
+preservation of the state-buffer length. A local step theorem also specifies the
+exact update to the popped node's stack flag. Preconditions require a root in
+the active stack prefix and valid state indices. Establishing those preconditions
+throughout DFS, proving that the returned components equal mutual reachability,
+and verifying the name adapter remain open. The report verifies only this stack
+operation, not the whole SCC algorithm or checker equivalence.
+
+The shared component runner regenerates each component in its own Lean module,
+checks its theorem inventory, and applies the same source/artifact drift and
+axiom audits to both gates. The ordinary Rust suite also checks the indexed
+kernel against independent reachability on exhaustive small graphs, long chains
+and cycles, and the existing compiler/checker differential corpus.
 
 Commands, source hashes, diagnostics, and generated artifacts are written below
 `target/self-check-proof/`. The runners reject missing production roots, opaque

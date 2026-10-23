@@ -14,3 +14,11 @@ srcDir = "../../target/self-check-proof/probes/verdicts/lean"
 
 [[lean_lib]]
 name = "Verdicts"
+
+[[lean_lib]]
+name = "SccKernel"
+srcDir = "../../target/self-check-proof/probes/scc_kernel/lean"
+globs = ["SccKernel.+"]
+
+[[lean_lib]]
+name = "SccKernelProofs"

@@ -48,6 +48,13 @@ roots = ["nibli_reason::rules::check_stratification"]
 obligation = "Production SCC algorithm equals the negative-cycle criterion"
 
 [[probe]]
+name = "scc_kernel"
+package = "nibli-reason"
+lean_module = "SccKernel"
+roots = ["nibli_reason::dependency_graph::compute_sccs"]
+obligation = "Production indexed Tarjan traversal, shared by stratification and materialization"
+
+[[probe]]
 name = "assertion"
 package = "nibli-reason"
 roots = ["nibli_reason::kb::process_assertion"]

@@ -230,9 +230,11 @@ When analyzing or searching the codebase:
 - **`proofs/`** is Lean 4, not Rust — the mechanized soundness proofs (Track B; `proofs/README.md`). Each `.lean` mirrors a Rust component and is kept in lock-step with an exhaustive Rust conformance test. Checked by `just verify-proofs`.
   `proofs/self-check/` is a separate production-extraction checkpoint with its own
   pinned Nix/Lake environment. `just verify-self-check-verdicts` regenerates and
-  proves the production verdict algebra; `just verify-self-check-extraction`
+  proves the production verdict algebra; `just verify-self-check-scc-stack` extracts
+  the shared indexed Tarjan kernel and proves its component-removal operation
+  (not the full SCC algorithm or name adapter). `just verify-self-check-extraction`
   probes the remaining implementation and currently fails on unsupported Aeneas
-  constructs. Neither establishes full checker equivalence. See
+  constructs. These component proofs do not establish full checker equivalence. See
   `mdbook/src/developer/self-check.md`; keep that boundary explicit.
 
 ## Docs Conventions
