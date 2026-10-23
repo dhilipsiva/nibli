@@ -189,6 +189,20 @@ their contents before the external formatting call. Avoiding that call keeps the
 diagnostic values available to a future proof; it does not itself verify string
 operations or their allocation behavior.
 
+`just verify-self-check-library-models` checks the candidate string models in
+`StdStrings.lean`. Their contracts preserve exact UTF-8 bytes, including Unicode
+and embedded NULs, through borrowing, conversion, cloning, and appending.
+Comparison uses unsigned UTF-8 bytes, and equality of the byte representations
+implies equality of the strings. Invalid UTF-8 is refused, and modeled byte-vector
+allocations are bounded by the target's `isize` maximum. This is a conditional
+allocation model, not a guarantee that the host can satisfy an allocation.
+The command checks the complete public theorem inventory, re-elaborates with
+warnings fatal, binds the report to source hashes, and audits transitive proof
+assumptions. Its report verifies model contracts only: it leaves native std
+implementation, extraction replacement installation, and full self-check
+equivalence false. Maps, sets, sorting, iterator adapters, and the binding of
+models to the extracted calls remain open.
+
 `just verify-self-check-scc-stack` regenerates the kernel and checks
 `SccGraph.lean`, `SccKernelProofs.lean`, `SccInvariant.lean`, `SccTermination.lean`,
 `SccTraversal.lean`, and `SccCriterion.lean`.

@@ -113,6 +113,27 @@ theorems = [
 ]
 
 [[obligation]]
+id = "primitive_strings"
+sources = ["proofs/self-check/StdStrings.lean", "nibli-reason/src/rules.rs"]
+contract = """Candidate library model contracts for exact UTF-8 byte views,
+conversion, cloning, bytewise comparison, and append. Invalid UTF-8 is refused;
+byte-vector allocation size is bounded by the target's isize maximum. Model
+proofs do not verify Rust std internals or host allocation success, and these
+models are not yet installed as extraction replacements."""
+probes = ["stratification"]
+tests = ["proofs/self-check/test_models.py"]
+theorem_files = ["proofs/self-check/StdStrings.lean"]
+theorems = [
+  "NibliSelfCheck.StdStrings.bytes_length", "NibliSelfCheck.StdStrings.bytes_round_trip",
+  "NibliSelfCheck.StdStrings.represents_unique", "NibliSelfCheck.StdStrings.borrow_spec",
+  "NibliSelfCheck.StdStrings.from_str_eq", "NibliSelfCheck.StdStrings.from_str_spec",
+  "NibliSelfCheck.StdStrings.push_str_spec", "NibliSelfCheck.StdStrings.clone_spec",
+  "NibliSelfCheck.StdStrings.equal_spec", "NibliSelfCheck.StdStrings.compare_bytes_spec",
+  "NibliSelfCheck.StdStrings.compare_bytes_equal_iff", "NibliSelfCheck.StdStrings.from_str_invalid",
+  "NibliSelfCheck.StdStrings.clone_too_large", "NibliSelfCheck.StdStrings.push_str_too_large",
+]
+
+[[obligation]]
 id = "installation"
 sources = ["nibli-session/src/lib.rs", "nibli-reason/src/lib.rs", "nibli-reason/src/kb.rs", "nibli-reason/src/fact_store.rs"]
 contract = "Public adapters preserve prepared results, successful installation, atomic refusal, ordered batch and individual assertion agreement"

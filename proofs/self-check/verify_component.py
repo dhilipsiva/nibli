@@ -58,9 +58,13 @@ def obligations(component_id="verdict_algebra"):
                 raise ValueError(f"Missing coverage source: {path}")
     component = COMPONENTS[component_id]
     obligation = next(o for o in coverage["obligation"] if o["id"] == component_id)
-    expected = obligation["theorems"]
     paths = [DIRECTORY / f"{module}.lean" for module in
              component.get("helpers", []) + [component["module"]]]
+    return check_theorem_inventory(obligation, paths, component["namespace"])
+
+
+def check_theorem_inventory(obligation, paths, namespace):
+    expected = obligation["theorems"]
     if obligation["theorem_files"] != [str(path.relative_to(extract.ROOT)) for path in paths]:
         raise ValueError("Coverage must name every local theorem file")
     declared = [name for path in paths for name in re.findall(r"^theorem\s+(\w+)", path.read_text(), re.M)]
@@ -68,7 +72,7 @@ def obligations(component_id="verdict_algebra"):
         raise ValueError("Duplicate public theorem names across local files")
     if not expected or len(expected) != len(set(expected)):
         raise ValueError("The required theorem list is empty or duplicated")
-    if {f"{component['namespace']}.{name}" for name in declared} != set(expected):
+    if {f"{namespace}.{name}" for name in declared} != set(expected):
         raise ValueError("Local theorem files and the required theorem inventory differ")
     return expected
 

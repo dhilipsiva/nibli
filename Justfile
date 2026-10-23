@@ -759,11 +759,17 @@ verify-self-check-verdicts:
     nix develop ./proofs/self-check --command python3 -m unittest discover -s proofs/self-check -p 'test_*.py' -v
     nix develop ./proofs/self-check --command python3 proofs/self-check/verify_verdicts.py
 
-# Extract the live SCC kernel and prove its stack-removal operation. This is
-# an implementation proof component; full SCC/checker equivalence is still open.
+# Extract the live SCC kernel and prove its partition and Horn cycle criterion.
+# The name adapter, negative-edge scan and full checker equivalence remain open.
 verify-self-check-scc-stack:
     nix develop ./proofs/self-check --command python3 -m unittest discover -s proofs/self-check -p 'test_*.py' -v
     nix develop ./proofs/self-check --command python3 proofs/self-check/verify_component.py --component scc_stack
+
+# Audit candidate primitive-library models. This does not certify Rust std
+# internals or install extraction replacements.
+verify-self-check-library-models:
+    nix develop ./proofs/self-check --command python3 -m unittest discover -s proofs/self-check -p 'test_*.py' -v
+    nix develop ./proofs/self-check --command python3 proofs/self-check/verify_models.py
 
 # Alias-map differential gate: the SHIPPED nibli-lexicon alias map's intra-crate
 # invariants (per-alias arity self-consistency, GISMU_TO_ALIAS round-trips, swap

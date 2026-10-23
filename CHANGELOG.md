@@ -63,7 +63,10 @@ here first.
   the modeled clauses; production evaluation of those clauses remains unproved.
   The native stratification diagnostic now uses explicit string appends,
   preserving its text while avoiding the extractor library's erased formatting
-  arguments.
+  arguments. Candidate string-library models now have checked contracts for
+  exact UTF-8 bytes, copying, comparison, appending, and invalid/oversized input
+  refusal. Their separate audit does not certify Rust std or install extraction
+  replacements.
 
 - **WIT 0.12.0** (`wit/world.wit`; the engine changes are in
   [ENGINE_UPGRADE_0_2.md](ENGINE_UPGRADE_0_2.md)): `list-assertion-records`
