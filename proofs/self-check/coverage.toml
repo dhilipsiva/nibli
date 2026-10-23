@@ -67,8 +67,9 @@ the emitted members' stack flags. Explicit ordered-stack and frontier conditions
 justify maximal SCC emission and completed-set closure. Local contracts cover
 discovery, visited edges, completion, and exit. The production allocation prefix
 establishes the DFS invariant; it implies single-step safety and root readiness,
-and discovery and visited-edge branches preserve it. Empty DFS implies no active vertices.
-Preservation through completion, outer-loop invariants, complete
+and every inner DFS branch preserves it. Nonroot completion merges the child's
+active interval into its parent's; root completion preserves the invariant while
+emitting a maximal SCC. Empty DFS implies no active vertices. Outer-loop invariants, complete
 termination/coverage, and the name adapter remain separate obligations."""
 probes = ["scc_kernel"]
 tests = ["nibli-reason/src/dependency_graph.rs", "nibli-reason/src/rules.rs"]
@@ -90,6 +91,8 @@ theorems = [
   "NibliSelfCheck.Scc.compute_sccs_initialize", "NibliSelfCheck.Scc.invariant_step_total",
   "NibliSelfCheck.Scc.invariant_empty_dfs", "NibliSelfCheck.Scc.invariant_seen_preserved",
   "NibliSelfCheck.Scc.invariant_discover_preserved",
+  "NibliSelfCheck.Scc.invariant_nonroot_preserved", "NibliSelfCheck.Scc.invariant_root_preserved",
+  "NibliSelfCheck.Scc.invariant_step_preserved",
 ]
 
 [[obligation]]

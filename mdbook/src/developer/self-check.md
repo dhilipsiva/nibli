@@ -216,12 +216,18 @@ targets in completed components. Discovery also preserves it: the fresh index,
 both stack pushes, and the parent's advanced cursor maintain discovery order,
 reachability witnesses, and the processed-edge bounds.
 
-Preservation through frame completion, the outer-loop invariant,
-traversal termination and complete partition coverage, and the predicate-name
-adapter remain open. The initialization theorem takes the outer-loop proof as an
-explicit premise; single-step safety does not establish repeated-step safety
-until all branches preserve the invariant. The component report does not certify
-the complete traversal or checker equivalence.
+Both frame-completion branches preserve the invariant. For a nonroot, the
+lowlink witness gives a return path to an earlier live frame, and the parent's
+new lowlink bounds the merged active interval. Root completion emits the maximal
+SCC, moves its vertices to the completed set, and preserves witnesses for retained
+vertices. The parent-lowlink write after root emission leaves its state unchanged.
+The combined `invariant_step_preserved` theorem covers every inner-loop branch.
+
+The outer-loop invariant, traversal termination and complete partition coverage,
+and the predicate-name adapter remain open. The initialization theorem takes the
+outer-loop proof as an explicit premise; invariant preservation alone does not
+establish termination. The component report does not certify the complete
+traversal or checker equivalence.
 
 The shared component runner regenerates each component in its own Lean module,
 checks every local proof file's public theorem inventory, rechecks helpers with warnings fatal,

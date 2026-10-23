@@ -1042,4 +1042,721 @@ theorem invariant_discover_preserved (graph : Slice (alloc.vec.Vec Usize)) (s : 
     htop (by simpa [show top.val = s.depth.val - 1 by omega] using hframe)
     hedges htarget hentry hnew hcursor hnext hstack_len hdepth hstack hwork
 
+private theorem frames_pop (s : DfsState) (position : Nat) (frame : Frame)
+    (hposition : position + 1 = s.depth.val)
+    (hframe : s.work.val[position]? = some frame) :
+    s.frames = s.work.val.take position ++ [frame] := by
+  simp only [DfsState.frames, ← hposition]
+  rw [List.take_succ_eq_append_getElem (List.getElem?_eq_some_iff.mp hframe).1,
+    (List.getElem?_eq_some_iff.mp hframe).2]
+
+private theorem nonroot_reaches_earlier (graph : Slice (alloc.vec.Vec Usize)) (s : DfsState)
+    (h : DfsInvariant graph s) (frame : Frame) (source : NodeState) (index : Usize)
+    (hframe : frame ∈ s.frames) (hsource : s.state.val[frame.node.val]? = some source)
+    (hindex : source.index = some index) (hnonroot : index ≠ source.lowlink) :
+    ∃ ancestor ∈ s.gray, rank s.state ancestor < rank s.state frame.node ∧
+      Reach graph frame.node ancestor := by
+  have hbounded := h.lowlinks_bounded frame.node source index hsource hindex
+  have hstrict : source.lowlink.val < index.val := by
+    have hne : index.val ≠ source.lowlink.val := fun heq => hnonroot (UScalar.eq_of_val_eq heq)
+    omega
+  obtain ⟨vertex, hvertex, hvalue, hreach⟩ := h.lowlink_witness frame hframe
+  obtain ⟨ancestor, hancestor, hle, hreturn⟩ := h.returns_to_gray vertex hvertex
+  refine ⟨ancestor, hancestor, ?_, hreach.trans hreturn⟩
+  simp [lowlink, hsource] at hvalue
+  have hroot_rank : rank s.state frame.node = index.val := by simp [rank, hsource, hindex]
+  rw [hroot_rank]
+  omega
+
+private theorem nonroot_has_parent (graph : Slice (alloc.vec.Vec Usize)) (s : DfsState)
+    (h : DfsInvariant graph s) (frame : Frame) (source : NodeState) (index : Usize)
+    (hpositive : 0 < s.depth.val)
+    (hframe : s.work.val[s.depth.val - 1]? = some frame)
+    (hsource : s.state.val[frame.node.val]? = some source)
+    (hindex : source.index = some index) (hnonroot : index ≠ source.lowlink) :
+    1 < s.depth.val := by
+  obtain ⟨ancestor, hancestor, hless, _⟩ := nonroot_reaches_earlier graph s h frame source index
+    (top_frame_member s frame hpositive hframe) hsource hindex hnonroot
+  by_contra hdepth
+  have hsingle : s.depth.val = 1 := by omega
+  have hframes := frames_pop s 0 frame (by omega) (by simpa [hsingle] using hframe)
+  have hgray : s.gray = [frame.node] := by
+    change s.frames.map (fun frame => frame.node) = _
+    simp [hframes]
+  have heq : ancestor = frame.node := by simpa [hgray] using hancestor
+  simp [heq] at hless
+
+def finishNonrootState (s : DfsState) (top : Usize) (parent : Frame)
+    (parent_entry source : NodeState) : DfsState := { s with
+  depth := top
+  state := s.state.set parent.node
+    { parent_entry with lowlink := min parent_entry.lowlink source.lowlink } }
+
+private theorem finish_nonroot_invariant (graph : Slice (alloc.vec.Vec Usize)) (s : DfsState)
+    (h : DfsInvariant graph s) (top : Usize) (frame parent : Frame)
+    (successors : alloc.vec.Vec Usize) (source parent_entry : NodeState) (index : Usize)
+    (htop : top.val + 1 = s.depth.val) (habove : 0 < top.val)
+    (hframe : s.work.val[top.val]? = some frame)
+    (hparent : s.work.val[s.depth.val - 2]? = some parent)
+    (hsource : s.state.val[frame.node.val]? = some source)
+    (hparent_entry : s.state.val[parent.node.val]? = some parent_entry)
+    (hindex : source.index = some index) (hnonroot : index ≠ source.lowlink)
+    (hedges : graph.val[frame.node.val]? = some successors)
+    (hcomplete : successors.length ≤ frame.cursor.val) :
+    DfsInvariant graph (finishNonrootState s top parent parent_entry source) := by
+  let value := min parent_entry.lowlink source.lowlink
+  let updated := finishNonrootState s top parent parent_entry source
+  change DfsInvariant graph updated
+  have hactive : updated.active = s.active := rfl
+  have hfinished : updated.finished = s.finished := rfl
+  have hrank : ∀ vertex, rank updated.state vertex = rank s.state vertex :=
+    lowlink_set_rank s.state parent.node value parent_entry hparent_entry
+  have hlowlink : ∀ vertex, lowlink updated.state vertex =
+      if vertex = parent.node then value.val else lowlink s.state vertex :=
+    lowlink_set_value s.state parent.node value parent_entry hparent_entry
+  have hvalue_parent : value.val ≤ parent_entry.lowlink.val := by
+    have : value ≤ parent_entry.lowlink := min_le_left _ _
+    scalar_tac
+  have hvalue_child : value.val ≤ source.lowlink.val := by
+    have : value ≤ source.lowlink := min_le_right _ _
+    scalar_tac
+  have hdecrease : ∀ vertex, lowlink updated.state vertex ≤ lowlink s.state vertex := by
+    intro vertex
+    rw [hlowlink]
+    split
+    · next heq => simpa [heq, lowlink, hparent_entry] using hvalue_parent
+    · exact Nat.le_refl _
+  have hframes : s.frames = updated.frames ++ [frame] := frames_pop s top.val frame htop hframe
+  have hgray : s.gray = updated.gray ++ [frame.node] := by
+    change s.frames.map (fun frame => frame.node) = updated.frames.map (fun frame => frame.node) ++ _
+    simp [hframes]
+  have hframes_sub : List.Sublist updated.frames s.frames := by
+    rw [hframes]
+    exact List.sublist_append_left _ _
+  have hgray_sub : List.Sublist updated.gray s.gray := by
+    rw [hgray]
+    exact List.sublist_append_left _ _
+  have hframe_mem : frame ∈ s.frames := by simp [hframes]
+  have hframe_gray : frame.node ∈ s.gray := by simp [hgray]
+  have hframe_active := h.gray_sublist.subset hframe_gray
+  have hgray_order := h.ordered.sublist h.gray_sublist
+  have hroot_last : ∀ vertex ∈ updated.gray, rank s.state vertex < rank s.state frame.node := by
+    rw [hgray, List.pairwise_append] at hgray_order
+    exact fun vertex hvertex => hgray_order.2.2 vertex hvertex frame.node (by simp)
+  have hparent_frames : updated.frames = s.work.val.take (s.depth.val - 2) ++ [parent] := by
+    change s.work.val.take top.val = _
+    rw [show top.val = (s.depth.val - 2) + 1 by omega,
+      List.take_succ_eq_append_getElem (List.getElem?_eq_some_iff.mp hparent).1,
+      (List.getElem?_eq_some_iff.mp hparent).2]
+  have hparent_gray : updated.gray =
+      (s.work.val.take (s.depth.val - 2)).map (fun frame => frame.node) ++ [parent.node] := by
+    change updated.frames.map (fun frame => frame.node) = _
+    simp [hparent_frames]
+  have hparent_mem : parent ∈ updated.frames := by simp [hparent_frames]
+  have hparent_gray_mem : parent.node ∈ updated.gray := by simp [hparent_gray]
+  have hparent_last : ∀ vertex ∈ updated.gray,
+      vertex = parent.node ∨ rank s.state vertex < rank s.state parent.node := by
+    have horder := hgray_order.sublist hgray_sub
+    rw [hparent_gray, List.pairwise_append] at horder
+    intro vertex hvertex
+    rw [hparent_gray, List.mem_append, List.mem_singleton] at hvertex
+    rcases hvertex with hold | heq
+    · exact Or.inr (horder.2.2 vertex hold parent.node (by simp))
+    · exact Or.inl heq
+  have hroot_return : ∃ ancestor ∈ updated.gray,
+      rank s.state ancestor < rank s.state frame.node ∧ Reach graph frame.node ancestor := by
+    obtain ⟨ancestor, hancestor, hless, hreturn⟩ := nonroot_reaches_earlier graph s h frame source index
+      hframe_mem hsource hindex hnonroot
+    refine ⟨ancestor, ?_, hless, hreturn⟩
+    rw [hgray, List.mem_append, List.mem_singleton] at hancestor
+    rcases hancestor with hold | heq
+    · exact hold
+    · simp [heq] at hless
+  have htopmost := topmost_rank graph s h frame (by omega)
+    (by simpa [show top.val = s.depth.val - 1 by omega] using hframe)
+  have hmerged : ∀ current ∈ updated.frames, ∀ vertex, Owns updated current.node vertex →
+      Owns s current.node vertex ∨ (current.node = parent.node ∧ Owns s frame.node vertex) := by
+    intro current hcurrent vertex ⟨hvertex, hless, hlater⟩
+    have hcurrent_gray : current.node ∈ updated.gray := List.mem_map.mpr ⟨current, hcurrent, rfl⟩
+    by_cases hbefore : rank s.state vertex < rank s.state frame.node
+    · left
+      refine ⟨hvertex, by simpa [hrank] using hless, ?_⟩
+      intro later hmember hgreater
+      rw [hgray, List.mem_append, List.mem_singleton] at hmember
+      rcases hmember with hold | heq
+      · simpa [hrank] using hlater later hold (by simpa [hrank] using hgreater)
+      · simpa [heq] using hbefore
+    · right
+      have hsame : current.node = parent.node := by
+        rcases hparent_last current.node hcurrent_gray with heq | hless
+        · exact heq
+        · have hbound := hlater parent.node hparent_gray_mem (by simpa [hrank] using hless)
+          have hparent_before := hroot_last parent.node hparent_gray_mem
+          simp only [hrank] at hbound
+          omega
+      refine ⟨hsame, hvertex, by omega, ?_⟩
+      intro later hmember hgreater
+      have := htopmost later hmember
+      omega
+  have hparent_reach : Reach graph parent.node frame.node := by
+    apply h.reaches_later parent.node (hgray_sub.subset hparent_gray_mem) frame.node hframe_active
+    exact Nat.le_of_lt (hroot_last parent.node hparent_gray_mem)
+  have hparent_witness : ∃ vertex ∈ s.active,
+      value.val = rank s.state vertex ∧ Reach graph parent.node vertex := by
+    by_cases hle : parent_entry.lowlink ≤ source.lowlink
+    · have hold := h.lowlink_witness parent (hframes_sub.subset hparent_mem)
+      simpa [value, min_eq_left hle, lowlink, hparent_entry] using hold
+    · have hright : source.lowlink ≤ parent_entry.lowlink := le_of_lt (lt_of_not_ge hle)
+      obtain ⟨vertex, hvertex, hvalue, hreach⟩ := h.lowlink_witness frame hframe_mem
+      refine ⟨vertex, hvertex, ?_, hparent_reach.trans hreach⟩
+      simpa [value, min_eq_right hright, lowlink, hsource] using hvalue
+  refine {
+    graph_valid := h.graph_valid
+    state_size := by simpa [updated, finishNonrootState] using h.state_size
+    stack_size := h.stack_size
+    work_size := h.work_size
+    stack_bound := h.stack_bound
+    work_bound := by
+      change top.val ≤ s.work.length
+      have := h.work_bound
+      omega
+    component_count := h.component_count
+    discovery_count := ?_
+    indices_bounded := ?_
+    indices_unique := ?_
+    lowlinks_bounded := ?_
+    flags := ?_
+    ordered := by simpa only [hactive, hrank] using h.ordered
+    gray_sublist := hgray_sub.trans h.gray_sublist
+    frame_bounds := fun current hcurrent => h.frame_bounds current (hframes_sub.subset hcurrent)
+    colors := ?_
+    disjoint := h.disjoint
+    components_unique := h.components_unique
+    components_correct := h.components_correct
+    finished_closed := h.finished_closed
+    reaches_later := ?_
+    returns_to_gray := ?_
+    lowlink_witness := ?_
+    processed := ?_ }
+  · change s.next_index.val = ((s.state.set parent.node { parent_entry with lowlink := value }).val.filter
+      (fun entry => entry.index.isSome)).length
+    rw [lowlink_set_count s.state parent.node value parent_entry hparent_entry]
+    exact h.discovery_count
+  · intro vertex entry index hentry hindex
+    obtain ⟨old, hold, heq⟩ :=
+      lowlink_set_entry s.state parent.node value parent_entry hparent_entry vertex entry hentry
+    exact h.indices_bounded vertex old index hold (by simpa [heq, replaceLowlink] using hindex)
+  · intro left right le re index hleft hright hle hre
+    obtain ⟨lo, hlo, heql⟩ :=
+      lowlink_set_entry s.state parent.node value parent_entry hparent_entry left le hleft
+    obtain ⟨ro, hro, heqr⟩ :=
+      lowlink_set_entry s.state parent.node value parent_entry hparent_entry right re hright
+    exact h.indices_unique left right lo ro index hlo hro
+      (by simpa [heql, replaceLowlink] using hle) (by simpa [heqr, replaceLowlink] using hre)
+  · intro vertex entry index hentry hindex
+    obtain ⟨old, hold, heq⟩ :=
+      lowlink_set_entry s.state parent.node value parent_entry hparent_entry vertex entry hentry
+    have hbound := h.lowlinks_bounded vertex old index hold (by simpa [heq, replaceLowlink] using hindex)
+    have hchange := hdecrease vertex
+    have hless : entry.lowlink.val ≤ old.lowlink.val := by
+      simpa [lowlink, hentry, hold] using hchange
+    omega
+  · intro vertex entry hentry
+    obtain ⟨old, hold, heq⟩ :=
+      lowlink_set_entry s.state parent.node value parent_entry hparent_entry vertex entry hentry
+    simpa [heq, replaceLowlink, hactive] using h.flags vertex old hold
+  · intro vertex
+    change Discovered (s.state.set parent.node { parent_entry with lowlink := value }) vertex ↔
+      vertex ∈ s.active ∨ s.finished vertex
+    rw [lowlink_set_discovered s.state parent.node value parent_entry hparent_entry]
+    exact h.colors vertex
+  · intro ancestor hancestor vertex hvertex hless
+    exact h.reaches_later ancestor (hgray_sub.subset hancestor) vertex hvertex (by simpa [hrank] using hless)
+  · intro vertex hvertex
+    obtain ⟨ancestor, hancestor, hless, hreach⟩ := h.returns_to_gray vertex hvertex
+    rw [hgray, List.mem_append, List.mem_singleton] at hancestor
+    rcases hancestor with hold | heq
+    · exact ⟨ancestor, hold, by simpa [hrank] using hless, hreach⟩
+    · obtain ⟨earlier, hearlier, hbefore, hreturn⟩ := hroot_return
+      refine ⟨earlier, hearlier, ?_, ?_⟩
+      · simp only [hrank]
+        rw [heq] at hless
+        omega
+      · exact (by simpa [heq] using hreach : Reach graph vertex frame.node).trans hreturn
+  · intro current hcurrent
+    by_cases heq : current.node = parent.node
+    · obtain ⟨vertex, hvertex, hvalue, hreach⟩ := hparent_witness
+      exact ⟨vertex, hvertex, by simpa [hlowlink, hrank, heq] using hvalue,
+        by simpa [heq] using hreach⟩
+    · obtain ⟨vertex, hvertex, hvalue, hreach⟩ := h.lowlink_witness current (hframes_sub.subset hcurrent)
+      exact ⟨vertex, hvertex, by simpa [hlowlink, hrank, heq] using hvalue, hreach⟩
+  · intro current hcurrent vertex howner neighbor hprocessed
+    rcases hmerged current hcurrent vertex howner with hold | ⟨hsame, hchild⟩
+    · have hbound := h.processed current (hframes_sub.subset hcurrent) vertex hold neighbor hprocessed
+      refine ⟨hbound.1, ?_⟩
+      intro hneighbor
+      rw [hrank]
+      exact (hdecrease current.node).trans (hbound.2 hneighbor)
+    · have hprocessed_child : ProcessedEdge graph frame vertex neighbor := by
+        refine ⟨hprocessed.1, ?_⟩
+        by_cases heq : vertex = frame.node
+        · right
+          obtain ⟨neighbors, hneighbors, hneighbor⟩ := hprocessed.1
+          have hneighbors_eq : neighbors = successors :=
+            Option.some.inj (hneighbors.symm.trans (by simpa [heq] using hedges))
+          subst neighbors
+          exact ⟨successors, by simpa [heq] using hedges,
+            by simpa [List.take_of_length_le hcomplete] using hneighbor⟩
+        · exact Or.inl heq
+      have hbound := h.processed frame hframe_mem vertex hchild neighbor hprocessed_child
+      refine ⟨hbound.1, ?_⟩
+      intro hneighbor
+      have hmin : value.val ≤ lowlink s.state frame.node := by
+        simpa [lowlink, hsource] using hvalue_child
+      simpa [hlowlink, hrank, hsame] using hmin.trans (hbound.2 hneighbor)
+
+theorem invariant_nonroot_preserved (graph : Slice (alloc.vec.Vec Usize)) (s : DfsState)
+    (h : DfsInvariant graph s) (frame : Frame) (successors : alloc.vec.Vec Usize)
+    (source : NodeState) (index : Usize)
+    (hpositive : 0 < s.depth.val)
+    (hframe : s.work.val[s.depth.val - 1]? = some frame)
+    (hedges : graph.val[frame.node.val]? = some successors)
+    (hcomplete : successors.length ≤ frame.cursor.val)
+    (hsource : s.state.val[frame.node.val]? = some source)
+    (hindex : source.index = some index) (hnonroot : index ≠ source.lowlink) :
+    dfs_body graph s ⦃ result => ∃ updated, DfsInvariant graph updated ∧ result = .cont updated.pack ⦄ := by
+  have hdepth := nonroot_has_parent graph s h frame source index hpositive hframe hsource hindex hnonroot
+  have hparent_bound : s.depth.val - 2 < s.work.val.length := by
+    have hbound : s.depth.val ≤ s.work.val.length := h.work_bound
+    omega
+  let parent := s.work.val[s.depth.val - 2]'hparent_bound
+  have hparent : s.work.val[s.depth.val - 2]? = some parent := by simp [parent]
+  have hparent_mem : parent ∈ s.frames := by
+    apply List.mem_iff_getElem?.mpr
+    refine ⟨s.depth.val - 2, ?_⟩
+    simpa [DfsState.frames, List.getElem?_take_of_lt (by omega : s.depth.val - 2 < s.depth.val)]
+      using hparent
+  obtain ⟨parent_entry, _, hparent_entry, _⟩ := frame_discovered graph s h parent hparent_mem
+  apply WP.spec_mono (dfs_finish_nonroot graph s frame parent successors index source parent_entry
+    hpositive hframe hedges hcomplete hsource hindex hnonroot (fun _ => hparent) (fun _ => hparent_entry))
+  rintro result ⟨top, htop, hresult⟩
+  have habove : 0 < top.val := by omega
+  refine ⟨finishNonrootState s top parent parent_entry source, ?_, ?_⟩
+  · exact finish_nonroot_invariant graph s h top frame parent successors source parent_entry index
+      htop habove (by simpa [show top.val = s.depth.val - 1 by omega] using hframe)
+      hparent hsource hparent_entry hindex hnonroot hedges hcomplete
+  · simpa [finishNonrootState, habove] using hresult
+
+private theorem cleared_entry (before after : alloc.vec.Vec NodeState) (removed : List Usize)
+    (hclear : Clears before after removed) (vertex : Usize) (entry : NodeState)
+    (hentry : after.val[vertex.val]? = some entry) :
+    ∃ old, before.val[vertex.val]? = some old ∧ entry = clearEntry removed vertex.val old := by
+  have hlookup := hclear vertex.val
+  rw [hentry] at hlookup
+  cases hold : before.val[vertex.val]? with
+  | none => simp [hold] at hlookup
+  | some old => exact ⟨old, rfl, by simpa [hold] using hlookup⟩
+
+private theorem cleared_count (before after : alloc.vec.Vec NodeState) (removed : List Usize)
+    (hclear : Clears before after removed) :
+    (after.val.filter (fun entry => entry.index.isSome)).length =
+      (before.val.filter (fun entry => entry.index.isSome)).length := by
+  have hmap : after.val.map NodeState.index = before.val.map NodeState.index := by
+    apply List.ext_getElem?
+    intro position
+    simp only [List.getElem?_map, hclear position]
+    cases before.val[position]? <;> rfl
+  have hcount := congrArg (fun values : List (Option Usize) => values.countP Option.isSome) hmap
+  simp only [List.countP_map] at hcount
+  simpa only [Function.comp_def, List.countP_eq_length_filter] using hcount
+
+private theorem cleared_discovered (before after : alloc.vec.Vec NodeState) (removed : List Usize)
+    (hclear : Clears before after removed) (vertex : Usize) :
+    Discovered after vertex ↔ Discovered before vertex := by
+  constructor
+  · rintro ⟨entry, index, hentry, hindex⟩
+    obtain ⟨old, hold, heq⟩ := cleared_entry before after removed hclear vertex entry hentry
+    exact ⟨old, index, hold, by simpa [heq, clearEntry] using hindex⟩
+  · rintro ⟨old, index, hold, hindex⟩
+    refine ⟨clearEntry removed vertex.val old, index, ?_, ?_⟩
+    · rw [hclear, hold]
+      rfl
+    · simpa [clearEntry] using hindex
+
+def emittedState (s : DfsState) (top remaining : Usize) (cleared : alloc.vec.Vec NodeState)
+    (components : alloc.vec.Vec (alloc.vec.Vec Usize)) : DfsState := { s with
+  depth := top, stack_len := remaining, state := cleared, components := components }
+
+private theorem finish_root_invariant (graph : Slice (alloc.vec.Vec Usize)) (s : DfsState)
+    (h : DfsInvariant graph s) (top remaining : Usize) (frame : Frame)
+    (cleared : alloc.vec.Vec NodeState) (output : alloc.vec.Vec Usize)
+    (components : alloc.vec.Vec (alloc.vec.Vec Usize)) (ready : EmissionReady graph s frame.node)
+    (htop : top.val + 1 = s.depth.val) (hframe : s.work.val[top.val]? = some frame)
+    (hremaining : remaining.val = ready.position)
+    (hsuffix : output.val = (s.active.drop ready.position).reverse)
+    (hsize : cleared.length = s.state.length) (hclear : Clears s.state cleared output.val)
+    (hnodup : output.val.Nodup) (hscc : IsScc graph output.val)
+    (hclosed : Closed graph (fun vertex => vertex ∈ output.val ∨ s.finished vertex))
+    (hcomponents : components.val = s.components.val ++ [output])
+    (hmetadata : ∀ vertex, rank cleared vertex = rank s.state vertex ∧
+      lowlink cleared vertex = lowlink s.state vertex)
+    (hflags : StackFlags cleared (s.stack.val.take remaining.val))
+    (horder : (s.stack.val.take remaining.val).Pairwise
+      (fun left right => rank cleared left < rank cleared right)) :
+    DfsInvariant graph (emittedState s top remaining cleared components) := by
+  let updated := emittedState s top remaining cleared components
+  change DfsInvariant graph updated
+  have hrank : ∀ vertex, rank updated.state vertex = rank s.state vertex := fun vertex => (hmetadata vertex).1
+  have hlowlink : ∀ vertex, lowlink updated.state vertex = lowlink s.state vertex :=
+    fun vertex => (hmetadata vertex).2
+  have hroot_lookup : s.active[ready.position]? = some frame.node := by
+    simpa [DfsState.active, List.getElem?_take_of_lt ready.position_bound] using ready.root_position
+  have hactive_prefix : updated.active = s.active.take ready.position := by
+    simp [updated, emittedState, DfsState.active, hremaining, List.take_take,
+      Nat.min_eq_left (Nat.le_of_lt ready.position_bound)]
+  have hemitted : ∀ vertex, vertex ∈ output.val ↔
+      vertex ∈ s.active ∧ rank s.state frame.node ≤ rank s.state vertex := by
+    intro vertex
+    rw [hsuffix, List.mem_reverse]
+    exact rank_suffix_membership s.state s.active ready.position frame.node hroot_lookup h.ordered vertex
+  have hretained : ∀ vertex, vertex ∈ updated.active ↔
+      vertex ∈ s.active ∧ rank s.state vertex < rank s.state frame.node := by
+    intro vertex
+    rw [hactive_prefix, rank_prefix_membership s.state s.active ready.position h.ordered vertex,
+      rank_suffix_membership s.state s.active ready.position frame.node hroot_lookup h.ordered vertex]
+    constructor
+    · rintro ⟨hvertex, hnot⟩
+      refine ⟨hvertex, ?_⟩
+      by_contra hle
+      exact hnot ⟨hvertex, by omega⟩
+    · rintro ⟨hvertex, hless⟩
+      exact ⟨hvertex, fun ⟨_, hgreater⟩ => by omega⟩
+  have hpartition : ∀ vertex, vertex ∈ s.active ↔ vertex ∈ updated.active ∨ vertex ∈ output.val := by
+    intro vertex
+    rw [hretained, hemitted]
+    constructor
+    · intro hvertex
+      by_cases hless : rank s.state vertex < rank s.state frame.node
+      · exact Or.inl ⟨hvertex, hless⟩
+      · exact Or.inr ⟨hvertex, by omega⟩
+    · rintro (⟨hvertex, _⟩ | ⟨hvertex, _⟩) <;> exact hvertex
+  have hfinished : ∀ vertex, updated.finished vertex ↔ s.finished vertex ∨ vertex ∈ output.val := by
+    intro vertex
+    change (∃ component ∈ components.val, vertex ∈ component.val) ↔ _
+    simp [hcomponents, DfsState.finished]
+  have hframes : s.frames = updated.frames ++ [frame] := frames_pop s top.val frame htop hframe
+  have hgray : s.gray = updated.gray ++ [frame.node] := by
+    change s.frames.map (fun frame => frame.node) = updated.frames.map (fun frame => frame.node) ++ _
+    simp [hframes]
+  have hframes_sub : List.Sublist updated.frames s.frames := by
+    rw [hframes]
+    exact List.sublist_append_left _ _
+  have hgray_sub : List.Sublist updated.gray s.gray := by
+    rw [hgray]
+    exact List.sublist_append_left _ _
+  have hroot_last : ∀ vertex ∈ updated.gray, rank s.state vertex < rank s.state frame.node := by
+    have hgray_order := h.ordered.sublist h.gray_sublist
+    rw [hgray, List.pairwise_append] at hgray_order
+    exact fun vertex hvertex => hgray_order.2.2 vertex hvertex frame.node (by simp)
+  have howner_old : ∀ owner vertex, Owns updated owner vertex → Owns s owner vertex := by
+    intro owner vertex ⟨hvertex, hless, hlater⟩
+    have hretained_vertex := (hretained vertex).mp hvertex
+    refine ⟨hretained_vertex.1, by simpa [hrank] using hless, ?_⟩
+    intro later hmember hgreater
+    rw [hgray, List.mem_append, List.mem_singleton] at hmember
+    rcases hmember with hold | heq
+    · simpa [hrank] using hlater later hold (by simpa [hrank] using hgreater)
+    · simpa [heq] using hretained_vertex.2
+  refine {
+    graph_valid := h.graph_valid
+    state_size := hsize.trans h.state_size
+    stack_size := h.stack_size
+    work_size := h.work_size
+    stack_bound := by
+      change remaining.val ≤ s.stack.length
+      have := ready.position_bound
+      have := h.stack_bound
+      omega
+    work_bound := by
+      change top.val ≤ s.work.length
+      have := h.work_bound
+      omega
+    component_count := by
+      change components.length + remaining.val ≤ s.next_index.val
+      have hlength : components.length = s.components.length + 1 := by
+        simp [alloc.vec.Vec.length, hcomponents]
+      have := h.component_count
+      have := ready.position_bound
+      omega
+    discovery_count := ?_
+    indices_bounded := ?_
+    indices_unique := ?_
+    lowlinks_bounded := ?_
+    flags := hflags
+    ordered := horder
+    gray_sublist := ?_
+    frame_bounds := fun current hcurrent => h.frame_bounds current (hframes_sub.subset hcurrent)
+    colors := ?_
+    disjoint := ?_
+    components_unique := ?_
+    components_correct := ?_
+    finished_closed := ?_
+    reaches_later := ?_
+    returns_to_gray := ?_
+    lowlink_witness := ?_
+    processed := ?_ }
+  · change s.next_index.val = (cleared.val.filter (fun entry => entry.index.isSome)).length
+    rw [cleared_count s.state cleared output.val hclear]
+    exact h.discovery_count
+  · intro vertex entry index hentry hindex
+    obtain ⟨old, hold, heq⟩ := cleared_entry s.state cleared output.val hclear vertex entry hentry
+    exact h.indices_bounded vertex old index hold (by simpa [heq, clearEntry] using hindex)
+  · intro left right le re index hleft hright hle hre
+    obtain ⟨lo, hlo, heql⟩ := cleared_entry s.state cleared output.val hclear left le hleft
+    obtain ⟨ro, hro, heqr⟩ := cleared_entry s.state cleared output.val hclear right re hright
+    exact h.indices_unique left right lo ro index hlo hro
+      (by simpa [heql, clearEntry] using hle) (by simpa [heqr, clearEntry] using hre)
+  · intro vertex entry index hentry hindex
+    obtain ⟨old, hold, heq⟩ := cleared_entry s.state cleared output.val hclear vertex entry hentry
+    simpa [heq, clearEntry] using h.lowlinks_bounded vertex old index hold
+      (by simpa [heq, clearEntry] using hindex)
+  · rw [hactive_prefix]
+    have hsub := hgray_sub.trans h.gray_sublist
+    rw [← List.take_append_drop ready.position s.active] at hsub
+    apply List.Sublist.of_sublist_append_left ?_ hsub
+    intro vertex hvertex hdrop
+    have hless := hroot_last vertex hvertex
+    have hgreater := (rank_suffix_membership s.state s.active ready.position frame.node
+      hroot_lookup h.ordered vertex).mp hdrop
+    omega
+  · intro vertex
+    change Discovered cleared vertex ↔ _
+    rw [cleared_discovered s.state cleared output.val hclear, h.colors, hpartition, hfinished]
+    tauto
+  · intro vertex hvertex hdone
+    obtain ⟨hold, hless⟩ := (hretained vertex).mp hvertex
+    rcases (hfinished vertex).mp hdone with hdone | hout
+    · exact h.disjoint vertex hold hdone
+    · have := ((hemitted vertex).mp hout).2
+      omega
+  · change (components.val.flatMap (fun component => component.val)).Nodup
+    rw [hcomponents, List.flatMap_append]
+    simp only [List.flatMap_cons, List.flatMap_nil, List.append_nil]
+    apply h.components_unique.append hnodup
+    rw [List.disjoint_left]
+    intro vertex hdone hout
+    have hfinished_old : s.finished vertex := by simpa [DfsState.finished] using hdone
+    exact h.disjoint vertex ((hemitted vertex).mp hout).1 hfinished_old
+  · intro component hcomponent
+    change component ∈ components.val at hcomponent
+    rw [hcomponents, List.mem_append, List.mem_singleton] at hcomponent
+    rcases hcomponent with hold | heq
+    · exact h.components_correct component hold
+    · simpa [heq] using hscc
+  · intro vertex neighbor hvertex hedge
+    have hold : vertex ∈ output.val ∨ s.finished vertex := ((hfinished vertex).mp hvertex).symm
+    exact (hfinished neighbor).mpr (hclosed vertex neighbor hold hedge).symm
+  · intro ancestor hancestor vertex hvertex hless
+    exact h.reaches_later ancestor (hgray_sub.subset hancestor) vertex ((hretained vertex).mp hvertex).1
+      (by simpa [hrank] using hless)
+  · intro vertex hvertex
+    obtain ⟨hold, hbefore⟩ := (hretained vertex).mp hvertex
+    obtain ⟨ancestor, hancestor, hless, hreturn⟩ := h.returns_to_gray vertex hold
+    refine ⟨ancestor, ?_, by simpa [hrank] using hless, hreturn⟩
+    rw [hgray, List.mem_append, List.mem_singleton] at hancestor
+    rcases hancestor with hold | heq
+    · exact hold
+    · rw [heq] at hless
+      omega
+  · intro current hcurrent
+    have hcurrent_old := hframes_sub.subset hcurrent
+    obtain ⟨vertex, hvertex, hvalue, hreach⟩ := h.lowlink_witness current hcurrent_old
+    refine ⟨vertex, ?_, by simpa [hlowlink, hrank] using hvalue, hreach⟩
+    apply (hretained vertex).mpr
+    refine ⟨hvertex, ?_⟩
+    obtain ⟨entry, index, hentry, hindex⟩ := frame_discovered graph s h current hcurrent_old
+    have hbounded := h.lowlinks_bounded current.node entry index hentry hindex
+    have hcurrent_gray : current.node ∈ updated.gray := List.mem_map.mpr ⟨current, hcurrent, rfl⟩
+    have hbefore := hroot_last current.node hcurrent_gray
+    have hrank_current : rank s.state current.node = index.val := by simp [rank, hentry, hindex]
+    have hlowlink_current : lowlink s.state current.node = entry.lowlink.val := by simp [lowlink, hentry]
+    omega
+  · intro current hcurrent vertex howner neighbor hprocessed
+    have hold := h.processed current (hframes_sub.subset hcurrent) vertex (howner_old _ _ howner)
+      neighbor hprocessed
+    refine ⟨?_, ?_⟩
+    · rcases hold.1 with hactive | hdone
+      · rcases (hpartition neighbor).mp hactive with hretained | hout
+        · exact Or.inl hretained
+        · exact Or.inr ((hfinished neighbor).mpr (Or.inr hout))
+      · exact Or.inr ((hfinished neighbor).mpr (Or.inl hdone))
+    · intro hneighbor
+      simpa [hlowlink, hrank] using hold.2 ((hretained neighbor).mp hneighbor).1
+
+private theorem root_parent_unchanged (graph : Slice (alloc.vec.Vec Usize)) (s : DfsState)
+    (h : DfsInvariant graph s) (frame parent : Frame) (source parent_entry : NodeState)
+    (cleared : alloc.vec.Vec NodeState) (output : alloc.vec.Vec Usize)
+    (ready : EmissionReady graph s frame.node)
+    (hdepth : 1 < s.depth.val)
+    (hframe : s.work.val[s.depth.val - 1]? = some frame)
+    (hparent : s.work.val[s.depth.val - 2]? = some parent)
+    (hsource : s.state.val[frame.node.val]? = some source)
+    (hparent_entry : s.state.val[parent.node.val]? = some parent_entry)
+    (hroot : source.index = some source.lowlink)
+    (hsuffix : output.val = (s.active.drop ready.position).reverse)
+    (hclear : Clears s.state cleared output.val) :
+    cleared.set parent.node { clearEntry output.val parent.node.val parent_entry with
+      lowlink := min parent_entry.lowlink source.lowlink } = cleared := by
+  have hparent_gray_lookup : s.gray[s.depth.val - 2]? = some parent.node := by
+    simp only [DfsState.gray, List.getElem?_map]
+    rw [List.getElem?_take_of_lt (by omega), hparent]
+    rfl
+  have hframe_gray_lookup : s.gray[s.depth.val - 1]? = some frame.node := by
+    simp only [DfsState.gray, List.getElem?_map]
+    rw [List.getElem?_take_of_lt (by omega), hframe]
+    rfl
+  have hbefore : rank s.state parent.node < rank s.state frame.node := by
+    have horder := h.ordered.sublist h.gray_sublist
+    have hless := horder.rel_getElem_of_lt
+      (List.getElem?_eq_some_iff.mp hparent_gray_lookup).1
+      (List.getElem?_eq_some_iff.mp hframe_gray_lookup).1 (by omega)
+    simpa [(List.getElem?_eq_some_iff.mp hparent_gray_lookup).2,
+      (List.getElem?_eq_some_iff.mp hframe_gray_lookup).2] using hless
+  have hnot_output : parent.node ∉ output.val := by
+    intro hmember
+    rw [hsuffix, List.mem_reverse] at hmember
+    have hroot_lookup : s.active[ready.position]? = some frame.node := by
+      simpa [DfsState.active, List.getElem?_take_of_lt ready.position_bound] using ready.root_position
+    have hgreater := (rank_suffix_membership s.state s.active ready.position frame.node
+      hroot_lookup h.ordered parent.node).mp hmember
+    omega
+  have hno_index : output.val.any (fun member => member.val == parent.node.val) = false := by
+    rw [List.any_eq_false]
+    intro member hmember heq
+    have hsame : member = parent.node := UScalar.eq_of_val_eq (by simpa using heq)
+    exact hnot_output (hsame ▸ hmember)
+  have hclear_entry : clearEntry output.val parent.node.val parent_entry = parent_entry := by
+    simp [clearEntry, hno_index]
+  have hcleared_parent : cleared.val[parent.node.val]? = some parent_entry := by
+    rw [hclear, hparent_entry]
+    simpa using congrArg some hclear_entry
+  have hparent_active : parent.node ∈ s.active := h.gray_sublist.subset
+    (List.mem_iff_getElem?.mpr ⟨s.depth.val - 2, hparent_gray_lookup⟩)
+  obtain ⟨old, index, hold, hindex⟩ := active_discovered graph s h parent.node hparent_active
+  have heq : old = parent_entry := Option.some.inj (hold.symm.trans hparent_entry)
+  subst old
+  have hlowlink := h.lowlinks_bounded parent.node parent_entry index hparent_entry hindex
+  have hroot_rank : rank s.state frame.node = source.lowlink.val := by simp [rank, hsource, hroot]
+  have hparent_rank : rank s.state parent.node = index.val := by simp [rank, hparent_entry, hindex]
+  have hminimum : min parent_entry.lowlink source.lowlink = parent_entry.lowlink := by
+    apply min_eq_left
+    scalar_tac
+  rw [hclear_entry, hminimum]
+  apply alloc.vec.Vec.ext
+  simp only [alloc.vec.Vec.set_val_eq]
+  rw [← (List.getElem?_eq_some_iff.mp hcleared_parent).2,
+    List.set_getElem_self (List.getElem?_eq_some_iff.mp hcleared_parent).1]
+
+theorem invariant_root_preserved (graph : Slice (alloc.vec.Vec Usize)) (s : DfsState)
+    (h : DfsInvariant graph s) (frame : Frame) (successors : alloc.vec.Vec Usize) (source : NodeState)
+    (hpositive : 0 < s.depth.val)
+    (hframe : s.work.val[s.depth.val - 1]? = some frame)
+    (hedges : graph.val[frame.node.val]? = some successors)
+    (hcomplete : successors.length ≤ frame.cursor.val)
+    (hsource : s.state.val[frame.node.val]? = some source)
+    (hroot : source.index = some source.lowlink) :
+    dfs_body graph s ⦃ result => ∃ updated, DfsInvariant graph updated ∧ result = .cont updated.pack ⦄ := by
+  obtain ⟨ready⟩ := invariant_root_ready graph s h frame successors source
+    hpositive hframe hedges hcomplete hsource hroot
+  have hcapacity : s.components.length < Usize.max := by
+    have hnext : s.next_index.val ≤ s.state.length := by
+      rw [h.discovery_count]
+      exact List.length_filter_le _ _
+    have hmachine : s.state.length ≤ Usize.max := s.state.property
+    have := h.component_count
+    have := ready.position_bound
+    omega
+  have hparent_exists : ∃ parent parent_entry,
+      (1 < s.depth.val → s.work.val[s.depth.val - 2]? = some parent) ∧
+      (1 < s.depth.val → s.state.val[parent.node.val]? = some parent_entry) := by
+    by_cases hdepth : 1 < s.depth.val
+    · have hparent_bound : s.depth.val - 2 < s.work.val.length := by
+        have hbound : s.depth.val ≤ s.work.val.length := h.work_bound
+        omega
+      let parent := s.work.val[s.depth.val - 2]'hparent_bound
+      have hparent : s.work.val[s.depth.val - 2]? = some parent := by simp [parent]
+      have hparent_mem : parent ∈ s.frames := by
+        apply List.mem_iff_getElem?.mpr
+        refine ⟨s.depth.val - 2, ?_⟩
+        simpa [DfsState.frames, List.getElem?_take_of_lt (by omega : s.depth.val - 2 < s.depth.val)]
+          using hparent
+      obtain ⟨parent_entry, _, hentry, _⟩ := frame_discovered graph s h parent hparent_mem
+      exact ⟨parent, parent_entry, fun _ => hparent, fun _ => hentry⟩
+    · exact ⟨frame, source, fun h => False.elim (hdepth h), fun h => False.elim (hdepth h)⟩
+  obtain ⟨parent, parent_entry, hparent, hparent_entry⟩ := hparent_exists
+  apply WP.spec_mono (dfs_finish_root graph s frame parent successors source parent_entry
+    hpositive hframe hedges hcomplete hsource hroot ready hcapacity hparent hparent_entry)
+  rintro result ⟨top, cleared, remaining, output, components, htop, hremaining, hsuffix, hsize,
+    hclear, hnodup, hscc, hclosed, hcomponents, hmetadata, hflags, horder, hresult⟩
+  refine ⟨emittedState s top remaining cleared components, ?_, ?_⟩
+  · exact finish_root_invariant graph s h top remaining frame cleared output components ready htop
+      (by simpa [show top.val = s.depth.val - 1 by omega] using hframe) hremaining hsuffix
+      hsize hclear hnodup hscc hclosed hcomponents hmetadata hflags horder
+  · by_cases habove : 0 < top.val
+    · have hdepth : 1 < s.depth.val := by omega
+      have hunchanged := root_parent_unchanged graph s h frame parent source parent_entry cleared output ready
+        hdepth hframe (hparent hdepth) hsource (hparent_entry hdepth) hroot hsuffix hclear
+      simpa [habove, hunchanged, emittedState] using hresult
+    · simpa [habove, emittedState] using hresult
+
+/-- All branches preserve the invariant. A decreasing measure and outer-loop
+    invariant are still needed to justify complete traversal. -/
+theorem invariant_step_preserved (graph : Slice (alloc.vec.Vec Usize)) (s : DfsState)
+    (h : DfsInvariant graph s) :
+    dfs_body graph s ⦃ result => ∃ updated, DfsInvariant graph updated ∧
+      (result = .cont updated.pack ∨ (result = .done updated.pack ∧ updated.depth = 0#usize)) ⦄ := by
+  have hcont : ∀ (result : ControlFlow DfsTuple DfsTuple),
+      (∃ updated, DfsInvariant graph updated ∧ result = .cont updated.pack) →
+      ∃ updated, DfsInvariant graph updated ∧
+        (result = .cont updated.pack ∨ (result = .done updated.pack ∧ updated.depth = 0#usize)) := by
+    rintro result ⟨updated, hinvariant, hresult⟩
+    exact ⟨updated, hinvariant, Or.inl hresult⟩
+  by_cases hpositive : 0 < s.depth.val
+  · have htop_bound : s.depth.val - 1 < s.work.val.length := by
+      have hbound : s.depth.val ≤ s.work.val.length := h.work_bound
+      omega
+    let frame := s.work.val[s.depth.val - 1]'htop_bound
+    have hframe : s.work.val[s.depth.val - 1]? = some frame := by simp [frame]
+    have hframe_mem := top_frame_member s frame hpositive hframe
+    obtain ⟨successors, hedges, _⟩ := h.frame_bounds frame hframe_mem
+    obtain ⟨source, index, hsource, hindex⟩ := frame_discovered graph s h frame hframe_mem
+    apply WP.spec_mono ?_ hcont
+    by_cases hcursor : frame.cursor.val < successors.length
+    · let target := successors.val[frame.cursor.val]'hcursor
+      have htarget : successors.val[frame.cursor.val]? = some target := by simp [target]
+      have htarget_bound : target.val < s.state.val.length := by
+        change target.val < s.state.length
+        rw [h.state_size]
+        exact h.graph_valid frame.node.val successors hedges target
+          (List.mem_iff_getElem?.mpr ⟨frame.cursor.val, htarget⟩)
+      let entry := s.state.val[target.val]'htarget_bound
+      have hentry : s.state.val[target.val]? = some entry := by simp [entry]
+      cases hseen : entry.index with
+      | none =>
+        exact invariant_discover_preserved graph s h frame successors target entry
+          hpositive hframe hedges htarget hentry hseen
+      | some discovered =>
+        exact invariant_seen_preserved graph s h frame successors target discovered entry source
+          hpositive hframe hedges htarget hentry hseen hsource
+    · have hcomplete : successors.length ≤ frame.cursor.val := by omega
+      by_cases hroot : index = source.lowlink
+      · exact invariant_root_preserved graph s h frame successors source hpositive hframe hedges hcomplete hsource
+          (hindex.trans (congrArg some hroot))
+      · exact invariant_nonroot_preserved graph s h frame successors source index
+          hpositive hframe hedges hcomplete hsource hindex hroot
+  · have hzero : s.depth = 0#usize := by scalar_tac
+    rw [dfs_done graph s hzero]
+    simp only [WP.spec_ok]
+    exact ⟨s, h, Or.inr ⟨rfl, hzero⟩⟩
+
 end NibliSelfCheck.Scc

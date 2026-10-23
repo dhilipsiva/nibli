@@ -26,7 +26,7 @@ COMPONENTS = {
     "scc_stack": {
         "probe": "scc_kernel", "module": "SccInvariant", "namespace": "NibliSelfCheck.Scc",
         "helpers": ["SccGraph", "SccKernelProofs"],
-        "label": "production SCC branches and partial invariant proof (not the complete traversal)",
+        "label": "production SCC DFS invariant and branches (not the complete traversal)",
     },
 }
 

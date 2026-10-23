@@ -610,9 +610,15 @@ theorem dfs_finish_root (graph : Slice (alloc.vec.Vec Usize)) (s : DfsState)
     dfs_body graph s ⦃ result => ∃ top updated remaining output components,
       top.val + 1 = s.depth.val ∧ remaining.val = ready.position ∧
       output.val = (s.active.drop ready.position).reverse ∧
-      Clears s.state updated output.val ∧ output.val.Nodup ∧ IsScc graph output.val ∧
+      updated.length = s.state.length ∧ Clears s.state updated output.val ∧
+      output.val.Nodup ∧ IsScc graph output.val ∧
       Closed graph (fun vertex => vertex ∈ output.val ∨ s.finished vertex) ∧
       components.val = s.components.val ++ [output] ∧
+      (∀ vertex, rank updated vertex = rank s.state vertex ∧
+        lowlink updated vertex = lowlink s.state vertex) ∧
+      StackFlags updated (s.stack.val.take remaining.val) ∧
+      (s.stack.val.take remaining.val).Pairwise
+        (fun left right => rank updated left < rank updated right) ∧
       result = .cont (DfsState.pack { s with
         depth := top, stack_len := remaining, components := components,
         state := if 0 < top.val then updated.set parent.node
@@ -688,13 +694,15 @@ theorem dfs_finish_root (graph : Slice (alloc.vec.Vec Usize)) (s : DfsState)
     step as ⟨minimum, hminimum⟩
     step as ⟨parent_value, parent_back, hparent_value, hparent_back⟩
     refine ⟨top, by omega, updated, remaining, hremaining, output,
-      hsuffix, hclear, hnodup, hscc, hclosed, components, hcomponents, ?_⟩
+      hsuffix, hsize, hclear, hnodup, hscc, hclosed, components, hcomponents,
+      hmetadata, hflags, horder, ?_⟩
     simp [DfsState.pack, habove, hparent_back, hparent_value, hminimum, hold_parent,
       hold_source, (List.getElem?_eq_some_iff.mp hparent_updated).2,
       (List.getElem?_eq_some_iff.mp hsource_updated).2, clearEntry, usize_min_eq]
   · simp only [habove, ↓reduceIte, WP.spec_ok]
     exact ⟨top, by omega, updated, remaining, hremaining, output,
-      hsuffix, hclear, hnodup, hscc, hclosed, components, hcomponents,
+      hsuffix, hsize, hclear, hnodup, hscc, hclosed, components, hcomponents,
+      hmetadata, hflags, horder,
       by simp [DfsState.pack, habove]⟩
 
 end NibliSelfCheck.Scc
