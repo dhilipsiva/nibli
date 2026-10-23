@@ -57,7 +57,10 @@ here first.
   now uses owned temporary names and explicit loops, and the negative-edge scan
   preserves its first diagnostic without returning from nested loops. Aeneas
   translates that path, but the extraction gate still rejects its unimplemented
-  external-library templates.
+  external-library templates. The indexed kernel's output is now proved to
+  contain an internal negative edge exactly when the checker's inductive Horn
+  closure criterion contains a negative self-path. A source-drift check covers
+  the modeled clauses; production evaluation of those clauses remains unproved.
 
 - **WIT 0.12.0** (`wit/world.wit`; the engine changes are in
   [ENGINE_UPGRADE_0_2.md](ENGINE_UPGRADE_0_2.md)): `list-assertion-records`

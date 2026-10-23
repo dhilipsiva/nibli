@@ -238,8 +238,11 @@ When analyzing or searching the codebase:
   safety/root readiness, and is preserved by every inner DFS branch, including
   root/nonroot completion. The complete indexed kernel terminates and returns a
   partition into maximal SCCs, covering every vertex exactly once, for graphs with
-  in-bounds edge targets. The name adapter, negative-edge decision, and dependency
-  extraction remain open. `just verify-self-check-extraction`
+  in-bounds edge targets. Its partition's internal-negative-edge criterion is
+  equivalent to the inductive model of the checker's Horn closure clauses; a
+  conservative source check requires review when that fragment changes. The name
+  adapter, native negative-edge scan, dependency extraction, and evaluator
+  refinement remain open. `just verify-self-check-extraction`
   probes the remaining implementation and currently fails on unsupported Aeneas
   constructs or unimplemented external-library templates. The named stratifier
   translates after replacing borrowed-name containers and iterator closures with

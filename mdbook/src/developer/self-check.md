@@ -185,7 +185,7 @@ the gate; they do not extend the trusted boundary silently.
 
 `just verify-self-check-scc-stack` regenerates the kernel and checks
 `SccGraph.lean`, `SccKernelProofs.lean`, `SccInvariant.lean`, `SccTermination.lean`,
-and `SccTraversal.lean`.
+`SccTraversal.lean`, and `SccCriterion.lean`.
 The proofs establish component-removal termination, the
 topmost-root stopping position, the exact reversed active suffix returned, and
 preservation of the state-buffer length. The complete removal preserves every
@@ -250,10 +250,22 @@ whose edge targets are in bounds, the actual indexed kernel terminates and retur
 a partition into nonempty, valid maximal SCCs. Every graph vertex appears exactly
 once across the components.
 
-The predicate-name adapter, negative-edge decision, dependency extraction, and
-compiler/checker equivalence remain separate obligations. The component report
-certifies the indexed SCC kernel under the stated graph precondition and trusted
-extraction/library boundary; it does not certify the whole stratifier or checker.
+`SccCriterion.lean` specifies `dep_path` and `neg_dep_path` by the same positive
+Horn clause shapes used in the checker. A negative path is exactly an arbitrary
+prefix, a marked negative edge, and an arbitrary suffix. Thus a negative self-path
+exists exactly when a negative edge has a return path. For the partition returned
+by the actual indexed kernel, this is equivalent to both endpoints of a negative
+edge belonging to one component. The proof requires negative edges to be graph
+edges, and handles any number of negative edges without a parity assumption.
+The gate conservatively checks every source line mentioning the modeled checker
+predicates, including their declarations and violation consumer. This catches
+source drift; it is not a parser or evaluator refinement proof.
+
+The predicate-name adapter, native negative-edge scan, dependency extraction,
+and production evaluation of the Horn clauses remain separate obligations. The
+component report certifies the indexed SCC kernel and its mathematical criterion
+bridge under the stated graph precondition and trusted extraction/library
+boundary; it does not certify the whole stratifier or checker.
 
 The shared component runner regenerates each component in its own Lean module,
 checks every local proof file's public theorem inventory, rechecks helpers with warnings fatal,

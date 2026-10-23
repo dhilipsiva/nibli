@@ -60,7 +60,7 @@ theorems = []
 
 [[obligation]]
 id = "scc_stack"
-sources = ["nibli-reason/src/dependency_graph.rs"]
+sources = ["nibli-reason/src/dependency_graph.rs", "nibli-verify/spec/nibli_checker.nibli"]
 contract = """Production component removal terminates at the topmost active root,
 returns exactly the reversed active suffix, and preserves state entries except
 the emitted members' stack flags. Explicit ordered-stack and frontier conditions
@@ -74,14 +74,17 @@ DFS loop terminates from an invariant state with both logical stacks empty and
 preserves every discovered vertex. Fresh-root initialization and the outer scan
 preserve the invariant and advance coverage. The complete production indexed
 kernel terminates and returns nonempty valid maximal SCCs, with every graph
-vertex appearing exactly once, assuming only in-bounds edge targets. The
-predicate-name adapter and negative-edge decision remain separate obligations."""
+vertex appearing exactly once, assuming only in-bounds edge targets. Its output
+contains an internal negative edge exactly when the inductive Horn closure
+criterion derives a negative self-path. A conservative text check detects source
+drift in the modeled checker fragment. The predicate-name adapter, native
+negative-edge scan and evaluator refinement remain separate obligations."""
 probes = ["scc_kernel"]
 tests = ["nibli-reason/src/dependency_graph.rs", "nibli-reason/src/rules.rs"]
 theorem_files = [
   "proofs/self-check/SccGraph.lean", "proofs/self-check/SccKernelProofs.lean",
   "proofs/self-check/SccInvariant.lean", "proofs/self-check/SccTermination.lean",
-  "proofs/self-check/SccTraversal.lean",
+  "proofs/self-check/SccTraversal.lean", "proofs/self-check/SccCriterion.lean",
 ]
 theorems = [
   "NibliSelfCheck.Scc.reach_closed", "NibliSelfCheck.Scc.seal_component",
@@ -102,6 +105,11 @@ theorems = [
   "NibliSelfCheck.Scc.dfs_step_decreases", "NibliSelfCheck.Scc.dfs_total",
   "NibliSelfCheck.Scc.start_invariant", "NibliSelfCheck.Scc.scan_step",
   "NibliSelfCheck.Scc.scan_total", "NibliSelfCheck.Scc.compute_sccs_correct",
+  "NibliSelfCheck.Scc.dep_path_reaches", "NibliSelfCheck.Scc.reach_eq_or_dep_path",
+  "NibliSelfCheck.Scc.neg_path_append", "NibliSelfCheck.Scc.neg_path_iff_marked_edge",
+  "NibliSelfCheck.Scc.negative_cycle_iff_return_path",
+  "NibliSelfCheck.Scc.partition_negative_cycle_iff",
+  "NibliSelfCheck.Scc.compute_sccs_negative_cycle_criterion",
 ]
 
 [[obligation]]

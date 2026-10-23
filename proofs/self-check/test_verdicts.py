@@ -53,15 +53,15 @@ class AxiomAuditTests(unittest.TestCase):
     def test_public_helper_theorems_cannot_be_omitted_from_inventory(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            for module in ("SccGraph", "SccKernelProofs", "SccInvariant", "SccTermination", "SccTraversal"):
+            for module in ("SccGraph", "SccKernelProofs", "SccInvariant", "SccTermination", "SccTraversal", "SccCriterion"):
                 (root / f"{module}.lean").write_text(f"theorem {module}_result : True := by trivial\n")
             (root / "coverage.toml").write_text('''
 [[obligation]]
 id = "scc_stack"
 sources = []
 tests = []
-theorem_files = ["SccGraph.lean", "SccKernelProofs.lean", "SccInvariant.lean", "SccTermination.lean", "SccTraversal.lean"]
-theorems = ["NibliSelfCheck.Scc.SccTraversal_result"]
+theorem_files = ["SccGraph.lean", "SccKernelProofs.lean", "SccInvariant.lean", "SccTermination.lean", "SccTraversal.lean", "SccCriterion.lean"]
+theorems = ["NibliSelfCheck.Scc.SccCriterion_result"]
 ''')
             with patch.object(verify_component, "DIRECTORY", root), patch.object(extract, "ROOT", root):
                 with self.assertRaisesRegex(ValueError, "inventory differ"):

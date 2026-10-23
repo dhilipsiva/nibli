@@ -14,6 +14,7 @@ import sys
 import tomllib
 
 import extract
+from checker_closure import check_checker_closure
 
 
 DIRECTORY = Path(__file__).resolve().parent
@@ -24,9 +25,9 @@ COMPONENTS = {
         "label": "production verdict algebra",
     },
     "scc_stack": {
-        "probe": "scc_kernel", "module": "SccTraversal", "namespace": "NibliSelfCheck.Scc",
-        "helpers": ["SccGraph", "SccKernelProofs", "SccInvariant", "SccTermination"],
-        "label": "production indexed SCC traversal",
+        "probe": "scc_kernel", "module": "SccCriterion", "namespace": "NibliSelfCheck.Scc",
+        "helpers": ["SccGraph", "SccKernelProofs", "SccInvariant", "SccTermination", "SccTraversal"],
+        "label": "production indexed SCC traversal and cycle criterion",
     },
 }
 
@@ -98,6 +99,8 @@ def prove(config, env, report, component_id):
     component = COMPONENTS[component_id]
     expected = obligations(component_id)
     check_lean_pins(config)
+    if component_id == "scc_stack":
+        check_checker_closure((extract.ROOT / "nibli-verify/spec/nibli_checker.nibli").read_text())
     probe = next(p for p in config["probe"] if p["name"] == component["probe"])
     print(f"Extracting {component['label']}", flush=True)
     result = extract.extract(probe, config, env, 300)
