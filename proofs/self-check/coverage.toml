@@ -134,6 +134,44 @@ theorems = [
 ]
 
 [[obligation]]
+id = "primitive_maps"
+sources = ["proofs/self-check/StdMaps.lean", "nibli-reason/src/rules.rs"]
+contract = """Candidate finite-map and iterator contracts: lookup identifies
+exactly the stored binding, insertion changes only the selected key and returns
+the former value, key uniqueness is preserved, growth matches key absence, and
+lookup is independent of enumeration order. These are unbounded list-level
+models; binding allocation and representation invariants remains open."""
+probes = ["stratification"]
+tests = ["proofs/self-check/test_models.py"]
+theorem_files = ["proofs/self-check/StdMaps.lean"]
+theorems = [
+  "NibliSelfCheck.StdMaps.lookup_value_none_iff", "NibliSelfCheck.StdMaps.lookup_value_some_iff",
+  "NibliSelfCheck.StdMaps.lookup_eq", "NibliSelfCheck.StdMaps.insert_eq",
+  "NibliSelfCheck.StdMaps.put_value_keys", "NibliSelfCheck.StdMaps.put_value_unique",
+  "NibliSelfCheck.StdMaps.put_value_lookup", "NibliSelfCheck.StdMaps.put_value_length",
+  "NibliSelfCheck.StdMaps.insert_spec", "NibliSelfCheck.StdMaps.next_spec",
+  "NibliSelfCheck.StdMaps.lookup_spec", "NibliSelfCheck.StdMaps.lookup_value_order_independent",
+]
+
+[[obligation]]
+id = "primitive_sets_sort"
+sources = ["proofs/self-check/StdSetsSort.lean", "nibli-reason/src/rules.rs"]
+contract = """Candidate set and sort contracts: insertion preserves uniqueness,
+changes membership only by the inserted item, reports prior absence, and has
+exact cardinality growth. Ordered insertion preserves order. Sorting returns a
+permutation in comparator order with unchanged length. Comparator success and
+ordering laws are explicit preconditions; allocation/binding proofs remain open."""
+probes = ["stratification"]
+tests = ["proofs/self-check/test_models.py"]
+theorem_files = ["proofs/self-check/StdSetsSort.lean"]
+theorems = [
+  "NibliSelfCheck.StdSetsSort.contains_eq", "NibliSelfCheck.StdSetsSort.set_insert_eq",
+  "NibliSelfCheck.StdSetsSort.set_insert_spec", "NibliSelfCheck.StdSetsSort.ordered_insert_eq",
+  "NibliSelfCheck.StdSetsSort.sort_eq", "NibliSelfCheck.StdSetsSort.sort_spec",
+  "NibliSelfCheck.StdSetsSort.ordered_set_insert_eq", "NibliSelfCheck.StdSetsSort.ordered_set_insert_spec",
+]
+
+[[obligation]]
 id = "installation"
 sources = ["nibli-session/src/lib.rs", "nibli-reason/src/lib.rs", "nibli-reason/src/kb.rs", "nibli-reason/src/fact_store.rs"]
 contract = "Public adapters preserve prepared results, successful installation, atomic refusal, ordered batch and individual assertion agreement"

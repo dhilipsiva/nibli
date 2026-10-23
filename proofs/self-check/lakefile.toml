@@ -40,3 +40,9 @@ name = "SccCriterion"
 
 [[lean_lib]]
 name = "StdStrings"
+
+[[lean_lib]]
+name = "StdMaps"
+
+[[lean_lib]]
+name = "StdSetsSort"

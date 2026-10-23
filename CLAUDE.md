@@ -249,8 +249,9 @@ When analyzing or searching the codebase:
   owned names and explicit loops. Explicit string appends preserve diagnostic
   arguments that the extractor's formatting model erases; maps/sets/sorting/string
   models remain outside completed extraction. `just verify-self-check-library-models`
-  audits candidate UTF-8 string model contracts, including byte identity and size
-  limits. Its report explicitly leaves Rust std implementation, extraction bindings,
+  audits candidate UTF-8 string, finite-map, set, sorting, and iterator contracts,
+  including byte identity, exact membership and updates, and ordering. Its reports
+  explicitly leave Rust std implementation, extraction bindings,
   and full equivalence unverified. These component proofs do not establish full checker equivalence. See
   `mdbook/src/developer/self-check.md`; keep that boundary explicit.
 

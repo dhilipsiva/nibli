@@ -66,7 +66,10 @@ here first.
   arguments. Candidate string-library models now have checked contracts for
   exact UTF-8 bytes, copying, comparison, appending, and invalid/oversized input
   refusal. Their separate audit does not certify Rust std or install extraction
-  replacements.
+  replacements. Finite-map, set, sorting, and iterator contracts now cover exact
+  updates and membership, key uniqueness, iteration-order-independent lookup,
+  sorting permutations and order, and cardinality changes. Comparator contracts
+  are explicit; allocation and extraction binding obligations remain open.
 
 - **WIT 0.12.0** (`wit/world.wit`; the engine changes are in
   [ENGINE_UPGRADE_0_2.md](ENGINE_UPGRADE_0_2.md)): `list-assertion-records`

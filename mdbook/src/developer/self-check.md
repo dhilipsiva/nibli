@@ -189,7 +189,8 @@ their contents before the external formatting call. Avoiding that call keeps the
 diagnostic values available to a future proof; it does not itself verify string
 operations or their allocation behavior.
 
-`just verify-self-check-library-models` checks the candidate string models in
+`just verify-self-check-library-models` checks the candidate library models.
+The string models in
 `StdStrings.lean`. Their contracts preserve exact UTF-8 bytes, including Unicode
 and embedded NULs, through borrowing, conversion, cloning, and appending.
 Comparison uses unsigned UTF-8 bytes, and equality of the byte representations
@@ -200,8 +201,22 @@ The command checks the complete public theorem inventory, re-elaborates with
 warnings fatal, binds the report to source hashes, and audits transitive proof
 assumptions. Its report verifies model contracts only: it leaves native std
 implementation, extraction replacement installation, and full self-check
-equivalence false. Maps, sets, sorting, iterator adapters, and the binding of
-models to the extracted calls remain open.
+equivalence false.
+
+`StdMaps.lean` models finite-map entries in arbitrary enumeration order. Its
+contracts prove exact lookup, replacement of only the selected binding, return
+of the former value, preservation of unique keys, and growth only for a new key.
+Lookup is invariant under permutation of a valid entry list. The iterator
+contract returns exactly the next entry and reduces the remaining enumeration.
+`StdSetsSort.lean` proves membership, uniqueness, and exact cardinality changes
+for set insertion; ordered insertion preserves order. Sorting produces a
+permutation in comparator order with unchanged length. Comparisons remain
+monadic, and the proofs require explicit success, totality, and transitivity
+contracts rather than assuming arbitrary comparisons behave correctly.
+These collection models operate on mathematical lists. Binding their allocation
+and representation invariants to the extracted external calls remains open.
+The model runner audits each selected module separately and clears all selected
+reports before starting, so an early failure cannot leave a later stale success.
 
 `just verify-self-check-scc-stack` regenerates the kernel and checks
 `SccGraph.lean`, `SccKernelProofs.lean`, `SccInvariant.lean`, `SccTermination.lean`,
