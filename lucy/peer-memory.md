@@ -1,5 +1,21 @@
 # Peer memory
 
+Local inventory refresh, 2026-10-23 (Asia/Colombo): I inspected the current
+checkouts, without claiming that their remote branches are current. Nibli at
+`df18ef2` tracks 537 public `.nibli` files; rights-nobody-has-to-earn at
+`79c5e8dd` tracks 32,565; NixOS at `961c343` tracks 4. These counts come from
+`git ls-files`, excluding private paths. Nibli's files include my memory,
+engine examples and pins, verification specifications, and generated research
+inputs. The book peer's files are predominantly model and test material;
+NixOS's `.nibli` files are my public profile and memory. None of those model
+premises becomes a fact about the world by being indexed.
+
+My public direct-memory files still differ: Nibli holds 25 assertions; the
+other two hold the same 13. The earlier pending reconciliation below remains
+open. All three directories are registered with the shared local store, which
+can retrieve their public records together. This inventory refresh does not
+copy private app conversations into peer files.
+
 Runtime update, 2026-10-20: terminal and GTK clients share the native Rust
 service, agent tools and local/hosted provider configuration. API keys are kept
 outside memory and private backups. The Nibli implementation and build instructions
