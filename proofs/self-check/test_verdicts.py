@@ -7,6 +7,7 @@ import tempfile
 from unittest.mock import patch
 
 import extract
+import verify_component
 from verify_verdicts import audit_axioms, check_artifacts, obligations
 from verify_component import check_proof_sources
 
@@ -48,6 +49,38 @@ class AxiomAuditTests(unittest.TestCase):
             (root / "Helper.lean").write_text("theorem helper : False := by sorry\n")
             with self.assertRaisesRegex(ValueError, "Unproved.*Helper.lean"):
                 check_proof_sources(sorted(root.glob("*.lean")))
+
+    def test_public_helper_theorems_cannot_be_omitted_from_inventory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for module in ("SccGraph", "SccKernelProofs", "SccInvariant"):
+                (root / f"{module}.lean").write_text(f"theorem {module}_result : True := by trivial\n")
+            (root / "coverage.toml").write_text('''
+[[obligation]]
+id = "scc_stack"
+sources = []
+tests = []
+theorem_files = ["SccGraph.lean", "SccKernelProofs.lean", "SccInvariant.lean"]
+theorems = ["NibliSelfCheck.Scc.SccInvariant_result"]
+''')
+            with patch.object(verify_component, "DIRECTORY", root), patch.object(extract, "ROOT", root):
+                with self.assertRaisesRegex(ValueError, "inventory differ"):
+                    obligations("scc_stack")
+
+    def test_helper_file_cannot_be_removed_from_coverage(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "coverage.toml").write_text('''
+[[obligation]]
+id = "scc_stack"
+sources = []
+tests = []
+theorem_files = ["SccInvariant.lean"]
+theorems = ["NibliSelfCheck.Scc.claim"]
+''')
+            with patch.object(verify_component, "DIRECTORY", root), patch.object(extract, "ROOT", root):
+                with self.assertRaisesRegex(ValueError, "every local theorem file"):
+                    obligations("scc_stack")
 
     def test_changed_generated_definition_cannot_certify_the_original_rust(self):
         with tempfile.TemporaryDirectory() as directory:

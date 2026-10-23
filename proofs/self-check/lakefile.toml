@@ -25,3 +25,6 @@ name = "SccKernelProofs"
 
 [[lean_lib]]
 name = "SccGraph"
+
+[[lean_lib]]
+name = "SccInvariant"

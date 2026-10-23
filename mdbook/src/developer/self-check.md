@@ -176,7 +176,8 @@ without opaque Nibli definitions or external stubs; the surrounding name adapter
 is still outside the completed extraction.
 
 `just verify-self-check-scc-stack` regenerates the kernel and checks
-`SccKernelProofs.lean`. The proofs establish component-removal termination, the
+`SccGraph.lean`, `SccKernelProofs.lean`, and `SccInvariant.lean`.
+The proofs establish component-removal termination, the
 topmost-root stopping position, the exact reversed active suffix returned, and
 preservation of the state-buffer length. The complete removal preserves every
 state entry except the emitted nodes' stack flags, which it clears. These
@@ -204,14 +205,24 @@ fields; it defines no replacement traversal. `EmissionReady` binds the root
 preconditions to the actual active stack, DFS frames, and completed-component
 buffer.
 
-Establishing these preconditions throughout every DFS branch, proving traversal
-termination and complete partition coverage, and verifying the predicate-name
-adapter remain open. The component report covers emission under these
-preconditions and the local branch contracts; it does not certify the complete
-traversal or checker equivalence.
+`SccInvariant.lean` records discovery indices, active-stack order, live frames,
+completed components, reachability witnesses, and processed-edge bounds for each
+frame's active interval. The production allocation prefix establishes this
+invariant. From it, the proofs derive every local branch's bounds and the root
+emission preconditions, so one iteration of the extracted DFS body cannot fail.
+An empty DFS stack also implies no active vertices remain. Inspecting an already
+visited target preserves the complete invariant, both for active targets and
+targets in completed components.
+
+Preservation through discovery and frame completion, the outer-loop invariant,
+traversal termination and complete partition coverage, and the predicate-name
+adapter remain open. The initialization theorem takes the outer-loop proof as an
+explicit premise; single-step safety does not establish repeated-step safety
+until all branches preserve the invariant. The component report does not certify
+the complete traversal or checker equivalence.
 
 The shared component runner regenerates each component in its own Lean module,
-checks its theorem inventory, rechecks local proof helpers with warnings fatal,
+checks every local proof file's public theorem inventory, rechecks helpers with warnings fatal,
 and applies the same source/artifact drift and transitive axiom audits to both
 gates. The ordinary Rust suite also checks the indexed
 kernel against independent reachability on exhaustive small graphs, long chains

@@ -61,16 +61,34 @@ theorems = []
 [[obligation]]
 id = "scc_stack"
 sources = ["nibli-reason/src/dependency_graph.rs"]
-contract = "Production component removal terminates at the topmost active root, returns exactly the reversed active suffix, and preserves state entries except the emitted members' stack flags. Under explicit ordered-stack and root-frontier preconditions the emitted list is a maximal SCC without duplicates, the completed set remains forward closed, and remaining stack flags/order and discovery metadata are preserved. Local DFS branch contracts prove exact discovery, visited-edge, root/nonroot completion and empty-stack exit behavior, including arithmetic and buffer bounds. Root completion applies the SCC theorem to actual live and completed buffers. Establishing these preconditions throughout DFS, complete traversal termination/coverage, and the name adapter remain separate obligations."
+contract = """Production component removal terminates at the topmost active root,
+returns exactly the reversed active suffix, and preserves state entries except
+the emitted members' stack flags. Explicit ordered-stack and frontier conditions
+justify maximal SCC emission and completed-set closure. Local contracts cover
+discovery, visited edges, completion, and exit. The production allocation prefix
+establishes the DFS invariant; it implies single-step safety and root readiness,
+and the visited-edge branch preserves it. Empty DFS implies no active vertices.
+Preservation through discovery/completion, outer-loop invariants, complete
+termination/coverage, and the name adapter remain separate obligations."""
 probes = ["scc_kernel"]
 tests = ["nibli-reason/src/dependency_graph.rs", "nibli-reason/src/rules.rs"]
-theorem_file = "proofs/self-check/SccKernelProofs.lean"
+theorem_files = [
+  "proofs/self-check/SccGraph.lean", "proofs/self-check/SccKernelProofs.lean",
+  "proofs/self-check/SccInvariant.lean",
+]
 theorems = [
+  "NibliSelfCheck.Scc.reach_closed", "NibliSelfCheck.Scc.seal_component",
+  "NibliSelfCheck.Scc.rank_suffix_membership", "NibliSelfCheck.Scc.scc_of_same_members",
+  "NibliSelfCheck.Scc.rank_prefix_membership", "NibliSelfCheck.Scc.root_frontier_scc",
+  "NibliSelfCheck.Scc.root_frontier_closed",
   "NibliSelfCheck.Scc.pop_done", "NibliSelfCheck.Scc.pop_step",
   "NibliSelfCheck.Scc.pop_component_total", "NibliSelfCheck.Scc.pop_component_scc",
   "NibliSelfCheck.Scc.dfs_done", "NibliSelfCheck.Scc.dfs_discover_step",
   "NibliSelfCheck.Scc.dfs_seen_step", "NibliSelfCheck.Scc.dfs_finish_nonroot",
   "NibliSelfCheck.Scc.dfs_finish_root",
+  "NibliSelfCheck.Scc.invariant_root_ready", "NibliSelfCheck.Scc.initial_invariant",
+  "NibliSelfCheck.Scc.compute_sccs_initialize", "NibliSelfCheck.Scc.invariant_step_total",
+  "NibliSelfCheck.Scc.invariant_empty_dfs", "NibliSelfCheck.Scc.invariant_seen_preserved",
 ]
 
 [[obligation]]
@@ -87,7 +105,7 @@ sources = ["nibli-reason/src/reasoning.rs", "nibli-types/src/logic.rs"]
 contract = "Conjunction/disjunction/NAF totality, exact definitive cases, indeterminate and resource precedence with preserved reasons"
 probes = ["verdicts"]
 tests = ["nibli-reason/src/reasoning.rs"]
-theorem_file = "proofs/self-check/Verdicts.lean"
+theorem_files = ["proofs/self-check/Verdicts.lean"]
 theorems = [
   "NibliSelfCheck.conjunction_total", "NibliSelfCheck.disjunction_total",
   "NibliSelfCheck.negation_total", "NibliSelfCheck.conjunction_true_iff",

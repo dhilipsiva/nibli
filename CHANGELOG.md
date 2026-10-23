@@ -47,8 +47,10 @@ here first.
   checks, and a transitive axiom audit bind the result to production extraction.
   Local DFS branch contracts now cover discovery, visited targets, completion,
   and exit, including the caller's use of the SCC emission theorem and parent
-  update. Establishing the preconditions throughout traversal, complete SCC
-  correctness, and compiler/checker equivalence remain unproved.
+  update. The production allocation prefix establishes a DFS invariant that
+  implies single-step safety and root readiness; visited-edge handling preserves
+  it. Preservation through discovery/completion, outer-loop invariants, complete
+  SCC correctness, and compiler/checker equivalence remain unproved.
 
 - **WIT 0.12.0** (`wit/world.wit`; the engine changes are in
   [ENGINE_UPGRADE_0_2.md](ENGINE_UPGRADE_0_2.md)): `list-assertion-records`

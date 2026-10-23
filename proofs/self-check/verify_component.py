@@ -24,9 +24,9 @@ COMPONENTS = {
         "label": "production verdict algebra",
     },
     "scc_stack": {
-        "probe": "scc_kernel", "module": "SccKernelProofs", "namespace": "NibliSelfCheck.Scc",
-        "helpers": ["SccGraph"],
-        "label": "production SCC emission and DFS branch contracts (not the complete traversal)",
+        "probe": "scc_kernel", "module": "SccInvariant", "namespace": "NibliSelfCheck.Scc",
+        "helpers": ["SccGraph", "SccKernelProofs"],
+        "label": "production SCC branches and partial invariant proof (not the complete traversal)",
     },
 }
 
@@ -58,14 +58,17 @@ def obligations(component_id="verdict_algebra"):
     component = COMPONENTS[component_id]
     obligation = next(o for o in coverage["obligation"] if o["id"] == component_id)
     expected = obligation["theorems"]
-    path = DIRECTORY / f"{component['module']}.lean"
-    if obligation["theorem_file"] != str(path.relative_to(extract.ROOT)):
-        raise ValueError("Coverage names a different theorem file")
-    declared = re.findall(r"^theorem\s+(\w+)", path.read_text(), re.M)
+    paths = [DIRECTORY / f"{module}.lean" for module in
+             component.get("helpers", []) + [component["module"]]]
+    if obligation["theorem_files"] != [str(path.relative_to(extract.ROOT)) for path in paths]:
+        raise ValueError("Coverage must name every local theorem file")
+    declared = [name for path in paths for name in re.findall(r"^theorem\s+(\w+)", path.read_text(), re.M)]
+    if len(declared) != len(set(declared)):
+        raise ValueError("Duplicate public theorem names across local files")
     if not expected or len(expected) != len(set(expected)):
         raise ValueError("The required theorem list is empty or duplicated")
     if {f"{component['namespace']}.{name}" for name in declared} != set(expected):
-        raise ValueError(f"{path.name} and the required theorem inventory differ")
+        raise ValueError("Local theorem files and the required theorem inventory differ")
     return expected
 
 

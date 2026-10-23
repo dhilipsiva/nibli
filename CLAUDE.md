@@ -233,9 +233,11 @@ When analyzing or searching the codebase:
   proves the production verdict algebra; `just verify-self-check-scc-stack` extracts
   the shared indexed Tarjan kernel and proves component removal, state preservation,
   maximal SCC emission under explicit DFS frontier preconditions, and local DFS
-  branch contracts for discovery, edge handling, completion and exit. Establishing
-  the preconditions throughout traversal, termination/coverage, and the name
-  adapter remain open. `just verify-self-check-extraction`
+  branch contracts for discovery, edge handling, completion and exit. The DFS
+  invariant is established by the production allocation prefix, implies single-step
+  safety/root readiness, and is preserved by visited-edge handling. Preservation
+  through discovery/completion, outer-loop invariants, termination/coverage, and
+  the name adapter remain open. `just verify-self-check-extraction`
   probes the remaining implementation and currently fails on unsupported Aeneas
   constructs. These component proofs do not establish full checker equivalence. See
   `mdbook/src/developer/self-check.md`; keep that boundary explicit.
