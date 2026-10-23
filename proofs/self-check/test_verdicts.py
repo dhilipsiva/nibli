@@ -1,6 +1,9 @@
 """The proof gate must reject missing evidence and additional assumptions."""
 
+from contextlib import redirect_stderr
 import hashlib
+import io
+import json
 import unittest
 from pathlib import Path
 import tempfile
@@ -41,6 +44,27 @@ class AxiomAuditTests(unittest.TestCase):
     def test_coverage_references_live_source_and_all_component_theorems(self):
         self.assertTrue(obligations())
         self.assertTrue(obligations("scc_stack"))
+        self.assertTrue(obligations("stratification_scan"))
+
+    def test_failed_scan_clears_its_success_without_overwriting_kernel_report(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            kernel = root / "scc_kernel-report.json"
+            scan = root / "stratification_scan-report.json"
+            prior = '{"component":"scc_stack","component_verified":true}'
+            kernel.write_text(prior)
+            scan.write_text('{"component_verified":true}')
+            with patch.object(extract, "OUTPUT", root), \
+                    patch.object(extract, "environment", return_value={}), \
+                    patch.object(extract, "source_hashes", return_value={}), \
+                    patch.object(verify_component, "prove", side_effect=ValueError("proof failed")), \
+                    redirect_stderr(io.StringIO()):
+                self.assertEqual(verify_component.main("stratification_scan"), 1)
+            report = json.loads(scan.read_text())
+            self.assertEqual(report["component"], "stratification_scan")
+            self.assertIs(report["component_verified"], False)
+            self.assertIs(report["self_check_equivalence_verified"], False)
+            self.assertEqual(kernel.read_text(), prior)
 
     def test_unproved_local_helper_fails_even_with_an_empty_public_proof(self):
         with tempfile.TemporaryDirectory() as directory:

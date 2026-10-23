@@ -156,6 +156,7 @@ lake exe cache get
 cd ../..
 just verify-self-check-verdicts
 just verify-self-check-scc-stack
+just verify-self-check-stratification-scan
 just verify-self-check-extraction
 ```
 
@@ -179,15 +180,15 @@ The name adapter and negative-edge scan use owned temporary names and explicit
 loops. The scan retains the first diagnostic in the existing traversal order
 and returns it after the loops. The named path passes fresh Charon/Aeneas
 extraction, Lean compilation, and binding assumption audits using the reviewed
-`stratifier-std-v1` profile. This is extraction under library specifications;
-the predicate-name adapter and negative-edge decision still need correctness
-proofs.
+`stratifier-std-v1` profile. The negative-edge scan now has the component proof
+described below. Correctness of the predicate-name adapter and its composition
+with the indexed SCC kernel remain open.
 
 The diagnostic uses explicit string appends with the same text and predicate
 names. The pinned Aeneas formatting model represents arguments as `Unit`, erasing
 their contents before the external formatting call. Avoiding that call keeps the
-diagnostic values available to a future proof; it does not itself verify string
-operations or their allocation behavior.
+diagnostic values available to the scan proof. String operations use the reviewed
+library models, with explicit allocation-size preconditions.
 
 `just verify-self-check-library-models` checks the library model contracts.
 `StdStrings.lean` preserves exact UTF-8 bytes, including Unicode
@@ -319,16 +320,35 @@ The gate conservatively checks every source line mentioning the modeled checker
 predicates, including their declarations and violation consumer. This catches
 source drift; it is not a parser or evaluator refinement proof.
 
-The predicate-name adapter, native negative-edge scan, dependency extraction,
-and production evaluation of the Horn clauses remain separate obligations. The
+The predicate-name adapter, dependency extraction, and production evaluation of
+the Horn clauses remain separate obligations. The
 component report certifies the indexed SCC kernel and its mathematical criterion
 bridge under the stated graph precondition and trusted extraction/library
 boundary; it does not certify the whole stratifier or checker.
 
-The shared component runner regenerates each component in its own Lean module,
+`just verify-self-check-stratification-scan` checks `StratificationScan.lean`
+against the same combined production extraction. It proves that the native
+member-set builder returns exactly the supplied component's names, without
+duplicates. The native edge, vertex, and component loops terminate by consuming
+their remaining iterator entries. They preserve an existing error and return
+the exact first diagnostic in component, vertex, and stored outgoing-edge order,
+including the original UTF-8 predicate names.
+
+For a graph with unique map keys, `component_scan_criterion` proves that the scan
+returns no diagnostic exactly when no supplied component contains both endpoints
+of a negative edge. The result applies to arbitrary finite components; it does
+not assume the name adapter produces correct SCCs. Cloned names and possible
+diagnostics must fit the string model's allocation-size bound. Concrete allocator
+behavior remains outside the imported library specifications. Connecting this
+scan to the adapter and indexed partition theorem is still required for the
+whole stratifier.
+
+The shared component runner regenerates each component's production definitions,
 checks every local proof file's public theorem inventory, rechecks helpers with warnings fatal,
-and applies the same source/artifact drift and transitive axiom audits to both
-gates. The ordinary Rust suite also checks the indexed
+and applies the same source/artifact drift and transitive axiom audits to these
+gates. Components sharing an extraction probe have separate proof reports and
+logs, so a failed scan gate cannot overwrite the kernel's report or retain its
+own earlier success. The ordinary Rust suite also checks the indexed
 kernel against independent reachability on exhaustive small graphs, long chains
 and cycles, and the existing compiler/checker differential corpus.
 

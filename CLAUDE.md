@@ -241,8 +241,13 @@ When analyzing or searching the codebase:
   in-bounds edge targets. Its partition's internal-negative-edge criterion is
   equivalent to the inductive model of the checker's Horn closure clauses; a
   conservative source check requires review when that fragment changes. The name
-  adapter, native negative-edge scan, dependency extraction, and evaluator
-  refinement remain open. `just verify-self-check-extraction`
+  adapter, dependency extraction, and evaluator refinement remain open.
+  `just verify-self-check-stratification-scan` proves the native named scan's
+  termination, exact first diagnostic, and rejection precisely when a supplied
+  component has an internal negative edge. It requires unique graph keys and
+  explicit string-size bounds under the reviewed library models. Connecting the
+  scan to the adapter and indexed SCC theorem remains open.
+  `just verify-self-check-extraction`
   probes the remaining implementation and currently fails on unsupported Aeneas
   constructs or unimplemented external-library templates. The named stratifier
   translates after replacing borrowed-name containers and iterator closures with

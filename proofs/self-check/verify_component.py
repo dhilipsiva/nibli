@@ -29,6 +29,12 @@ COMPONENTS = {
         "helpers": ["SccGraph", "SccKernelProofs", "SccInvariant", "SccTermination", "SccTraversal"],
         "label": "production indexed SCC traversal and cycle criterion",
     },
+    "stratification_scan": {
+        "probe": "scc_kernel", "module": "StratificationScan",
+        "namespace": "NibliSelfCheck.Stratification",
+        "output_prefix": "stratification_scan",
+        "label": "production named negative-edge scan",
+    },
 }
 
 
@@ -101,6 +107,7 @@ def check_proof_sources(paths):
 
 def prove(config, env, report, component_id):
     component = COMPONENTS[component_id]
+    prefix = component.get("output_prefix", component["probe"])
     expected = obligations(component_id)
     check_lean_pins(config)
     if component_id == "scc_stack":
@@ -118,7 +125,7 @@ def prove(config, env, report, component_id):
     )
 
     def command(name, argv, timeout=300):
-        log = extract.OUTPUT / f"{component['probe']}-{name}.log"
+        log = extract.OUTPUT / f"{prefix}-{name}.log"
         step = extract.run(argv, DIRECTORY, log, env, timeout)
         report[name] = step
         if step["status"] != "ok":
@@ -146,11 +153,12 @@ def prove(config, env, report, component_id):
 
 def main(component_id):
     component = COMPONENTS[component_id]
+    prefix = component.get("output_prefix", component["probe"])
     config = tomllib.loads(extract.CONFIG.read_text())
     try:
         env = extract.environment(config)
         with extract.exclusive_output():
-            report_path = extract.OUTPUT / f"{component['probe']}-report.json"
+            report_path = extract.OUTPUT / f"{prefix}-report.json"
             sources = extract.source_hashes()
             report = {
                 "schema": 1, "component": component_id, "component_verified": False,

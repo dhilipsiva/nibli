@@ -760,10 +760,16 @@ verify-self-check-verdicts:
     nix develop ./proofs/self-check --command python3 proofs/self-check/verify_verdicts.py
 
 # Extract the live SCC kernel and prove its partition and Horn cycle criterion.
-# The name adapter, negative-edge scan and full checker equivalence remain open.
+# The name adapter and full checker equivalence remain open.
 verify-self-check-scc-stack:
     nix develop ./proofs/self-check --command python3 -m unittest discover -s proofs/self-check -p 'test_*.py' -v
     nix develop ./proofs/self-check --command python3 proofs/self-check/verify_component.py --component scc_stack
+
+# Prove the live named negative-edge scan, its first diagnostic and its criterion.
+# Component membership is an input; adapter/SCC composition remains open.
+verify-self-check-stratification-scan:
+    nix develop ./proofs/self-check --command python3 -m unittest discover -s proofs/self-check -p 'test_*.py' -v
+    nix develop ./proofs/self-check --command python3 proofs/self-check/verify_component.py --component stratification_scan
 
 # Audit candidate primitive-library models. This does not certify Rust std
 # internals or install extraction replacements.

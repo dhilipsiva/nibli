@@ -113,6 +113,44 @@ theorems = [
 ]
 
 [[obligation]]
+id = "stratification_scan"
+sources = ["nibli-reason/src/rules.rs"]
+contract = """Production named negative-edge scan over arbitrary finite input
+components. The native member-set builder returns exactly the component's names
+without duplicates. The edge, node and component loops terminate, preserve an
+existing error, and return the exact first diagnostic in component/vertex/stored
+edge order. The text preserves the actual UTF-8 names. For a graph with unique
+keys, no diagnostic is returned exactly when no supplied component contains both
+endpoints of a negative edge. Cloned names and possible diagnostics must satisfy
+the explicit string allocation-size bound; collection counts follow from the
+input vectors. These results use the reviewed standard-library boundary. The
+name adapter, SCC composition, concrete allocation and full compiler/checker
+equivalence remain separate obligations."""
+probes = ["scc_kernel"]
+tests = ["nibli-reason/src/rules.rs", "proofs/self-check/test_verdicts.py"]
+theorem_files = ["proofs/self-check/StratificationScan.lean"]
+theorems = [
+  "NibliSelfCheck.Stratification.slice_next_spec",
+  "NibliSelfCheck.Stratification.vec_next_spec",
+  "NibliSelfCheck.Stratification.string_set_contains",
+  "NibliSelfCheck.Stratification.string_map_get",
+  "NibliSelfCheck.Stratification.string_set_insert",
+  "NibliSelfCheck.Stratification.build_members_total",
+  "NibliSelfCheck.Stratification.diagnostic_spec",
+  "NibliSelfCheck.Stratification.edge_scan_total",
+  "NibliSelfCheck.Stratification.keep_first_assoc",
+  "NibliSelfCheck.Stratification.keep_first_none_iff",
+  "NibliSelfCheck.Stratification.first_edge_members",
+  "NibliSelfCheck.Stratification.first_edge_none_iff",
+  "NibliSelfCheck.Stratification.node_scan_total",
+  "NibliSelfCheck.Stratification.first_node_members",
+  "NibliSelfCheck.Stratification.first_node_none_iff",
+  "NibliSelfCheck.Stratification.component_scan_total",
+  "NibliSelfCheck.Stratification.first_component_none_iff",
+  "NibliSelfCheck.Stratification.component_scan_criterion",
+]
+
+[[obligation]]
 id = "primitive_strings"
 sources = ["proofs/self-check/StdStrings.lean", "nibli-reason/src/rules.rs"]
 contract = """Candidate library model contracts for exact UTF-8 byte views,

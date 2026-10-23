@@ -39,6 +39,9 @@ name = "SccTraversal"
 name = "SccCriterion"
 
 [[lean_lib]]
+name = "StratificationScan"
+
+[[lean_lib]]
 name = "StdStrings"
 
 [[lean_lib]]
