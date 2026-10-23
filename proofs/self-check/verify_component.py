@@ -24,9 +24,9 @@ COMPONENTS = {
         "label": "production verdict algebra",
     },
     "scc_stack": {
-        "probe": "scc_kernel", "module": "SccTermination", "namespace": "NibliSelfCheck.Scc",
-        "helpers": ["SccGraph", "SccKernelProofs", "SccInvariant"],
-        "label": "production SCC inner DFS traversal (outer traversal unproved)",
+        "probe": "scc_kernel", "module": "SccTraversal", "namespace": "NibliSelfCheck.Scc",
+        "helpers": ["SccGraph", "SccKernelProofs", "SccInvariant", "SccTermination"],
+        "label": "production indexed SCC traversal",
     },
 }
 

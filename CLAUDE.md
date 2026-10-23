@@ -236,9 +236,10 @@ When analyzing or searching the codebase:
   branch contracts for discovery, edge handling, completion and exit. The DFS
   invariant is established by the production allocation prefix, implies single-step
   safety/root readiness, and is preserved by every inner DFS branch, including
-  root/nonroot completion. The actual inner DFS loop terminates from an invariant
-  state with both logical stacks empty. Outer-loop invariants, termination/coverage, and
-  the name adapter remain open. `just verify-self-check-extraction`
+  root/nonroot completion. The complete indexed kernel terminates and returns a
+  partition into maximal SCCs, covering every vertex exactly once, for graphs with
+  in-bounds edge targets. The name adapter, negative-edge decision, and dependency
+  extraction remain open. `just verify-self-check-extraction`
   probes the remaining implementation and currently fails on unsupported Aeneas
   constructs. These component proofs do not establish full checker equivalence. See
   `mdbook/src/developer/self-check.md`; keep that boundary explicit.

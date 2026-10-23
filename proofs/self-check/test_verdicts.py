@@ -53,15 +53,15 @@ class AxiomAuditTests(unittest.TestCase):
     def test_public_helper_theorems_cannot_be_omitted_from_inventory(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            for module in ("SccGraph", "SccKernelProofs", "SccInvariant", "SccTermination"):
+            for module in ("SccGraph", "SccKernelProofs", "SccInvariant", "SccTermination", "SccTraversal"):
                 (root / f"{module}.lean").write_text(f"theorem {module}_result : True := by trivial\n")
             (root / "coverage.toml").write_text('''
 [[obligation]]
 id = "scc_stack"
 sources = []
 tests = []
-theorem_files = ["SccGraph.lean", "SccKernelProofs.lean", "SccInvariant.lean", "SccTermination.lean"]
-theorems = ["NibliSelfCheck.Scc.SccTermination_result"]
+theorem_files = ["SccGraph.lean", "SccKernelProofs.lean", "SccInvariant.lean", "SccTermination.lean", "SccTraversal.lean"]
+theorems = ["NibliSelfCheck.Scc.SccTraversal_result"]
 ''')
             with patch.object(verify_component, "DIRECTORY", root), patch.object(extract, "ROOT", root):
                 with self.assertRaisesRegex(ValueError, "inventory differ"):
@@ -75,7 +75,7 @@ theorems = ["NibliSelfCheck.Scc.SccTermination_result"]
 id = "scc_stack"
 sources = []
 tests = []
-theorem_files = ["SccTermination.lean"]
+theorem_files = ["SccTraversal.lean"]
 theorems = ["NibliSelfCheck.Scc.claim"]
 ''')
             with patch.object(verify_component, "DIRECTORY", root), patch.object(extract, "ROOT", root):

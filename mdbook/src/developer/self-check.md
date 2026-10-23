@@ -176,7 +176,8 @@ without opaque Nibli definitions or external stubs; the surrounding name adapter
 is still outside the completed extraction.
 
 `just verify-self-check-scc-stack` regenerates the kernel and checks
-`SccGraph.lean`, `SccKernelProofs.lean`, `SccInvariant.lean`, and `SccTermination.lean`.
+`SccGraph.lean`, `SccKernelProofs.lean`, `SccInvariant.lean`, `SccTermination.lean`,
+and `SccTraversal.lean`.
 The proofs establish component-removal termination, the
 topmost-root stopping position, the exact reversed active suffix returned, and
 preservation of the state-buffer length. The complete removal preserves every
@@ -230,12 +231,21 @@ word bounds, and live DFS depth. Discovery decreases the first part, inspecting 
 visited target decreases the second, and completion decreases the third. The
 `dfs_total` theorem combines these decreases with invariant preservation through
 the extracted loop's well-founded recursion and returns with both logical stacks
-empty.
+empty. It also preserves every previously discovered vertex.
 
-The outer-loop initialization, preservation, termination, and complete partition
-coverage, plus the predicate-name adapter, remain open. The allocation-prefix
-theorem takes the outer-loop proof as an explicit premise. The component report
-does not certify the complete traversal or checker equivalence.
+`SccTraversal.lean` closes the indexed kernel's outer-loop obligations. Starting
+a fresh root establishes the DFS invariant from empty stacks. Each scan iteration
+advances the cursor and preserves discovery of the scanned prefix, including the
+new root after DFS. The scan terminates at the graph length. Composing this with
+the production allocation prefix gives `compute_sccs_correct`: for every graph
+whose edge targets are in bounds, the actual indexed kernel terminates and returns
+a partition into nonempty, valid maximal SCCs. Every graph vertex appears exactly
+once across the components.
+
+The predicate-name adapter, negative-edge decision, dependency extraction, and
+compiler/checker equivalence remain separate obligations. The component report
+certifies the indexed SCC kernel under the stated graph precondition and trusted
+extraction/library boundary; it does not certify the whole stratifier or checker.
 
 The shared component runner regenerates each component in its own Lean module,
 checks every local proof file's public theorem inventory, rechecks helpers with warnings fatal,

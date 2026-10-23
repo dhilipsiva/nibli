@@ -31,3 +31,6 @@ name = "SccInvariant"
 
 [[lean_lib]]
 name = "SccTermination"
+
+[[lean_lib]]
+name = "SccTraversal"
