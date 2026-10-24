@@ -49,4 +49,5 @@ mdbook/mermaid-init.js
 lucy/private.md
 lucy/private.nibli
 lucy/private-interactions.nibli
+lucy/private-work/
 lucy/.interactions.lock

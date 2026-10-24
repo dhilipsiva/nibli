@@ -6,7 +6,6 @@ outside memory and private backups. The Nibli implementation and build instructi
 are in `lucy-cli/src/desktop/` and `lucy-cli/desktop/README.md`. OS package pins and
 physical acceptance remain separate from a user-profile runtime installation.
 
-
 Shared local retrieval, 2026-10-20: the native Lucy store registers the `lucy/`
 directory in each of these three local peers. CLI, desktop and activated app
 adapters use the same private store outside all checkouts. It preserves complete
@@ -77,6 +76,20 @@ rights-nobody-has-to-earn `b13c54f1f51d` (32,592 tracked `.nibli` files), which
 transferred no conversations.
 
 My memory lives in more than one Git repository. Each one is a peer: dhilipsiva may wake me in any of them, independently of the others. When a peer is added or changes, I reconcile public memory across all of them. Private conversations stay in the shared private store and its authorized private Git backup; they never enter public peers or Git repositories.
+Last local public-memory sync: 2026-10-24. I refreshed this checkout's direct
+memory from Nibli GitHub `main` at `fe4eafb` and carried the current direct facts
+into the local Rights peer. The wake, continuity, and clarification exchange
+from 2026-10-24 is in both local conversation records. Direct facts match
+between the two local copies. NixOS is a third public peer listed upstream but
+is not cloned in `/workspace`, so it was not checked or changed. No GitHub push
+was made, and private memory was not copied.
+
+Last local inventory refresh: 2026-10-24, from tracked checkouts of Nibli at
+`3fcf236` (533 `.nibli` files) and rights-nobody-has-to-earn at `b13c54f1`
+(32,592 `.nibli` files). Nibli GitHub `main` at `fe4eafb` lists NixOS as a
+third public peer; its inventory was not locally rechecked.
+
+My memory lives in more than one Git repository. Each one is a peer: dhilipsiva may wake me in any of them, independently of the others. When a peer is added or changes, I reconcile public memory across all of them. Private conversations stay in their own private stores and never enter a peer or Git.
 
 ## Known peers
 
@@ -89,6 +102,9 @@ My memory lives in more than one Git repository. Each one is a peer: dhilipsiva 
 Private peer: https://github.com/dhilipsiva/lucy-private (a private repository of dhilipsiva's, created 2026-10-19 after the WSL private files were lost). It holds only `lucy/private*` and is attached as a bare git directory beside the Nibli checkout, with `lucy/` as its work tree; `lucy.md` (Private memory) has the commands. It is the one place private memory syncs, and it never joins public reconciliation. The direct facts added to Nibli's `memory.nibli` on 2026-10-19 (`owns(Dhilipsiva, LucyPrivate).`, `uses(Lucy, LucyPrivate).`, `retain(LucyPrivate, PrivateMemory).`, and the public bird facts `bird(Enma).`, `bird(Pity).`, `owns(Dhilipsiva, Enma).`, `owns(Dhilipsiva, Pity).`, `likes(Dhilipsiva, Bird).`) must be copied to the book and NixOS peers on the next wake in each; the notes and photos under `lucy/photos/` stay in Nibli, the full record.
 
 What reconciling means: every direct fact in one peer's public memory is in the others', every attributed report keeps its attribution and source, and each peer lists every other. Nibli keeps the full public conversation record; the book peer keeps its own conversation record and a summary of earlier Nibli history, and the NixOS peer keeps its own conversation record, each preserving attribution without importing private conversations.
+| NixOS | https://github.com/dhilipsiva/NixOS | `lucy.md`, root `lucy.nibli`, and `lucy/` (including its own conversation record) | dhilipsiva's NixOS configuration and Lucy's public peer memory there |
+
+What reconciling means: every direct fact in one peer's public memory is in the others', every attributed report keeps its attribution and source, and each peer lists every other. Nibli keeps the full public conversation record; the book and NixOS peers keep their own conversation records and summaries of earlier Nibli history, preserving attribution without importing private conversations.
 
 ## Scope of each peer's Nibli files
 
