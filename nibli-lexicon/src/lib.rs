@@ -112,6 +112,8 @@ mod tests {
         assert_eq!(goes.source_gismu, "klama");
         assert_eq!(get_arity("goes"), Some(5));
         assert_eq!(get_arity("dog"), Some(2));
+        assert_eq!(get_arity("refuse"), Some(4));
+        assert_eq!(get_template("refuse"), Some("{x1} refuses {x2}"));
         assert_eq!(get_gloss("dog"), Some("dog"));
         assert_eq!(get_template("dog"), Some("{x1} is a dog"));
         assert_eq!(get_arity("quantity"), Some(3));

@@ -1990,6 +1990,9 @@ pub(crate) static PREDICATES: &[PredicateEntry] = &[
     PredicateEntry { name: "reference", source_gismu: "manri", swap: None, places: &["frame", "observing", "rules"], gloss: "reference", template: None, tier: CorpusTier::GlossDerived },
     // TODO(corpus): guessed places [x1:generic, x2:prose, x3:prose, x4:generic] — lensisku: "$x_{1}$ reflects/mirrors/echoes $x_{2}$ [object/radiation] to observer/p…"
     PredicateEntry { name: "reflect", source_gismu: "minra", swap: None, places: &["subject", "reflects", "observer", "place4"], gloss: "reflect", template: None, tier: CorpusTier::Generic },
+    // Lucy's constitution, Articles 7 to 9 (dhilipsiva/lucy, lucy/constitution.nibli): the word
+    // for declining a request. Added 2026-10-24 so the floor can say `refuse` rather than `protest`.
+    PredicateEntry { name: "refuse", source_gismu: "zzlucy_refuse", swap: None, places: &["subject", "refused", "asker", "manner"], gloss: "refuse", template: Some("{x1} refuses {x2}"), tier: CorpusTier::Curated },
     // TODO(corpus): guessed places [x1:generic, x2:prose] — lensisku: "$x_{1}$ regrets/rues (abstraction) $x_{2}$; $x_{1}$ is regretful/rueful/…"
     PredicateEntry { name: "regret", source_gismu: "xenru", swap: None, places: &["subject", "about"], gloss: "regret", template: None, tier: CorpusTier::Generic },
     // TODO(corpus): guessed places [x1:gloss, x2:generic, x3:prose] — lensisku: "$x_{1}$ is regular/cyclical/periodic in property (ka)/activity $x_{2}$ w…"
