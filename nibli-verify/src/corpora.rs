@@ -6,18 +6,22 @@
 //! switchover).
 
 /// EU GDPR compliance knowledge base (`gdpr.nibli`).
+#[cfg(feature = "repo-corpora")]
 pub const GDPR: &str = include_str!("../../gdpr.nibli");
 
 /// Drug-drug interaction safety knowledge base (`drug-interactions.nibli`).
+#[cfg(feature = "repo-corpora")]
 pub const DDI: &str = include_str!("../../drug-interactions.nibli");
 
 /// Utopia constitutional provocation (`utopia.nibli`) — deontic floor + NAF audit /
 /// confinement rules. Vampire sees the classical Horn sub-slice; clingo sees the
 /// stratified-NAF + abstraction-opaque ASP-mappable whole.
+#[cfg(feature = "repo-corpora")]
 pub const UTOPIA: &str = include_str!("../../utopia.nibli");
 
 /// The repository README examples corpus (`readme.nibli`) — also the source of the
 /// Transparency Triad UI presets. Not oracle-mapped as a verdict corpus.
+#[cfg(feature = "repo-corpora")]
 pub const README: &str = include_str!("../../readme.nibli");
 
 /// The non-comment (`#`), non-blank, trimmed lines of a corpus.
@@ -29,7 +33,7 @@ pub fn lines(corpus: &str) -> Vec<&str> {
         .collect()
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "repo-corpora"))]
 mod tests {
     use super::*;
 

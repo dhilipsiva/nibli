@@ -1,5 +1,7 @@
 //! Static semantic verification over reified parser trees. The subject is never
 //! asserted into the checker: only its structural facts are admitted.
+//! Downstream vendored consumers may set `default-features = false` to avoid
+//! the optional repository-root case-study corpora; the checker spec stays embedded.
 use nibli_kr::{
     parser::parse_statements,
     reify::{self, InputIntent},

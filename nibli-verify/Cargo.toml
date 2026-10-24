@@ -10,6 +10,12 @@ homepage.workspace = true
 # Tier Z (RELEASING.md): a CI gate, never to crates.io.
 publish = false
 
+[features]
+# The repository's differential suite keeps its exact live corpora by default.
+# Downstream static-check consumers can omit repo-root file inclusions when vendoring.
+default = ["repo-corpora"]
+repo-corpora = []
+
 [dependencies]
 nibli-engine = { workspace = true }
 nibli-types = { workspace = true }
@@ -30,6 +36,7 @@ nibli-lexicon = { workspace = true }
 [[bin]]
 name = "nibli-verify"
 path = "src/main.rs"
+required-features = ["repo-corpora"]
 
 [lib]
 name = "nibli_verify"
