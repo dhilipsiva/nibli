@@ -117,7 +117,7 @@ the cost of enumerating anonymous witnesses in recursive diagnostic relations.
 ## Regression coverage
 
 `nibli-verify/tests/self_check.rs` checks the live specification's own AST,
-Utopia, GDPR, drug interactions, Lucy's constitution, and the adjudication
+Utopia, GDPR, drug interactions, and the adjudication
 policy. It also exercises the KR construct inventory in assertion and query
 modes, hostile mutations, declaration and scope edge cases, seeded dependency
 graphs, and the native 32-clause DNF boundary. The self-check content pins

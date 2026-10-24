@@ -21,7 +21,7 @@ here first.
   scores; and a learned directory-inspection policy before native file reads.
   `lucy self-model` exposes reported forecasts, outcomes, audit, and history.
   This changes planning behavior without changing model weights or establishing
-  consciousness. See [SELF_MODEL.md](lucy-cli/SELF_MODEL.md).
+  consciousness. See [SELF_MODEL.md](https://github.com/dhilipsiva/lucy/blob/main/lucy-cli/SELF_MODEL.md).
 - **Lucy D** (`lucy-cli`, bin `lucy`; Tier Z, `publish = false`): a persistent
   identity whose memory is plain nibli text (`constitution.nibli`,
   `memory.nibli`, `journal.md`, optional `private.*` twins), loaded into a

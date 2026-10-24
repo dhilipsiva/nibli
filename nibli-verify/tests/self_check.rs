@@ -1,12 +1,9 @@
 //! The oracle is the shipped native assertion ingress. The checker receives
 //! only the raw parser tree and lexical metadata, never native verdicts/IR.
-use nibli_kr::{
-    parser::parse_statements,
-    reify::{self, InputIntent},
-};
+use nibli_kr::reify::InputIntent;
 use nibli_session::CoreSession;
-use nibli_types::logic::{LogicBuffer, LogicalTerm, QueryResult};
-use std::sync::{Mutex, MutexGuard, OnceLock};
+use nibli_types::logic::QueryResult;
+use std::sync::{Mutex, MutexGuard};
 
 const CHECKER: &str = include_str!("../spec/nibli_checker.nibli");
 
@@ -27,40 +24,8 @@ impl std::ops::Deref for Checker {
 fn checker(subject: &str, intent: InputIntent) -> Checker {
     static SERIAL: Mutex<()> = Mutex::new(());
     let serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    static RULES: OnceLock<Vec<(LogicBuffer, String)>> = OnceLock::new();
-    let mut compiled = RULES
-        .get_or_init(|| {
-            let session = CoreSession::new();
-            parse_statements(CHECKER)
-                .unwrap()
-                .iter()
-                .map(|s| {
-                    let text = &CHECKER[s.span.clone()];
-                    (
-                        session
-                            .compile_text(text)
-                            .unwrap_or_else(|e| panic!("{text}\n{e:?}")),
-                        text.to_owned(),
-                    )
-                })
-                .collect()
-        })
-        .clone();
-    let tree = parse_statements(subject)
-        .unwrap_or_else(|e| panic!("subject does not parse: {e:?}\n{subject}"));
-    let facts = reify::reify(&tree, intent).unwrap();
-    for fact in facts.facts {
-        let args = fact
-            .arguments
-            .into_iter()
-            .map(LogicalTerm::Constant)
-            .collect::<Vec<_>>();
-        let buffer = nibli_semantics::compile_injected_fact(fact.relation, &args).unwrap();
-        compiled.push((buffer, format!("reified {}", fact.relation)));
-    }
-    let (kb, _) = nibli_reason::KnowledgeBase::from_compiled_batch(compiled).unwrap();
     Checker {
-        session: CoreSession::with_kb(kb),
+        session: nibli_verify::static_check::session(subject, intent).unwrap(),
         _serial: serial,
     }
 }
@@ -160,22 +125,6 @@ fn stage_one_self_check() {
     ] {
         assert!(!verdict(&check, query), "self-check violation: {query}");
     }
-}
-
-#[test]
-fn lucy_evidence_checker_passes_the_static_self_checker() {
-    let source = include_str!("../../lucy-cli/constitution/self_model.nibli");
-    let check = checker(source, InputIntent::Assertion);
-    assert!(verdict(&check, "checker_complete(\"program:0\")."));
-    assert!(verdict(&check, "checker_accepts(\"program:0\")."));
-    assert!(!verdict(
-        &check,
-        "advisory_kind(\"program:0\", \"range_restriction\")."
-    ));
-    assert!(!verdict(
-        &check,
-        "advisory_kind(\"program:0\", \"schema_conflict\")."
-    ));
 }
 
 #[test]
@@ -300,10 +249,6 @@ fn stage_two_shipped_programs() {
         ("utopia", nibli_verify::corpora::UTOPIA),
         ("gdpr", nibli_verify::corpora::GDPR),
         ("drug interactions", nibli_verify::corpora::DDI),
-        (
-            "Lucy constitution",
-            include_str!("../../lucy-cli/constitution/lucy.nibli"),
-        ),
         (
             "adjudication policy",
             include_str!("../../examples/adjudication/policy.nibli"),

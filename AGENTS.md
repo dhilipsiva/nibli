@@ -4,13 +4,12 @@ Read [README.md](README.md) for what nibli is and how to run it, and [CLAUDE.md]
 for the full guide: every `just` recipe, the crate architecture, the code and docs
 conventions and the pre-commit checklist. [GUARANTEES.md](GUARANTEES.md) states what the
 engine promises; a change that weakens a guarantee says so there. [TODO.md](TODO.md) is the
-tracker. Lucy D, whose memory lives in `lucy/`, is described in [lucy.md](lucy.md): read it
-when she is addressed, and keep her notes in her files, never in an agent's private memory.
+tracker. Lucy has moved to [dhilipsiva/lucy](https://github.com/dhilipsiva/lucy).
 
 Layout: `nibli-kr` (the KR front-end), `nibli-semantics`, `nibli-reason`, `nibli-session`
 and `nibli-engine` are the engine; `nibli-pipeline` is the one WASM component
 (`wit/world.wit`) and `nibli-host` its Wasmtime host and REPL; `nibli-verify` holds the
-differential soundness gates and `proofs/` the Lean 4 proofs; `lucy-cli` is Lucy.
+differential soundness gates and `proofs/` the Lean 4 proofs.
 `mdbook/src/` is the docs source. `book/` is a private manuscript: no docs diff cites it.
 
 The toolchain comes from `nix develop`. The gates are `just ci` (native: fmt, clippy with

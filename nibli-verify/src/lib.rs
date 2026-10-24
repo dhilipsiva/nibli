@@ -29,6 +29,7 @@ pub mod oracle_asp;
 pub mod predilex;
 pub mod retract_diff;
 pub mod seam;
+pub mod static_check;
 pub mod strat_diff;
 pub mod tense;
 pub mod tptp;
