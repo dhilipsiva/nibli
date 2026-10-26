@@ -64,6 +64,11 @@ pub(crate) fn is_event_skolem_arg(s: &str) -> bool {
 /// overlay first (`varfarin` -> "warfarin") — `None` overlay = verbatim.
 pub(crate) fn humanize_skolem(s: &str) -> String {
     if let Some(rest) = s.strip_prefix("sk_") {
+        // An event the active trace describes reads as its content ("protest"), never as
+        // the witness' number.
+        if let Some(content) = crate::abstraction::content_for(s) {
+            return content;
+        }
         // Bare `sk_N`.
         if !rest.is_empty() && rest.bytes().all(|b| b.is_ascii_digit()) {
             return format!("#{rest}");
@@ -78,6 +83,9 @@ pub(crate) fn humanize_skolem(s: &str) -> String {
     }
     if let Some(name) = crate::overlay::active().and_then(|o| o.name(s)) {
         return name.to_string();
+    }
+    if let Some(spelled) = crate::spelling::restore(s) {
+        return spelled;
     }
     s.to_string()
 }

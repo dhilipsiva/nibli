@@ -299,9 +299,9 @@ just test
 
 ~/nibli> ? animal(Adam).
 [Query] TRUE
-[Why] Because adam is a dog, adam is an animal.
-  ⊢ adam is an animal  [by the rule: every dog is an animal] -> TRUE
-    ▣ adam is a dog  [given] -> TRUE
+[Why] Because Adam is a dog, Adam is an animal.
+  ⊢ Adam is an animal  [by the rule: every dog is an animal] -> TRUE
+    ▣ Adam is a dog  [given] -> TRUE
 
 ~/nibli> ?? dog($x).
 [Find] _ev0 = sk_7 [generated-witness], $x = adam [knowledge-base]
