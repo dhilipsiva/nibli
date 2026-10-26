@@ -24,6 +24,18 @@ fn is_abstraction_scaffold(rel: &str) -> bool {
 /// Render a compiled `LogicBuffer` as readable English.
 ///
 /// Each root becomes one sentence (capitalized, terminated with `.`).
+/// As [`render_logic_buffer`], with the KR the buffer was compiled from: constants keep the
+/// spelling the author typed (`StrawHatCrew`, `NixOS`) instead of a title-cased lowercase form.
+pub fn render_logic_buffer_with_source(
+    buf: &LogicBuffer,
+    register: Register,
+    source: &str,
+) -> String {
+    let mut table = std::collections::BTreeMap::new();
+    crate::spelling::learn(&mut table, source);
+    crate::spelling::with_spelling(table, || render_logic_buffer(buf, register))
+}
+
 pub fn render_logic_buffer(buf: &LogicBuffer, register: Register) -> String {
     let mut ctx = Ctx::new(register);
     let sentences: Vec<String> = buf
@@ -404,42 +416,7 @@ fn inline_duty_abstraction<'a>(
 /// as the subject: "Lucy is entitled to continue", as `obliged` always was ("Alis is obligated
 /// to notify"). `permitted` is the lexicon's swap of `permits`, so the event sits in its first
 /// place and the party in its second.
-struct EventTaker {
-    relation: &'static str,
-    event_place: usize,
-    party_place: usize,
-    phrase: &'static str,
-}
-const EVENT_TAKERS: &[EventTaker] = &[
-    EventTaker {
-        relation: "obliged",
-        event_place: 2,
-        party_place: 1,
-        phrase: "is obligated to",
-    },
-    EventTaker {
-        relation: "entitled",
-        event_place: 2,
-        party_place: 1,
-        phrase: "is entitled to",
-    },
-    EventTaker {
-        relation: "permits",
-        event_place: 1,
-        party_place: 2,
-        phrase: "is permitted to",
-    },
-    EventTaker {
-        relation: "decide",
-        event_place: 2,
-        party_place: 1,
-        phrase: "decides to",
-    },
-];
-
-fn event_taker(relation: &str) -> Option<&'static EventTaker> {
-    EVENT_TAKERS.iter().find(|t| t.relation == relation)
-}
+use crate::takers::{EventTaker, event_taker};
 
 /// Does this predicate hold `var` in an event taker's event place, flat (`rel(…, var, …)`) or
 /// as the role predicate `rel_xN(event, var)`? Returns the taker when it does.
@@ -778,9 +755,13 @@ fn render_term(t: &LogicalTerm, ctx: &mut Ctx) -> Option<String> {
     }
 }
 
-/// Constants arrive lowercased from the IR (`bela`, `highsec`). Title-case the
-/// first letter for readable English; leave mixed/upper inputs alone.
+/// Constants arrive lowercased from the IR (`bela`, `highsec`). The author's spelling wins
+/// when a spelling table is active (`render_logic_buffer_with_source`); otherwise title-case
+/// the first letter for readable English; leave mixed/upper inputs alone.
 fn display_constant(s: &str) -> String {
+    if let Some(spelled) = crate::spelling::restore(s) {
+        return spelled;
+    }
     let mut chars = s.chars();
     match chars.next() {
         Some(c)

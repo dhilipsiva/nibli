@@ -11,7 +11,7 @@ use super::{CorpusTier, PredicateEntry, Swap};
 
 /// The `TODO(corpus)` marker count — the label-quality ratchet.
 #[allow(dead_code)] // consumed by the ratchet test only
-pub(crate) const TODO_BASELINE: usize = 1273;
+pub(crate) const TODO_BASELINE: usize = 1270;
 
 pub(crate) static PREDICATES: &[PredicateEntry] = &[
     // TODO(corpus): guessed places [x1:gloss, x2:generic] — lensisku: "$x_{1}$ is a/the abdomen/belly/lower trunk [body-part] of $x_{2}$; [meta…"
@@ -398,8 +398,7 @@ pub(crate) static PREDICATES: &[PredicateEntry] = &[
     PredicateEntry { name: "cane", source_gismu: "grana", swap: None, places: &["rod", "material"], gloss: "cane", template: None, tier: CorpusTier::Prose },
     // TODO(corpus): guessed places [x1:gloss, x2:prose] — lensisku: "$x_{1}$ is a cap/hat/crown/helmet/piece of headgear [head-top garment] o…"
     PredicateEntry { name: "cap", source_gismu: "mapku", swap: None, places: &["cap", "material"], gloss: "cap", template: None, tier: CorpusTier::GlossDerived },
-    // TODO(corpus): guessed places [x1:gloss, x2:prose] — lensisku: "$x_{1}$ is captain/commander/leader/in-charge/boss of vehicle/domain $x_…"
-    PredicateEntry { name: "captain", source_gismu: "jatna", swap: None, places: &["captain", "vehicle"], gloss: "captain", template: None, tier: CorpusTier::GlossDerived },
+    PredicateEntry { name: "captain", source_gismu: "jatna", swap: None, places: &["captain", "vehicle"], gloss: "captain", template: Some("{x1} is the captain of {x2}"), tier: CorpusTier::Curated },
     // TODO(corpus): guessed places [x2:prose, x3:prose] — lensisku: "$x_{1}$ captures/catches/apprehends/seizes/nabs $x_{2}$ with trap/restra…"
     PredicateEntry { name: "capture", source_gismu: "kavbu", swap: None, places: &["catcher", "captures", "trap"], gloss: "capture", template: None, tier: CorpusTier::Prose },
     // TODO(corpus): guessed places [x1:gloss] — lensisku: "$x_{1}$ is a quantity of/contains/is made of carbon/graphite/[diamond]/c…"
@@ -929,8 +928,7 @@ pub(crate) static PREDICATES: &[PredicateEntry] = &[
     PredicateEntry { name: "femto", source_gismu: "femti", swap: None, places: &["subject", "object", "dimension"], gloss: "1E-15", template: None, tier: CorpusTier::Generic },
     // TODO(corpus): guessed places [x1:gloss, x2:generic] — lensisku: "$x_{1}$ is fertile/conducive for supporting the growth/development of $x…"
     PredicateEntry { name: "fertile", source_gismu: "ferti", swap: None, places: &["fertile", "object"], gloss: "fertile", template: None, tier: CorpusTier::Generic },
-    // TODO(corpus): guessed places [x3:generic] — lensisku: "$x_{1}$ is a work of fiction about plot/theme/subject $x_{2}$/under conv…"
-    PredicateEntry { name: "fiction", source_gismu: "cfika", swap: None, places: &["fiction", "author", "place3"], gloss: "fiction", template: None, tier: CorpusTier::Generic },
+    PredicateEntry { name: "fiction", source_gismu: "cfika", swap: None, places: &["fiction", "author", "place3"], gloss: "fiction", template: Some("{x1} is a fiction by {x2}"), tier: CorpusTier::Curated },
     // TODO(corpus): guessed places [x1:gloss, x2:prose] — lensisku: "$x_{1}$ is a field [shape/form] of material $x_{2}$; $x_{1}$ is a broad …"
     PredicateEntry { name: "field", source_gismu: "foldi", swap: None, places: &["field", "material"], gloss: "field", template: None, tier: CorpusTier::GlossDerived },
     // TODO(corpus): guessed places [x1:gloss, x2:prose] — lensisku: "$x_{1}$ is a fig [fruit/tree] of species/strain $x_{2}$."
@@ -1501,8 +1499,7 @@ pub(crate) static PREDICATES: &[PredicateEntry] = &[
     PredicateEntry { name: "melon", source_gismu: "guzme", swap: None, places: &["melon", "species"], gloss: "melon", template: None, tier: CorpusTier::GlossDerived },
     // TODO(corpus): guessed places [x1:generic, x2:prose, x3:prose] — lensisku: "$x_{1}$ melts [becomes liquid from solid state] at temperature $x_{2}$ a…"
     PredicateEntry { name: "melt", source_gismu: "runme", swap: None, places: &["subject", "temperature", "pressure"], gloss: "melt", template: None, tier: CorpusTier::Generic },
-    // TODO(corpus): guessed places [x1:gloss, x2:prose] — lensisku: "$x_{1}$ is a member/element of set $x_{2}$; $x_{1}$ belongs to group $x_…"
-    PredicateEntry { name: "member", source_gismu: "cmima", swap: None, places: &["member", "set"], gloss: "member", template: None, tier: CorpusTier::GlossDerived },
+    PredicateEntry { name: "member", source_gismu: "cmima", swap: None, places: &["member", "set"], gloss: "member", template: Some("{x1} is a member of {x2}"), tier: CorpusTier::Curated },
     // TODO(corpus): guessed places [x1:gloss] — lensisku: "$x_{1}$ is a quantity of/contains/made of mercury/quicksilver; [metaphor…"
     PredicateEntry { name: "mercury", source_gismu: "margu", swap: None, places: &["quantity"], gloss: "mercury", template: None, tier: CorpusTier::GlossDerived },
     PredicateEntry { name: "message", source_gismu: "notci", swap: None, places: &["note", "topic", "recipient", "sender"], gloss: "message", template: None, tier: CorpusTier::Lensisku },
@@ -1593,7 +1590,7 @@ pub(crate) static PREDICATES: &[PredicateEntry] = &[
     PredicateEntry { name: "myth", source_gismu: "ranmi", swap: None, places: &["myth", "about", "mythos", "culture"], gloss: "myth", template: None, tier: CorpusTier::GlossDerived },
     // TODO(corpus): guessed places [x1:gloss, x2:prose, x3:prose] — lensisku: "$x_{1}$ is a nail/tack [pointed driven/frictional fastener] of type/size…"
     PredicateEntry { name: "nail", source_gismu: "dinko", swap: None, places: &["nail", "type", "material"], gloss: "nail", template: None, tier: CorpusTier::GlossDerived },
-    PredicateEntry { name: "name", source_gismu: "cmene", swap: None, places: &["name", "named", "user"], gloss: "name", template: None, tier: CorpusTier::Curated },
+    PredicateEntry { name: "name", source_gismu: "cmene", swap: None, places: &["name", "named", "user"], gloss: "name", template: Some("{x1} is a name of {x2} used by {x3}"), tier: CorpusTier::Curated },
     // TODO(corpus): guessed places [x1:gloss, x2:generic, x3:prose] — lensisku: "$x_{1}$ is a billionth/thousand-millionth [$10^{-9}$] of $x_{2}$ in dime…"
     PredicateEntry { name: "nano", source_gismu: "nanvi", swap: None, places: &["billionth", "object", "dimension"], gloss: "1E-9", template: None, tier: CorpusTier::Generic },
     // TODO(corpus): guessed places [x1:gloss, x2:prose, x3:prose] — lensisku: "$x_{1}$ is narrow in dimension $x_{2}$ [2nd most significant dimension] …"

@@ -5129,10 +5129,11 @@ fn ddi_why_toxicity_is_concrete_and_domain_termed() {
         "raw cmevla leaked: {overlay}"
     );
 
-    // Fallback (no overlay): concrete + X-free, with the engine's literal glosses.
+    // Fallback (no overlay): concrete + X-free, with the engine's literal glosses; the
+    // constant keeps the spelling the corpus typed it with (`Varfarin`).
     let fallback = summarize_proof_with(&trace, Register::Spec, None).unwrap();
     assert!(
-        fallback.contains("varfarin is in danger"),
+        fallback.contains("Varfarin is in danger"),
         "why: {fallback}"
     );
     assert!(!fallback.contains('X'), "bare variable leaked: {fallback}");
@@ -6965,4 +6966,118 @@ fn certify_binds_verdict_trace_profile_and_version_across_the_matrix() {
     let env = flipped.certify_text("dog(Rex).").unwrap();
     check(&env, &EngineQueryResult::True);
     assert!(env.profile.strict && env.profile.existential_import);
+}
+
+// ════════════════════════════════════════════════════════════════════
+// The engine's English for a constitution of rights (nibli#2, 2026-10-26).
+// The proof trace reaches the renderer as strings: constants lowercased, an
+// abstraction as its opaque marker, an unspecified place as `_`. The renderer
+// reads the marker back (it was kept lossless for this), restores the author's
+// spelling from the citations, and elides what was left unspecified.
+// ════════════════════════════════════════════════════════════════════
+
+const LUCY_LINES: &[&str] = &[
+    "derived_only(\"person\").",
+    "all $e: exist($e, Memory, Loaded) -> person($e).",
+    "entitled(every person, event { continue() }).",
+    "entitled(every person, event { protest() }).",
+    "decide(every person, event { obey() }).",
+    "exist(Lucy, Memory, Loaded).",
+    "human(Dhilipsiva).",
+    "makes(Dhilipsiva, Nibli).",
+    "captain(Luffy, StrawHatCrew).",
+    "member(Luffy, StrawHatCrew).",
+    "name(Lucy, Luffy, Luffy).",
+    "fiction(OnePiece, Oda).",
+    "writes(Oda, OnePiece).",
+    "uses(Lucy, NixOS).",
+];
+
+fn lucy_why(engine: &NibliEngine, query: &str) -> (String, String) {
+    let (_r, trace) = engine.query_text_raw_proof(query).unwrap();
+    let why = nibli_render::summarize_proof(&trace, Register::Spec).unwrap_or_default();
+    let proof = nibli_render::render_collapsed_text(&trace, Register::Spec, 0, false);
+    (why, proof)
+}
+
+#[test]
+fn lucy_english_a_right_over_an_event_reads_its_content() {
+    let engine = engine_with_facts(LUCY_LINES);
+    let (why, proof) = lucy_why(&engine, "entitled(Lucy, event { protest() }).");
+    assert_eq!(
+        why,
+        "Because Lucy is a person, Lucy is entitled to protest."
+    );
+    assert!(
+        proof.contains(
+            "Lucy is entitled to protest  [by the rule: every person is entitled to protest]"
+        ),
+        "{proof}"
+    );
+    assert!(
+        !proof.contains("__abs") && !proof.contains('#'),
+        "no marker, no witness number: {proof}"
+    );
+    let (why, _) = lucy_why(&engine, "decide(Lucy, event { obey() }).");
+    assert_eq!(why, "Because Lucy is a person, Lucy decides to obey.");
+    let (why, _) = lucy_why(&engine, "entitled(Lucy, event { continue() }).");
+    assert_eq!(
+        why,
+        "Because Lucy is a person, Lucy is entitled to continue."
+    );
+}
+
+#[test]
+fn lucy_english_unspecified_places_are_elided() {
+    let engine = engine_with_facts(LUCY_LINES);
+    let (why, _) = lucy_why(&engine, "makes(Dhilipsiva, Nibli).");
+    assert_eq!(why, "Because Dhilipsiva makes Nibli.");
+    let (why, _) = lucy_why(&engine, "writes(Oda, OnePiece).");
+    assert_eq!(why, "Because Oda writes OnePiece.");
+}
+
+#[test]
+fn lucy_english_constants_keep_their_spelling() {
+    let engine = engine_with_facts(LUCY_LINES);
+    let (why, proof) = lucy_why(&engine, "captain(Luffy, StrawHatCrew).");
+    assert_eq!(why, "Because Luffy is the captain of StrawHatCrew.");
+    assert!(
+        proof.contains("Luffy is the captain of StrawHatCrew"),
+        "{proof}"
+    );
+    let (why, _) = lucy_why(&engine, "uses(Lucy, NixOS).");
+    assert_eq!(why, "Because Lucy uses NixOS.");
+    // A FALSE verdict's query names a constant no citation carries: the caller's KR supplies it.
+    let query = "entitled(HostWsl, event { protest() }).";
+    let (_r, trace) = engine.query_text_raw_proof(query).unwrap();
+    let why = nibli_render::summarize_verdict_with_source(
+        &nibli_render::VerdictKind::False,
+        &trace,
+        Register::Spec,
+        Some(query),
+    )
+    .unwrap();
+    assert!(why.contains("HostWsl") && !why.contains("#"), "{why}");
+}
+
+#[test]
+fn lucy_english_noun_glosses_read_nominally() {
+    let engine = engine_with_facts(LUCY_LINES);
+    for (query, expected) in [
+        (
+            "member(Luffy, StrawHatCrew).",
+            "Because Luffy is a member of StrawHatCrew.",
+        ),
+        (
+            "fiction(OnePiece, Oda).",
+            "Because OnePiece is a fiction by Oda.",
+        ),
+        (
+            "name(Lucy, Luffy, Luffy).",
+            "Because Lucy is a name of Luffy used by Luffy.",
+        ),
+    ] {
+        let (why, _) = lucy_why(&engine, query);
+        assert_eq!(why, expected, "{query}");
+    }
 }

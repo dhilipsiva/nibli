@@ -307,7 +307,7 @@ pub fn label(rule: &ProofRule) -> String {
             humanize_fact(failed_condition)
         ),
         ProofRule::PredicateNotFound { predicate } => {
-            format!("Not found: {}", humanize_fact(predicate))
+            format!("Not found: {}", not_found_text(predicate))
         }
     }
 }
@@ -427,7 +427,7 @@ pub fn trace_display(rule: &ProofRule, result: bool) -> String {
             tag
         ),
         ProofRule::PredicateNotFound { predicate } => {
-            format!("Not found: {} -> {}", humanize_fact(predicate), tag)
+            format!("Not found: {} -> {}", not_found_text(predicate), tag)
         }
     }
 }
@@ -437,6 +437,12 @@ pub fn trace_display(rule: &ProofRule, result: bool) -> String {
 /// Collapse event decomposition predicates in a rule label.
 /// "dog ∧ gerku_x1 ∧ gerku_x2 → animal ∧ danlu_x1 ∧ danlu_x2" → "dog → animal".
 pub(crate) fn humanize_rule_label(label: &str) -> String {
+    crate::abstraction::fold_markers(&collapse_rule_roles(label))
+}
+
+/// The rule label with its role predicates collapsed to their relations (`dog ∧ dog_x1` is
+/// `dog`), markers kept: the form the English reading decodes.
+pub(crate) fn collapse_rule_roles(label: &str) -> String {
     if let Some((lhs, rhs)) = label.split_once(" → ") {
         format!(
             "{} → {}",
@@ -471,6 +477,12 @@ fn collapse_role_predicates(s: &str) -> String {
 // Term rendering (`display` / `trace_display`) lives as inherent methods on the
 // canonical `LogicalTerm` enum (re-exported via `nibli_protocol`); the per-rule
 // renderers above call them directly.
+
+/// A missing predicate as English when the frames can phrase it, else its functional form.
+fn not_found_text(predicate: &str) -> String {
+    crate::summary::fact_to_english(predicate, crate::Register::Spec)
+        .unwrap_or_else(|| humanize_fact(predicate))
+}
 
 #[cfg(test)]
 mod tests {
