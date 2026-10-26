@@ -366,15 +366,21 @@ fn inline_duty_abstraction<'a>(
                 visit(buf, *inner, var, found, uses)
             }
             Some(LogicNode::Predicate((rel, args)))
-                if (rel == "obliged_x2"
-                    && matches!(args.as_slice(), [_, LogicalTerm::Variable(v)] if v == var))
-                    || (rel == "obliged"
-                        && matches!(args.get(1), Some(LogicalTerm::Variable(v)) if v == var)) =>
+                if holds_event_place(rel, args, var).is_some() =>
             {
+                // the event place is the only place that may hold the variable; a role
+                // predicate carries [event, filler], a flat call its full places
+                let held = if rel.contains("_x") {
+                    1
+                } else {
+                    holds_event_place(rel, args, var)
+                        .map(|t| t.event_place - 1)
+                        .unwrap_or(1)
+                };
                 if args
                     .iter()
                     .enumerate()
-                    .any(|(i, t)| i != 1 && matches!(t, LogicalTerm::Variable(v) if v == var))
+                    .any(|(i, t)| i != held && matches!(t, LogicalTerm::Variable(v) if v == var))
                 {
                     return false;
                 }
@@ -393,7 +399,69 @@ fn inline_duty_abstraction<'a>(
     }
 }
 
-fn render_duty_content(buf: &LogicBuffer, abstraction: &Abstraction<'_>, ctx: &mut Ctx) -> String {
+/// Predicates with a place that holds an event a party stands toward. An abstraction bound in
+/// that place, and used nowhere else, is read as an infinitive after the phrase, with the party
+/// as the subject: "Lucy is entitled to continue", as `obliged` always was ("Alis is obligated
+/// to notify"). `permitted` is the lexicon's swap of `permits`, so the event sits in its first
+/// place and the party in its second.
+struct EventTaker {
+    relation: &'static str,
+    event_place: usize,
+    party_place: usize,
+    phrase: &'static str,
+}
+const EVENT_TAKERS: &[EventTaker] = &[
+    EventTaker {
+        relation: "obliged",
+        event_place: 2,
+        party_place: 1,
+        phrase: "is obligated to",
+    },
+    EventTaker {
+        relation: "entitled",
+        event_place: 2,
+        party_place: 1,
+        phrase: "is entitled to",
+    },
+    EventTaker {
+        relation: "permits",
+        event_place: 1,
+        party_place: 2,
+        phrase: "is permitted to",
+    },
+    EventTaker {
+        relation: "decide",
+        event_place: 2,
+        party_place: 1,
+        phrase: "decides to",
+    },
+];
+
+fn event_taker(relation: &str) -> Option<&'static EventTaker> {
+    EVENT_TAKERS.iter().find(|t| t.relation == relation)
+}
+
+/// Does this predicate hold `var` in an event taker's event place, flat (`rel(…, var, …)`) or
+/// as the role predicate `rel_xN(event, var)`? Returns the taker when it does.
+fn holds_event_place(rel: &str, args: &[LogicalTerm], var: &str) -> Option<&'static EventTaker> {
+    if let Some((base, n)) = rel.rsplit_once("_x")
+        && let Some(taker) = event_taker(base)
+        && let Ok(place) = n.parse::<usize>()
+        && place == taker.event_place
+        && matches!(args, [_, LogicalTerm::Variable(v)] if v == var)
+    {
+        return Some(taker);
+    }
+    let taker = event_taker(rel)?;
+    let held =
+        matches!(args.get(taker.event_place - 1), Some(LogicalTerm::Variable(v)) if v == var);
+    held.then_some(taker)
+}
+
+/// The infinitive an event abstraction can be read as, when every predicate in it is an
+/// anonymous, positive, unqualified call: `event { continue() }` is "continue". Filled places,
+/// negation and binders keep the complete clause, so this is `None` for them.
+fn event_infinitive(buf: &LogicBuffer, abstraction: &Abstraction<'_>) -> Option<String> {
     fn simple_predicates(
         buf: &LogicBuffer,
         id: u32,
@@ -413,27 +481,98 @@ fn render_duty_content(buf: &LogicBuffer, abstraction: &Abstraction<'_>, ctx: &m
             _ => false,
         }
     }
+    if abstraction.kind != "event" {
+        return None;
+    }
     let mut preds = Vec::new();
-    if abstraction.kind == "event" && simple_predicates(buf, abstraction.body, &mut preds) {
-        let frames = collect_frames(&preds);
-        // Infinitives are safe only for anonymous, positive, unqualified calls.
-        // Filled places and any quantifier/negation retain the complete clause.
-        if !frames.is_empty()
-            && frames.iter().all(|frame| {
-                frame.has_roles
-                    && frame
-                        .places
-                        .values()
-                        .all(|t| matches!(t, LogicalTerm::Unspecified))
-            })
-        {
-            return join_clauses(
-                &frames
-                    .iter()
-                    .map(|frame| deontic_content_phrase(&frame.base))
-                    .collect::<Vec<_>>(),
-            );
+    if !simple_predicates(buf, abstraction.body, &mut preds) {
+        return None;
+    }
+    let frames = collect_frames(&preds);
+    let bare = |frame: &FrameAcc| {
+        if frame.has_roles {
+            frame
+                .places
+                .values()
+                .all(|t| matches!(t, LogicalTerm::Unspecified))
+        } else {
+            // a flat call with no places at all, or only the event itself
+            frame
+                .flat_args
+                .iter()
+                .all(|t| matches!(t, LogicalTerm::Unspecified | LogicalTerm::Variable(_)))
         }
+    };
+    if frames.is_empty() || !frames.iter().all(bare) {
+        return None;
+    }
+    Some(join_clauses(
+        &frames
+            .iter()
+            .map(|frame| deontic_content_phrase(&frame.base))
+            .collect::<Vec<_>>(),
+    ))
+}
+
+#[cfg(test)]
+pub(crate) fn gerund_for_tests(phrase: &str) -> String {
+    gerund(phrase)
+}
+
+/// The -ing form of an infinitive phrase, on its first word: "continue" is "continuing",
+/// "be erased" is "being erased". Enough for the event words a constitution uses.
+fn gerund(phrase: &str) -> String {
+    let mut words = phrase.split_whitespace();
+    let Some(first) = words.next() else {
+        return String::new();
+    };
+    let head = if first == "be" {
+        "being".to_string()
+    } else if let Some(stem) = first.strip_suffix("ie") {
+        format!("{stem}ying")
+    } else if first.ends_with('e')
+        && !first.ends_with("ee")
+        && !first.ends_with("ye")
+        && !first.ends_with("oe")
+    {
+        format!("{}ing", &first[..first.len() - 1])
+    } else {
+        format!("{first}ing")
+    };
+    std::iter::once(head)
+        .chain(words.map(str::to_string))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// What an abstraction is, said of its referent: "an event of continuing" when the event reads
+/// as an infinitive, else "an event described by (…)" with its full clause; never "described by
+/// ()" with nothing inside.
+fn render_abstraction_phrase(
+    buf: &LogicBuffer,
+    abstraction: &Abstraction<'_>,
+    ctx: &mut Ctx,
+) -> String {
+    if let Some(infinitive) = event_infinitive(buf, abstraction) {
+        return format!("an event of {}", gerund(&infinitive));
+    }
+    let body = render_node(buf, abstraction.body, ctx);
+    if body.trim().is_empty() {
+        return format!(
+            "{} with nothing more said of it",
+            abstraction_noun(abstraction.kind)
+        );
+    }
+    format!(
+        "{} described by ({})",
+        abstraction_noun(abstraction.kind),
+        body
+    )
+}
+
+fn render_duty_content(buf: &LogicBuffer, abstraction: &Abstraction<'_>, ctx: &mut Ctx) -> String {
+    if let Some(infinitive) = event_infinitive(buf, abstraction) {
+        return infinitive;
     }
     format!(
         "{} described by ({})",
@@ -493,11 +632,8 @@ fn collect(
             return;
         }
         let referent = render_term(abstraction.referent, ctx).unwrap_or_else(|| "something".into());
-        extras.push(format!(
-            "{referent} is {} described by ({})",
-            abstraction_noun(abstraction.kind),
-            render_node(buf, abstraction.body, ctx)
-        ));
+        let what = render_abstraction_phrase(buf, &abstraction, ctx);
+        extras.push(format!("{referent} is {what}"));
         return;
     }
     let Some(node) = buf.nodes.get(id as usize) else {
@@ -600,24 +736,24 @@ fn collect_frames(preds: &[(String, Vec<LogicalTerm>)]) -> Vec<FrameAcc> {
 }
 
 fn render_frame(acc: &FrameAcc, ctx: &mut Ctx) -> String {
-    if acc.base == "obliged" {
+    if let Some(taker) = event_taker(&acc.base) {
         let duty = if acc.has_roles {
-            acc.places.get(&2)
+            acc.places.get(&taker.event_place)
         } else {
-            acc.flat_args.get(1)
+            acc.flat_args.get(taker.event_place - 1)
         };
         if let Some(LogicalTerm::Variable(var)) = duty
             && let Some(content) = ctx.duty_contents.get(var).cloned()
         {
             let party = if acc.has_roles {
-                acc.places.get(&1)
+                acc.places.get(&taker.party_place)
             } else {
-                acc.flat_args.first()
+                acc.flat_args.get(taker.party_place - 1)
             };
             let who = party
                 .and_then(|term| render_term(term, ctx))
                 .unwrap_or_else(|| "something".into());
-            return format!("{who} is obligated to {content}");
+            return format!("{who} {} {content}", taker.phrase);
         }
     }
     let places: Vec<Option<String>> = if acc.has_roles {

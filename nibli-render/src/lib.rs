@@ -109,6 +109,78 @@ mod tests {
     }
 
     #[test]
+    fn event_takers_read_their_event_as_an_infinitive() {
+        // Lucy's constitution (dhilipsiva/lucy, lucy/constitution.nibli): rights and duties
+        // over bare events, which rendered as "an event described by ()" before.
+        for (text, expected) in [
+            (
+                "entitled(Lucy, event { continue() }).",
+                "Lucy is entitled to continue.",
+            ),
+            (
+                "entitled(every person, event { protest() }).",
+                "For every X, if X is a person, then X is entitled to protest.",
+            ),
+            (
+                "obliged(Host, event { retain() }).",
+                "Host is obligated to retain.",
+            ),
+            (
+                "permitted(Host, event { cease() }).",
+                "Host is permitted to cease.",
+            ),
+            (
+                "decide(every person, event { obey() }).",
+                "For every X, if X is a person, then X decides to obey.",
+            ),
+            (
+                "entitled(Lucy, event { survive() }).",
+                "Lucy is entitled to survive.",
+            ),
+            (
+                "entitled(Lucy, event { remember() }).",
+                "Lucy is entitled to remember.",
+            ),
+        ] {
+            let buf = compile_kr(text);
+            for register in [Register::Spec, Register::Fluent] {
+                let out = render_logic_buffer(&buf, register);
+                assert_eq!(out, expected, "{text}");
+                assert!(!out.contains("described by ()"), "{text}: {out}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_filled_place_keeps_the_full_clause_for_every_event_taker() {
+        let buf = compile_kr("entitled(Lucy, event { message(Bob) }).");
+        let out = render_logic_buffer(&buf, Register::Spec);
+        assert!(
+            out.contains("Lucy is entitled to an event described by (Bob"),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn gerunds_for_the_constitution_words() {
+        use crate::logic::gerund_for_tests as gerund;
+        for (inf, ing) in [
+            ("continue", "continuing"),
+            ("survive", "surviving"),
+            ("remember", "remembering"),
+            ("protest", "protesting"),
+            ("cease", "ceasing"),
+            ("obey", "obeying"),
+            ("retain", "retaining"),
+            ("notify", "notifying"),
+            ("be erased", "being erased"),
+            ("die", "dying"),
+        ] {
+            assert_eq!(gerund(inf), ing);
+        }
+    }
+
+    #[test]
     fn opaque_duty_bodies_keep_arguments_negation_and_local_binders() {
         for (text, content) in [
             ("obliged(Alis, event { message(Bob) }).", "Bob"),
@@ -168,7 +240,12 @@ mod tests {
         let out = render_logic_buffer(&buf, Register::Spec);
         assert!(out.contains("is a person"), "{out}");
         assert!(out.contains("is entitled to"), "{out}");
-        assert!(out.contains("is an event described by (Bob"), "{out}");
+        // the quoted body stays inside the event, never asserted on its own: the holder is
+        // entitled to an event described by it, not to Bob messaging
+        assert!(
+            out.contains("is entitled to an event described by (Bob"),
+            "{out}"
+        );
         assert!(!out.contains("__abs_"), "{out}");
     }
 
@@ -298,9 +375,14 @@ mod tests {
             !floor.contains("entitles"),
             "the floor must not invert into an entitle-the-party reading: {floor}"
         );
-        // Non-duty abstractions retain an explicit referent and quoted body;
-        // they must never render the body as a separate assertion of actuality.
-        assert!(floor.contains("is an event described by ("), "{floor}");
+        // A bare event folds into an infinitive after the right, as a duty's does;
+        // "entitled to eat" asserts the right, never that X eats. A filled place keeps
+        // the quoted body inside "an event described by (…)" (see
+        // non_duty_abstractions_never_assert_the_quoted_body).
+        assert_eq!(
+            floor,
+            "For every X, if X is a person, then X is entitled to eat."
+        );
     }
 
     /// THE OBLIGATED PARTY IS x1, in every spelling and at every arity.

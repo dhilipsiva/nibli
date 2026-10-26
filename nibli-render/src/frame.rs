@@ -272,7 +272,16 @@ pub(crate) fn fill_template(template: &str, places: &[Option<String>]) -> String
 /// Infinitive content phrase for a deontic duty's embedded event predicate.
 pub(crate) fn deontic_content_phrase(relation: &str) -> String {
     let gloss = gloss_for(relation);
-    if is_adjectival_gloss(&gloss) || matches!(relation, "secure" | "healthy" | "correct" | "exact")
+    if matches!(
+        relation,
+        "continue" | "continues" | "survive" | "remember" | "protest" | "obey" | "retain"
+    ) {
+        // the event verbs of a constitution's floor: their glosses are two-place ("continues
+        // over"), a synonym ("hold" for retain) or adjective-shaped ("survive" ends in -ive),
+        // so the bare event is the verb itself, decided before the adjective heuristic
+        relation.trim_end_matches('s').to_string()
+    } else if is_adjectival_gloss(&gloss)
+        || matches!(relation, "secure" | "healthy" | "correct" | "exact")
     {
         format!("be {gloss}")
     } else if matches!(relation, "eats" | "eat") {
