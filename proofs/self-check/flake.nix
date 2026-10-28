@@ -20,6 +20,9 @@
         NIBLI_CHARON_SOURCE = aeneas.inputs.charon.outPath;
         NIBLI_AENEAS_BIN = "${extraction.aeneas}/bin/aeneas";
         NIBLI_CHARON_BIN = "${extraction.charon}/bin/charon";
+        # The typed reader uses the same toolchain as the pinned Charon library.
+        NIBLI_READER_CARGO = "${aeneas.inputs.charon.packages.${system}.rustToolchain}/bin/cargo";
+        NIBLI_READER_RUSTC = "${aeneas.inputs.charon.packages.${system}.rustToolchain}/bin/rustc";
       };
     };
 }

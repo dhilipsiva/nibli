@@ -1,0 +1,14 @@
+[package]
+name = "nibli-llbc-json"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# Isolate compiler-tooling dependencies from the product workspace.
+[workspace]
+
+[dependencies]
+charon = { git = "https://github.com/AeneasVerif/charon", rev = "de8736f7c995ac54dc490345cef9ea5143c06c62", default-features = false }
+serde_json = { version = "1", features = ["unbounded_depth"] }
+serde_stacker = "0.1"
+serde = "1"

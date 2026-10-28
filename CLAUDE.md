@@ -262,6 +262,13 @@ When analyzing or searching the codebase:
   not verify Rust std internals, concrete allocator behavior, SipHash, or quotation
   identities. Full compiler/checker equivalence remains unproved. See
   `mdbook/src/developer/self-check.md`; keep that boundary explicit.
+  `just verify-self-check-nibli-verdicts` is a separate finite-domain pilot over
+  fresh production verdict LLBC, interpreted by independently written Nibli
+  rules. It checks all enum inputs and freshly extracted Rust mutation controls,
+  with source-bound replayable model observations. It does not replace Lean,
+  produce independent proof-kernel certificates, or verify the general evaluator.
+  Its report is `target/self-check-proof/nibli-verdicts/report.json`; the lightweight
+  runner controls also run under `just verify-self-check` and therefore `just ci`.
 
 ## Docs Conventions
 

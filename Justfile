@@ -743,6 +743,7 @@ verify-self-check:
     cargo test -p nibli-kr --lib reify::tests
     cargo test -p nibli --test ast_cli
     cargo test -p nibli-verify --test self_check -- --test-threads=1
+    cargo test -p nibli-verify --test rust_verdicts -- --test-threads=1
     cargo build -p nibli --bin nibli-ast --bin nibli-pin
     @facts=$(mktemp); trap 'rm -f "$facts"' EXIT; \
         ./target/debug/nibli-ast --emit-ast-facts nibli-verify/spec/nibli_checker.nibli > "$facts" && \
@@ -758,6 +759,11 @@ verify-self-check-extraction:
 verify-self-check-verdicts:
     nix develop ./proofs/self-check --command python3 -m unittest discover -s proofs/self-check -p 'test_*.py' -v
     nix develop ./proofs/self-check --command python3 proofs/self-check/verify_verdicts.py
+
+# Independent finite Rust verification in Nibli; Lean remains a separate gate.
+verify-self-check-nibli-verdicts:
+    nix develop ./proofs/self-check --command python3 -m unittest discover -s proofs/self-check -p 'test_*.py' -v
+    nix develop ./proofs/self-check --command python3 proofs/self-check/verify_nibli_verdicts.py --mutations
 
 # Extract the live SCC kernel and prove its partition and Horn cycle criterion.
 # The name adapter and full checker equivalence remain open.

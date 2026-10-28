@@ -18,7 +18,9 @@ repo-corpora = []
 
 [dependencies]
 nibli-engine = { workspace = true }
-nibli-types = { workspace = true }
+nibli-types = { workspace = true, features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 # The KR front-end + nibli-semantics/logji so nibli_kr_battery::kompile() runs the shipped
 # post-parse stages (compute-node marking included).
 nibli-kr = { workspace = true }
@@ -41,3 +43,7 @@ required-features = ["repo-corpora"]
 [lib]
 name = "nibli_verify"
 path = "src/lib.rs"
+
+[[bin]]
+name = "nibli-verify-rust"
+path = "src/bin/verify_rust.rs"

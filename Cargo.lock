@@ -3064,6 +3064,8 @@ dependencies = [
  "nibli-semantics",
  "nibli-session",
  "nibli-types",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
