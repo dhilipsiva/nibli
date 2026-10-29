@@ -1,4 +1,5 @@
 mod guarded_witnesses;
+mod indexed_counts;
 mod lifecycle;
 use super::*;
 use nibli_types::logic::{LogicBuffer, LogicNode, LogicalTerm, ProofRule, ProofTrace};
