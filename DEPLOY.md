@@ -9,7 +9,7 @@ There are two distinct deployables (don't conflate them):
 | URL | Crate | What it is |
 |-----|-------|-----------|
 | `dhilipsiva.dev/nibli-playground` | `nibli-ui` (Dioxus app) | The Transparency Triad playground (nibli KR-first), incl. the **Formalize** feature (`nibli-formalize`) |
-| `dhilipsiva.dev/nibli` | `nibli-wasm` (wasm-bindgen lib) | The live demo embedded on the site (KR-only since THE DROP — its Lojban-era JS/KB breaks until the site-repo migration lands; `set_language` remains a no-op shim) |
+| [dhilipsiva.dev/nibli/](https://dhilipsiva.dev/nibli/) | `nibli-wasm` (wasm-bindgen lib) | The guided demo embedded on the site, running nibli KR entirely in the browser; `set_language` remains a no-op compatibility shim |
 | `dhilipsiva.dev/docs/nibli/` | mdBook (`mdbook/` in this repo) | Code-derived human docs (default `just docs`, `site-url=/docs/nibli/`). **Site-repo must copy the build** — see §2b. Not the Orange AVA book. |
 | (component ABI) | `nibli-pipeline` WIT | Package **`nibli:engine@0.12.0`** exports `engine` + **`authorizer`** (builtin auth; native twin is `nibli-auth`) |
 | `dhilipsiva.github.io/nibli/` | same mdBook | **Live mirror** via [`.github/workflows/docs-pages.yml`](.github/workflows/docs-pages.yml) (`just docs /nibli/`) |

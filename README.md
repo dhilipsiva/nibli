@@ -89,7 +89,7 @@ Supporting crates:
 | **nibli-lexicon** | The committed English corpus — strongly-typed predicate + compound entries (name, named places, gloss, template, gismu provenance), const-validated; the single vocabulary source for every stage |
 | **nibli-engine** | Native in-process embedding of the pipeline — **the crate to depend on when embedding nibli in Rust** ([Install](#install)) |
 | **nibli-ui** | Standalone Dioxus web UI — the engine is compiled in and runs fully in-browser |
-| **nibli-wasm** | wasm-bindgen wrapper exposing the in-browser pipeline (the site's demo page; broken until the site repository migrates, [`DEPLOY.md`](DEPLOY.md)) |
+| **nibli-wasm** | wasm-bindgen wrapper exposing the in-browser pipeline for the [guided demo](https://dhilipsiva.dev/nibli/); see [`DEPLOY.md`](DEPLOY.md) |
 | **nibli** | Native debug REPL and the `nibli-validate` / `nibli-import` / `nibli-pin` tooling |
 
 Everything above **except `nibli-pipeline`, `nibli-host`, `nibli-ui` and `nibli-wasm`** is published on crates.io at the workspace version — those four ship as the WASM component, the host binary and the hosted sites instead ([Install](#install)).
@@ -111,7 +111,7 @@ building alternative front-ends or consumers against it).
 **Supporting surfaces:**
 
 - **`nibli-engine`** — The native embedding library, published on crates.io: a library to build on rather than a runtime to launch ([Install](#install)).
-- **`nibli-wasm`** — wasm-bindgen wrapper exposing the in-browser pipeline (it powers the demo page at dhilipsiva.dev/nibli, whose Lojban-era page script breaks until the site repository migrates; see [`DEPLOY.md`](DEPLOY.md)).
+- **`nibli-wasm`** — wasm-bindgen wrapper powering the [guided demo](https://dhilipsiva.dev/nibli/), which runs nibli KR through the parser, semantic compiler and reasoner in the browser. The [standalone playground](https://dhilipsiva.dev/nibli-playground/) uses `nibli-ui`; see [`DEPLOY.md`](DEPLOY.md).
 - **`nibli`** — Native direct-crate REPL and `nibli-validate`. Developer tooling, not the canonical production path.
 - **Lucy** — the memory and agent service now lives in [dhilipsiva/lucy](https://github.com/dhilipsiva/lucy).
 
