@@ -58,6 +58,46 @@ pub(super) struct ComputeEvaluation {
 #[derive(Default)]
 pub(super) struct QueryComputeMemo {
     entries: HashMap<ComputeCallKey, ComputeEvaluation>,
+    // The query-local lifetime is also the right boundary for formula work:
+    // depth probes share one budget, while proof reconstruction starts fresh.
+    formula_evaluations: usize,
+    formula_budget_exhausted: bool,
+}
+
+/// Bounds Cartesian quantifier expansion on native and WASM surfaces alike.
+/// This counts formula-node entries, not host instructions or heap bytes.
+const MAX_FORMULA_EVALUATIONS: usize = 1_000_000;
+
+#[cfg(test)]
+thread_local! {
+    pub(super) static TEST_MAX_FORMULA_EVALUATIONS: std::cell::Cell<Option<usize>> =
+        const { std::cell::Cell::new(None) };
+}
+
+impl QueryComputeMemo {
+    pub(super) fn consume_formula_evaluation(&mut self) -> bool {
+        #[cfg(not(test))]
+        let limit = MAX_FORMULA_EVALUATIONS;
+        #[cfg(test)]
+        let limit = TEST_MAX_FORMULA_EVALUATIONS
+            .with(|c| c.get())
+            .unwrap_or(MAX_FORMULA_EVALUATIONS);
+        if self.formula_evaluations >= limit {
+            self.formula_budget_exhausted = true;
+            return false;
+        }
+        self.formula_evaluations += 1;
+        true
+    }
+
+    pub(super) fn formula_budget_exhausted(&self) -> bool {
+        self.formula_budget_exhausted
+    }
+
+    pub(super) fn reset_formula_budget(&mut self) {
+        self.formula_evaluations = 0;
+        self.formula_budget_exhausted = false;
+    }
 }
 
 pub(super) fn extract_num_value(

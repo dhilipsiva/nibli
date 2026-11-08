@@ -205,6 +205,15 @@ Lucy now lives at https://github.com/dhilipsiva/lucy.
 
 ## Code Conventions
 
+Collection consumers can use the additive `*_outcome` APIs to distinguish complete
+answers from typed unavailability without classifying diagnostic prose. Compatibility
+find/count/aggregate APIs retain their existing complete-or-error messages. Recorded
+operations share the `nibli-session` collector lifecycle; enumeration and constraint
+events originate in the actual engine paths. Compile inspection's structural preflight
+is not admission, and non-Boolean results have no invented proof graph. Whole-profile
+replacement is transactional. See `EXECUTION_RECORDS.md` for these contracts and the
+source-only recovery boundary.
+
 Grounded witness anchors share `arg_position_index` with rule evaluation. Both
 candidate extraction and anchor cost estimation must use the same narrowed
 bucket; equality, unbound and unspecified siblings keep the complete scan.

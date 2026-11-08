@@ -13,6 +13,6 @@ homepage.workspace = true
 nibli-lexicon = { workspace = true }
 nibli-kr = { workspace = true }
 nibli-semantics = { workspace = true }
-nibli-reason = { workspace = true }
+nibli-reason = { workspace = true, features = ["serde"] }
 nibli-types = { workspace = true, features = ["serde"] }
 serde_json = "1"

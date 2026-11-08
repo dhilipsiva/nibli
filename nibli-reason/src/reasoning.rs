@@ -639,6 +639,24 @@ fn check_formula_holds_core<S: TraceSink>(
     compute_memo: &mut QueryComputeMemo,
     sink: &mut S,
 ) -> Result<(QueryResult, u32), String> {
+    if sink.exhausted() {
+        return Err(proof_limit_error());
+    }
+    if !compute_memo.consume_formula_evaluation() {
+        let result = QueryResult::ResourceExceeded(ResourceKind::Fuel);
+        inner.observe(|| {
+            let mut e = ExecutionEvent::new(EK::GoalExit, "Formula evaluation budget exhausted");
+            e.state.logic_node = Some(node_id);
+            e.result = Some(result.clone());
+            e
+        });
+        let index = if S::RECORDING {
+            sink.push(formula_budget_step())
+        } else {
+            0
+        };
+        return Ok((result, index));
+    }
     inner.observe(|| {
         let mut e = ExecutionEvent::new(EK::GoalEnter, "Evaluate compiled formula");
         e.state.goal = Some(format!(
@@ -1988,6 +2006,17 @@ pub(super) fn find_witnesses(
 
             restrict_to_activated_individuals(&mut candidates, v, inner);
             for candidate in candidates {
+                inner.observe(|| {
+                    let mut event = ExecutionEvent::new(
+                        EK::EnumerationCandidate,
+                        "Trying candidate while enumerating witness bindings",
+                    );
+                    event.state.logic_node = Some(node_id);
+                    event.state.candidate = Some(format!("{candidate:?}"));
+                    event.state.bindings = execution_bindings(subs);
+                    event.state.goal = Some(v.clone());
+                    event
+                });
                 let mut new_subs = subs.clone();
                 new_subs.insert(v.clone(), candidate.clone());
                 let sub_results =
@@ -3281,7 +3310,22 @@ pub(super) fn max_proof_steps() -> usize {
     if let Some(cap) = TEST_MAX_PROOF_STEPS.with(|c| c.get()) {
         return cap;
     }
-    u32::MAX as usize
+    100_000
+}
+
+pub(super) fn proof_limit_error() -> String {
+    "proof trace exceeded the step/indexable size limit: the derivation cannot be certified — simplify the query or knowledge base".into()
+}
+
+pub(super) fn formula_budget_step() -> ProofStep {
+    ProofStep {
+        rule: ProofRule::PredicateCheck {
+            method: "indeterminate".into(),
+            detail: "formula evaluation budget exhausted (fuel)".into(),
+        },
+        holds: false,
+        children: vec![],
+    }
 }
 
 /// The ONE place a proof step gains its index — every sink and tracer push
@@ -3291,9 +3335,9 @@ pub(super) fn max_proof_steps() -> usize {
 /// certificate, the worst failure a proof surface can have. Past the cap
 /// nothing is recorded and the sentinel returns; the single trace assembly
 /// site checks [`proof_steps_overflowed`] and refuses the WHOLE trace, so a
-/// poisoned index can never escape. In production the cap is unreachable (a
-/// four-billion-step trace exhausts memory first) — the guard exists so the
-/// CONTRACT fails closed rather than by accident of OOM.
+/// poisoned index can never escape. The production cap is 100,000 steps:
+/// quantified certificates can grow exponentially long before u32 exhaustion.
+/// Formula and provenance recursion check the same cap to stop expansion early.
 pub(super) fn push_proof_step(steps: &mut Vec<ProofStep>, step: ProofStep) -> u32 {
     if steps.len() >= max_proof_steps() {
         return PROOF_STEP_SENTINEL;
@@ -3319,6 +3363,8 @@ pub(super) fn proof_steps_overflowed(steps: &[ProofStep]) -> bool {
 /// reintroduce indirect-call overhead on the reasoning hot path.
 trait TraceSink {
     const RECORDING: bool;
+    /// Stop proof recursion once the shared step budget has been filled.
+    fn exhausted(&self) -> bool;
     /// Push a proof step, returning its index. `NoOpSink` returns 0 (never read).
     fn push(&mut self, step: ProofStep) -> u32;
     /// Record a proven positive condition's provenance, returning its step
@@ -3339,6 +3385,10 @@ trait TraceSink {
 struct NoOpSink;
 impl TraceSink for NoOpSink {
     const RECORDING: bool = false;
+    #[inline(always)]
+    fn exhausted(&self) -> bool {
+        false
+    }
     #[inline(always)]
     fn push(&mut self, _step: ProofStep) -> u32 {
         0
@@ -3363,6 +3413,9 @@ struct RecordingSink<'a> {
 }
 impl TraceSink for RecordingSink<'_> {
     const RECORDING: bool = true;
+    fn exhausted(&self) -> bool {
+        proof_steps_overflowed(self.steps)
+    }
     fn push(&mut self, step: ProofStep) -> u32 {
         push_proof_step(self.steps, step)
     }
@@ -3870,6 +3923,11 @@ pub(super) fn trace_predicate_provenance_typed(
     memo: &mut HashMap<StoredFact, u32>,
     visited: &mut HashSet<StoredFact>,
 ) -> u32 {
+    // A prior push may have returned the sentinel. Do not descend again or
+    // dereference a memo entry until final assembly refuses the whole trace.
+    if proof_steps_overflowed(steps) {
+        return PROOF_STEP_SENTINEL;
+    }
     inner.observe(|| {
         let mut e = ExecutionEvent::new(
             if memo.contains_key(fact) {

@@ -13,8 +13,21 @@ here first.
 
 ## [Unreleased]
 
+### Fixed
+
+- Bounded Cartesian formula evaluation and proof construction after an unchanged
+  quantified corpus seed exhausted the hosted query fuzzer's memory. Verdict
+  search now reports fuel exhaustion; an oversized certificate is refused whole.
+  Ordinary below-limit verdicts and certificates retain their semantics.
+
 ### Added
 
+- Typed complete-or-unavailable find/count/aggregate outcomes preserve the existing
+  complete-or-error APIs and diagnostics. Shared execution recording now covers
+  compiler inspection, collection operations, contradiction scans and atomic whole
+  profile replacement, including actual enumeration and constraint events. Compile
+  inspection distinguishes structural preflight from assertion admission; collection
+  and scan results do not manufacture Boolean certificates.
 - Optional execution records in `nibli-session`: actual compiler and reasoning
   events, distinct depth probes and proof construction, bounded recording, atomic
   change sets and validated recoverable session snapshots. Source identities are

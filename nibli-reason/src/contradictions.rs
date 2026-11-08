@@ -4,11 +4,13 @@
 //! scan is not an unrestricted first-order consistency proof.
 
 use super::*;
+use nibli_types::execution::ExecutionEventKind;
 use std::fmt;
 
 /// Findings and checks that could not be decided. Only an empty result in BOTH
 /// fields establishes that this scan completed without finding a contradiction.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ContradictionReport {
     pub violations: Vec<String>,
     pub unresolved: Vec<ContradictionGap>,
@@ -33,12 +35,14 @@ impl ContradictionReport {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ContradictionGap {
     pub context: String,
     pub reason: ContradictionGapReason,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ContradictionGapReason {
     Unknown(UnknownReason),
     ResourceExceeded(ResourceKind),
@@ -63,6 +67,32 @@ impl fmt::Display for ContradictionGap {
 }
 
 impl KnowledgeBase {
+    fn scan_event(&self, kind: ExecutionEventKind, detail: impl FnOnce() -> String) {
+        if let Ok(inner) = self.inner.try_borrow() {
+            inner.execution_phase(nibli_types::execution::ExecutionPhase::ConstraintScan);
+            inner.observe(|| ExecutionEvent::new(kind, detail()));
+        }
+    }
+
+    fn scan_gap(
+        &self,
+        report: &mut ContradictionReport,
+        context: String,
+        reason: ContradictionGapReason,
+    ) {
+        self.scan_event(ExecutionEventKind::ConstraintGap, || {
+            format!("Undecided check {context}: {reason:?}")
+        });
+        report.gap(context, reason);
+    }
+
+    fn scan_violation(&self, report: &mut ContradictionReport, violation: String) {
+        self.scan_event(ExecutionEventKind::ConstraintViolation, || {
+            violation.clone()
+        });
+        report.violations.push(violation);
+    }
+
     /// Compatibility result containing findings only. Call
     /// [`Self::check_contradictions_report`] when the absence of findings is
     /// used as a gate: this legacy return type cannot disclose incomplete checks.
@@ -83,8 +113,12 @@ impl KnowledgeBase {
     /// content. This scans the represented model, not all classical consequences.
     pub fn check_contradictions_report(&self) -> ContradictionReport {
         let mut report = ContradictionReport::default();
+        self.scan_event(ExecutionEventKind::ConstraintCheck, || {
+            "Starting represented constraint scan".into()
+        });
         if let Err(error) = self.ensure_ready() {
-            report.gap(
+            self.scan_gap(
+                &mut report,
                 "contradiction scan".into(),
                 ContradictionGapReason::EvaluationError(error.to_string()),
             );
@@ -97,7 +131,8 @@ impl KnowledgeBase {
                 .as_ref()
                 .is_some_and(|flag| flag.load(std::sync::atomic::Ordering::Relaxed))
             {
-                report.gap(
+                self.scan_gap(
+                    &mut report,
                     "contradiction scan".into(),
                     ContradictionGapReason::EvaluationError("execution cancelled".into()),
                 );
@@ -109,7 +144,8 @@ impl KnowledgeBase {
                     .get(id)
                     .map(|record| format!("assertion #{id} ({})", record.label))
                     .unwrap_or_else(|| format!("assertion #{id}"));
-                report.gap(
+                self.scan_gap(
+                    &mut report,
                     context,
                     ContradictionGapReason::Unsupported(
                         "explicit negation is not a conjunction of positive facts".into(),
@@ -140,16 +176,24 @@ impl KnowledgeBase {
                 .collect();
             (integrity, negatives, inner.disjunctive_constraints.clone())
         };
-        report.violations = self.check_contradictions_stored();
+        self.scan_event(ExecutionEventKind::ConstraintCheck, || {
+            "Checking stored arity, equality and constraint conflicts".into()
+        });
+        for violation in self.check_contradictions_stored() {
+            self.scan_violation(&mut report, violation);
+        }
 
         for constraint in integrity {
             let context = format!("integrity constraint '{}'", constraint.label);
             if self.scan_positive_group(&constraint.conjuncts, context, &mut report) {
-                report.violations.push(format!(
-                    "Integrity violation '{}': {} all hold (including derivation)",
-                    constraint.label,
-                    display_group(&constraint.conjuncts)
-                ));
+                self.scan_violation(
+                    &mut report,
+                    format!(
+                        "Integrity violation '{}': {} all hold (including derivation)",
+                        constraint.label,
+                        display_group(&constraint.conjuncts)
+                    ),
+                );
             }
         }
         for group in negatives {
@@ -159,10 +203,13 @@ impl KnowledgeBase {
                 format!("positive counterpart of ¬({facts})"),
                 &mut report,
             ) {
-                report.violations.push(format!(
-                    "Negation contradiction: ¬({facts}) was asserted, but the positive \
+                self.scan_violation(
+                    &mut report,
+                    format!(
+                        "Negation contradiction: ¬({facts}) was asserted, but the positive \
                      counterpart is derivable"
-                ));
+                    ),
+                );
             }
         }
         for constraint in disjunctions {
@@ -172,8 +219,9 @@ impl KnowledgeBase {
                 break;
             }
             let context = format!("disjunctive constraint '{}'", constraint.label);
+            self.scan_event(ExecutionEventKind::ConstraintCheck, || context.clone());
             let Some(query) = negative_group_to_query_buffer(&constraint.conditions) else {
-                report.gap(context, unsupported_group());
+                self.scan_gap(&mut report, context, unsupported_group());
                 continue;
             };
             // Keep typed generated identities. Public find witnesses deliberately
@@ -197,7 +245,7 @@ impl KnowledgeBase {
                         })
                     });
                     if violated {
-                        report.violations.push(format!(
+                        self.scan_violation(&mut report, format!(
                             "Disjunctive constraint violated '{}': the antecedent holds but every \
                              disjunct is explicitly denied (na)",
                             constraint.label
@@ -205,7 +253,11 @@ impl KnowledgeBase {
                     }
                 }
                 Err(error) => {
-                    report.gap(context, ContradictionGapReason::EvaluationError(error));
+                    self.scan_gap(
+                        &mut report,
+                        context,
+                        ContradictionGapReason::EvaluationError(error),
+                    );
                 }
             }
         }
@@ -218,20 +270,29 @@ impl KnowledgeBase {
         context: String,
         report: &mut ContradictionReport,
     ) -> bool {
+        self.scan_event(ExecutionEventKind::ConstraintCheck, || context.clone());
         let Some(query) = negative_group_to_query_buffer(group) else {
-            report.gap(context, unsupported_group());
+            self.scan_gap(report, context, unsupported_group());
             return false;
         };
         match self.query_entailment_inner(query) {
             Ok(QueryResult::True) => return true,
             Ok(QueryResult::False) => {}
             Ok(QueryResult::Unknown(reason)) => {
-                report.gap(context, ContradictionGapReason::Unknown(reason));
+                self.scan_gap(report, context, ContradictionGapReason::Unknown(reason));
             }
             Ok(QueryResult::ResourceExceeded(kind)) => {
-                report.gap(context, ContradictionGapReason::ResourceExceeded(kind));
+                self.scan_gap(
+                    report,
+                    context,
+                    ContradictionGapReason::ResourceExceeded(kind),
+                );
             }
-            Err(error) => report.gap(context, ContradictionGapReason::EvaluationError(error)),
+            Err(error) => self.scan_gap(
+                report,
+                context,
+                ContradictionGapReason::EvaluationError(error),
+            ),
         }
         false
     }

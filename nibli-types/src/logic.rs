@@ -159,6 +159,39 @@ pub struct WitnessBinding {
     pub origin: WitnessOrigin,
 }
 
+/// A collection is either complete or unavailable. An unavailable collection
+/// never carries a partial answer set, count, or aggregate as a final result.
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(
+    feature = "serde",
+    serde(tag = "status", content = "value", rename_all = "snake_case")
+)]
+pub enum CollectionOutcome<T> {
+    Complete(T),
+    Unavailable(CollectionFailure),
+}
+
+/// The typed reason a complete collection or numeric aggregate is unavailable.
+/// The message is the same diagnostic returned by the compatibility API.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct CollectionFailure {
+    pub kind: CollectionFailureKind,
+    pub message: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+pub enum CollectionFailureKind {
+    IncompleteEnumeration,
+    UnboundVariable,
+    NonNumericValue,
+    NonFiniteOperand,
+    NonFiniteResult,
+}
+
 /// Why the engine cannot currently return a definitive `True` or `False`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -535,6 +568,8 @@ pub fn validate_envelope(envelope: &ProofEnvelope) -> Result<(), Vec<String>> {
 
 /// Aggregation operation for numeric witness values.
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 pub enum AggregateOp {
     Sum,
     Min,
@@ -551,6 +586,7 @@ pub enum AggregateOp {
 /// all refuse. `Value` carries the contributing-witness count as provenance,
 /// so a caller can state what the figure summarizes.
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum AggregateOutcome {
     /// The enumeration was complete and empty: no witness binding sets.
     Empty,

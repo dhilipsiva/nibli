@@ -195,7 +195,7 @@ checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
 
 [[package]]
 name = "nibli-engine"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "nibli-kr",
  "nibli-protocol",
@@ -221,7 +221,7 @@ dependencies = [
 
 [[package]]
 name = "nibli-kr"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "nibli-lexicon",
  "nibli-types",
@@ -231,11 +231,11 @@ dependencies = [
 
 [[package]]
 name = "nibli-lexicon"
-version = "0.1.0"
+version = "0.2.0"
 
 [[package]]
 name = "nibli-protocol"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "nibli-types",
  "serde",
@@ -244,7 +244,7 @@ dependencies = [
 
 [[package]]
 name = "nibli-reason"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "nibli-lexicon",
  "nibli-types",
@@ -253,7 +253,7 @@ dependencies = [
 
 [[package]]
 name = "nibli-render"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "nibli-lexicon",
  "nibli-protocol",
@@ -262,7 +262,7 @@ dependencies = [
 
 [[package]]
 name = "nibli-semantics"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "lasso",
  "nibli-lexicon",
@@ -271,17 +271,19 @@ dependencies = [
 
 [[package]]
 name = "nibli-session"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "nibli-kr",
+ "nibli-lexicon",
  "nibli-reason",
  "nibli-semantics",
  "nibli-types",
+ "serde_json",
 ]
 
 [[package]]
 name = "nibli-store"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "nibli-reason",
  "postcard",
@@ -291,7 +293,7 @@ dependencies = [
 
 [[package]]
 name = "nibli-types"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "serde",
 ]

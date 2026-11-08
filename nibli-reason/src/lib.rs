@@ -29,9 +29,10 @@
 use nibli_types::error::NibliError;
 use nibli_types::execution::{ExecutionEvent, ExecutionEventKind as EK, ExecutionPhase};
 use nibli_types::logic::{
-    AssertionCitation, AssertionRecordSummary, AssertionStatus, FactSummary, LogicBuffer,
-    LogicNode, LogicalTerm, ProofRule, ProofStep, ProofTrace, QueryResult, ResourceKind,
-    RuleCitation, UnknownReason, WitnessBinding,
+    AssertionCitation, AssertionRecordSummary, AssertionStatus, CollectionFailure,
+    CollectionFailureKind, CollectionOutcome, FactSummary, LogicBuffer, LogicNode, LogicalTerm,
+    ProofRule, ProofStep, ProofTrace, QueryResult, ResourceKind, RuleCitation, UnknownReason,
+    WitnessBinding,
 };
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -57,6 +58,50 @@ pub use materialize::Ineligible;
 
 /// Completed relation names and reasons other relations refused materialization.
 pub type MaterializationReport = (Vec<String>, Vec<(String, String)>);
+
+const INCOMPLETE_ENUMERATION_MESSAGE: &str = "witness enumeration incomplete: domain closure or a witness leaf could not be decided \
+             (`UNKNOWN` or `RESOURCE_EXCEEDED`), so find/count/aggregate would undercount — \
+             `materialization_report` can explain unsaturated relations; non-finite compute \
+             or exhausted budgets must be addressed at their source";
+
+/// Keep collection incompleteness typed at its source. The older String-returning
+/// internal seam remains available to constraint matching without classifying prose.
+enum EnumerationFailure {
+    Incomplete,
+    Engine(String),
+}
+
+impl From<String> for EnumerationFailure {
+    fn from(message: String) -> Self {
+        Self::Engine(message)
+    }
+}
+
+impl EnumerationFailure {
+    fn into_message(self) -> String {
+        match self {
+            Self::Incomplete => INCOMPLETE_ENUMERATION_MESSAGE.into(),
+            Self::Engine(message) => message,
+        }
+    }
+}
+
+fn incomplete_enumeration(inner: &KnowledgeBaseInner) -> EnumerationFailure {
+    inner.observe(|| {
+        ExecutionEvent::new(
+            EK::EnumerationIncomplete,
+            "Witness enumeration refused: the complete binding set could not be established",
+        )
+    });
+    EnumerationFailure::Incomplete
+}
+
+fn legacy_collection<T>(outcome: CollectionOutcome<T>) -> Result<T, NibliError> {
+    match outcome {
+        CollectionOutcome::Complete(value) => Ok(value),
+        CollectionOutcome::Unavailable(failure) => Err(NibliError::Reasoning(failure.message)),
+    }
+}
 
 pub use compute::ComputeRequest;
 
@@ -837,13 +882,24 @@ impl KnowledgeBase {
     /// either — a nested find already panics on the `RefCell`, so the flag cannot be
     /// nested. The entailment-entry clears stay as defence in depth.
     fn query_find_inner(&self, logic: LogicBuffer) -> Result<Vec<Vec<WitnessBinding>>, String> {
+        self.query_find_typed_inner(logic)
+            .map_err(EnumerationFailure::into_message)
+    }
+
+    fn query_find_typed_inner(
+        &self,
+        logic: LogicBuffer,
+    ) -> Result<Vec<Vec<WitnessBinding>>, EnumerationFailure> {
         let out = self.query_find_enumerate(logic);
         self.inner.borrow_mut().find_enumeration = false;
         out
     }
 
-    fn query_find_enumerate(&self, logic: LogicBuffer) -> Result<Vec<Vec<WitnessBinding>>, String> {
-        let binding_sets = self.query_find_ground(logic)?;
+    fn query_find_enumerate(
+        &self,
+        logic: LogicBuffer,
+    ) -> Result<Vec<Vec<WitnessBinding>>, EnumerationFailure> {
+        let binding_sets = self.query_find_ground_typed(logic)?;
         let inner = self.inner.borrow();
         Ok(Self::present_witness_bindings(&inner, binding_sets))
     }
@@ -852,8 +908,16 @@ impl KnowledgeBase {
     /// constraint matching. Public witness strings are presentation only.
     fn query_find_ground(
         &self,
-        mut logic: LogicBuffer,
+        logic: LogicBuffer,
     ) -> Result<Vec<Vec<(String, GroundTerm)>>, String> {
+        self.query_find_ground_typed(logic)
+            .map_err(EnumerationFailure::into_message)
+    }
+
+    fn query_find_ground_typed(
+        &self,
+        mut logic: LogicBuffer,
+    ) -> Result<Vec<Vec<(String, GroundTerm)>>, EnumerationFailure> {
         validate_single_flavor_paths(&logic)?;
         canonicalize_abstraction_markers(&mut logic)?;
         // Surfaced (as an Err) when any final witness leaf is non-definitive:
@@ -873,16 +937,16 @@ impl KnowledgeBase {
         // witness set"; `KnowledgeBase::materialization_report` can explain an
         // unsaturated relation, while non-finite compute and exhausted budgets must be
         // addressed at their source.
-        const INCOMPLETE_MSG: &str = "witness enumeration incomplete: domain closure or a witness leaf could not be decided \
-             (`UNKNOWN` or `RESOURCE_EXCEEDED`), so find/count/aggregate would undercount — \
-             `materialization_report` can explain unsaturated relations; non-finite compute \
-             or exhausted budgets must be addressed at their source";
+        self.inner
+            .borrow()
+            .execution_phase(ExecutionPhase::Materialization);
         self.ensure_materialized(&logic, true);
         let mut inner = self.inner.borrow_mut();
+        inner.execution_phase(ExecutionPhase::Enumeration);
         clear_and_enable_pred_cache(&inner);
         prepare_query_domain(&mut inner)?;
         if inner.query_domain.incomplete.is_some() {
-            return Err(INCOMPLETE_MSG.to_string());
+            return Err(incomplete_enumeration(&inner));
         }
         inner.find_enumeration_incomplete = false;
         // Enumeration runs its body once per candidate, so external compute is not
@@ -916,7 +980,7 @@ impl KnowledgeBase {
                                 inner.find_enumeration_incomplete = false;
                                 return Ok(vec![]);
                             }
-                            return Err(INCOMPLETE_MSG.to_string());
+                            return Err(incomplete_enumeration(&inner));
                         }
                         return Ok(vec![]);
                     }
@@ -942,7 +1006,7 @@ impl KnowledgeBase {
                                 inner.find_enumeration_incomplete = false;
                                 return Ok(vec![]);
                             }
-                            return Err(INCOMPLETE_MSG.to_string());
+                            return Err(incomplete_enumeration(&inner));
                         }
                         return Ok(vec![]);
                     }
@@ -961,7 +1025,7 @@ impl KnowledgeBase {
                 inner.find_enumeration_incomplete = false;
                 return Ok(vec![]);
             }
-            return Err(INCOMPLETE_MSG.to_string());
+            return Err(incomplete_enumeration(&inner));
         }
         Ok(result_sets.unwrap_or_default())
     }
@@ -1027,6 +1091,22 @@ impl KnowledgeBase {
         binding_sets
             .into_iter()
             .map(|bindings| {
+                inner.observe(|| {
+                    let mut event = ExecutionEvent::new(
+                        EK::EnumerationBinding,
+                        "Retained complete, distinct witness binding set",
+                    );
+                    event.state.bindings = bindings
+                        .iter()
+                        .map(
+                            |(variable, value)| nibli_types::execution::ExecutionBinding {
+                                variable: variable.clone(),
+                                value: format!("{value:?}"),
+                            },
+                        )
+                        .collect();
+                    event
+                });
                 bindings
                     .into_iter()
                     .map(|(var, gt)| {
@@ -1099,6 +1179,15 @@ impl KnowledgeBase {
                 },
             )
         };
+        // The overflow refusal: past the step cap, pushes were poisoned (nothing
+        // recorded, sentinel index) — the steps are not a certificate and must
+        // not escape as one.
+        if reasoning::proof_steps_overflowed(&steps) {
+            return Err(reasoning::proof_limit_error());
+        }
+        if compute_memo.formula_budget_exhausted() {
+            return Err("proof construction exceeded the formula evaluation budget (fuel): the derivation cannot be certified".into());
+        }
         let naf_dependent = steps
             .iter()
             .any(|s| matches!(s.rule, ProofRule::Negation) && s.holds);
@@ -1108,16 +1197,6 @@ impl KnowledgeBase {
         // Conversely, an unrelated failed compute check cannot launder an
         // absence-driven disjunction into a non-CWA result.
         let cwa_false = overall.is_false() && proof_false_depends_on_closed_world(&steps, root);
-        // The overflow refusal: past the u32 cap, pushes were poisoned (nothing
-        // recorded, sentinel index) — the steps are not a certificate and must
-        // not escape as one.
-        if reasoning::proof_steps_overflowed(&steps) {
-            return Err(
-                "proof trace exceeded the indexable size (u32 step indices): the \
-                 derivation cannot be certified — simplify the query or knowledge base"
-                    .to_string(),
-            );
-        }
         Ok((
             overall,
             ProofTrace {
@@ -1193,6 +1272,24 @@ impl KnowledgeBase {
                         return Err(e);
                     }
                 };
+            if compute_memo.formula_budget_exhausted() {
+                // No complete verdict was established in the bounded search.
+                // Return honest indeterminate context, never a partial certificate.
+                let inner = self.inner.borrow();
+                inner.positive_lookup.set(true);
+                inner.execution_phase(ExecutionPhase::Proof);
+                drop(inner);
+                self.inner.borrow_mut().max_chain_depth = configured_max;
+                return Ok((
+                    QueryResult::ResourceExceeded(ResourceKind::Fuel),
+                    ProofTrace {
+                        steps: vec![reasoning::formula_budget_step()],
+                        root: 0,
+                        naf_dependent: false,
+                        cwa_false: false,
+                    },
+                ));
+            }
             if !matches!(result, QueryResult::ResourceExceeded(ResourceKind::Depth)) {
                 resolving_depth = depth_limit;
                 break;
@@ -1203,6 +1300,9 @@ impl KnowledgeBase {
         // trace is byte-identical to the former per-depth build because the trace
         // descent never shortcuts on the verdict cache and the fact store is
         // set-idempotent for the only state it reads (`typed_fact_is_stored`).
+        // The certificate is a separate bounded walk. Keep backend replies
+        // stable, but do not make its work allowance depend on probe cost.
+        compute_memo.reset_formula_budget();
         self.inner.borrow_mut().max_chain_depth = resolving_depth;
         self.inner.borrow().execution_phase(ExecutionPhase::Proof);
         self.inner.borrow().observe(|| {
@@ -1996,14 +2096,45 @@ impl KnowledgeBase {
     /// Returns `NibliError::Reasoning` with `witness enumeration incomplete` when any
     /// evaluated candidate leaf is `Unknown(_)` or `ResourceExceeded(_)`.
     pub fn query_find(&self, logic: LogicBuffer) -> Result<Vec<Vec<WitnessBinding>>, NibliError> {
+        legacy_collection(self.query_find_outcome(logic)?)
+    }
+
+    /// Find all distinct witness binding sets, distinguishing an unavailable
+    /// complete collection from malformed input or other evaluation errors.
+    /// No partial bindings are returned when enumeration is incomplete.
+    pub fn query_find_outcome(
+        &self,
+        logic: LogicBuffer,
+    ) -> Result<CollectionOutcome<Vec<Vec<WitnessBinding>>>, NibliError> {
         self.ensure_ready()?;
-        self.query_find_inner(logic).map_err(NibliError::Reasoning)
+        match self.query_find_typed_inner(logic) {
+            Ok(bindings) => Ok(CollectionOutcome::Complete(bindings)),
+            Err(EnumerationFailure::Incomplete) => {
+                Ok(CollectionOutcome::Unavailable(CollectionFailure {
+                    kind: CollectionFailureKind::IncompleteEnumeration,
+                    message: INCOMPLETE_ENUMERATION_MESSAGE.into(),
+                }))
+            }
+            Err(EnumerationFailure::Engine(message)) => Err(NibliError::Reasoning(message)),
+        }
     }
 
     /// Count the number of distinct witness binding sets satisfying the formula.
     /// Inherits [`Self::query_find`]'s complete-or-error collection contract.
     pub fn count_witnesses(&self, logic: LogicBuffer) -> Result<usize, NibliError> {
-        self.query_find(logic).map(|bindings| bindings.len())
+        legacy_collection(self.count_witnesses_outcome(logic)?)
+    }
+
+    /// Count a complete set of distinct witness bindings, or retain the typed
+    /// reason why a definitive count is unavailable.
+    pub fn count_witnesses_outcome(
+        &self,
+        logic: LogicBuffer,
+    ) -> Result<CollectionOutcome<usize>, NibliError> {
+        Ok(match self.query_find_outcome(logic)? {
+            CollectionOutcome::Complete(bindings) => CollectionOutcome::Complete(bindings.len()),
+            CollectionOutcome::Unavailable(failure) => CollectionOutcome::Unavailable(failure),
+        })
     }
 
     /// Aggregate numeric values of a named variable across all witness binding
@@ -2020,35 +2151,66 @@ impl KnowledgeBase {
         variable: &str,
         op: nibli_types::logic::AggregateOp,
     ) -> Result<nibli_types::logic::AggregateOutcome, NibliError> {
+        legacy_collection(self.aggregate_outcome(logic, variable, op)?)
+    }
+
+    /// Aggregate only complete, all-numeric finite bindings. An unavailable
+    /// result retains its typed failure class and the legacy diagnostic text.
+    pub fn aggregate_outcome(
+        &self,
+        logic: LogicBuffer,
+        variable: &str,
+        op: nibli_types::logic::AggregateOp,
+    ) -> Result<CollectionOutcome<nibli_types::logic::AggregateOutcome>, NibliError> {
         use nibli_types::logic::{AggregateOp, AggregateOutcome};
-        let bindings = self.query_find(logic)?;
+        let bindings = match self.query_find_outcome(logic)? {
+            CollectionOutcome::Complete(bindings) => bindings,
+            CollectionOutcome::Unavailable(failure) => {
+                return Ok(CollectionOutcome::Unavailable(failure));
+            }
+        };
+        let unavailable = |kind, message| {
+            Ok(CollectionOutcome::Unavailable(CollectionFailure {
+                kind,
+                message,
+            }))
+        };
         let mut values: Vec<f64> = Vec::with_capacity(bindings.len());
         for (i, binding_set) in bindings.iter().enumerate() {
             let Some(binding) = binding_set.iter().find(|b| b.variable == variable) else {
-                return Err(NibliError::Reasoning(format!(
-                    "aggregate over `{variable}` is undefined: witness binding set #{i} \
+                return unavailable(
+                    CollectionFailureKind::UnboundVariable,
+                    format!(
+                        "aggregate over `{variable}` is undefined: witness binding set #{i} \
                      does not bind the variable — refusing a partial aggregate \
                      (fail closed, never a silent drop)"
-                )));
+                    ),
+                );
             };
             let LogicalTerm::Number(n) = &binding.term else {
-                return Err(NibliError::Reasoning(format!(
-                    "aggregate over `{variable}` is undefined: witness binding set #{i} \
+                return unavailable(
+                    CollectionFailureKind::NonNumericValue,
+                    format!(
+                        "aggregate over `{variable}` is undefined: witness binding set #{i} \
                      binds a non-numeric term ({:?}) — refusing a mixed aggregate \
                      (fail closed, never a silent drop)",
-                    binding.term
-                )));
+                        binding.term
+                    ),
+                );
             };
             if !n.is_finite() {
-                return Err(NibliError::Reasoning(format!(
-                    "aggregate over `{variable}` is undefined: witness binding set #{i} \
+                return unavailable(
+                    CollectionFailureKind::NonFiniteOperand,
+                    format!(
+                        "aggregate over `{variable}` is undefined: witness binding set #{i} \
                      binds the non-finite value {n} — refusing (fail closed)"
-                )));
+                    ),
+                );
             }
             values.push(*n);
         }
         if values.is_empty() {
-            return Ok(AggregateOutcome::Empty);
+            return Ok(CollectionOutcome::Complete(AggregateOutcome::Empty));
         }
         let witnesses = values.len();
         let value = match op {
@@ -2058,12 +2220,18 @@ impl KnowledgeBase {
             AggregateOp::Avg => values.iter().sum::<f64>() / witnesses as f64,
         };
         if !value.is_finite() {
-            return Err(NibliError::Reasoning(format!(
-                "aggregate over `{variable}` overflowed: the {witnesses}-witness result \
+            return unavailable(
+                CollectionFailureKind::NonFiniteResult,
+                format!(
+                    "aggregate over `{variable}` overflowed: the {witnesses}-witness result \
                  is non-finite ({value}) — refusing (fail closed)"
-            )));
+                ),
+            );
         }
-        Ok(AggregateOutcome::Value { value, witnesses })
+        Ok(CollectionOutcome::Complete(AggregateOutcome::Value {
+            value,
+            witnesses,
+        }))
     }
 
     /// Check entailment and return a proof trace showing the full derivation chain.

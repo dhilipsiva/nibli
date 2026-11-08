@@ -78,6 +78,9 @@ pub enum ExecutionPhase {
     Materialization,
     Probe,
     Proof,
+    Enumeration,
+    ConstraintScan,
+    Configuration,
     Mutation,
     Complete,
 }
@@ -103,6 +106,13 @@ pub enum ExecutionEventKind {
     CacheStore,
     CacheInvalidate,
     Witness,
+    EnumerationCandidate,
+    EnumerationBinding,
+    EnumerationIncomplete,
+    ConstraintCheck,
+    ConstraintViolation,
+    ConstraintGap,
+    ProfileChange,
     ShortCircuit,
     CycleCut,
     DepthBound,
@@ -214,6 +224,25 @@ pub struct CompilationArtifact {
     pub lowered_logic: Option<LogicBuffer>,
     /// Final IR passed to the evaluator (compute routing included).
     pub logic: Option<LogicBuffer>,
+}
+
+/// Compilation and optional structural preflight; neither installs an assertion.
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct CompileInspection {
+    pub logic: LogicBuffer,
+    pub structural_preflight: StructuralPreflight,
+}
+
+/// Structural validity does not establish admission against current knowledge.
+/// Actual admission can only be tested by applying the change to a candidate.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(tag = "status", rename_all = "snake_case"))]
+pub enum StructuralPreflight {
+    NotRequested,
+    Passed,
+    Refused { message: String },
 }
 
 #[derive(Clone, Debug, PartialEq)]

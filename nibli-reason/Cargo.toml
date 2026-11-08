@@ -16,7 +16,7 @@ nibli-lexicon = { workspace = true }
 
 [features]
 default = []
-serde = ["dep:serde"]
+serde = ["dep:serde", "nibli-types/serde"]
 
 # Test-only: the real nibli-kr→smuni front-end, so unit tests can build a `LogicBuffer`
 # the SHIPPED way (event-decomposed) and check the flat helpers against it. No cycle —

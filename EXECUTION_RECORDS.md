@@ -51,6 +51,56 @@ artifact; source references without a span refer to the whole compilation unit.
 Rule candidates and derivations separately cite assertion identities. A query's
 initial snapshot supplies the assertion registry and profile against which it ran.
 
+The same collector also wraps operations that do not return Boolean certificates:
+
+| `CoreSession` method | Typed outcome |
+| --- | --- |
+| `compile_text_recorded(text, structural_preflight, options)` | `CompileInspection`: final IR and `NotRequested`, `Passed` or `Refused` structural preflight |
+| `query_find_text_recorded(text, options)` | `CollectionOutcome<Vec<Vec<WitnessBinding>>>` |
+| `count_witnesses_text_recorded(text, options)` | `CollectionOutcome<usize>` |
+| `aggregate_text_recorded(text, variable, op, options)` | `CollectionOutcome<AggregateOutcome>` |
+| `check_contradictions_recorded(options)` | `ContradictionReport`, with violations and unresolved checks separate |
+| `set_profile_recorded(profile, options)` | The successfully installed `EngineProfile` |
+
+Every method also has a `_with_phase_observer` variant. Compile inspection does not
+allocate assertion IDs or admit knowledge. Its optional structural preflight does
+not establish that a later assertion will pass the current admission policy or
+consistency checks. A real admission preview requires applying changes to a
+detached candidate.
+
+The typed `_outcome` find/count/aggregate APIs return `Complete(value)` or
+`Unavailable(CollectionFailure { kind, message })`. Failure kinds distinguish
+incomplete enumeration, an unbound selected variable, a nonnumeric selected value,
+a nonfinite operand, and a nonfinite aggregate result. Malformed queries and other
+engine errors remain the outer `Err(NibliError)`. Existing collection APIs retain
+their complete-or-error behavior and diagnostics. `AggregateOutcome::Empty` means
+complete enumeration found no witnesses, including for sum; it is not zero.
+
+Enumeration candidates are observed before evaluation; final binding events are
+emitted only after complete enumeration and equality deduplication. Unavailable
+collections never expose provisional rows as final answers. Enumeration does not
+dispatch external compute. Bindings retain their typed logical term and origin;
+generated display names are not reusable identity handles or a dependency graph.
+Constraint events describe checks, detected violations and unresolved checks at
+the scan boundary. Neither collection nor contradiction APIs fabricate proof
+graphs. Their record's Boolean `result` field remains `None`; the separate typed
+outcome carries the result. A completed unavailable collection or a scan with gaps
+can still have a complete execution history.
+
+`profile()` reads the effective settings. `set_profile(&profile)` and its recorded
+variants apply all fields to a detached transaction candidate and publish them
+together. Invalid depth or failed import replay leaves the original profile and
+knowledge unchanged. Existential import rebuilds existing sources, materialization
+invalidates derived caches, and strict mode controls future admission. Profile
+records retain the starting profile and the final recoverable snapshot when one
+is available. Application epochs, revision changes and stale-result policy remain
+the host's responsibility.
+
+Strict admission rejects arity mismatches and registered integrity-constraint
+violations. It is not the contradiction scan: storing an explicit negative does
+not make a later positive assertion automatically fail strict admission. Use the
+separate report when inspecting explicit-negative conflicts and unresolved checks.
+
 Standard recording retains at most 10,000 events and 8 MiB of serialized payload;
 full recording retains at most 100,000 events and 64 MiB. Callers may lower either
 budget. Payload accounting includes input, snapshots, artifacts, events and error

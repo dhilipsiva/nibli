@@ -5,7 +5,10 @@ use std::sync::{Arc, Mutex};
 use super::CoreSession;
 use nibli_types::error::NibliError;
 use nibli_types::execution::*;
-use nibli_types::logic::{EngineProfile, LogicBuffer, ProofTrace, QueryResult};
+use nibli_types::logic::{
+    AggregateOp, AggregateOutcome, CollectionOutcome, EngineProfile, LogicBuffer, ProofTrace,
+    QueryResult, WitnessBinding,
+};
 
 pub struct Recorded<T> {
     pub outcome: Result<T, NibliError>,
@@ -21,6 +24,18 @@ struct CollectorState {
     notified_phase: Option<ExecutionPhase>,
 }
 struct Collector(Mutex<CollectorState>, Option<ExecutionObserverHandle>);
+
+/// Restores even when an operation returns early or unwinds; an observer must
+/// never leak into an unrelated operation on the same session.
+struct ObserverGuard<'a> {
+    kb: &'a nibli_reason::KnowledgeBase,
+    previous: Option<ExecutionObserverHandle>,
+}
+impl Drop for ObserverGuard<'_> {
+    fn drop(&mut self) {
+        self.kb.replace_execution_observer(self.previous.take());
+    }
+}
 
 impl Collector {
     fn new(
@@ -44,6 +59,9 @@ impl Collector {
                 "search".into(),
                 "probe_and_proof".into(),
                 "atomic_changes".into(),
+                "complete_collections".into(),
+                "constraint_scan".into(),
+                "atomic_profile".into(),
                 "recoverable_snapshot".into(),
             ],
             options,
@@ -322,6 +340,25 @@ fn decimal_id(value: &str) -> Result<u64, NibliError> {
 }
 
 impl CoreSession {
+    /// The effective configuration used by queries and source recovery.
+    pub fn profile(&self) -> EngineProfile {
+        self.execution_profile()
+    }
+
+    /// Replace the whole profile atomically on a detached candidate. Strict
+    /// mode governs subsequent admission; it does not purge accepted sources.
+    pub fn set_profile(&self, profile: &EngineProfile) -> Result<EngineProfile, NibliError> {
+        self.kb.transaction(|candidate| {
+            candidate.set_max_chain_depth(profile.max_chain_depth)?;
+            candidate
+                .set_existential_import(profile.existential_import)
+                .map_err(NibliError::Reasoning)?;
+            candidate.set_materialization(profile.materialization);
+            candidate.set_strict(profile.strict);
+            Ok(profile.clone())
+        })
+    }
+
     fn execution_profile(&self) -> EngineProfile {
         EngineProfile {
             strict: self.kb.is_strict(),
@@ -493,6 +530,53 @@ impl CoreSession {
         });
         Ok(buffer)
     }
+
+    fn compile_for_recording(
+        &self,
+        text: &str,
+        collector: &Collector,
+        artifact_id: &str,
+    ) -> Result<LogicBuffer, NibliError> {
+        collector.phase(ExecutionPhase::Compile);
+        if collector.recording_enabled() {
+            self.compile_observed(text, collector, artifact_id)
+        } else {
+            self.compile_text(text)
+        }
+    }
+
+    fn recorded_operation<T>(
+        &self,
+        input: String,
+        options: RecordingOptions,
+        phase_observer: Option<ExecutionObserverHandle>,
+        mutating: bool,
+        execute: impl FnOnce(&Collector) -> Result<T, NibliError>,
+        complete: impl FnOnce(&Result<T, NibliError>) -> ExecutionEvent,
+    ) -> Recorded<T> {
+        let observing = options.mode != RecordingMode::Disabled || phase_observer.is_some();
+        let collector = Arc::new(Collector::new(self, input, options, phase_observer));
+        let guard = ObserverGuard {
+            kb: &self.kb,
+            previous: self.kb.replace_execution_observer(
+                observing.then(|| collector.clone() as ExecutionObserverHandle),
+            ),
+        };
+        let outcome = execute(&collector);
+        drop(guard);
+        if mutating && options.mode != RecordingMode::Disabled {
+            match self.snapshot() {
+                Ok(snapshot) => collector.snapshot(snapshot, true),
+                Err(error) => collector.snapshot_unavailable(error),
+            }
+        }
+        collector.phase(ExecutionPhase::Complete);
+        let event = complete(&outcome);
+        let result = event.result.clone();
+        collector.observe(event);
+        let record = collector.finish(result, outcome.as_ref().err().map(ToString::to_string));
+        Recorded { outcome, record }
+    }
     pub fn query_text_recorded(
         &self,
         text: &str,
@@ -519,32 +603,21 @@ impl CoreSession {
         options: RecordingOptions,
         phase_observer: Option<ExecutionObserverHandle>,
     ) -> Recorded<(QueryResult, ProofTrace)> {
-        let observing = options.mode != RecordingMode::Disabled || phase_observer.is_some();
-        let collector = Arc::new(Collector::new(self, text.into(), options, phase_observer));
-        let previous = self.kb.replace_execution_observer(if observing {
-            Some(collector.clone())
-        } else {
-            None
-        });
-        let outcome = (|| {
-            collector.phase(ExecutionPhase::Compile);
-            let buffer = if options.mode == RecordingMode::Disabled {
-                self.compile_query_text(text)?
-            } else {
-                self.compile_observed(text, collector.as_ref(), "0")?
-            };
-            self.kb.query_entailment_with_proof(buffer)
-        })();
-        self.kb.replace_execution_observer(previous);
-        collector.phase(ExecutionPhase::Complete);
-        let mut event = ExecutionEvent::new(ExecutionEventKind::Outcome, "Query completed");
-        event.result = outcome.as_ref().ok().map(|(r, _)| r.clone());
-        collector.observe(event);
-        let record = collector.finish(
-            outcome.as_ref().ok().map(|(r, _)| r.clone()),
-            outcome.as_ref().err().map(ToString::to_string),
-        );
-        Recorded { outcome, record }
+        self.recorded_operation(
+            text.into(),
+            options,
+            phase_observer,
+            false,
+            |collector| {
+                self.kb
+                    .query_entailment_with_proof(self.compile_for_recording(text, collector, "0")?)
+            },
+            |outcome| {
+                let mut event = ExecutionEvent::new(ExecutionEventKind::Outcome, "Query completed");
+                event.result = outcome.as_ref().ok().map(|(r, _)| r.clone());
+                event
+            },
+        )
     }
     pub fn apply_changes_recorded(
         &self,
@@ -571,64 +644,348 @@ impl CoreSession {
         options: RecordingOptions,
         phase_observer: Option<ExecutionObserverHandle>,
     ) -> Recorded<ChangeResult> {
-        let observing = options.mode != RecordingMode::Disabled || phase_observer.is_some();
         let input = serde_json::to_string(changes).expect("change serialization");
-        let collector = Arc::new(Collector::new(self, input, options, phase_observer));
-        let previous = self.kb.replace_execution_observer(if observing {
-            Some(collector.clone())
-        } else {
-            None
-        });
-        collector.phase(ExecutionPhase::Mutation);
-        let outcome = self.kb.transaction(|candidate| {
-            let mut operation_ids = Vec::new();
-            for (index, change) in changes.iter().enumerate() {
-                match change {
-                    SessionChange::Assert { text } => {
-                        collector.phase(ExecutionPhase::Compile);
-                        let buffer = if options.mode == RecordingMode::Disabled {
-                            self.compile_text(text)?
-                        } else {
-                            self.compile_observed(text, collector.as_ref(), &index.to_string())?
-                        };
-                        collector.phase(ExecutionPhase::Admission);
-                        candidate.validate_assertion(&buffer)?;
-                        let mut ids = Vec::new();
-                        for root in buffer.split_roots() {
-                            ids.push(candidate.assert_fact(root, text.clone())?.to_string());
+        self.recorded_operation(
+            input,
+            options,
+            phase_observer,
+            true,
+            |collector| {
+                collector.phase(ExecutionPhase::Mutation);
+                self.kb.transaction(|candidate| {
+                    let mut operation_ids = Vec::new();
+                    for (index, change) in changes.iter().enumerate() {
+                        match change {
+                            SessionChange::Assert { text } => {
+                                let buffer = self.compile_for_recording(
+                                    text,
+                                    collector,
+                                    &index.to_string(),
+                                )?;
+                                collector.phase(ExecutionPhase::Admission);
+                                candidate.validate_assertion(&buffer)?;
+                                let mut ids = Vec::new();
+                                for root in buffer.split_roots() {
+                                    ids.push(
+                                        candidate.assert_fact(root, text.clone())?.to_string(),
+                                    );
+                                }
+                                operation_ids.push(ids);
+                            }
+                            SessionChange::Withdraw { id } => {
+                                collector.phase(ExecutionPhase::Mutation);
+                                candidate.retract_fact(decimal_id(id)?)?;
+                                operation_ids.push(vec![id.clone()]);
+                            }
                         }
-                        operation_ids.push(ids);
                     }
-                    SessionChange::Withdraw { id } => {
-                        collector.phase(ExecutionPhase::Mutation);
-                        candidate.retract_fact(decimal_id(id)?)?;
-                        operation_ids.push(vec![id.clone()]);
-                    }
-                }
-            }
-            Ok(ChangeResult { operation_ids })
-        });
-        self.kb.replace_execution_observer(previous);
-        if options.mode != RecordingMode::Disabled {
-            match self.snapshot() {
-                Ok(snapshot) => collector.snapshot(snapshot, true),
-                Err(error) => collector.snapshot_unavailable(error),
-            }
-        }
-        collector.phase(ExecutionPhase::Complete);
-        collector.observe(ExecutionEvent::new(
-            if outcome.is_ok() {
-                ExecutionEventKind::Commit
-            } else {
-                ExecutionEventKind::Rollback
+                    Ok(ChangeResult { operation_ids })
+                })
             },
-            if outcome.is_ok() {
-                "Whole change set is now live"
-            } else {
-                "Whole change set discarded; original session retained"
+            |outcome| {
+                ExecutionEvent::new(
+                    if outcome.is_ok() {
+                        ExecutionEventKind::Commit
+                    } else {
+                        ExecutionEventKind::Rollback
+                    },
+                    if outcome.is_ok() {
+                        "Whole change set is now live"
+                    } else {
+                        "Whole change set discarded; original session retained"
+                    },
+                )
             },
-        ));
-        let record = collector.finish(None, outcome.as_ref().err().map(ToString::to_string));
-        Recorded { outcome, record }
+        )
+    }
+
+    /// Inspect the ordinary compiler and, optionally, structural assertion
+    /// preflight. Neither successful step establishes actual admission.
+    pub fn compile_text_recorded(
+        &self,
+        text: &str,
+        structural_preflight: bool,
+        options: RecordingOptions,
+    ) -> Recorded<CompileInspection> {
+        self.compile_text_recorded_inner(text, structural_preflight, options, None)
+    }
+
+    pub fn compile_text_recorded_with_phase_observer(
+        &self,
+        text: &str,
+        structural_preflight: bool,
+        options: RecordingOptions,
+        observer: ExecutionObserverHandle,
+    ) -> Recorded<CompileInspection> {
+        self.compile_text_recorded_inner(text, structural_preflight, options, Some(observer))
+    }
+
+    fn compile_text_recorded_inner(
+        &self,
+        text: &str,
+        structural_preflight: bool,
+        options: RecordingOptions,
+        observer: Option<ExecutionObserverHandle>,
+    ) -> Recorded<CompileInspection> {
+        self.recorded_operation(
+            text.into(),
+            options,
+            observer,
+            false,
+            |collector| {
+                let logic = self.compile_for_recording(text, collector, "0")?;
+                let structural_preflight =
+                    if structural_preflight {
+                        collector.phase(ExecutionPhase::Admission);
+                        match self.kb.validate_assertion(&logic) {
+                            Ok(()) => {
+                                collector.observe(ExecutionEvent::new(ExecutionEventKind::Validate,
+                            "Structural assertion preflight passed; no assertion was admitted"));
+                                StructuralPreflight::Passed
+                            }
+                            Err(error) => {
+                                collector.observe(ExecutionEvent::new(
+                                    ExecutionEventKind::Validate,
+                                    format!("Structural assertion preflight refused: {error}"),
+                                ));
+                                StructuralPreflight::Refused {
+                                    message: error.to_string(),
+                                }
+                            }
+                        }
+                    } else {
+                        StructuralPreflight::NotRequested
+                    };
+                Ok(CompileInspection {
+                    logic,
+                    structural_preflight,
+                })
+            },
+            |_| {
+                ExecutionEvent::new(
+                    ExecutionEventKind::Outcome,
+                    "Compilation inspection completed",
+                )
+            },
+        )
+    }
+
+    fn record_collection<T>(
+        &self,
+        text: &str,
+        input: String,
+        options: RecordingOptions,
+        observer: Option<ExecutionObserverHandle>,
+        operation: impl FnOnce(LogicBuffer) -> Result<CollectionOutcome<T>, NibliError>,
+    ) -> Recorded<CollectionOutcome<T>> {
+        self.recorded_operation(
+            input,
+            options,
+            observer,
+            false,
+            |collector| {
+                let logic = self.compile_for_recording(text, collector, "0")?;
+                collector.phase(ExecutionPhase::Enumeration);
+                operation(logic)
+            },
+            |outcome| {
+                ExecutionEvent::new(
+                    ExecutionEventKind::Outcome,
+                    match outcome {
+                        Ok(CollectionOutcome::Complete(_)) => "Complete collection returned".into(),
+                        Ok(CollectionOutcome::Unavailable(failure)) => {
+                            format!("Collection unavailable: {}", failure.message)
+                        }
+                        Err(_) => "Collection operation failed".into(),
+                    },
+                )
+            },
+        )
+    }
+
+    /// The ordinary complete-only find result with actual execution observations.
+    /// No Boolean proof or partial answer list is manufactured for this operation.
+    pub fn query_find_text_recorded(
+        &self,
+        text: &str,
+        options: RecordingOptions,
+    ) -> Recorded<CollectionOutcome<Vec<Vec<WitnessBinding>>>> {
+        self.query_find_text_recorded_inner(text, options, None)
+    }
+
+    pub fn query_find_text_recorded_with_phase_observer(
+        &self,
+        text: &str,
+        options: RecordingOptions,
+        observer: ExecutionObserverHandle,
+    ) -> Recorded<CollectionOutcome<Vec<Vec<WitnessBinding>>>> {
+        self.query_find_text_recorded_inner(text, options, Some(observer))
+    }
+
+    fn query_find_text_recorded_inner(
+        &self,
+        text: &str,
+        options: RecordingOptions,
+        observer: Option<ExecutionObserverHandle>,
+    ) -> Recorded<CollectionOutcome<Vec<Vec<WitnessBinding>>>> {
+        self.record_collection(text, text.into(), options, observer, |logic| {
+            self.kb.query_find_outcome(logic)
+        })
+    }
+
+    pub fn count_witnesses_text_recorded(
+        &self,
+        text: &str,
+        options: RecordingOptions,
+    ) -> Recorded<CollectionOutcome<usize>> {
+        self.count_witnesses_text_recorded_inner(text, options, None)
+    }
+
+    pub fn count_witnesses_text_recorded_with_phase_observer(
+        &self,
+        text: &str,
+        options: RecordingOptions,
+        observer: ExecutionObserverHandle,
+    ) -> Recorded<CollectionOutcome<usize>> {
+        self.count_witnesses_text_recorded_inner(text, options, Some(observer))
+    }
+
+    fn count_witnesses_text_recorded_inner(
+        &self,
+        text: &str,
+        options: RecordingOptions,
+        observer: Option<ExecutionObserverHandle>,
+    ) -> Recorded<CollectionOutcome<usize>> {
+        self.record_collection(text, text.into(), options, observer, |logic| {
+            self.kb.count_witnesses_outcome(logic)
+        })
+    }
+
+    pub fn aggregate_text_recorded(
+        &self,
+        text: &str,
+        variable: &str,
+        op: AggregateOp,
+        options: RecordingOptions,
+    ) -> Recorded<CollectionOutcome<AggregateOutcome>> {
+        self.aggregate_text_recorded_inner(text, variable, op, options, None)
+    }
+
+    pub fn aggregate_text_recorded_with_phase_observer(
+        &self,
+        text: &str,
+        variable: &str,
+        op: AggregateOp,
+        options: RecordingOptions,
+        observer: ExecutionObserverHandle,
+    ) -> Recorded<CollectionOutcome<AggregateOutcome>> {
+        self.aggregate_text_recorded_inner(text, variable, op, options, Some(observer))
+    }
+
+    fn aggregate_text_recorded_inner(
+        &self,
+        text: &str,
+        variable: &str,
+        op: AggregateOp,
+        options: RecordingOptions,
+        observer: Option<ExecutionObserverHandle>,
+    ) -> Recorded<CollectionOutcome<AggregateOutcome>> {
+        let input =
+            serde_json::json!({ "query": text, "variable": variable, "operator": op }).to_string();
+        self.record_collection(text, input, options, observer, |logic| {
+            self.kb.aggregate_outcome(logic, variable, op)
+        })
+    }
+
+    pub fn check_contradictions_recorded(
+        &self,
+        options: RecordingOptions,
+    ) -> Recorded<nibli_reason::ContradictionReport> {
+        self.check_contradictions_recorded_inner(options, None)
+    }
+
+    pub fn check_contradictions_recorded_with_phase_observer(
+        &self,
+        options: RecordingOptions,
+        observer: ExecutionObserverHandle,
+    ) -> Recorded<nibli_reason::ContradictionReport> {
+        self.check_contradictions_recorded_inner(options, Some(observer))
+    }
+
+    fn check_contradictions_recorded_inner(
+        &self,
+        options: RecordingOptions,
+        observer: Option<ExecutionObserverHandle>,
+    ) -> Recorded<nibli_reason::ContradictionReport> {
+        self.recorded_operation(
+            "contradiction_scan".into(),
+            options,
+            observer,
+            false,
+            |collector| {
+                collector.phase(ExecutionPhase::ConstraintScan);
+                Ok(self.kb.check_contradictions_report())
+            },
+            |_| {
+                ExecutionEvent::new(
+                    ExecutionEventKind::Outcome,
+                    "Represented constraint scan completed; inspect unresolved checks separately",
+                )
+            },
+        )
+    }
+
+    pub fn set_profile_recorded(
+        &self,
+        profile: &EngineProfile,
+        options: RecordingOptions,
+    ) -> Recorded<EngineProfile> {
+        self.set_profile_recorded_inner(profile, options, None)
+    }
+
+    pub fn set_profile_recorded_with_phase_observer(
+        &self,
+        profile: &EngineProfile,
+        options: RecordingOptions,
+        observer: ExecutionObserverHandle,
+    ) -> Recorded<EngineProfile> {
+        self.set_profile_recorded_inner(profile, options, Some(observer))
+    }
+
+    fn set_profile_recorded_inner(
+        &self,
+        profile: &EngineProfile,
+        options: RecordingOptions,
+        observer: Option<ExecutionObserverHandle>,
+    ) -> Recorded<EngineProfile> {
+        self.recorded_operation(
+            serde_json::to_string(profile).expect("profile serialization"),
+            options,
+            observer,
+            true,
+            |collector| {
+                collector.phase(ExecutionPhase::Configuration);
+                let result = self.set_profile(profile)?;
+                collector.observe(ExecutionEvent::new(
+                    ExecutionEventKind::ProfileChange,
+                    "Whole profile applied atomically",
+                ));
+                Ok(result)
+            },
+            |outcome| {
+                ExecutionEvent::new(
+                    if outcome.is_ok() {
+                        ExecutionEventKind::Commit
+                    } else {
+                        ExecutionEventKind::Rollback
+                    },
+                    if outcome.is_ok() {
+                        "Whole profile is now live"
+                    } else {
+                        "Profile change discarded; original session retained"
+                    },
+                )
+            },
+        )
     }
 }

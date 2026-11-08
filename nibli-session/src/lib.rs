@@ -33,16 +33,19 @@
 
 pub mod execution;
 pub use execution::Recorded;
+pub use nibli_reason::{ContradictionGap, ContradictionGapReason, ContradictionReport};
 #[cfg(test)]
 mod execution_tests;
+#[cfg(test)]
+mod operations_tests;
 pub use nibli_types::execution::*;
 
 use std::collections::HashSet;
 
 use nibli_types::error::NibliError;
 use nibli_types::logic::{
-    AggregateOp, AggregateOutcome, FactSummary, LogicBuffer, LogicalTerm, ProofTrace, QueryResult,
-    WitnessBinding,
+    AggregateOp, AggregateOutcome, CollectionOutcome, FactSummary, LogicBuffer, LogicalTerm,
+    ProofTrace, QueryResult, WitnessBinding,
 };
 
 /// Compile KR text WITHOUT compute-marking: parse + canonical claim compile only.
@@ -510,11 +513,27 @@ impl CoreSession {
         self.kb.query_find(buf)
     }
 
+    /// Typed complete-or-unavailable collection, preserving the complete-only contract.
+    pub fn query_find_text_outcome(
+        &self,
+        text: &str,
+    ) -> Result<CollectionOutcome<Vec<Vec<WitnessBinding>>>, NibliError> {
+        self.kb.query_find_outcome(self.compile_query_text(text)?)
+    }
+
     /// Count the distinct witness binding sets satisfying a KR query.
     /// Inherits [`nibli_reason::KnowledgeBase::query_find`]'s complete-or-error contract.
     pub fn count_witnesses_text(&self, text: &str) -> Result<usize, NibliError> {
         let buf = self.compile_query_text(text)?;
         self.kb.count_witnesses(buf)
+    }
+
+    pub fn count_witnesses_text_outcome(
+        &self,
+        text: &str,
+    ) -> Result<CollectionOutcome<usize>, NibliError> {
+        self.kb
+            .count_witnesses_outcome(self.compile_query_text(text)?)
     }
 
     /// Aggregate the numeric values bound to `variable` across all witness
@@ -531,6 +550,16 @@ impl CoreSession {
     ) -> Result<AggregateOutcome, NibliError> {
         let buf = self.compile_query_text(text)?;
         self.kb.aggregate(buf, variable, op)
+    }
+
+    pub fn aggregate_text_outcome(
+        &self,
+        text: &str,
+        variable: &str,
+        op: AggregateOp,
+    ) -> Result<CollectionOutcome<AggregateOutcome>, NibliError> {
+        self.kb
+            .aggregate_outcome(self.compile_query_text(text)?, variable, op)
     }
 
     /// Retract a fact by id and rebuild derived state (KB only — durable

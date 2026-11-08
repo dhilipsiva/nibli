@@ -38,6 +38,13 @@ command displays both fields. The older findings-only `check_contradictions()`
 remains available for compatibility but cannot establish scan completion.
 This is a check of represented constraints, not unrestricted FOL consistency.
 
+`CoreSession` also exposes typed complete-or-unavailable find/count/aggregate
+results and optional execution recording for compilation, queries, collections,
+constraint scans and atomic changes to knowledge or the whole engine profile.
+Records capture actual work separately from proof certificates; source-only
+recovery validates the original KR inputs. See [execution records](EXECUTION_RECORDS.md)
+for the API contracts, bounded history and recovery limits.
+
 ---
 
 ## The nibli KR Language

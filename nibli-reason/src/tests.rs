@@ -1,3 +1,4 @@
+mod collection_outcomes;
 mod guarded_witnesses;
 mod indexed_counts;
 mod lifecycle;
@@ -773,3 +774,5 @@ fn make_numeric_pred(nodes: &mut Vec<LogicNode>, relation: &str, a: f64, b: f64)
     }
     pred(nodes, relation, args)
 }
+
+mod resource_budgets;
