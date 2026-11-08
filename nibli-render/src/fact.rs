@@ -179,6 +179,13 @@ fn parse_term(tokens: &[Tok], pos: &mut usize) -> Option<String> {
 /// Render one predication: collapse a role-predicate name, hide event-Skolem
 /// arguments, humanize the surviving terms.
 fn render_predicate(name: &str, raw_args: &[String]) -> String {
+    // An event's marker or type predicate: the event reads as its content.
+    if raw_args.len() == 1
+        && (crate::abstraction::is_marker(name) || crate::abstraction::is_type_predicate(name))
+        && let Some(content) = crate::abstraction::content_for(&raw_args[0])
+    {
+        return format!("event{{{content}}}");
+    }
     let display_name = collapse_role_name(name).unwrap_or_else(|| name.to_string());
     let kept: Vec<String> = raw_args
         .iter()

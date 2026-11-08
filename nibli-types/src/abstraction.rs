@@ -270,9 +270,281 @@ pub fn canonicalize_relation(relation: &str) -> Result<Option<String>, Abstracti
     Ok(Some(encode_v1(&key)))
 }
 
+/// The kind of a decoded abstraction, as the key's first byte names it.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BodyKind {
+    Event,
+    Fact,
+    Property,
+    Amount,
+    Concept,
+}
+
+/// A term of a decoded abstraction body.
+#[derive(Clone, Debug, PartialEq)]
+pub enum BodyTerm {
+    /// A bound variable, by its canonical first-seen ordinal.
+    Variable(u64),
+    Constant(String),
+    Description(String),
+    Unspecified,
+    Number(f64),
+}
+
+/// A form of a decoded abstraction body: the IR shapes the v1 key encodes.
+#[derive(Clone, Debug, PartialEq)]
+pub enum BodyForm {
+    Predicate {
+        relation: String,
+        args: Vec<BodyTerm>,
+    },
+    /// A nested abstraction's marker: the key keeps only its referent; the
+    /// nested body is the sibling form that follows it.
+    NestedMarker {
+        args: Vec<BodyTerm>,
+    },
+    And(Box<BodyForm>, Box<BodyForm>),
+    Or(Box<BodyForm>, Box<BodyForm>),
+    Not(Box<BodyForm>),
+    Exists(u64, Box<BodyForm>),
+    ForAll(u64, Box<BodyForm>),
+    Past(Box<BodyForm>),
+    Present(Box<BodyForm>),
+    Future(Box<BodyForm>),
+    Obligatory(Box<BodyForm>),
+    Permitted(Box<BodyForm>),
+    Count {
+        var: u64,
+        count: u64,
+        body: Box<BodyForm>,
+    },
+    Biconditional(Box<BodyForm>, Box<BodyForm>),
+    Xor(Box<BodyForm>, Box<BodyForm>),
+}
+
+/// A decoded abstraction: its kind and the body the key retained for rendering.
+#[derive(Clone, Debug, PartialEq)]
+pub struct AbstractionBody {
+    pub kind: BodyKind,
+    pub form: BodyForm,
+}
+
+const MAX_BODY_DEPTH: usize = 256;
+
+/// Decode a well-formed v1 marker into the body it retains, for rendering.
+///
+/// The marker was made lossless so a renderer can read the abstraction back
+/// (the reasoner only matches it). `None` for a non-marker, a legacy hash-only
+/// marker, an unknown version or a malformed key: callers fall back to the
+/// opaque spelling. The key is validated by the same grammar check reasoning
+/// ingress uses before any of it is read.
+pub fn decode_v1(relation: &str) -> Option<AbstractionBody> {
+    let suffix = relation.strip_prefix(ABSTRACTION_MARKER_V1_PREFIX)?;
+    let (_digest, key_hex) = suffix.split_once('_')?;
+    let key = decode_lower_hex(key_hex)?;
+    if !valid_v1_key(&key) {
+        return None;
+    }
+    let (&kind, body) = key.split_first()?;
+    let kind = match kind {
+        0xa0 => BodyKind::Event,
+        0xa1 => BodyKind::Fact,
+        0xa2 => BodyKind::Property,
+        0xa3 => BodyKind::Amount,
+        0xa4 => BodyKind::Concept,
+        _ => return None,
+    };
+    let mut parser = KeyParser {
+        input: body,
+        position: 0,
+        next_variable: 0,
+    };
+    let form = read_form(&mut parser, 0)?;
+    (parser.position == body.len()).then_some(AbstractionBody { kind, form })
+}
+
+fn read_terms(parser: &mut KeyParser<'_>) -> Option<Vec<BodyTerm>> {
+    let count = usize::try_from(parser.u64()?).ok()?;
+    if count > parser.input.len().saturating_sub(parser.position) {
+        return None;
+    }
+    let mut args = Vec::with_capacity(count);
+    for _ in 0..count {
+        args.push(read_term(parser)?);
+    }
+    Some(args)
+}
+
+fn read_term(parser: &mut KeyParser<'_>) -> Option<BodyTerm> {
+    Some(match parser.byte()? {
+        0x00 => BodyTerm::Variable(parser.u64()?),
+        0x01 => BodyTerm::Constant(parser.string()?.to_string()),
+        0x02 => BodyTerm::Description(parser.string()?.to_string()),
+        0x03 => BodyTerm::Unspecified,
+        0x04 => BodyTerm::Number(f64::from_bits(parser.u64()?)),
+        _ => return None,
+    })
+}
+
+fn read_form(parser: &mut KeyParser<'_>, depth: usize) -> Option<BodyForm> {
+    if depth > MAX_BODY_DEPTH {
+        return None;
+    }
+    let two = |parser: &mut KeyParser<'_>| -> Option<(Box<BodyForm>, Box<BodyForm>)> {
+        let l = read_form(parser, depth + 1)?;
+        let r = read_form(parser, depth + 1)?;
+        Some((Box::new(l), Box::new(r)))
+    };
+    Some(match parser.byte()? {
+        0x10 => {
+            let relation = parser.string()?.to_string();
+            let args = read_terms(parser)?;
+            BodyForm::Predicate { relation, args }
+        }
+        0x11 => BodyForm::NestedMarker {
+            args: read_terms(parser)?,
+        },
+        0x12 => {
+            let (l, r) = two(parser)?;
+            BodyForm::And(l, r)
+        }
+        0x13 => {
+            let (l, r) = two(parser)?;
+            BodyForm::Or(l, r)
+        }
+        0x14 => BodyForm::Not(Box::new(read_form(parser, depth + 1)?)),
+        0x15 => {
+            let var = parser.u64()?;
+            BodyForm::Exists(var, Box::new(read_form(parser, depth + 1)?))
+        }
+        0x16 => {
+            let var = parser.u64()?;
+            BodyForm::ForAll(var, Box::new(read_form(parser, depth + 1)?))
+        }
+        0x17 => BodyForm::Past(Box::new(read_form(parser, depth + 1)?)),
+        0x18 => BodyForm::Present(Box::new(read_form(parser, depth + 1)?)),
+        0x19 => BodyForm::Future(Box::new(read_form(parser, depth + 1)?)),
+        0x1a => BodyForm::Obligatory(Box::new(read_form(parser, depth + 1)?)),
+        0x1b => BodyForm::Permitted(Box::new(read_form(parser, depth + 1)?)),
+        0x1c => {
+            let count = parser.u64()?;
+            let var = parser.u64()?;
+            BodyForm::Count {
+                var,
+                count,
+                body: Box::new(read_form(parser, depth + 1)?),
+            }
+        }
+        0x1d => {
+            let (l, r) = two(parser)?;
+            BodyForm::Biconditional(l, r)
+        }
+        0x1e => {
+            let (l, r) = two(parser)?;
+            BodyForm::Xor(l, r)
+        }
+        _ => return None,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn key_predicate(relation: &str, args: &[&[u8]]) -> Vec<u8> {
+        let mut key = vec![0x10];
+        key.extend_from_slice(&(relation.len() as u64).to_be_bytes());
+        key.extend_from_slice(relation.as_bytes());
+        key.extend_from_slice(&(args.len() as u64).to_be_bytes());
+        for a in args {
+            key.extend_from_slice(a);
+        }
+        key
+    }
+    fn term_var(n: u64) -> Vec<u8> {
+        let mut t = vec![0x00];
+        t.extend_from_slice(&n.to_be_bytes());
+        t
+    }
+    fn term_const(s: &str) -> Vec<u8> {
+        let mut t = vec![0x01];
+        t.extend_from_slice(&(s.len() as u64).to_be_bytes());
+        t.extend_from_slice(s.as_bytes());
+        t
+    }
+
+    #[test]
+    fn a_marker_decodes_to_the_body_it_retains() {
+        // event { protest() } as the compiler keys it: protest(ev) ∧ protest_x1(ev, _)
+        let mut key = vec![0xa0, 0x12];
+        key.extend(key_predicate("protest", &[&term_var(0)]));
+        key.extend(key_predicate("protest_x1", &[&term_var(0), &[0x03]]));
+        let marker = encode_v1(&key);
+        let body = decode_v1(&marker).expect("a well-formed v1 marker decodes");
+        assert_eq!(body.kind, BodyKind::Event);
+        let BodyForm::And(l, r) = body.form else {
+            panic!("expected a conjunction");
+        };
+        assert_eq!(
+            *l,
+            BodyForm::Predicate {
+                relation: "protest".into(),
+                args: vec![BodyTerm::Variable(0)],
+            }
+        );
+        assert_eq!(
+            *r,
+            BodyForm::Predicate {
+                relation: "protest_x1".into(),
+                args: vec![BodyTerm::Variable(0), BodyTerm::Unspecified],
+            }
+        );
+    }
+
+    #[test]
+    fn constants_descriptions_numbers_and_binders_decode() {
+        let mut key = vec![0xa1, 0x15];
+        key.extend_from_slice(&0_u64.to_be_bytes());
+        key.push(0x14);
+        let mut num = vec![0x04];
+        num.extend_from_slice(&2.5_f64.to_bits().to_be_bytes());
+        let mut desc = vec![0x02];
+        desc.extend_from_slice(&3_u64.to_be_bytes());
+        desc.extend_from_slice(b"dog");
+        key.extend(key_predicate(
+            "sees",
+            &[&term_var(0), &term_const("Adam"), &num, &desc],
+        ));
+        let marker = encode_v1(&key);
+        let body = decode_v1(&marker).unwrap();
+        assert_eq!(body.kind, BodyKind::Fact);
+        assert_eq!(
+            body.form,
+            BodyForm::Exists(
+                0,
+                Box::new(BodyForm::Not(Box::new(BodyForm::Predicate {
+                    relation: "sees".into(),
+                    args: vec![
+                        BodyTerm::Variable(0),
+                        BodyTerm::Constant("Adam".into()),
+                        BodyTerm::Number(2.5),
+                        BodyTerm::Description("dog".into()),
+                    ],
+                })))
+            )
+        );
+    }
+
+    #[test]
+    fn decoding_fails_closed_where_canonicalization_does() {
+        assert!(decode_v1("protest").is_none());
+        assert!(decode_v1("__abs_0123456789abcdef").is_none());
+        assert!(decode_v1("__abs_v1_0123456789abcdef_FF").is_none());
+        let mut trailing = vec![0xa0];
+        trailing.extend(key_predicate("p", &[]));
+        trailing.push(0xff);
+        assert!(decode_v1(&encode_v1(&trailing)).is_none());
+    }
 
     #[test]
     fn fnv1a_matches_reference_vectors() {

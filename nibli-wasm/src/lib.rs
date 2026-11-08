@@ -526,23 +526,23 @@ mod tests {
         assert_eq!(status, "TRUE");
         assert_eq!(
             why,
-            "Because adam is a dog, adam is an animal; and because adam is an animal, adam eats."
+            "Because Adam is a dog, Adam is an animal; and because Adam is an animal, Adam eats."
         );
         assert_eq!(
             proof,
-            "⊢ adam eats  [by recorded source #1/0: eats(every animal).] -> TRUE\n  \
-             ⊢ adam is an animal  [by recorded source #0/0: animal(every dog).] -> TRUE\n    \
-             ▣ adam is a dog  [given] -> TRUE"
+            "⊢ Adam eats  [by recorded source #1/0: eats(every animal).] -> TRUE\n  \
+             ⊢ Adam is an animal  [by recorded source #0/0: animal(every dog).] -> TRUE\n    \
+             ▣ Adam is a dog  [given] -> TRUE"
         );
 
         // 1-hop: is Adam an animal?
         let (status, why, proof) = q("animal(Adam).");
         assert_eq!(status, "TRUE");
-        assert_eq!(why, "Because adam is a dog, adam is an animal.");
+        assert_eq!(why, "Because Adam is a dog, Adam is an animal.");
         assert_eq!(
             proof,
-            "⊢ adam is an animal  [by recorded source #0/0: animal(every dog).] -> TRUE\n  \
-             ▣ adam is a dog  [given] -> TRUE"
+            "⊢ Adam is an animal  [by recorded source #0/0: animal(every dog).] -> TRUE\n  \
+             ▣ Adam is a dog  [given] -> TRUE"
         );
 
         // A real FALSE: is Adam a bird? Closed-world (not derivable), so the proof

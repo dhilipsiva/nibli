@@ -205,6 +205,14 @@ Lucy now lives at https://github.com/dhilipsiva/lucy.
 
 ## Code Conventions
 
+Grounded witness anchors share `arg_position_index` with rule evaluation. Both
+candidate extraction and anchor cost estimation must use the same narrowed
+bucket; equality, unbound and unspecified siblings keep the complete scan.
+`indexed_counts` compares witnesses and validated proof envelopes with the
+test-only scan reference, counts actual candidate-fact visits, and carries an
+ignored debug/release benchmark (`benchmark_event_decomposed_counts`). Keep
+proof construction on its existing derivation path.
+
 Native contradiction gates use `check_contradictions_report()` and require both
 `violations` and `unresolved` to be empty (`is_clean()`). The older
 `check_contradictions()` exposes findings only and cannot prove scan completion.

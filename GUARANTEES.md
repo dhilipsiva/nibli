@@ -374,6 +374,15 @@ dispatches normally.
 
 **count_witnesses:** Returns the number of distinct ENTITY-level witness binding sets satisfying an existential formula (the same collapse rules as above). If any final candidate leaf is non-definitive, it returns the incomplete-enumeration error rather than a partial count.
 
+Grounded sibling arguments narrow mandatory witness anchors through the existing
+argument-position index. The remaining arity, flavor and argument checks still
+run, rule-derived candidates are still included, and equality retains the full
+scan. This avoids a relation scan per member in event-decomposed ground counts
+without changing their unit or domain. Exact-count certificates still derive
+every member through the ordinary proof path. The indexed and scan paths are
+compared on complete witness sets and validated proof envelopes; deterministic
+fact-visit tests cover growth separately from the explicit timing benchmark.
+
 **aggregate(formula, variable, op):** Extracts numeric values from a named variable across all witness bindings and applies Sum, Min, Max, or Avg. Returns None if no numeric witnesses are found. It inherits the same incomplete-enumeration error before projection; its separate policy of filtering missing or nonnumeric bindings is unchanged.
 
 ## Disclosed Sharp Edges

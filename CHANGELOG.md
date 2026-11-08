@@ -45,6 +45,11 @@ here first.
 
 ### Changed
 
+- Grounded witness anchors reuse the existing argument-position index for
+  candidate extraction and selectivity. Event-decomposed witness counts and
+  exact-count proofs no longer scan the entire relation for each member.
+  Equality keeps its complete scan fallback; witness ordering, count semantics,
+  and proof certificates are unchanged and compared against that scan in tests.
 - Stratification and materialization share an indexed, iterative Tarjan kernel
   that can be extracted from production Rust into Lean. The new
   `verify-self-check-scc-stack` gate proves component-removal termination, exact
