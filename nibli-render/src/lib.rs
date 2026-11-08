@@ -17,6 +17,7 @@ mod corpus_overlay;
 mod fact;
 mod frame;
 mod logic;
+mod opaque;
 mod overlay;
 mod proof;
 mod register;

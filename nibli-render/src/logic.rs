@@ -468,11 +468,11 @@ fn inline_duty_abstraction<'a>(
 /// as the subject: "Lucy is entitled to continue", as `obliged` always was ("Alis is obligated
 /// to notify"). `permitted` is the lexicon's swap of `permits`, so the event sits in its first
 /// place and the party in its second.
-struct EventTaker {
+pub(crate) struct EventTaker {
     relation: &'static str,
-    event_place: usize,
-    party_place: usize,
-    phrase: &'static str,
+    pub(crate) event_place: usize,
+    pub(crate) party_place: usize,
+    pub(crate) phrase: &'static str,
 }
 const EVENT_TAKERS: &[EventTaker] = &[
     EventTaker {
@@ -501,8 +501,29 @@ const EVENT_TAKERS: &[EventTaker] = &[
     },
 ];
 
-fn event_taker(relation: &str) -> Option<&'static EventTaker> {
+pub(crate) fn event_taker(relation: &str) -> Option<&'static EventTaker> {
     EVENT_TAKERS.iter().find(|t| t.relation == relation)
+}
+
+/// Reuse the IR event-content reading only after the complete lossless marker
+/// has decoded to a closed body. Shared modifiers retain structural fallback.
+pub(crate) fn proof_event_content(marker: &str, register: Register) -> Option<String> {
+    let buf = crate::opaque::event_body(marker)?;
+    let body = *buf.roots.first()?;
+    if needs_structural_reading(&buf, body) {
+        return None;
+    }
+    let referent = LogicalTerm::Variable("_proof_event".into());
+    let abstraction = Abstraction {
+        kind: "event",
+        referent: &referent,
+        body,
+    };
+    Some(render_duty_content(
+        &buf,
+        &abstraction,
+        &mut Ctx::new(register),
+    ))
 }
 
 /// Does this predicate hold `var` in an event taker's event place, flat (`rel(…, var, …)`) or

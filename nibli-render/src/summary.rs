@@ -492,7 +492,7 @@ fn join_and(items: &[String]) -> String {
     }
 }
 
-fn prefix_wrapper(wrapper: Option<&str>, clause: String) -> String {
+pub(crate) fn prefix_wrapper(wrapper: Option<&str>, clause: String) -> String {
     match wrapper {
         Some("past") => format!("in the past, {clause}"),
         Some("present") => format!("currently, {clause}"),

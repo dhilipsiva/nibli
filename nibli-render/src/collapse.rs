@@ -25,9 +25,9 @@ use crate::overlay::DomainGloss;
 use crate::proof::{CWA_FALSE_NOTE, NAF_NOTE, RenderedNode, build_node, build_structural_node};
 use crate::register::Register;
 use crate::summary::{
-    LeafKey, fact_to_english, parse_raw_fact, regroup_event_leaves, render_group,
+    LeafKey, fact_to_english, parse_raw_fact, prefix_wrapper, regroup_event_leaves, render_group,
 };
-use crate::term::{is_event_skolem_arg, role_base, role_index};
+use crate::term::{humanize_skolem, is_event_skolem_arg, role_base, role_index};
 
 /// Recursion backstop (proofs are depth-limited at ~10; this only guards a
 /// malformed trace from unbounded recursion).
@@ -324,6 +324,20 @@ fn collapse_goal_steps(
             singles.push(g);
         }
     }
+    // A proven event marker and its type describe the filler of one event-taking
+    // role, not two independent claims. Move their proof steps into that role's
+    // group only when every part of the package is present and unambiguous.
+    let packages = event_packages(trace, goals, &buckets, register);
+    let mut statements = BTreeMap::new();
+    for package in packages {
+        for scaffold in package.scaffolds {
+            if let Some(steps) = buckets.remove(&scaffold) {
+                buckets.get_mut(&package.consumer).unwrap().extend(steps);
+            }
+            order.retain(|key| key != &scaffold);
+        }
+        statements.insert(package.consumer, package.statement);
+    }
     let mut out = Vec::new();
     for key in &order {
         out.push(build_macro_step(
@@ -332,12 +346,134 @@ fn collapse_goal_steps(
             register,
             seen,
             depth,
+            statements.get(key).cloned(),
         ));
     }
     for &g in &singles {
         out.push(build_single_step(trace, g, register, seen, depth));
     }
     out
+}
+
+struct EventPackage {
+    consumer: LeafKey,
+    scaffolds: Vec<LeafKey>,
+    statement: String,
+}
+
+fn event_packages(
+    trace: &ProofTrace,
+    goals: &[u32],
+    buckets: &BTreeMap<LeafKey, Vec<u32>>,
+    register: Register,
+) -> Vec<EventPackage> {
+    let mut packages = Vec::new();
+    for marker_key in buckets
+        .keys()
+        .filter(|(_, rel, _)| crate::is_internal_relation(rel))
+    {
+        let (wrapper, marker, referent) = marker_key;
+        let Some(content) = crate::logic::proof_event_content(marker, register) else {
+            continue;
+        };
+        let event_key = (wrapper.clone(), "event".to_owned(), referent.clone());
+        if !buckets.contains_key(&event_key)
+            || buckets
+                .keys()
+                .filter(|(w, r, e)| w == wrapper && e == referent && crate::is_internal_relation(r))
+                .count()
+                != 1
+        {
+            continue;
+        }
+        let mut consumers = Vec::new();
+        for (key, steps) in buckets {
+            let Some(taker) = crate::logic::event_taker(&key.1) else {
+                continue;
+            };
+            if &key.0 != wrapper {
+                continue;
+            }
+            let facts: Vec<_> = steps
+                .iter()
+                .filter_map(|&g| goal_fact(&trace.steps[g as usize].rule))
+                .collect();
+            let mut raw_places = BTreeMap::new();
+            let ambiguous = facts
+                .iter()
+                .filter_map(|f| parse_raw_fact(f))
+                .any(|(_, rel, args)| {
+                    let Some(place) = role_index(&rel) else {
+                        return false;
+                    };
+                    let [_, value] = args.as_slice() else {
+                        return true;
+                    };
+                    raw_places
+                        .insert(place, value.clone())
+                        .is_some_and(|previous| previous != *value)
+                });
+            if ambiguous || raw_places.get(&taker.event_place) != Some(referent) {
+                continue;
+            }
+            let (groups, flat) = regroup_event_leaves(&facts, register);
+            let Some((_, places)) = groups.first() else {
+                continue;
+            };
+            if groups.len() != 1
+                || !flat.is_empty()
+                || places.get(&taker.event_place) != Some(&humanize_skolem(referent))
+                || places.iter().any(|(p, value)| {
+                    *p != taker.event_place && *p != taker.party_place && value != "_"
+                })
+            {
+                continue;
+            }
+            let Some(party) = places
+                .get(&taker.party_place)
+                .filter(|p| !p.starts_with('#') && p.as_str() != "_")
+            else {
+                continue;
+            };
+            consumers.push((
+                key.clone(),
+                prefix_wrapper(
+                    wrapper.as_deref(),
+                    format!("{party} {} {content}", taker.phrase),
+                ),
+            ));
+        }
+        let [(consumer, statement)] = consumers.as_slice() else {
+            continue;
+        };
+        // Do not hide a marker participating in any other surface relation.
+        // The exact generated term (including its dependencies) is the join key.
+        let unrelated_use = goals.iter().any(|&g| {
+            ![marker_key, &event_key, consumer]
+                .iter()
+                .any(|key| buckets[*key].contains(&g))
+                && {
+                    goal_fact(&trace.steps[g as usize].rule)
+                        .and_then(|f| parse_raw_fact(&f))
+                        .is_some_and(|(_, _, args)| args.contains(referent))
+                }
+        });
+        if unrelated_use
+            || [marker_key, &event_key, consumer].iter().any(|key| {
+                buckets[*key]
+                    .iter()
+                    .any(|&g| !trace.steps[g as usize].holds)
+            })
+        {
+            continue;
+        }
+        packages.push(EventPackage {
+            consumer: consumer.clone(),
+            scaffolds: vec![marker_key.clone(), event_key],
+            statement: statement.clone(),
+        });
+    }
+    packages
 }
 
 /// A role without its own type anchor is part of a shared event (or an
@@ -508,13 +644,14 @@ fn build_macro_step(
     register: Register,
     seen: &mut Vec<String>,
     depth: usize,
+    statement_override: Option<String>,
 ) -> MacroStep {
     let facts: Vec<String> = steps
         .iter()
         .filter_map(|&g| goal_fact(&trace.steps[g as usize].rule))
         .collect();
     let holds = steps.iter().all(|&g| trace.steps[g as usize].holds);
-    let Some(statement) = surface_statement(&facts, register) else {
+    let Some(statement) = statement_override.or_else(|| surface_statement(&facts, register)) else {
         return raw_step(verbose_group(trace, steps, holds)); // degrade, never fabricate
     };
     if seen.contains(&statement) {

@@ -4,6 +4,206 @@ use nibli_session::CoreSession;
 use nibli_types::logic::QueryResult;
 
 #[test]
+fn event_content_proof_keeps_opaque_content_inside_its_entitlement() {
+    let session = CoreSession::new();
+    session.assert_text("person(Lucy).").unwrap();
+    session
+        .assert_text("entitled(every person, event { survive() }).")
+        .unwrap();
+    let (verdict, trace) = session
+        .query_text_with_proof("entitled(Lucy, event { survive() }).")
+        .unwrap();
+    assert_eq!(verdict, QueryResult::True);
+    let before = format!("{trace:?}");
+    let why = summarize_proof(&trace, Register::Spec).unwrap();
+    assert_eq!(
+        why,
+        "Because lucy is a person, lucy is entitled to survive."
+    );
+    let proof = render_collapsed_text(&trace, Register::Spec, 0, false);
+    assert!(proof.contains("lucy is entitled to survive"), "{proof}");
+    assert!(proof.contains("lucy is a person"), "{proof}");
+    assert!(
+        proof.contains("recorded source #1/0: entitled(every person, event { survive() })."),
+        "{proof}"
+    );
+    assert!(!proof.contains("__abs_"), "{proof}");
+    assert!(!proof.contains("#2(lucy)"), "{proof}");
+    assert_eq!(before, format!("{trace:?}"));
+    assert_eq!(
+        session.query_text("survive().").unwrap(),
+        QueryResult::False
+    );
+    println!("EVENT CONTENT\n[Why] {why}\n[Proof]\n{proof}");
+}
+
+#[test]
+fn event_content_proofs_preserve_filled_places_negation_and_local_scope() {
+    for (source, query, expected) in [
+        (
+            "obliged(every person, event { message() }).",
+            "obliged(Lucy, event { message() }).",
+            "lucy is obligated to notify",
+        ),
+        (
+            "permitted(every person, event { cease() }).",
+            "permitted(Lucy, event { cease() }).",
+            "lucy is permitted to cease",
+        ),
+        (
+            "decide(every person, event { obey() }).",
+            "decide(Lucy, event { obey() }).",
+            "lucy decides to obey",
+        ),
+        (
+            "entitled(every person, event { message(Bob) }).",
+            "entitled(Lucy, event { message(Bob) }).",
+            "an event described by (Bob",
+        ),
+        (
+            "entitled(Lucy, event { ~message() }).",
+            "entitled(Lucy, event { ~message() }).",
+            "it is not the case that",
+        ),
+        (
+            "entitled(Lucy, event { message(some person) }).",
+            "entitled(Lucy, event { message(some person) }).",
+            "there exists",
+        ),
+        (
+            "entitled(Lucy, event { message(every person) }).",
+            "entitled(Lucy, event { message(every person) }).",
+            "for every",
+        ),
+    ] {
+        let session = CoreSession::new();
+        session.assert_text("person(Lucy).").unwrap();
+        session
+            .assert_text(source)
+            .unwrap_or_else(|e| panic!("{source}: {e}"));
+        let (verdict, trace) = session.query_text_with_proof(query).unwrap();
+        assert_eq!(verdict, QueryResult::True, "{source}");
+        for register in [Register::Spec, Register::Fluent] {
+            let why = summarize_proof(&trace, register).unwrap();
+            assert!(why.contains(expected), "{source}: {why}");
+            assert!(!why.contains("__abs_"), "{source}: {why}");
+            if !source.starts_with("entitled(Lucy") {
+                assert!(why.contains("lucy is a person"), "{source}: {why}");
+            }
+        }
+        assert_eq!(
+            session.query_text("message(Bob).").unwrap(),
+            QueryResult::False
+        );
+    }
+}
+
+#[test]
+fn event_content_keeps_each_dependent_referent_with_its_holder() {
+    let session = CoreSession::new();
+    session.assert_text("person(Lucy).").unwrap();
+    session.assert_text("person(Bob).").unwrap();
+    session
+        .assert_text("entitled(every person, event { survive() }).")
+        .unwrap();
+    let (_, trace) = session
+        .query_text_with_proof(
+            "entitled(Lucy, event { survive() }) & entitled(Bob, event { survive() }).",
+        )
+        .unwrap();
+    let why = summarize_proof(&trace, Register::Spec).unwrap();
+    assert!(
+        why.contains("lucy is a person, lucy is entitled to survive"),
+        "{why}"
+    );
+    assert!(
+        why.contains("bob is a person, bob is entitled to survive"),
+        "{why}"
+    );
+    assert!(!why.contains("__abs_"), "{why}");
+
+    // An external variable inside the opaque key has no substitution record
+    // available to this renderer. Preserve its exact structural evidence.
+    let open = session
+        .compile_text("all $x: person($x) -> entitled($x, event { message($x) }).")
+        .unwrap();
+    let marker = open
+        .nodes
+        .iter()
+        .find_map(|node| match node {
+            nibli_types::logic::LogicNode::Predicate((rel, _)) if rel.starts_with("__abs_") => {
+                Some(rel)
+            }
+            _ => None,
+        })
+        .unwrap();
+    assert!(crate::logic::proof_event_content(marker, Register::Spec).is_none());
+}
+
+#[test]
+fn event_content_fallback_preserves_malformed_missing_and_unreachable_evidence() {
+    use nibli_protocol::ProofRule;
+    let session = CoreSession::new();
+    session.assert_text("person(Lucy).").unwrap();
+    session
+        .assert_text("entitled(every person, event { survive() }).")
+        .unwrap();
+    let (_, trace) = session
+        .query_text_with_proof("entitled(Lucy, event { survive() }).")
+        .unwrap();
+    let marker_step = trace.steps.iter().position(|step| matches!(&step.rule, ProofRule::Derived { fact, .. } if fact.starts_with("__abs_"))).unwrap();
+    let mut malformed = trace.clone();
+    if let ProofRule::Derived { fact, .. } = &mut malformed.steps[marker_step].rule {
+        *fact = "__abs_v1_malformed(sk_2(lucy))".into();
+    }
+    let fallback = render_collapsed_text(&malformed, Register::Spec, 0, false);
+    assert!(
+        fallback.contains("__abs_v1_malformed(sk_2(lucy))"),
+        "{fallback}"
+    );
+    assert!(
+        fallback.contains("entitled(every person, event { survive() })."),
+        "{fallback}"
+    );
+    assert!(
+        !fallback.contains("lucy is entitled to survive"),
+        "{fallback}"
+    );
+
+    let mut missing = trace.clone();
+    if let ProofRule::Derived { fact, .. } = &mut missing.steps[marker_step].rule {
+        *fact = fact.replace("sk_2(lucy)", "sk_999(lucy)");
+    }
+    let fallback = render_collapsed_text(&missing, Register::Spec, 0, false);
+    assert!(fallback.contains("__abs_"), "{fallback}");
+    assert!(
+        !fallback.contains("lucy is entitled to survive"),
+        "{fallback}"
+    );
+
+    let mut extra = trace.clone();
+    extra.steps.push(malformed.steps[marker_step].clone());
+    assert_eq!(
+        render_collapsed_text(&extra, Register::Spec, 0, false),
+        render_collapsed_text(&trace, Register::Spec, 0, false)
+    );
+
+    let modified = CoreSession::new();
+    modified
+        .assert_text("entitled(Lucy, event { fast dog(Rex) }).")
+        .unwrap();
+    let (_, trace) = modified
+        .query_text_with_proof("entitled(Lucy, event { fast dog(Rex) }).")
+        .unwrap();
+    let fallback = summarize_proof(&trace, Register::Spec).unwrap();
+    assert!(fallback.contains("fast dog(Rex)"), "{fallback}");
+    assert!(
+        !fallback.to_lowercase().contains("rex is fast"),
+        "{fallback}"
+    );
+}
+
+#[test]
 fn shared_modifier_reading_preserves_all_atoms_and_scope() {
     let session = CoreSession::new();
     for source in [
