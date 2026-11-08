@@ -7,6 +7,7 @@ pub mod abstraction;
 pub mod arithmetic;
 pub mod ast;
 pub mod error;
+pub mod execution;
 pub mod logic;
 pub mod relations;
 

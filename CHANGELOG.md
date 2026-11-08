@@ -15,6 +15,11 @@ here first.
 
 ### Added
 
+- Optional execution records in `nibli-session`: actual compiler and reasoning
+  events, distinct depth probes and proof construction, bounded recording, atomic
+  change sets and validated recoverable session snapshots. Source identities are
+  decimal strings at the recorder boundary. See [EXECUTION_RECORDS.md](EXECUTION_RECORDS.md).
+
 - Lucy's empirical self-model: immutable forecasts and observed outcomes in the
   shared private store; deterministic reification into the new committed `sl_*`
   predicates; independent Rust/Nibli evidence checks; retrospective prediction

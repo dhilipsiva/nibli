@@ -1,4 +1,7 @@
 use super::*;
+use nibli_types::execution::{
+    ExecutionBinding, ExecutionEvent, ExecutionEventKind as EK, MemoKind,
+};
 
 pub(super) fn witness_origin(term: &GroundTerm) -> nibli_types::logic::WitnessOrigin {
     let origin = match term {
@@ -636,6 +639,65 @@ fn check_formula_holds_core<S: TraceSink>(
     compute_memo: &mut QueryComputeMemo,
     sink: &mut S,
 ) -> Result<(QueryResult, u32), String> {
+    inner.observe(|| {
+        let mut e = ExecutionEvent::new(EK::GoalEnter, "Evaluate compiled formula");
+        e.state.goal = Some(format!(
+            "node {node_id}: {:?}",
+            buffer.nodes.get(node_id as usize)
+        ));
+        e.state.logic_node = Some(node_id);
+        if !S::RECORDING {
+            e.detail = "Evaluate formula for verdict only (no proof node emitted)".into();
+        }
+        e.state.bindings = execution_bindings(subs);
+        e
+    });
+    let outcome = check_formula_holds_core_observed_impl::<S>(
+        buffer,
+        node_id,
+        subs,
+        inner,
+        tense,
+        compute_memo,
+        sink,
+    );
+    inner.observe(|| {
+        let mut e = ExecutionEvent::new(EK::GoalExit, "Formula evaluation returned");
+        e.state.bindings = execution_bindings(subs);
+        if let Ok((result, index)) = &outcome {
+            e.result = Some(result.clone());
+            if S::RECORDING {
+                e.proof_node = Some(*index);
+            }
+        } else if let Err(error) = &outcome {
+            e.detail = error.clone();
+        }
+        e
+    });
+    outcome
+}
+
+fn execution_bindings(bindings: &HashMap<String, GroundTerm>) -> Vec<ExecutionBinding> {
+    let mut values: Vec<_> = bindings
+        .iter()
+        .map(|(variable, value)| ExecutionBinding {
+            variable: variable.clone(),
+            value: format!("{value:?}"),
+        })
+        .collect();
+    values.sort_by(|a, b| a.variable.cmp(&b.variable));
+    values
+}
+
+fn check_formula_holds_core_observed_impl<S: TraceSink>(
+    buffer: &LogicBuffer,
+    node_id: u32,
+    subs: &mut HashMap<String, GroundTerm>,
+    inner: &mut KnowledgeBaseInner,
+    tense: Option<&str>,
+    compute_memo: &mut QueryComputeMemo,
+    sink: &mut S,
+) -> Result<(QueryResult, u32), String> {
     let node = get_node(buffer, node_id)?;
     if matches!(node, LogicNode::CountNode(_))
         && let Some(pending) = inner.query_domain.incomplete.clone()
@@ -715,6 +777,12 @@ fn check_formula_holds_core_impl<S: TraceSink>(
             // Short-circuit on a definitively-False left: `False ∧ x = False`
             // regardless of x (verdict-identical to combine_conjunction).
             if lv.is_false() {
+                inner.observe(|| {
+                    ExecutionEvent::new(
+                        EK::ShortCircuit,
+                        format!("Left conjunction operand is FALSE; node {r} is not evaluated"),
+                    )
+                });
                 let idx = if S::RECORDING {
                     sink.push(ProofStep {
                         rule: ProofRule::Conjunction,
@@ -745,6 +813,12 @@ fn check_formula_holds_core_impl<S: TraceSink>(
                 check_formula_holds_core::<S>(buffer, *l, subs, inner, tense, compute_memo, sink)?;
             // Short-circuit on a definitively-True left: `True ∨ x = True`.
             if lv.is_true() {
+                inner.observe(|| {
+                    ExecutionEvent::new(
+                        EK::ShortCircuit,
+                        format!("Left disjunction operand is TRUE; node {r} is not evaluated"),
+                    )
+                });
                 let idx = if S::RECORDING {
                     sink.push(ProofStep {
                         rule: ProofRule::DisjunctionIntro {
@@ -1106,6 +1180,13 @@ fn check_formula_holds_core_impl<S: TraceSink>(
             restrict_to_activated_individuals(&mut candidates, v, inner);
             let mut best_result = None;
             for candidate in &candidates {
+                inner.observe(|| {
+                    let mut e =
+                        ExecutionEvent::new(EK::Candidate, "Trying existential witness candidate");
+                    e.state.candidate = Some(format!("{candidate:?}"));
+                    e.state.bindings = execution_bindings(subs);
+                    e
+                });
                 // Probe the verdict with a no-op sink (no recording of discarded
                 // candidates); record only the winning witness's subtree below.
                 let result = with_sub(subs, v, candidate.clone(), |s| {
@@ -1294,6 +1375,13 @@ fn check_formula_holds_core_impl<S: TraceSink>(
             let mut false_member: Option<GroundTerm> = None;
             let mut nondef_member: Option<GroundTerm> = None;
             for member in &members {
+                inner.observe(|| {
+                    let mut e =
+                        ExecutionEvent::new(EK::Candidate, "Trying quantified domain member");
+                    e.state.candidate = Some(format!("{member:?}"));
+                    e.state.bindings = execution_bindings(subs);
+                    e
+                });
                 let result = with_sub(subs, v, member.clone(), |s| {
                     check_formula_holds_core::<NoOpSink>(
                         buffer,
@@ -1493,6 +1581,13 @@ fn check_formula_holds_core_impl<S: TraceSink>(
             let mut unresolved = 0u32;
             let mut best_result = None;
             for member in &members {
+                inner.observe(|| {
+                    let mut e =
+                        ExecutionEvent::new(EK::Candidate, "Trying quantified domain member");
+                    e.state.candidate = Some(format!("{member:?}"));
+                    e.state.bindings = execution_bindings(subs);
+                    e
+                });
                 let result = with_sub(subs, v, member.clone(), |s| {
                     check_formula_holds_core::<NoOpSink>(
                         buffer,
@@ -1535,6 +1630,13 @@ fn check_formula_holds_core_impl<S: TraceSink>(
             let idx = if S::RECORDING {
                 let mut children = Vec::with_capacity(members.len());
                 for member in &members {
+                    inner.observe(|| {
+                        let mut e =
+                            ExecutionEvent::new(EK::Candidate, "Trying quantified domain member");
+                        e.state.candidate = Some(format!("{member:?}"));
+                        e.state.bindings = execution_bindings(subs);
+                        e
+                    });
                     let body_idx = with_sub(subs, v, member.clone(), |s| {
                         check_formula_holds_core::<S>(
                             buffer,
@@ -2355,6 +2457,33 @@ pub(super) fn check_predicate_in_kb_typed(
     depth: usize,
     visited: &mut HashSet<StoredFact>,
 ) -> QueryResult {
+    inner.observe(|| {
+        let mut e = ExecutionEvent::new(EK::GoalEnter, "Check predicate truth");
+        e.state.goal = Some(fact.to_display_string());
+        e.state.depth = Some(depth as u32);
+        e
+    });
+    let result = check_predicate_in_kb_typed_impl(fact, inner, depth, visited);
+    inner.observe(|| {
+        let mut e = ExecutionEvent::new(EK::GoalExit, "Predicate check returned");
+        e.state.goal = Some(fact.to_display_string());
+        e.state.depth = Some(depth as u32);
+        if check_cancelled(inner).is_ok() {
+            e.result = Some(result.clone());
+        } else {
+            e.detail = "Cancelled: internal unwind value is not a verdict".into();
+        }
+        e
+    });
+    result
+}
+
+fn check_predicate_in_kb_typed_impl(
+    fact: &StoredFact,
+    inner: &KnowledgeBaseInner,
+    depth: usize,
+    visited: &mut HashSet<StoredFact>,
+) -> QueryResult {
     // Cooperative cancellation: once the watchdog raises the flag, collapse every
     // predicate sub-check to False immediately so a candidates² backward-chaining
     // blowup unwinds in bounded time. Returns before any cache write, so no
@@ -2393,7 +2522,18 @@ pub(super) fn check_predicate_in_kb_typed(
         }
     }
 
-    if typed_fact_is_stored(fact, inner) {
+    let stored = typed_fact_is_stored(fact, inner);
+    inner.observe(|| {
+        let mut e = ExecutionEvent::new(EK::Candidate, "Exact typed-fact membership lookup");
+        e.state.candidate = Some(fact.to_display_string());
+        e.result = Some(if stored {
+            QueryResult::True
+        } else {
+            QueryResult::False
+        });
+        e
+    });
+    if stored {
         return QueryResult::True;
     }
     if activation_is_being_traced(fact, inner) {
@@ -2410,6 +2550,21 @@ pub(super) fn check_predicate_in_kb_typed(
     } else {
         None
     };
+    inner.observe(|| {
+        let mut e = ExecutionEvent::new(
+            if cached.is_some() {
+                EK::CacheHit
+            } else {
+                EK::CacheMiss
+            },
+            "Predicate-result table lookup",
+        );
+        e.state.goal = Some(fact.to_display_string());
+        e.state.memo = Some(MemoKind::PredicateResult);
+        e.state.memo_scope = Some("current query, shared across deepening passes".into());
+        e.result = cached.clone();
+        e
+    });
     if let Some(result) = cached {
         return result;
     }
@@ -2434,6 +2589,16 @@ pub(super) fn check_predicate_in_kb_typed(
             .get(fact)
             .is_some_and(|&r| r >= remaining)
     {
+        inner.observe(|| {
+            let mut e = ExecutionEvent::new(
+                EK::CacheHit,
+                "Remaining-depth table proves this budget insufficient",
+            );
+            e.state.memo = Some(MemoKind::RemainingDepth);
+            e.state.goal = Some(fact.to_display_string());
+            e.state.depth = Some(remaining as u32);
+            e
+        });
         return QueryResult::ResourceExceeded(ResourceKind::Depth);
     }
     let epoch_before = inner.cycle_cut_epoch.get();
@@ -2558,6 +2723,14 @@ pub(super) fn check_predicate_in_kb_typed(
                 .pred_cache
                 .borrow_mut()
                 .insert(fact.clone(), result.clone());
+            inner.observe(|| {
+                let mut e =
+                    ExecutionEvent::new(EK::CacheStore, "Stored definitive predicate result");
+                e.state.memo = Some(MemoKind::PredicateResult);
+                e.state.goal = Some(fact.to_display_string());
+                e.result = Some(result.clone());
+                e
+            });
         } else if matches!(result, QueryResult::ResourceExceeded(ResourceKind::Depth))
             && inner.cycle_cut_epoch.get() == epoch_before
         {
@@ -2565,6 +2738,16 @@ pub(super) fn check_predicate_in_kb_typed(
             let entry = table.entry(fact.clone()).or_insert(0);
             if remaining > *entry {
                 *entry = remaining;
+                inner.observe(|| {
+                    let mut e = ExecutionEvent::new(
+                        EK::CacheStore,
+                        "Stored path-independent insufficient remaining depth",
+                    );
+                    e.state.memo = Some(MemoKind::RemainingDepth);
+                    e.state.goal = Some(fact.to_display_string());
+                    e.state.depth = Some(remaining as u32);
+                    e
+                });
             }
         }
     }
@@ -2910,6 +3093,17 @@ fn search_event_bindings(
             } else {
                 result
             };
+            inner.observe(|| {
+                let mut e =
+                    ExecutionEvent::new(EK::RuleCondition, "Evaluated event-join antecedent");
+                e.state.goal = Some(substituted.to_display_string());
+                e.state.rule = Some(rule.label.clone());
+                e.state.bindings = execution_bindings(bindings);
+                if check_cancelled(inner).is_ok() {
+                    e.result = Some(verdict.clone());
+                }
+                e
+            });
             if verdict.is_false() {
                 all_hold = false;
                 pending = None;
@@ -2958,6 +3152,15 @@ fn search_event_bindings(
         candidates_slot,
     );
     if candidates.is_empty() {
+        inner.observe(|| {
+            let mut e = ExecutionEvent::new(EK::RuleCondition, "Indexed antecedent join has no compatible event candidate; branch rejected before leaf evaluation");
+            e.state.rule = Some(rule.label.clone());
+            e.state.candidate = Some(event_var.clone());
+            e.state.goal = Some(rule.typed_conditions.iter().map(StoredFact::to_display_string).collect::<Vec<_>>().join(" & "));
+            e.state.bindings = execution_bindings(bindings);
+            e.result = Some(QueryResult::False);
+            e
+        });
         return EventBindingSearch::Exhausted(None);
     }
 
@@ -2970,6 +3173,13 @@ fn search_event_bindings(
         {
             break;
         }
+        inner.observe(|| {
+            let mut e = ExecutionEvent::new(EK::Candidate, "Trying indexed event-join candidate");
+            e.state.candidate = Some(format!("{candidate:?}"));
+            e.state.rule = Some(rule.label.clone());
+            e.state.bindings = execution_bindings(bindings);
+            e
+        });
         bindings.insert(event_var.clone(), candidate);
         let joined_vars = bind_join_vars_from_index(rule, bindings, inner);
         match search_event_bindings(
@@ -3344,11 +3554,39 @@ fn process_phase<S: TraceSink>(
     let rules = matching_rules_typed(match_fact, &inner.universal_rules);
     for rule in rules {
         for typed_concl in &rule.typed_conclusions {
+            inner.observe(|| {
+                let mut e = ExecutionEvent::new(EK::Candidate, "Trying indexed rule conclusion");
+                e.state.goal = Some(match_fact.to_display_string());
+                e.state.candidate = Some(typed_concl.to_display_string());
+                e.state.rule = Some(rule.label.clone());
+                e.assertion_ids = rule_citations(inner, &rule.identity)
+                    .iter()
+                    .map(|r| r.assertion_id.to_string())
+                    .collect();
+                e
+            });
             let Some(mut bindings) =
                 unify_facts_with_witness_congruence(typed_concl, match_fact, inner)
             else {
+                inner.observe(|| {
+                    let mut e = ExecutionEvent::new(
+                        EK::Unification,
+                        "Rule conclusion did not unify with the goal",
+                    );
+                    e.state.rule = Some(rule.label.clone());
+                    e.result = Some(QueryResult::False);
+                    e
+                });
                 continue;
             };
+            inner.observe(|| {
+                let mut e =
+                    ExecutionEvent::new(EK::Unification, "Rule conclusion unified with the goal");
+                e.state.rule = Some(rule.label.clone());
+                e.state.bindings = execution_bindings(&bindings);
+                e.result = Some(QueryResult::True);
+                e
+            });
 
             // Handle unbound event variables (same logic as fact_repr version).
             let unbound_event_vars: Vec<String> = rule
@@ -3402,6 +3640,16 @@ fn process_phase<S: TraceSink>(
                 } else {
                     result
                 };
+                inner.observe(|| {
+                    let mut e = ExecutionEvent::new(EK::RuleCondition, "Evaluated rule antecedent");
+                    e.state.goal = Some(cs.to_display_string());
+                    e.state.rule = Some(rule.label.clone());
+                    e.state.bindings = execution_bindings(&bindings);
+                    if check_cancelled(inner).is_ok() {
+                        e.result = Some(verdict.clone());
+                    }
+                    e
+                });
                 if verdict.is_false() {
                     all_conditions_hold = false;
                     rule_pending = None;
@@ -3424,6 +3672,21 @@ fn process_phase<S: TraceSink>(
             );
 
             if all_conditions_hold {
+                inner.observe(|| {
+                    let mut e = ExecutionEvent::new(
+                        EK::RuleFire,
+                        "All antecedents hold; backward rule derives the goal",
+                    );
+                    e.state.goal = Some(match_fact.to_display_string());
+                    e.state.rule = Some(rule.label.clone());
+                    e.state.bindings = execution_bindings(&bindings);
+                    e.assertion_ids = rule_citations(inner, &rule.identity)
+                        .iter()
+                        .map(|r| r.assertion_id.to_string())
+                        .collect();
+                    e.result = Some(QueryResult::True);
+                    e
+                });
                 let root = if S::RECORDING {
                     Some(emit_derived(
                         sink, rule, &bindings, match_fact, inner, depth, visited,
@@ -3519,6 +3782,12 @@ fn try_backward_chain_core<S: TraceSink>(
         {
             return (QueryResult::False, None);
         }
+        inner.observe(|| {
+            let mut e = ExecutionEvent::new(EK::DepthBound, "Backward-chain depth bound reached");
+            e.state.goal = Some(fact.to_display_string());
+            e.state.depth = Some(depth as u32);
+            e
+        });
         return (QueryResult::ResourceExceeded(ResourceKind::Depth), None);
     }
     if !visited.insert(cycle_key(fact)) {
@@ -3528,6 +3797,12 @@ fn try_backward_chain_core<S: TraceSink>(
         // elsewhere) and must not be tabled — the epoch snapshot in
         // `check_predicate_in_kb_typed` detects this bump.
         inner.cycle_cut_epoch.set(inner.cycle_cut_epoch.get() + 1);
+        inner.observe(|| {
+            let mut e =
+                ExecutionEvent::new(EK::CycleCut, "Goal already active on this search path");
+            e.state.goal = Some(fact.to_display_string());
+            e
+        });
         return (QueryResult::Unknown(UnknownReason::CycleCut), None);
     }
 
@@ -3588,6 +3863,42 @@ pub(super) fn try_backward_chain_typed(
 
 /// Typed trace_predicate_provenance: check if fact holds and build proof step.
 pub(super) fn trace_predicate_provenance_typed(
+    fact: &StoredFact,
+    inner: &KnowledgeBaseInner,
+    steps: &mut Vec<ProofStep>,
+    depth: usize,
+    memo: &mut HashMap<StoredFact, u32>,
+    visited: &mut HashSet<StoredFact>,
+) -> u32 {
+    inner.observe(|| {
+        let mut e = ExecutionEvent::new(
+            if memo.contains_key(fact) {
+                EK::CacheHit
+            } else {
+                EK::CacheMiss
+            },
+            "Certificate-node memo lookup",
+        );
+        e.state.goal = Some(fact.to_display_string());
+        e.state.memo = Some(MemoKind::ProofNode);
+        e.state.memo_scope = Some("current certificate construction".into());
+        e.proof_node = memo.get(fact).copied();
+        e
+    });
+    let index = trace_predicate_provenance_typed_impl(fact, inner, steps, depth, memo, visited);
+    inner.observe(|| {
+        let mut e = ExecutionEvent::new(
+            EK::ProofLink,
+            "Predicate certificate node returned by the live proof builder",
+        );
+        e.state.goal = Some(fact.to_display_string());
+        e.proof_node = Some(index);
+        e
+    });
+    index
+}
+
+fn trace_predicate_provenance_typed_impl(
     fact: &StoredFact,
     inner: &KnowledgeBaseInner,
     steps: &mut Vec<ProofStep>,

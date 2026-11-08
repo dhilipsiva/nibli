@@ -2386,6 +2386,14 @@ pub(super) fn ensure_materialized_targets(
         .unwrap_or_default();
     if let Some(materialized) = inner.materialized.borrow_mut().as_mut() {
         if targets.is_subset(&previous_targets) {
+            inner.observe(|| {
+                let mut e = nibli_types::execution::ExecutionEvent::new(
+                    nibli_types::execution::ExecutionEventKind::CacheHit,
+                    "Query target set is already covered by the materialization cache",
+                );
+                e.state.memo = Some(nibli_types::execution::MemoKind::Materialization);
+                e
+            });
             return false;
         }
         // A root already completed as a dependency needs no second saturation.
@@ -2399,6 +2407,12 @@ pub(super) fn ensure_materialized_targets(
 
     let mut cumulative = targets.clone();
     cumulative.extend(previous_targets);
+    inner.observe(|| {
+        nibli_types::execution::ExecutionEvent::new(
+            nibli_types::execution::ExecutionEventKind::Materialize,
+            "Extending the saturated target closure",
+        )
+    });
     let plan = materialization_plan(inner);
     let previous = inner.materialized.borrow_mut().take();
     let materialized = saturate_extending(
@@ -2424,6 +2438,17 @@ pub(super) fn ensure_materialized_targets(
             );
         }
     }
+    inner.observe(|| {
+        let mut e = nibli_types::execution::ExecutionEvent::new(
+            nibli_types::execution::ExecutionEventKind::CacheStore,
+            "Saved materialized target closure",
+        );
+        e.state.memo = Some(nibli_types::execution::MemoKind::Materialization);
+        let mut complete: Vec<_> = materialized.complete.iter().cloned().collect();
+        complete.sort();
+        e.state.candidate = Some(format!("complete relations: {complete:?}"));
+        e
+    });
     *inner.materialized.borrow_mut() = Some(materialized);
     true
 }

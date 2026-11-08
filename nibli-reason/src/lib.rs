@@ -27,6 +27,7 @@
 #![allow(dead_code)]
 
 use nibli_types::error::NibliError;
+use nibli_types::execution::{ExecutionEvent, ExecutionEventKind as EK, ExecutionPhase};
 use nibli_types::logic::{
     AssertionCitation, AssertionRecordSummary, AssertionStatus, FactSummary, LogicBuffer,
     LogicNode, LogicalTerm, ProofRule, ProofStep, ProofTrace, QueryResult, ResourceKind,
@@ -374,6 +375,17 @@ impl KnowledgeBase {
         preflight_assertion_buffer(&mut logic)?;
         let mut inner = self.inner.borrow_mut();
         let id = inner.fresh_fact_id()?;
+        inner.observe(|| {
+            let mut e = ExecutionEvent::new(EK::Assert, "Admitting assertion source");
+            e.assertion_ids.push(id.to_string());
+            e.detail = label.clone();
+            e
+        });
+        inner.observe(|| {
+            let mut e = ExecutionEvent::new(EK::Replay, "Processing attributed assertion buffer");
+            e.assertion_ids.push(id.to_string());
+            e
+        });
         inner.current_assertion_id = Some(id);
         let result = process_preflighted_assertion(&mut inner, &mut logic);
         // ALWAYS clear: a stale id would mis-attribute the NEXT assertion's
@@ -427,6 +439,11 @@ impl KnowledgeBase {
         }
         // Attribute any rule compiled during this replay to THIS fact — the
         // rule-source citations proof traces carry read current_assertion_id.
+        inner.observe(|| {
+            let mut e = ExecutionEvent::new(EK::Replay, "Processing attributed assertion buffer");
+            e.assertion_ids.push(id.to_string());
+            e
+        });
         inner.current_assertion_id = Some(id);
         let result = process_preflighted_assertion(&mut inner, &mut logic);
         inner.current_assertion_id = None;
@@ -466,6 +483,12 @@ impl KnowledgeBase {
     /// already trusts.
     fn retract_fact_inner(&self, id: u64) -> Result<(), String> {
         let mut inner = self.inner.borrow_mut();
+        inner.observe(|| {
+            let mut e =
+                ExecutionEvent::new(EK::Withdraw, "Withdrawing source identity before replay");
+            e.assertion_ids.push(id.to_string());
+            e
+        });
         match inner.fact_registry.get_mut(&id) {
             None => return Err(format!("Fact #{} not found", id)),
             Some(r) if r.retracted => return Ok(()), // idempotent
@@ -491,6 +514,12 @@ impl KnowledgeBase {
     /// Rebuild the KB from all non-retracted facts.
     /// Preserves fact_registry and fact_counter; resets all derived state.
     fn rebuild_inner(inner: &mut KnowledgeBaseInner) -> Result<(), String> {
+        inner.observe(|| {
+            ExecutionEvent::new(
+                EK::Rebuild,
+                "Rebuilding derived state from surviving source records",
+            )
+        });
         #[cfg(test)]
         TEST_REBUILD_COUNT.set(TEST_REBUILD_COUNT.get() + 1);
         // Preserve user-declared arg sorts (set via `set_predicate_sorts`): replay
@@ -570,6 +599,14 @@ impl KnowledgeBase {
         inner.rebuilding = true;
         let mut replay_errors: Vec<(u64, String)> = Vec::new();
         for (buf, &fid) in buffers.iter_mut().zip(ids.iter()) {
+            inner.observe(|| {
+                let mut e = ExecutionEvent::new(
+                    EK::Replay,
+                    "Replaying surviving source into rebuilt state",
+                );
+                e.assertion_ids.push(fid.to_string());
+                e
+            });
             inner.current_assertion_id = Some(fid);
             if let Err(e) = process_assertion(inner, buf) {
                 replay_errors.push((fid, e));
@@ -690,6 +727,16 @@ impl KnowledgeBase {
         {
             materialize::collect_query_relations(logic, &mut targets);
         }
+        inner.observe(|| {
+            let mut e = ExecutionEvent::new(
+                EK::Materialize,
+                "Saturating query-relevant target relations",
+            );
+            let mut targets: Vec<_> = targets.iter().cloned().collect();
+            targets.sort();
+            e.state.goal = Some(targets.join(", "));
+            e
+        });
         materialize::ensure_materialized_targets(&inner, &targets)
     }
 
@@ -1094,6 +1141,9 @@ impl KnowledgeBase {
         // group without re-evaluating it, so `naf_dependent` still computes correctly).
         // A purely positive fallback is intentionally not requested: the positive lookup
         // is disabled below because a complete tuple has no derivation to trace.
+        self.inner
+            .borrow()
+            .execution_phase(ExecutionPhase::Materialization);
         self.ensure_materialized(&logic, false);
         // The POSITIVE lookup, however, is lowered for the whole traced query — BOTH
         // phases. A lookup has no derivation to record, and gating it per-sink would let
@@ -1118,8 +1168,17 @@ impl KnowledgeBase {
         // them away. If no depth resolves, `resolving_depth` stays `configured_max`
         // so Phase 2 builds the deepest trace (matching the old `last_trace`).
         let mut resolving_depth = configured_max;
+        self.inner.borrow().execution_phase(ExecutionPhase::Probe);
         for depth_limit in 1..=configured_max {
             self.inner.borrow_mut().max_chain_depth = depth_limit;
+            self.inner.borrow().observe(|| {
+                let mut e = ExecutionEvent::new(
+                    EK::SearchPass,
+                    "Iterative deepening verdict probe; no certificate is constructed in this pass",
+                );
+                e.state.depth = Some(depth_limit as u32);
+                e
+            });
             // Restore the configured depth on the error path too (see
             // query_entailment_inner) — explicit `match`, NOT `?`, so a cancelled
             // query never leaves the KB pinned at a partial deepening depth.
@@ -1145,6 +1204,15 @@ impl KnowledgeBase {
         // descent never shortcuts on the verdict cache and the fact store is
         // set-idempotent for the only state it reads (`typed_fact_is_stored`).
         self.inner.borrow_mut().max_chain_depth = resolving_depth;
+        self.inner.borrow().execution_phase(ExecutionPhase::Proof);
+        self.inner.borrow().observe(|| {
+            let mut e = ExecutionEvent::new(
+                EK::SearchPass,
+                "Constructing the selected certificate at the resolving depth",
+            );
+            e.state.depth = Some(resolving_depth as u32);
+            e
+        });
         let out = self.run_entailment_check_with_proof_and_compute_memo(&logic, &mut compute_memo);
         {
             let inner = self.inner.borrow();
@@ -1239,8 +1307,22 @@ impl KnowledgeBase {
         let candidate = KnowledgeBase {
             inner: RefCell::new(snapshot),
         };
-        let result = operation(&candidate)?;
-        candidate.ensure_ready()?;
+        candidate
+            .inner
+            .borrow()
+            .observe(|| ExecutionEvent::new(EK::MutationBegin, "Detached atomic candidate opened"));
+        let result = match operation(&candidate).and_then(|result| {
+            candidate.ensure_ready()?;
+            Ok(result)
+        }) {
+            Ok(result) => result,
+            Err(error) => {
+                candidate.inner.borrow().observe(|| {
+                    ExecutionEvent::new(EK::Rollback, format!("Candidate discarded: {error}"))
+                });
+                return Err(error);
+            }
+        };
         let mut published = candidate.inner.into_inner();
         // Keep the caller's typed mirror attached to the existing KB identity.
         // Only apply differences, avoiding an unnecessary rewrite of every tuple.
@@ -1258,6 +1340,7 @@ impl KnowledgeBase {
         }
         published.fact_store = mirror;
         *live = published;
+        live.observe(|| ExecutionEvent::new(EK::Commit, "Validated candidate published into its immediate owner; an outer candidate can still roll back"));
         Ok(result)
     }
 
@@ -2601,3 +2684,86 @@ fn restore_template_query_variable(name: String) -> String {
 
 #[cfg(test)]
 mod tests;
+
+impl KnowledgeBase {
+    /// Install an optional per-operation observer. Observers must not re-enter the KB.
+    /// Returns the previous observer so a session can restore it after every exit.
+    pub fn replace_execution_observer(
+        &self,
+        observer: Option<nibli_types::execution::ExecutionObserverHandle>,
+    ) -> Option<nibli_types::execution::ExecutionObserverHandle> {
+        std::mem::replace(&mut self.inner.borrow_mut().execution, observer)
+    }
+
+    /// Source snapshots deliberately cover the text-session configuration. Native
+    /// constraints, sorts and rule execution overrides require their own schema;
+    /// refuse to silently erase them during recovery. Runtime callbacks and
+    /// diagnostic/cancellation handles remain the host's explicit rebind contract.
+    pub fn validate_source_snapshot_configuration(&self) -> Result<(), NibliError> {
+        self.ensure_ready()?;
+        let inner = self.inner.borrow();
+        let mut unsupported = Vec::new();
+        if !inner.integrity_constraints.is_empty() {
+            unsupported.push("native integrity constraints");
+        }
+        if !inner.entity_sorts.is_empty()
+            || !inner.sort_hierarchy.is_empty()
+            || inner
+                .predicate_registry
+                .values()
+                .any(|signature| !signature.arg_sorts.is_empty())
+        {
+            unsupported.push("native sort configuration");
+        }
+        if !inner.rule_exec_overrides.is_empty() {
+            unsupported.push("rule execution overrides");
+        }
+        if unsupported.is_empty() {
+            Ok(())
+        } else {
+            Err(NibliError::Reasoning(format!(
+                "source snapshot cannot preserve {}",
+                unsupported.join(", ")
+            )))
+        }
+    }
+
+    /// Recoverable source registry, including withdrawn identities.
+    pub fn snapshot_assertions(
+        &self,
+    ) -> Result<Vec<nibli_types::execution::SnapshotAssertion>, NibliError> {
+        self.ensure_ready()?;
+        let inner = self.inner.borrow();
+        let mut records: Vec<_> = inner
+            .fact_registry
+            .values()
+            .map(|r| nibli_types::execution::SnapshotAssertion {
+                id: r.id.to_string(),
+                label: r.label.clone(),
+                buffer: r.buffer.clone(),
+            })
+            .collect();
+        records.sort_by_key(|r| r.id.parse::<u64>().expect("engine ID"));
+        Ok(records)
+    }
+
+    /// The allocation frontier, including the exhausted u64::MAX sentinel.
+    /// Unlike next_fact_id, this does not promise another allocation is possible.
+    pub fn assertion_id_frontier(&self) -> Result<u64, NibliError> {
+        self.ensure_ready()?;
+        Ok(self.inner.borrow().fact_counter)
+    }
+
+    /// Advance, never rewind, the next assertion identity while restoring a snapshot.
+    pub fn restore_next_fact_id(&self, next: u64) -> Result<(), NibliError> {
+        self.ensure_ready()?;
+        let mut inner = self.inner.borrow_mut();
+        if next < inner.fact_counter {
+            return Err(NibliError::Reasoning(
+                "invalid next assertion ID frontier".into(),
+            ));
+        }
+        inner.fact_counter = next;
+        Ok(())
+    }
+}

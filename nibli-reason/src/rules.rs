@@ -1190,6 +1190,54 @@ pub(super) fn assert_typed_fact_with_origin(
     // duplicate must not acquire an origin, and a rejected new tuple has already
     // been removed by `unassert_typed_fact` above.
     let origin_is_forward = matches!(&origin, StoredFactOrigin::ForwardDerived { .. });
+    inner.observe(|| {
+        use nibli_types::execution::{ExecutionEvent, ExecutionEventKind};
+        let mut event = ExecutionEvent::new(
+            ExecutionEventKind::FactInsert,
+            if was_new {
+                "Accepted a new truth tuple and its support"
+            } else {
+                "Accepted support for an existing truth tuple; content remains set-valued"
+            },
+        );
+        event.state.candidate = Some(fact.to_display_string());
+        match &origin {
+            StoredFactOrigin::Assertion { assertion_id } => {
+                event.assertion_ids.push(assertion_id.to_string())
+            }
+            StoredFactOrigin::Presupposition { rule_source } => {
+                event
+                    .assertion_ids
+                    .push(rule_source.assertion_id.to_string());
+                event
+                    .detail
+                    .push_str(" (existential-import presupposition)");
+            }
+            StoredFactOrigin::ForwardDerived {
+                rule_identity,
+                premises,
+            } => {
+                event.kind = ExecutionEventKind::RuleFire;
+                event.detail = "Forward rule accepted its derived conclusion".into();
+                event.state.goal = Some(
+                    premises
+                        .iter()
+                        .map(StoredFact::to_display_string)
+                        .collect::<Vec<_>>()
+                        .join(" & "),
+                );
+                event.assertion_ids = inner
+                    .known_rules
+                    .source_ids(rule_identity)
+                    .unwrap_or_default()
+                    .iter()
+                    .map(|source| source.assertion_id.to_string())
+                    .collect();
+            }
+            StoredFactOrigin::Internal => event.detail.push_str(" (unattributed internal support)"),
+        }
+        event
+    });
     let origins = inner.fact_origins.entry(fact.clone()).or_default();
     if !origins.contains(&origin) {
         origins.push(origin);

@@ -18,6 +18,10 @@ pub mod semantic;
 use ir::{IrForm, IrTerm};
 use nibli_types::ast as flat_ast;
 use nibli_types::error::NibliError;
+use nibli_types::execution::{
+    CompilationArtifact, ExecutionEvent, ExecutionEventKind, ExecutionObserver, ExecutionPhase,
+    SourceReference,
+};
 use nibli_types::logic::{LogicBuffer, LogicNode, LogicalTerm};
 use semantic::SemanticCompiler;
 
@@ -210,7 +214,43 @@ fn validate_ast_buffer(ast: &flat_ast::AstBuffer) -> Result<(), NibliError> {
 /// Core compilation: nibli-kr AST buffer → FOL logic buffer.
 /// Used by both the native API and the WIT export path.
 fn compile_ast(ast: &flat_ast::AstBuffer) -> Result<LogicBuffer, NibliError> {
-    validate_ast_buffer(ast)?;
+    compile_ast_observed(ast, None, "")
+}
+
+fn compile_ast_observed(
+    ast: &flat_ast::AstBuffer,
+    observer: Option<&dyn ExecutionObserver>,
+    artifact_id: &str,
+) -> Result<LogicBuffer, NibliError> {
+    let report = |kind, detail: String, goal: Option<String>| {
+        if let Some(observer) = observer {
+            let mut event = ExecutionEvent::new(kind, detail);
+            event.phase = ExecutionPhase::Compile;
+            event.source = Some(SourceReference {
+                artifact_id: artifact_id.into(),
+                span: None,
+            });
+            event.state.goal = goal;
+            observer.observe(event);
+        }
+    };
+    if let Err(error) = validate_ast_buffer(ast) {
+        if observer.is_some() {
+            report(
+                ExecutionEventKind::Validate,
+                format!("Compiler rejected AST structure: {error}"),
+                None,
+            );
+        }
+        return Err(error);
+    }
+    if observer.is_some() {
+        report(
+            ExecutionEventKind::Validate,
+            "Validated AST indices, graph structure and supported forms".into(),
+            None,
+        );
+    }
     let mut compiler = SemanticCompiler::new();
     let mut logic_forms = Vec::with_capacity(ast.roots.len());
 
@@ -221,23 +261,62 @@ fn compile_ast(ast: &flat_ast::AstBuffer) -> Result<LogicBuffer, NibliError> {
         let form =
             compiler.compile_sentence(root_idx, &ast.predicates, &ast.arguments, &ast.sentences);
         compiler.validate_named_coreference(&form);
+        if observer.is_some() {
+            report(
+                ExecutionEventKind::Lower,
+                format!("Lowered AST root {root_idx} to intermediate logic"),
+                Some(format!("{form:?}")),
+            );
+        }
         logic_forms.push(form);
     }
 
     // Check for semantic errors accumulated during compilation.
     if let Some(err) = compiler.errors.first() {
+        if observer.is_some() {
+            report(
+                ExecutionEventKind::Validate,
+                format!("Semantic compilation rejected input: {err}"),
+                None,
+            );
+        }
         return Err(NibliError::Semantic(err.clone()));
     }
 
     let mut nodes = Vec::new();
     let mut roots = Vec::with_capacity(logic_forms.len());
 
-    for form in logic_forms {
+    for (index, form) in logic_forms.into_iter().enumerate() {
+        let start = nodes.len();
         let root_id = flatten_form(&form, &mut nodes, &compiler.interner);
         roots.push(root_id);
+        if observer.is_some() {
+            report(
+                ExecutionEventKind::Lower,
+                format!(
+                    "Flattened source root {index} into logic nodes {start}..{}; output root {root_id}",
+                    nodes.len()
+                ),
+                Some(format!("{:?}", nodes[root_id as usize])),
+            );
+        }
     }
 
-    Ok(LogicBuffer { nodes, roots })
+    let buffer = LogicBuffer { nodes, roots };
+    if let Some(observer) = observer {
+        observer.compilation(CompilationArtifact {
+            id: artifact_id.into(),
+            source: String::new(),
+            statement_spans: Vec::new(),
+            parsed_predicates: Vec::new(),
+            parsed_arguments: Vec::new(),
+            parsed_sentences: Vec::new(),
+            parsed_roots: Vec::new(),
+            lowered_logic: Some(buffer.clone()),
+            logic: Some(buffer.clone()),
+        });
+    }
+    Ok(buffer)
 }
 
 /// Recursively flatten a [`IrForm`] tree into the flat `nodes` array.
@@ -383,6 +462,15 @@ fn flatten_form(form: &IrForm, nodes: &mut Vec<LogicNode>, interner: &lasso::Rod
 /// Primary API for all callers (nibli-pipeline, nibli-engine).
 pub fn compile_from_ast(ast: flat_ast::AstBuffer) -> Result<LogicBuffer, NibliError> {
     compile_ast(&ast)
+}
+
+/// Observe the same validating compiler and flattener used by unrecorded calls.
+pub fn compile_from_ast_with_observer(
+    ast: flat_ast::AstBuffer,
+    observer: &dyn ExecutionObserver,
+    artifact_id: &str,
+) -> Result<LogicBuffer, NibliError> {
+    compile_ast_observed(&ast, Some(observer), artifact_id)
 }
 
 /// Compatibility/intent alias for compiling a nibli-KR query AST.

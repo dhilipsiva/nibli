@@ -7017,13 +7017,13 @@ fn lucy_english_a_right_over_an_event_reads_its_content() {
     );
     assert!(
         proof.contains(
-            "Lucy is entitled to protest  [by the rule: every person is entitled to protest]"
+            "Lucy is entitled to protest  [by recorded source #3/0: entitled(every person, event { protest() }).]"
         ),
         "{proof}"
     );
     assert!(
-        !proof.contains("__abs") && !proof.contains('#'),
-        "no marker, no witness number: {proof}"
+        !proof.contains("__abs") && !proof.contains("sk_") && !proof.contains("entitled to #"),
+        "no opaque marker or event witness; source IDs remain visible: {proof}"
     );
     let (why, _) = lucy_why(&engine, "decide(Lucy, event { obey() }).");
     assert_eq!(why, "Because Lucy is a person, Lucy decides to obey.");

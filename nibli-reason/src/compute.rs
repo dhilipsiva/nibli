@@ -1,4 +1,5 @@
 use super::*;
+use nibli_types::execution::{ExecutionEvent, ExecutionEventKind as EK, MemoKind};
 
 // ─── Injectable compute dispatch (per-KB; see `KnowledgeBase::set_compute_dispatch`) ───
 
@@ -434,8 +435,21 @@ pub(super) fn evaluate_external_compute(
 ) -> ComputeEvaluation {
     let key = ComputeCallKey::new(rel, resolved);
     if let Some(evaluation) = memo.entries.get(&key) {
+        inner.observe(|| {
+            let mut e = ExecutionEvent::new(EK::CacheHit, "External-compute query memo reused");
+            e.state.goal = Some(format!("{rel}({resolved:?})"));
+            e.state.memo = Some(MemoKind::Compute);
+            e.state.memo_scope = Some("current query only".into());
+            e.result = Some(evaluation.verdict.clone());
+            e
+        });
         return evaluation.clone();
     }
+    inner.observe(|| {
+        let mut e = ExecutionEvent::new(EK::CacheMiss, "External-compute query memo miss");
+        e.state.memo = Some(MemoKind::Compute);
+        e
+    });
     let evaluation = match dispatch_to_backend(inner, rel, resolved) {
         Ok(holds) => ComputeEvaluation {
             method: "backend",
@@ -447,6 +461,12 @@ pub(super) fn evaluate_external_compute(
         },
     };
     memo.entries.insert(key, evaluation.clone());
+    inner.observe(|| {
+        let mut e = ExecutionEvent::new(EK::CacheStore, "Stored compute outcome for this query");
+        e.state.memo = Some(MemoKind::Compute);
+        e.result = Some(evaluation.verdict.clone());
+        e
+    });
     evaluation
 }
 

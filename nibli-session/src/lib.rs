@@ -31,6 +31,12 @@
 //! whether or not any session registered them); they also carry their own
 //! `GateError` taxonomy (see nibli-formalize/src/gates.rs).
 
+pub mod execution;
+pub use execution::Recorded;
+#[cfg(test)]
+mod execution_tests;
+pub use nibli_types::execution::*;
+
 use std::collections::HashSet;
 
 use nibli_types::error::NibliError;
@@ -1087,3 +1093,6 @@ mod tests {
         assert_eq!(session.compute_predicates(), &before);
     }
 }
+
+#[cfg(test)]
+mod execution_observer_tests;

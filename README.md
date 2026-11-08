@@ -215,6 +215,8 @@ and existential/universal proof payloads expose `knowledge-base`,
 `generated-witness`, or `existential-import` origin;
 count proof steps expose the `existential_imported` share of `actual`.
 Full API: [docs.rs/nibli-engine](https://docs.rs/nibli-engine).
+Optional engine observations, atomic change sets and recoverable session snapshots:
+[Execution records](EXECUTION_RECORDS.md) (`nibli-session`).
 
 ### Install the CLI (no Nix required)
 

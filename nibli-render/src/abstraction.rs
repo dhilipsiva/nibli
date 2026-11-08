@@ -7,11 +7,8 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 
-use nibli_types::abstraction::{
-    ABSTRACTION_MARKER_PREFIX, BodyForm, BodyTerm, decode_v1,
-};
+use nibli_types::abstraction::{ABSTRACTION_MARKER_PREFIX, BodyForm, BodyTerm, decode_v1};
 use nibli_types::logic::{ProofRule, ProofTrace};
-
 
 pub(crate) fn is_marker(relation: &str) -> bool {
     relation.starts_with(ABSTRACTION_MARKER_PREFIX)
@@ -153,24 +150,38 @@ pub(crate) fn event_contents(trace: &ProofTrace) -> BTreeMap<String, String> {
     let mut reachable = std::collections::BTreeSet::new();
     let mut pending = vec![trace.root];
     while let Some(id) = pending.pop() {
-        if reachable.insert(id) {
-            if let Some(step) = trace.steps.get(id as usize) {
-                pending.extend(step.children.iter().copied());
-            }
+        if reachable.insert(id)
+            && let Some(step) = trace.steps.get(id as usize)
+        {
+            pending.extend(step.children.iter().copied());
         }
     }
-    let facts: Vec<_> = reachable.iter().filter_map(|id| {
-        let step = trace.steps.get(*id as usize)?;
-        if !step.holds { return None; }
-        crate::summary::parse_raw_fact(step_fact(&step.rule)?)
-    }).collect();
+    let facts: Vec<_> = reachable
+        .iter()
+        .filter_map(|id| {
+            let step = trace.steps.get(*id as usize)?;
+            if !step.holds {
+                return None;
+            }
+            crate::summary::parse_raw_fact(step_fact(&step.rule)?)
+        })
+        .collect();
     let mut out = BTreeMap::new();
     for (wrapper, relation, args) in &facts {
-        if !is_marker(relation) || args.len() != 1 { continue; }
+        if !is_marker(relation) || args.len() != 1 {
+            continue;
+        }
         // A marker alone is not an event package. Do not erase incomplete,
         // ambiguous, failed, or unreachable evidence from a displayed proof.
-        if !facts.iter().any(|(w, r, a)| w == wrapper && r == "event" && a == args)
-            || facts.iter().filter(|(w, r, a)| w == wrapper && is_marker(r) && a == args).count() != 1 {
+        if !facts
+            .iter()
+            .any(|(w, r, a)| w == wrapper && r == "event" && a == args)
+            || facts
+                .iter()
+                .filter(|(w, r, a)| w == wrapper && is_marker(r) && a == args)
+                .count()
+                != 1
+        {
             continue;
         }
         if let Some(phrase) = content_phrase(relation) {
@@ -212,8 +223,8 @@ pub(crate) fn is_event_plumbing(fact: &str) -> bool {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use crate::term::humanize_skolem;
     use super::*;
+    use crate::term::humanize_skolem;
     use nibli_types::logic::{LogicBuffer, LogicNode, ProofStep};
 
     /// The marker the compiler emits for the abstraction in `kr`.

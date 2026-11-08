@@ -1668,6 +1668,7 @@ pub(super) struct FactRecord {
 
 /// All mutable KB state behind a single RefCell.
 pub(super) struct KnowledgeBaseInner {
+    pub(super) execution: Option<nibli_types::execution::ExecutionObserverHandle>,
     /// An ambiguous durable commit requires reopening this KB before further use.
     pub(super) recovery_required: Option<String>,
     /// Presentation-only `sk_N` serial. Semantic identity is source-scoped.
@@ -1991,6 +1992,7 @@ pub(super) struct KnowledgeBaseInner {
 impl Clone for KnowledgeBaseInner {
     fn clone(&self) -> Self {
         Self {
+            execution: self.execution.clone(),
             recovery_required: self.recovery_required.clone(),
             skolem_counter: self.skolem_counter,
             skolem_local_counter: self.skolem_local_counter,
@@ -2057,6 +2059,7 @@ impl Clone for KnowledgeBaseInner {
 impl KnowledgeBaseInner {
     pub(super) fn new() -> Self {
         Self {
+            execution: None,
             recovery_required: None,
             skolem_counter: 0,
             skolem_local_counter: 0,
@@ -2260,6 +2263,14 @@ impl KnowledgeBaseInner {
             .skolem_counter
             .checked_add(1)
             .expect("the knowledge base exhausted the Skolem display space");
+        self.observe(|| {
+            let mut e = nibli_types::execution::ExecutionEvent::new(
+                nibli_types::execution::ExecutionEventKind::Witness,
+                format!("Minted {sort:?} witness {symbol:?}"),
+            );
+            e.assertion_ids.push(assertion_id.to_string());
+            e
+        });
         symbol
     }
 
@@ -2583,6 +2594,41 @@ pub(super) fn unify_facts_with_witness_congruence(
     concrete: &StoredFact,
     inner: &KnowledgeBaseInner,
 ) -> Option<HashMap<String, GroundTerm>> {
+    let result = unify_facts_with_witness_congruence_impl(template, concrete, inner);
+    inner.observe(|| {
+        let mut e = nibli_types::execution::ExecutionEvent::new(
+            nibli_types::execution::ExecutionEventKind::Unification,
+            "Structural unification with witness congruence",
+        );
+        e.state.goal = Some(concrete.to_display_string());
+        e.state.candidate = Some(template.to_display_string());
+        e.result = Some(if result.is_some() {
+            QueryResult::True
+        } else {
+            QueryResult::False
+        });
+        if let Some(bindings) = &result {
+            e.state.bindings = bindings
+                .iter()
+                .map(
+                    |(variable, value)| nibli_types::execution::ExecutionBinding {
+                        variable: variable.clone(),
+                        value: format!("{value:?}"),
+                    },
+                )
+                .collect();
+            e.state.bindings.sort_by(|a, b| a.variable.cmp(&b.variable));
+        }
+        e
+    });
+    result
+}
+
+fn unify_facts_with_witness_congruence_impl(
+    template: &StoredFact,
+    concrete: &StoredFact,
+    inner: &KnowledgeBaseInner,
+) -> Option<HashMap<String, GroundTerm>> {
     if inner.equivalence_parent.is_empty() {
         return unify_facts(template, concrete);
     }
@@ -2718,6 +2764,14 @@ impl<'a> Iterator for GroundTermCartesianProduct<'a> {
 /// iterations within a single query (tabling benefit) but is cleared
 /// between separate user queries for correctness.
 pub(super) fn clear_and_enable_pred_cache(inner: &KnowledgeBaseInner) {
+    inner.observe(|| {
+        let mut e = nibli_types::execution::ExecutionEvent::new(
+            nibli_types::execution::ExecutionEventKind::CacheInvalidate,
+            "Cleared predicate and depth tables at query ingress",
+        );
+        e.state.memo = Some(nibli_types::execution::MemoKind::PredicateResult);
+        e
+    });
     clear_typed_pred_cache(inner);
     inner.pred_cache_enabled.set(true);
 }
@@ -2735,6 +2789,7 @@ pub(super) fn enable_pred_cache(inner: &KnowledgeBaseInner) {
 /// Other callers without that mutation-site guarantee use [`invalidate_pred_cache`].
 /// A refused detached candidate is discarded without touching the live caches.
 pub(super) fn invalidate_pred_cache_keeping_saturation(inner: &KnowledgeBaseInner) {
+    inner.observe(|| nibli_types::execution::ExecutionEvent::new(nibli_types::execution::ExecutionEventKind::CacheInvalidate, "Mutation invalidated predicate and depth tables; saturation follows its own dependency checks"));
     clear_typed_pred_cache(inner);
     inner.pred_cache_enabled.set(false);
 }
@@ -2742,6 +2797,12 @@ pub(super) fn invalidate_pred_cache_keeping_saturation(inner: &KnowledgeBaseInne
 /// Invalidate the predicate result cache. Call after any KB mutation
 /// (assert, retract, reset) to prevent stale cached results.
 pub(super) fn invalidate_pred_cache(inner: &KnowledgeBaseInner) {
+    inner.observe(|| {
+        nibli_types::execution::ExecutionEvent::new(
+            nibli_types::execution::ExecutionEventKind::CacheInvalidate,
+            "Mutation invalidated predicate, depth and materialization caches",
+        )
+    });
     clear_typed_pred_cache(inner);
     // The saturated extensions are content-derived, so a mutation invalidates them too
     // (see `invalidate_materialization` for why this is NOT folded into
@@ -3098,6 +3159,7 @@ pub(super) fn record_negative_ground_fact(
         .iter()
         .map(|f| generalize_event_args(f, &inner.known_event_entities, &mut event_var_map))
         .collect();
+    inner.observe(|| { let mut e = nibli_types::execution::ExecutionEvent::new(nibli_types::execution::ExecutionEventKind::Assert, "Recorded explicit negative assertion templates for contradiction scanning; this does not insert positive facts"); e.assertion_ids = inner.current_assertion_id.iter().map(ToString::to_string).collect(); e.state.candidate = Some(format!("{templates:?}")); e });
     inner.negative_facts.insert(templates);
 }
 
@@ -4619,4 +4681,19 @@ fn extract_anchor_candidates_from_facts<'a>(
         }
     }
     false
+}
+
+impl KnowledgeBaseInner {
+    pub(super) fn observe(&self, event: impl FnOnce() -> nibli_types::execution::ExecutionEvent) {
+        if let Some(observer) = &self.execution
+            && observer.recording_enabled()
+        {
+            observer.observe(event());
+        }
+    }
+    pub(super) fn execution_phase(&self, phase: nibli_types::execution::ExecutionPhase) {
+        if let Some(observer) = &self.execution {
+            observer.phase(phase);
+        }
+    }
 }

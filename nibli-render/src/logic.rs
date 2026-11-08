@@ -475,13 +475,13 @@ fn inline_duty_abstraction<'a>(
     }
 }
 
+use crate::takers::EventTaker;
 /// Predicates with a place that holds an event a party stands toward. An abstraction bound in
 /// that place, and used nowhere else, is read as an infinitive after the phrase, with the party
 /// as the subject: "Lucy is entitled to continue", as `obliged` always was ("Alis is obligated
 /// to notify"). `permitted` is the lexicon's swap of `permits`, so the event sits in its first
 /// place and the party in its second.
 pub(crate) use crate::takers::event_taker;
-use crate::takers::EventTaker;
 
 /// Reuse the IR event-content reading only after the complete lossless marker
 /// has decoded to a closed body. Shared modifiers retain structural fallback.

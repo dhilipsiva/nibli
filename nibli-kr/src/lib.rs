@@ -34,6 +34,8 @@ pub mod resolve;
 pub mod complete_reedline;
 
 #[cfg(test)]
+mod execution_tests;
+#[cfg(test)]
 mod shape_tests;
 
 /// The pest PEG grammar source — the normative form of NIBLI_KR §15, embedded so
@@ -45,6 +47,10 @@ pub const GRAMMAR: &str = include_str!("nibli_kr.pest");
 
 use nibli_types::ast::{AstBuffer, ParseResult};
 use nibli_types::error::{NibliError, SyntaxDetail};
+use nibli_types::execution::{
+    CompilationArtifact, ExecutionEvent, ExecutionEventKind, ExecutionObserver, ExecutionPhase,
+    SourceReference, SourceSpan,
+};
 
 fn to_nibli(e: parser::ParseError) -> NibliError {
     NibliError::Syntax(SyntaxDetail {
@@ -57,8 +63,114 @@ fn to_nibli(e: parser::ParseError) -> NibliError {
 /// FAIL CLOSED: parse + the validating emit walk, or the first (source-order)
 /// error. Feed the result to `nibli_semantics::compile_from_ast`.
 pub fn parse_checked(text: &str) -> Result<AstBuffer, NibliError> {
-    let statements = parser::parse_statements(text).map_err(to_nibli)?;
-    emit::emit(text, &statements).map_err(to_nibli)
+    parse_checked_observed(text, None, "")
+}
+
+/// Observe the normal parser and validating emitter without changing admission.
+/// Statement spans come from the actual parser, not a textual period split.
+pub fn parse_checked_with_observer(
+    text: &str,
+    observer: &dyn ExecutionObserver,
+    artifact_id: &str,
+) -> Result<AstBuffer, NibliError> {
+    parse_checked_observed(text, Some(observer), artifact_id)
+}
+
+fn parse_checked_observed(
+    text: &str,
+    observer: Option<&dyn ExecutionObserver>,
+    artifact_id: &str,
+) -> Result<AstBuffer, NibliError> {
+    if let Some(observer) = observer {
+        observer.compilation(CompilationArtifact {
+            id: artifact_id.into(),
+            source: text.into(),
+            statement_spans: vec![],
+            parsed_predicates: vec![],
+            parsed_arguments: vec![],
+            parsed_sentences: vec![],
+            parsed_roots: vec![],
+            lowered_logic: None,
+            logic: None,
+        });
+    }
+    let report = |kind, detail: String, span: Option<SourceSpan>| {
+        if let Some(observer) = observer {
+            let mut event = ExecutionEvent::new(kind, detail);
+            event.phase = ExecutionPhase::Compile;
+            event.source = Some(SourceReference {
+                artifact_id: artifact_id.into(),
+                span,
+            });
+            observer.observe(event);
+        }
+    };
+    let statements = match parser::parse_statements(text).map_err(to_nibli) {
+        Ok(statements) => statements,
+        Err(error) => {
+            if observer.is_some() {
+                report(
+                    ExecutionEventKind::Parse,
+                    format!("Parser rejected input: {error}"),
+                    None,
+                );
+            }
+            return Err(error);
+        }
+    };
+    if observer.is_some() {
+        for (index, statement) in statements.iter().enumerate() {
+            report(
+                ExecutionEventKind::Parse,
+                format!("Parsed statement {}", index + 1),
+                Some(SourceSpan {
+                    start: statement.span.start,
+                    end: statement.span.end,
+                }),
+            );
+        }
+    }
+    let buffer = match emit::emit(text, &statements).map_err(to_nibli) {
+        Ok(buffer) => buffer,
+        Err(error) => {
+            if observer.is_some() {
+                report(
+                    ExecutionEventKind::Validate,
+                    format!("Validating emitter rejected input: {error}"),
+                    None,
+                );
+            }
+            return Err(error);
+        }
+    };
+    if let Some(observer) = observer {
+        observer.compilation(CompilationArtifact {
+            id: artifact_id.into(),
+            source: text.into(),
+            statement_spans: statements
+                .iter()
+                .map(|statement| SourceSpan {
+                    start: statement.span.start,
+                    end: statement.span.end,
+                })
+                .collect(),
+            parsed_predicates: buffer.predicates.iter().map(|p| format!("{p:?}")).collect(),
+            parsed_arguments: buffer.arguments.iter().map(|a| format!("{a:?}")).collect(),
+            parsed_sentences: buffer.sentences.iter().map(|s| format!("{s:?}")).collect(),
+            parsed_roots: buffer.roots.clone(),
+            lowered_logic: None,
+            logic: None,
+        });
+        report(
+            ExecutionEventKind::Validate,
+            format!(
+                "Resolved and validated {} root statements against the committed vocabulary",
+                buffer.roots.len()
+            ),
+            None,
+        );
+    }
+    Ok(buffer)
 }
 
 /// Per-statement recovery variant (the `ParseResult` contract): every
