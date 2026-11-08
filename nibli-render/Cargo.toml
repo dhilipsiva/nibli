@@ -19,3 +19,4 @@ nibli-lexicon = { workspace = true }
 [dev-dependencies]
 nibli-kr = { path = "../nibli-kr" }
 nibli-semantics = { path = "../nibli-semantics" }
+nibli-session = { workspace = true }

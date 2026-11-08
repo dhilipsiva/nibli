@@ -48,6 +48,41 @@ pub fn render_proof(trace: &ProofTrace, _register: Register) -> RenderedNode {
 }
 
 pub(crate) fn build_node(trace: &ProofTrace, idx: u32) -> RenderedNode {
+    build_node_inner(trace, idx, false)
+}
+
+/// Exact functional facts for a structural fallback. Keep the shared event in
+/// every atom, rather than the friendly renderer's hidden event scaffolding.
+pub(crate) fn build_structural_node(trace: &ProofTrace, idx: u32) -> RenderedNode {
+    build_node_inner(trace, idx, true)
+}
+
+fn structural_label(rule: &ProofRule) -> String {
+    match rule {
+        ProofRule::Asserted { fact, sources } => {
+            format!("Asserted: {fact}{}", assertion_sources_suffix(sources))
+        }
+        ProofRule::Derived { fact, sources, .. } => {
+            format!("Derived: {fact}{}", rule_sources_suffix(sources))
+        }
+        ProofRule::Presupposed { fact, sources, .. } => format!(
+            "Presupposed (legacy existential import): {fact}{}",
+            rule_sources_suffix(sources)
+        ),
+        ProofRule::ProofRef { fact } => format!("(proved above): {fact}"),
+        ProofRule::PredicateCheck { method, detail }
+        | ProofRule::ComputeCheck { method, detail } => format!("{method}: {detail}"),
+        ProofRule::PredicateNotFound { predicate } => format!("Not found: {predicate}"),
+        ProofRule::EqualitySubstitution {
+            original,
+            equality_facts,
+            substituted,
+        } => format!("Equality: {original} via {equality_facts:?} → {substituted}"),
+        _ => label(rule),
+    }
+}
+
+fn build_node_inner(trace: &ProofTrace, idx: u32, structural: bool) -> RenderedNode {
     let Some(step) = trace.steps.get(idx as usize) else {
         return RenderedNode {
             icon: "?",
@@ -64,7 +99,11 @@ pub(crate) fn build_node(trace: &ProofTrace, idx: u32) -> RenderedNode {
     let is_ref = matches!(step.rule, ProofRule::ProofRef { .. });
     RenderedNode {
         icon: icon(&step.rule),
-        label: label(&step.rule),
+        label: if structural {
+            structural_label(&step.rule)
+        } else {
+            label(&step.rule)
+        },
         css_class: css_class(&step.rule),
         holds: step.holds,
         is_leaf: step.children.is_empty(),
@@ -74,7 +113,7 @@ pub(crate) fn build_node(trace: &ProofTrace, idx: u32) -> RenderedNode {
         } else {
             step.children
                 .iter()
-                .map(|&c| build_node(trace, c))
+                .map(|&c| build_node_inner(trace, c, structural))
                 .collect()
         },
     }

@@ -281,7 +281,7 @@ smoke-host-collapse: build-wasm build-host
         | NIBLI_WASM_PATH={{wasm_dir}}/nibli.wasm ./target/{{profile}}/nibli-host 2>&1); \
         echo "$collapsed"; \
         echo "$collapsed" | grep -qF '[Query] TRUE' || { echo 'FAIL: collapsed query did not answer TRUE'; exit 1; }; \
-        echo "$collapsed" | grep -qF 'by the rule' || { echo 'FAIL: collapsed proof missing the macro rule step'; exit 1; }; \
+        echo "$collapsed" | grep -qF '[by recorded source #1/0: animal(every dog).]' || { echo 'FAIL: collapsed proof missing the recorded source citation'; exit 1; }; \
         if echo "$collapsed" | grep -qF 'Conjunction'; then echo 'FAIL: verbose scaffolding leaked into the collapsed ? view'; exit 1; fi; \
         if echo "$collapsed" | grep -qF 'role-level detail'; then echo 'FAIL: role-level detail cluster shown in collapsed text'; exit 1; fi; \
         echo 'PASS: ? shows the clean collapsed macro-logical DAG'

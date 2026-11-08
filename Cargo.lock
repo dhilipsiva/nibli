@@ -2995,6 +2995,7 @@ dependencies = [
  "nibli-lexicon",
  "nibli-protocol",
  "nibli-semantics",
+ "nibli-session",
  "nibli-types",
 ]
 
@@ -3051,6 +3052,7 @@ dependencies = [
  "nibli-session",
  "nibli-types",
  "serde_json",
+ "sha2",
 ]
 
 [[package]]

@@ -135,11 +135,11 @@ mod tests {
 
     #[test]
     fn overlay_name_override_then_restores() {
-        use crate::corpus_overlay::DRUG_INTERACTIONS_OVERLAY;
+        use crate::corpus_overlay::LEGACY_DRUG_INTERACTIONS_OVERLAY;
         use crate::overlay::with_overlay;
         // Fallback: the raw cmevla passes through verbatim.
         assert_eq!(humanize_skolem("varfarin"), "varfarin");
-        with_overlay(Some(&DRUG_INTERACTIONS_OVERLAY), || {
+        with_overlay(Some(&LEGACY_DRUG_INTERACTIONS_OVERLAY), || {
             assert_eq!(humanize_skolem("varfarin"), "warfarin");
             assert_eq!(humanize_skolem("siptucin"), "CYP2C9");
             // Non-name tokens still pass through; Skolems still humanize.

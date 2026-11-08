@@ -1,25 +1,32 @@
-//! Domain-gloss overlays for the shipped curated corpora.
+//! Proof-only presentation overlays for curated examples and isolated controls.
 //!
-//! These are the documented "reader's overlay" for each case-study corpus (the
-//! mapping disclosed in the corpus comments and the book's Ch 19/20 tables): the
-//! proxy gismu (`prevents`, `se permits`, …) and the opaque transliterated constants
-//! (`varfarin`, `siptucin`, …) rendered in real domain language. They are applied
-//! ONLY when the matching read-only example is loaded in the UI; Custom KBs and
-//! every other surface fall through to the engine's literal glosses.
-//!
-//! Honesty note: nothing here is engine-derived knowledge. The overlay is a
-//! display layer that makes the proof read consistently with the example's
-//! already-domain-English Source tab. It never touches the back-translation
-//! (the firewall's verification surface).
+//! The scoped GDPR and interaction models retain literal actor, action and
+//! criterion roles. Legacy proxy overlays are explicit opt-ins for historical
+//! regression controls; they are not selected by the default examples.
+//! Overlays are authored presentation conventions, never derived knowledge,
+//! and do not alter structural Spec back-translation.
 
 use crate::overlay::DomainGloss;
 
-/// Drug-interaction case study (`drug-interactions.nibli`, book Ch 20).
+/// Scoped teaching models preserve every role and criterion in their literal rendering.
+/// Domain interpretation belongs in the source manifest, not hidden templates.
+pub static GDPR_OVERLAY: DomainGloss = DomainGloss {
+    templates: &[],
+    glosses: &[],
+    names: &[],
+};
+pub static DRUG_INTERACTIONS_OVERLAY: DomainGloss = DomainGloss {
+    templates: &[],
+    glosses: &[],
+    names: &[],
+};
+
+/// Historical defective drug proxy, used only by isolated regression controls.
 ///
 /// `cuts` is keyed `se`-converted: the corpus uses `se cuts` ("is metabolized
 /// by"), whose IR stores the enzyme in x1 and the substrate in x2, so the
 /// template reorders to read substrate-first.
-pub static DRUG_INTERACTIONS_OVERLAY: DomainGloss = DomainGloss {
+pub static LEGACY_DRUG_INTERACTIONS_OVERLAY: DomainGloss = DomainGloss {
     templates: &[
         ("prevents", "{x1} inhibits {x2}"),
         ("cuts", "{x2} is metabolized by {x1}"),
@@ -42,11 +49,11 @@ pub static DRUG_INTERACTIONS_OVERLAY: DomainGloss = DomainGloss {
     ],
 };
 
-/// GDPR compliance case study (`gdpr.nibli`, book Ch 19).
+/// Historical defective GDPR proxy, used only by isolated regression controls.
 ///
 /// `permits` is keyed `se`-converted: `se permits` ("has a lawful basis for
 /// processing") stores the data subject in x2, so the template reads off x2.
-pub static GDPR_OVERLAY: DomainGloss = DomainGloss {
+pub static LEGACY_GDPR_OVERLAY: DomainGloss = DomainGloss {
     templates: &[
         ("permits", "{x2} has a lawful basis for processing"),
         ("data", "{x1} is personal data"),
@@ -119,20 +126,26 @@ mod tests {
     #[test]
     fn ddi_overlay_key_mappings() {
         assert_eq!(
-            DRUG_INTERACTIONS_OVERLAY.template("prevents"),
+            LEGACY_DRUG_INTERACTIONS_OVERLAY.template("prevents"),
             Some("{x1} inhibits {x2}")
         );
         // `se cuts` reorders so the substrate (x2) heads the clause.
         assert_eq!(
-            DRUG_INTERACTIONS_OVERLAY.template("cuts"),
+            LEGACY_DRUG_INTERACTIONS_OVERLAY.template("cuts"),
             Some("{x2} is metabolized by {x1}")
         );
         assert_eq!(
-            DRUG_INTERACTIONS_OVERLAY.template("dangerous"),
+            LEGACY_DRUG_INTERACTIONS_OVERLAY.template("dangerous"),
             Some("{x1} is at toxicity risk")
         );
-        assert_eq!(DRUG_INTERACTIONS_OVERLAY.name("varfarin"), Some("warfarin"));
-        assert_eq!(DRUG_INTERACTIONS_OVERLAY.name("siptucin"), Some("CYP2C9"));
+        assert_eq!(
+            LEGACY_DRUG_INTERACTIONS_OVERLAY.name("varfarin"),
+            Some("warfarin")
+        );
+        assert_eq!(
+            LEGACY_DRUG_INTERACTIONS_OVERLAY.name("siptucin"),
+            Some("CYP2C9")
+        );
     }
 
     #[test]
@@ -148,10 +161,13 @@ mod tests {
     #[test]
     fn gdpr_overlay_key_mappings() {
         assert_eq!(
-            GDPR_OVERLAY.template("permits"),
+            LEGACY_GDPR_OVERLAY.template("permits"),
             Some("{x2} has a lawful basis for processing")
         );
-        assert_eq!(GDPR_OVERLAY.template("data"), Some("{x1} is personal data"));
-        assert_eq!(GDPR_OVERLAY.name("akmes"), Some("AkmeCorp"));
+        assert_eq!(
+            LEGACY_GDPR_OVERLAY.template("data"),
+            Some("{x1} is personal data")
+        );
+        assert_eq!(LEGACY_GDPR_OVERLAY.name("akmes"), Some("AkmeCorp"));
     }
 }

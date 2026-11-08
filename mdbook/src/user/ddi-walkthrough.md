@@ -1,152 +1,151 @@
-# Drug-interactions walkthrough
+# Drug interactions walkthrough
 
-A worked safety knowledge base: pharmacokinetic drug-drug interaction (DDI)
-reasoning — “should this co-prescription raise a safety alert?” — decided by
-deduction over an explicit mechanism instead of a statistical guess.
+This teaching model derives an interaction-review duty when a selected mechanism
+matches and both relevant drug exposures belong to the same patient and episode.
+It does not derive a concentration, toxicity diagnosis, safe combination or
+treatment recommendation.
 
-**Source of truth:** [`drug-interactions.nibli`](https://github.com/dhilipsiva/nibli/blob/main/drug-interactions.nibli)
-at the repo root. Every verdict quoted below is pinned by the `ddi_*` regression
-tests in `nibli-engine/tests/integration.rs`. The same corpus ships as the
-playground preset **“Drug interactions (Ch 20)”** — an example KB, not a chapter
-of any third-party book.
+The executable source is
+[`drug-interactions.nibli`](https://github.com/dhilipsiva/nibli/blob/main/drug-interactions.nibli).
+Its [manifest](https://github.com/dhilipsiva/nibli/blob/main/examples/case-studies/drug/manifest.json)
+distinguishes label-derived mechanism facts, fictional exposure evidence and the
+authored screening policy. The
+[scenario matrix](https://github.com/dhilipsiva/nibli/blob/main/examples/case-studies/drug/scenarios.json)
+and `nibli-engine/tests/case_studies.rs` check thirteen independent scenarios in
+both materialization modes. The playground preset is **Drug interactions (Ch 20)**.
 
-## The scenario
+## Separate mechanism, exposure and action
 
-The warfarin + fluconazole interaction, mediated by the CYP2C9 enzyme:
-fluconazole inhibits CYP2C9; warfarin (narrow therapeutic index) is metabolised
-by CYP2C9, so its concentration rises → toxicity risk → safety alert.
-**Apixaban** is the negative control: metabolised by CYP3A4, which fluconazole
-does not inhibit → no alert, as a real deduced FALSE. **Phenytoin** is the
-second control: pharmacologically at risk, but not on the patient's chart.
-
-The corpus has no native pharmacology vocabulary, so it maps onto the nearest
-committed relations and discloses the mapping in its header:
-
-| Predicate | Reads as |
-|-----------|----------|
-| `chemical(d)` | `d` is a drug |
-| `uses(p, d)` | patient `p` takes drug `d` |
-| `prevents(d, e)` | drug `d` inhibits enzyme `e` |
-| `metabolized_by(d, e)` | drug `d` is metabolised by enzyme `e` |
-| `thin(d)` | narrow therapeutic index |
-| `increases(d)` | blood concentration is raised |
-| `dangerous(d)` | at toxicity risk |
-| `warns(d)` | warrants a safety alert |
-
-Enzymes are opaque rigid Names: `Siptucin` = CYP2C9, `Sipcivon` = CYP3A4.
-
-## The three-step mechanism
-
-**Step 1 — concentration rise.** Grounded conditionals per affected substrate
-(the fully general join rule `all $a, $b, $e: prevents($a,$e) &
-metabolized_by($b,$e) -> increases($b).` also compiles and reasons correctly —
-the grounded form is an encoding choice, not a limitation):
+| Record | Meaning |
+|---|---|
+| `EpisodeA` | Adam's fictional medication-review episode |
+| `PairWarfarin` | The candidate pair Warfarin and Fluconazole |
+| `AssessWarfarin` | Assessment of that pair in EpisodeA |
+| `ExposureWarfarin`, `ExposureFluconazole` | Reviewed relevant exposures for Adam in EpisodeA |
+| `ReviewWarfarin` | Named ordinary review action |
+| `PriorityWarfarin` | Separate priority review action |
 
 ```nibli-kr
-prevents(Flukonazol, Siptucin) & metabolized_by(Varfarin, Siptucin) -> increases(Varfarin).
+record(EpisodeA, Adam, MedicationReview, EpisodeRegister).
+record(PairWarfarin, Warfarin, Fluconazole, InteractionPairs).
+record(AssessWarfarin, EpisodeA, PairWarfarin, AssessmentRegister).
 ```
 
-**Step 2 — toxicity risk.** One general rule with a *conjunctive* restrictor;
-both conditions are required:
+The candidate pairs are enumerated deliberately; they are not a complete
+interaction catalog. The fixture adapter checks its declared unique bindings,
+while application-level patient and episode validation remains separate.
+
+The [fluconazole prescribing information](https://labeling.pfizer.com/ShowLabeling.aspx?id=4449)
+describes inhibition of CYP2C9 and CYP3A4, among other mechanisms. Both selected
+edges are present here. The
+[warfarin label](https://dailymed.nlm.nih.gov/dailymed/fda/fdaDrugXsl.cfm?setid=e11e4522-4b34-4170-af51-7b602924c746&type=display)
+and [apixaban label](https://packageinserts.bms.com/pi/pi_eliquis.pdf)
+provide the selected substrate pathways. The manifest records the exact source
+sections, including the narrow-index classification used for review priority.
+These selected edges omit pathway strength, dose and quantitative kinetics.
+
+## Two joins and a review rule
+
+The mechanism join uses one shared enzyme variable across an `InhibitionEdges`
+record and a `SubstrateEdges` record. It derives
+`fit(assessment, SharedMechanism, ScreeningPolicy)` for each matched assessment.
+The same rule handles warfarin, phenytoin and apixaban; it does not need a new
+grounded rule for each drug.
+
+The exposure join independently requires two relevant exposure records, with the
+same patient and episode as the assessment. For example:
 
 ```nibli-kr
-dangerous(every chemical where increases where thin).
+record(ExposureFluconazole, Fluconazole, Adam, ExposureRegister).
+part(ExposureFluconazole, EpisodeA).
+member(ExposureFluconazole, RelevantExposures).
 ```
 
-A wide-margin drug whose concentration rises is not flagged, and a narrow-index
-drug with no interaction is not flagged (both negative controls are pinned by
-`ddi_toxicity_requires_both_conditions`).
+A prescription, an administration event and relevant bodily exposure are different
+evidence. `RelevantExposures` records an externally reviewed relevance decision;
+the engine does not calculate that decision from elapsed time.
 
-**Step 3 — the alert is patient-gated.** Risk is drug-level pharmacology; the
-actionable alert only fires for an at-risk drug this patient actually takes:
+The screening policy combines the two derived criteria with a named action:
 
 ```nibli-kr
-all $da: dangerous($da) & uses(Adam, $da) -> warns($da).
+all $a, $action: fit($a, SharedMechanism, ScreeningPolicy) & fit($a, ConcurrentExposure, ScreeningPolicy) & part($action, $a) & member($action, InteractionReviewActions) -> obliged(ReviewTeam, $action, ScreeningPolicy).
 ```
 
-## Load it in the REPL
+Narrow therapeutic index adds a separate priority-review duty. It is not required
+for the ordinary review. Removing that classification cannot establish safety.
+Admission guards mark `fit` and `obliged` derived-only, so a direct assertion of a
+review conclusion is refused.
 
-```text
-:load drug-interactions.nibli
-[Load] Done: 16 asserted, 78 skipped, 0 errors
+## Run the default case
+
+Start a fresh REPL from the repository root and enter
+`:load drug-interactions.nibli`. Inspect admission results. The source contains
+46 statements. Use returned IDs or `:facts` when retracting an assertion; the old
+proxy's IDs are unrelated to this corpus.
+
+The playground's four preset queries match these REPL claims. The browser query
+field takes the proposition without the leading `?`:
+
+| REPL query | Default result | Meaning |
+|---|---|---|
+| `? fit(AssessWarfarin, SharedMechanism, ScreeningPolicy).` | TRUE | The selected CYP2C9 mechanism matches |
+| `? fit(AssessWarfarin, ConcurrentExposure, ScreeningPolicy).` | TRUE | Both reviewed exposures match Adam and EpisodeA |
+| `? obliged(ReviewTeam, ReviewWarfarin, ScreeningPolicy).` | TRUE | The authored policy derives this review duty |
+| `? obliged(ReviewTeam, ReviewApixaban, ScreeningPolicy).` | FALSE | No apixaban exposure is supplied in the default episode |
+
+The apixaban mechanism itself is **TRUE**: ask
+`fit(AssessApixaban, SharedMechanism, ScreeningPolicy).`. The review is FALSE
+because exposure evidence is missing, not because fluconazole leaves CYP3A4
+uninhibited. Add reviewed apixaban exposure for Adam in EpisodeA and the ordinary
+review becomes TRUE. The same pattern works for phenytoin without adding a new
+mechanism rule. Neither a missing exposure nor an unlisted candidate pair proves
+a safe combination.
+
+## Revision changes evidence, not physiology
+
+The scenario matrix distinguishes three changes:
+
+| Change | Shared mechanism | Warfarin review | Interpretation |
+|---|---|---|---|
+| Add a prescription-stop record only | TRUE | TRUE | Relevant exposure has not been reassessed away |
+| After reassessment, retract Fluconazole's `RelevantExposures` membership | TRUE | FALSE | One required exposure no longer supports this episode's review |
+| Retract a required mechanism-edge classification | FALSE | FALSE | The model's pharmacological knowledge changed |
+
+The [fluconazole label](https://labeling.pfizer.com/ShowLabeling.aspx?id=4449)
+notes that enzyme inhibition can persist after discontinuation. Removing a
+prescription therefore does not justify deleting the inhibition edge or assuming
+immediate absence of relevant exposure.
+
+The playground's exposure-reassessment scenario removes the relevant-exposure
+marker and reruns the mechanism and review queries. In Custom mode, review the
+changed source and encoding before admitting the draft. The native scenario
+runner uses the actual admission ID for the retraction. It also verifies that an
+independent duplicate exposure preserves the review, a different patient's
+exposure cannot satisfy Adam's assessment, and a complete second patient/episode
+works under the same generic rules.
+
+## Replay the controls
+
+Inside `nix develop`, run:
+
+```sh
+cargo test -p nibli-engine --test case_studies
+cargo run -p nibli-engine --example case_studies -- drug --capture
+cargo run -p nibli-engine --example case_studies -- drug --capture --no-materialize
 ```
 
-Two fact ids matter for the belief-revision demos below (assigned in file
-order, pinned by `ddi_corpus_transcript_pins`): the inhibition fact
-`prevents(Flukonazol, Siptucin).` is **#4**, and the regimen fact
-`uses(Adam, Varfarin).` is **#10**.
+Each scenario starts with a fresh native engine at depth 10, strict mode off and
+legacy existential import off. Tests cover either exposure missing, wrong patient
+or episode, a second complete patient, mismatched pathways, the CYP3A4 omission,
+prescription-stop persistence, reassessment, duplicate support, narrow-index
+priority and rejected direct conclusions. Captures retain actual results, proofs
+and provenance envelopes; their structural validation does not certify clinical
+fidelity.
 
-## Engine-checked queries
-
-| Claim | Verdict | Why |
-|-------|---------|-----|
-| `? increases(Varfarin).` | **TRUE** | Step 1: inhibited enzyme + substrate |
-| `? dangerous(Varfarin).` | **TRUE** | Step 2: raised concentration + narrow index |
-| `? warns(Varfarin).` | **TRUE** | Step 3: at risk *and* on Adam's chart — a 3-hop proof |
-| `? increases(Apiksaban).` | **FALSE** | CYP3A4 is not inhibited by fluconazole |
-| `? warns(Apiksaban).` | **FALSE** | The negative control: a deduced FALSE, not unknown |
-| `? increases(Fenitoin).` | **TRUE** | Same shared inhibitor, same general rules |
-| `? dangerous(Fenitoin).` | **TRUE** | Risk is drug-level — no per-drug rule needed |
-| `? warns(Fenitoin).` | **FALSE** | But Adam does not take it: the regimen gate |
-
-The phenytoin pair is the point of step 3: pharmacological risk is general,
-the actionable alert is patient-specific.
-
-Witness extraction (`??`) enumerates bindings instead of checking one claim —
-“which drugs are CYP2C9 substrates?”:
-
-```text
-?? metabolized_by($da, Siptucin).
-```
-
-lists warfarin and phenytoin as witnesses for `$da`; apixaban (a CYP3A4
-substrate) does not appear (pinned by `ddi_witness_cyp2c9_substrates`).
-
-## Belief revision: two clinical moves
-
-Alerts are never baked in — they are re-derived from current facts, so the two
-canonical chart edits are single retractions
-(see [Belief revision](belief-revision.md)):
-
-**Discontinue the inhibitor** (retract `prevents(Flukonazol, Siptucin).`, #4):
-the mechanism's entry premise disappears, so the concentration rise, the
-toxicity risk, and the alert all dissolve in one step — for *both* substrates,
-since they share the inhibitor:
-
-```text
-:retract 4
-[Retract] Fact #4 retracted. KB rebuilt.
-
-? warns(Varfarin).
-[Query] FALSE
-
-? dangerous(Fenitoin).
-[Query] FALSE
-```
-
-**Discontinue the drug** (retract `uses(Adam, Varfarin).`, #10): the alert is
-withdrawn while the drug-level risk stays derivable — the alert is gated on the
-regimen, the risk is not:
-
-```text
-:retract 10
-[Retract] Fact #10 retracted. KB rebuilt.
-
-? dangerous(Varfarin).
-[Query] TRUE
-
-? warns(Varfarin).
-[Query] FALSE
-```
-
-Both moves are pinned by `ddi_belief_revision_discontinue_inhibitor` and
-`ddi_belief_revision_discontinue_drug`.
-
-## Try it in the playground
-
-Select **“Drug interactions (Ch 20)”** in the [playground](playground.md)
-header dropdown. Its presets are the headline chain plus the negative control:
-*concentration rising?* · *toxicity risk?* · *safety alert?—a 3-hop proof* ·
-*negative control—no alert*. Proofs render with the curated pharmacology
-overlay (“fluconazole inhibits CYP2C9”, “warfarin is at toxicity risk”), never
-a bare variable or a raw transliterated name.
+The original drug proxy is preserved only as an isolated
+[defect control](https://github.com/dhilipsiva/nibli/blob/main/examples/case-studies/legacy/drug-proxy.nibli).
+It omits an inhibitor-exposure guard, fixes Adam in its alert rule and omits a
+sourced CYP3A4 inhibition edge. Its old contrary source comment is evidence of
+that defect, not a pharmacological claim to reuse. The `ddi_*` legacy integration
+tests explicitly load this fixture. Current defaults use the scoped model and
+literal role wording in proofs.

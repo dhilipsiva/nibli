@@ -1,0 +1,567 @@
+{
+  "schema": 1,
+  "corpus": "drug-interactions.nibli",
+  "scope": "Patient-and-episode scoped interaction-review teaching model",
+  "sources": [
+    {
+      "id": "screening-policy",
+      "kind": "fictional-policy",
+      "description": "Two relevant exposures and a shared inhibition/substrate pathway require review; reviewed narrow-index classification prioritizes it. Not a clinical guideline."
+    },
+    {
+      "id": "fluconazole-label",
+      "url": "https://labeling.pfizer.com/ShowLabeling.aspx?id=4449",
+      "checked": "2026-11-08",
+      "claims": [
+        "CYP2C9 and CYP3A4 inhibition",
+        "inhibition can persist after discontinuation"
+      ]
+    },
+    {
+      "id": "fictional-scenario",
+      "kind": "synthetic",
+      "description": "Invented people, episodes and exposure records; no actual patient data."
+    },
+    {
+      "id": "teaching-policy",
+      "kind": "authored-policy",
+      "description": "Bounded educational modeling decisions and admission policy; not a quotation or claim of complete legal or clinical requirements."
+    },
+    {
+      "id": "warfarin-label",
+      "url": "https://dailymed.nlm.nih.gov/dailymed/fda/fdaDrugXsl.cfm?setid=e11e4522-4b34-4170-af51-7b602924c746&type=display",
+      "sections": [
+        "5.1",
+        "12.5"
+      ],
+      "checked": "2026-11-08"
+    },
+    {
+      "id": "apixaban-label",
+      "url": "https://packageinserts.bms.com/pi/pi_eliquis.pdf",
+      "sections": [
+        "12.3"
+      ],
+      "checked": "2026-11-08"
+    },
+    {
+      "id": "nti-label",
+      "url": "https://dailymed.nlm.nih.gov/dailymed/fda/fdaDrugXsl.cfm?setid=00fd1905-27e4-420e-8dc5-a69e4ddc1526",
+      "sections": [
+        "7.1 Table 2"
+      ],
+      "checked": "2026-11-08"
+    }
+  ],
+  "assertions": [
+    {
+      "id": "guard-1",
+      "kind": "policy",
+      "statement": "admits(\"record\").",
+      "meaning": "Admitted evidence relation record.",
+      "sources": [
+        "teaching-policy"
+      ]
+    },
+    {
+      "id": "guard-2",
+      "kind": "policy",
+      "statement": "admits(\"part\").",
+      "meaning": "Admitted evidence relation part.",
+      "sources": [
+        "teaching-policy"
+      ]
+    },
+    {
+      "id": "guard-3",
+      "kind": "policy",
+      "statement": "admits(\"member\").",
+      "meaning": "Admitted evidence relation member.",
+      "sources": [
+        "teaching-policy"
+      ]
+    },
+    {
+      "id": "guard-4",
+      "kind": "policy",
+      "statement": "derived_only(\"fit\").",
+      "meaning": "The fit relation is derived, never accepted as an ordinary evidence fact.",
+      "sources": [
+        "teaching-policy"
+      ]
+    },
+    {
+      "id": "guard-5",
+      "kind": "policy",
+      "statement": "derived_only(\"obliged\").",
+      "meaning": "The obliged relation is derived, never accepted as an ordinary evidence fact.",
+      "sources": [
+        "teaching-policy"
+      ]
+    },
+    {
+      "id": "mechanism-join",
+      "kind": "policy",
+      "statement": "all $a, $ep, $pair, $s, $i, $e, $ir, $sr: record($a, $ep, $pair, AssessmentRegister) & record($pair, $s, $i, InteractionPairs) & record($ir, $i, $e, MechanismRegister) & member($ir, InhibitionEdges) & record($sr, $s, $e, MechanismRegister) & member($sr, SubstrateEdges) -> fit($a, SharedMechanism, ScreeningPolicy).",
+      "meaning": "The assessment fits the shared-enzyme criterion; this is a mechanism match, not a concentration measurement.",
+      "sources": [
+        "teaching-policy"
+      ]
+    },
+    {
+      "id": "exposure-join",
+      "kind": "policy",
+      "statement": "all $a, $ep, $pair, $p, $s, $i, $xi, $xs: record($a, $ep, $pair, AssessmentRegister) & record($ep, $p, MedicationReview, EpisodeRegister) & record($pair, $s, $i, InteractionPairs) & record($xi, $i, $p, ExposureRegister) & part($xi, $ep) & member($xi, RelevantExposures) & record($xs, $s, $p, ExposureRegister) & part($xs, $ep) & member($xs, RelevantExposures) -> fit($a, ConcurrentExposure, ScreeningPolicy).",
+      "meaning": "Both relevant exposures must match the same patient and episode; a prescription-stop record does not remove residual exposure.",
+      "sources": [
+        "teaching-policy"
+      ]
+    },
+    {
+      "id": "review-duty",
+      "kind": "policy",
+      "statement": "all $a, $action: fit($a, SharedMechanism, ScreeningPolicy) & fit($a, ConcurrentExposure, ScreeningPolicy) & part($action, $a) & member($action, InteractionReviewActions) -> obliged(ReviewTeam, $action, ScreeningPolicy).",
+      "meaning": "The fictional screening policy requires a review; it does not diagnose toxicity or prescribe treatment.",
+      "sources": [
+        "teaching-policy"
+      ]
+    },
+    {
+      "id": "priority-review",
+      "kind": "policy",
+      "statement": "all $a, $ep, $pair, $s, $i, $action: record($a, $ep, $pair, AssessmentRegister) & record($pair, $s, $i, InteractionPairs) & member($s, NarrowTherapeuticIndexDrugs) & fit($a, SharedMechanism, ScreeningPolicy) & fit($a, ConcurrentExposure, ScreeningPolicy) & part($action, $a) & member($action, PriorityReviewActions) -> obliged(ReviewTeam, $action, PriorityScreeningPolicy).",
+      "meaning": "A reviewed narrow-index classification prioritizes this review; missing classification never establishes safety.",
+      "sources": [
+        "teaching-policy"
+      ]
+    },
+    {
+      "id": "episode-a",
+      "kind": "scenario",
+      "statement": "record(EpisodeA, Adam, MedicationReview, EpisodeRegister).",
+      "meaning": "Fictional reviewed episode for Adam; a second episode is a different record.",
+      "sources": [
+        "fictional-scenario"
+      ]
+    },
+    {
+      "id": "Warfarin-pair",
+      "kind": "scenario",
+      "statement": "record(PairWarfarin, Warfarin, Fluconazole, InteractionPairs).",
+      "meaning": "Candidate pair; enumeration is deliberate, not a complete interaction catalog.",
+      "sources": [
+        "fictional-scenario"
+      ]
+    },
+    {
+      "id": "Warfarin-assessment",
+      "kind": "scenario",
+      "statement": "record(AssessWarfarin, EpisodeA, PairWarfarin, AssessmentRegister).",
+      "meaning": "This pair is assessed in the named episode.",
+      "sources": [
+        "fictional-scenario"
+      ]
+    },
+    {
+      "id": "Warfarin-action",
+      "kind": "scenario",
+      "statement": "part(ReviewWarfarin, AssessWarfarin).",
+      "meaning": "Named review action belongs to this assessment.",
+      "sources": [
+        "fictional-scenario"
+      ]
+    },
+    {
+      "id": "Warfarin-action-kind",
+      "kind": "scenario",
+      "statement": "member(ReviewWarfarin, InteractionReviewActions).",
+      "meaning": "Ordinary interaction-review action.",
+      "sources": [
+        "fictional-scenario"
+      ]
+    },
+    {
+      "id": "Warfarin-priority",
+      "kind": "scenario",
+      "statement": "part(PriorityWarfarin, AssessWarfarin).",
+      "meaning": "Named priority review action belongs to this assessment.",
+      "sources": [
+        "fictional-scenario"
+      ]
+    },
+    {
+      "id": "Warfarin-priority-kind",
+      "kind": "scenario",
+      "statement": "member(PriorityWarfarin, PriorityReviewActions).",
+      "meaning": "Priority review is distinct from measured risk.",
+      "sources": [
+        "fictional-scenario"
+      ]
+    },
+    {
+      "id": "Apixaban-pair",
+      "kind": "scenario",
+      "statement": "record(PairApixaban, Apixaban, Fluconazole, InteractionPairs).",
+      "meaning": "Candidate pair; enumeration is deliberate, not a complete interaction catalog.",
+      "sources": [
+        "fictional-scenario"
+      ]
+    },
+    {
+      "id": "Apixaban-assessment",
+      "kind": "scenario",
+      "statement": "record(AssessApixaban, EpisodeA, PairApixaban, AssessmentRegister).",
+      "meaning": "This pair is assessed in the named episode.",
+      "sources": [
+        "fictional-scenario"
+      ]
+    },
+    {
+      "id": "Apixaban-action",
+      "kind": "scenario",
+      "statement": "part(ReviewApixaban, AssessApixaban).",
+      "meaning": "Named review action belongs to this assessment.",
+      "sources": [
+        "fictional-scenario"
+      ]
+    },
+    {
+      "id": "Apixaban-action-kind",
+      "kind": "scenario",
+      "statement": "member(ReviewApixaban, InteractionReviewActions).",
+      "meaning": "Ordinary interaction-review action.",
+      "sources": [
+        "fictional-scenario"
+      ]
+    },
+    {
+      "id": "Apixaban-priority",
+      "kind": "scenario",
+      "statement": "part(PriorityApixaban, AssessApixaban).",
+      "meaning": "Named priority review action belongs to this assessment.",
+      "sources": [
+        "fictional-scenario"
+      ]
+    },
+    {
+      "id": "Apixaban-priority-kind",
+      "kind": "scenario",
+      "statement": "member(PriorityApixaban, PriorityReviewActions).",
+      "meaning": "Priority review is distinct from measured risk.",
+      "sources": [
+        "fictional-scenario"
+      ]
+    },
+    {
+      "id": "Phenytoin-pair",
+      "kind": "scenario",
+      "statement": "record(PairPhenytoin, Phenytoin, Fluconazole, InteractionPairs).",
+      "meaning": "Candidate pair; enumeration is deliberate, not a complete interaction catalog.",
+      "sources": [
+        "fictional-scenario"
+      ]
+    },
+    {
+      "id": "Phenytoin-assessment",
+      "kind": "scenario",
+      "statement": "record(AssessPhenytoin, EpisodeA, PairPhenytoin, AssessmentRegister).",
+      "meaning": "This pair is assessed in the named episode.",
+      "sources": [
+        "fictional-scenario"
+      ]
+    },
+    {
+      "id": "Phenytoin-action",
+      "kind": "scenario",
+      "statement": "part(ReviewPhenytoin, AssessPhenytoin).",
+      "meaning": "Named review action belongs to this assessment.",
+      "sources": [
+        "fictional-scenario"
+      ]
+    },
+    {
+      "id": "Phenytoin-action-kind",
+      "kind": "scenario",
+      "statement": "member(ReviewPhenytoin, InteractionReviewActions).",
+      "meaning": "Ordinary interaction-review action.",
+      "sources": [
+        "fictional-scenario"
+      ]
+    },
+    {
+      "id": "Phenytoin-priority",
+      "kind": "scenario",
+      "statement": "part(PriorityPhenytoin, AssessPhenytoin).",
+      "meaning": "Named priority review action belongs to this assessment.",
+      "sources": [
+        "fictional-scenario"
+      ]
+    },
+    {
+      "id": "Phenytoin-priority-kind",
+      "kind": "scenario",
+      "statement": "member(PriorityPhenytoin, PriorityReviewActions).",
+      "meaning": "Priority review is distinct from measured risk.",
+      "sources": [
+        "fictional-scenario"
+      ]
+    },
+    {
+      "id": "inhibit-2c9",
+      "kind": "scenario",
+      "statement": "record(Inhibit2C9, Fluconazole, CYP2C9, MechanismRegister).",
+      "meaning": "Selected fluconazole inhibition pathway; classification does not quantify exposure.",
+      "sources": [
+        "fluconazole-label"
+      ],
+      "scope_note": "Selected pathway/classification only; professional clinical validation is outside this teaching policy."
+    },
+    {
+      "id": "inhibit-2c9-kind",
+      "kind": "scenario",
+      "statement": "member(Inhibit2C9, InhibitionEdges).",
+      "meaning": "Selected fluconazole inhibition pathway; classification does not quantify exposure.",
+      "sources": [
+        "fluconazole-label"
+      ],
+      "scope_note": "Selected pathway/classification only; professional clinical validation is outside this teaching policy."
+    },
+    {
+      "id": "inhibit-3a4",
+      "kind": "scenario",
+      "statement": "record(Inhibit3A4, Fluconazole, CYP3A4, MechanismRegister).",
+      "meaning": "Selected fluconazole inhibition pathway; classification does not quantify exposure.",
+      "sources": [
+        "fluconazole-label"
+      ],
+      "scope_note": "Selected pathway/classification only; professional clinical validation is outside this teaching policy."
+    },
+    {
+      "id": "inhibit-3a4-kind",
+      "kind": "scenario",
+      "statement": "member(Inhibit3A4, InhibitionEdges).",
+      "meaning": "Selected fluconazole inhibition pathway; classification does not quantify exposure.",
+      "sources": [
+        "fluconazole-label"
+      ],
+      "scope_note": "Selected pathway/classification only; professional clinical validation is outside this teaching policy."
+    },
+    {
+      "id": "substrate-warfarin",
+      "kind": "scenario",
+      "statement": "record(SubstrateWarfarin, Warfarin, CYP2C9, MechanismRegister).",
+      "meaning": "Selected S-warfarin CYP2C9 pathway; other enantiomer/pathways are not exhausted.",
+      "sources": [
+        "warfarin-label"
+      ],
+      "scope_note": "Selected pathway/classification only; professional clinical validation is outside this teaching policy."
+    },
+    {
+      "id": "substrate-warfarin-kind",
+      "kind": "scenario",
+      "statement": "member(SubstrateWarfarin, SubstrateEdges).",
+      "meaning": "Selected S-warfarin CYP2C9 pathway; other enantiomer/pathways are not exhausted.",
+      "sources": [
+        "warfarin-label"
+      ],
+      "scope_note": "Selected pathway/classification only; professional clinical validation is outside this teaching policy."
+    },
+    {
+      "id": "substrate-phenytoin",
+      "kind": "scenario",
+      "statement": "record(SubstratePhenytoin, Phenytoin, CYP2C9, MechanismRegister).",
+      "meaning": "Selected phenytoin CYP2C9 substrate pathway; other pathways are not exhausted.",
+      "sources": [
+        "nti-label"
+      ],
+      "scope_note": "Selected pathway/classification only; professional clinical validation is outside this teaching policy."
+    },
+    {
+      "id": "substrate-phenytoin-kind",
+      "kind": "scenario",
+      "statement": "member(SubstratePhenytoin, SubstrateEdges).",
+      "meaning": "Selected phenytoin CYP2C9 substrate pathway; other pathways are not exhausted.",
+      "sources": [
+        "nti-label"
+      ],
+      "scope_note": "Selected pathway/classification only; professional clinical validation is outside this teaching policy."
+    },
+    {
+      "id": "substrate-apixaban",
+      "kind": "scenario",
+      "statement": "record(SubstrateApixaban, Apixaban, CYP3A4, MechanismRegister).",
+      "meaning": "Selected apixaban CYP3A4 substrate pathway; other pathways are not exhausted.",
+      "sources": [
+        "apixaban-label"
+      ],
+      "scope_note": "Selected pathway/classification only; professional clinical validation is outside this teaching policy."
+    },
+    {
+      "id": "substrate-apixaban-kind",
+      "kind": "scenario",
+      "statement": "member(SubstrateApixaban, SubstrateEdges).",
+      "meaning": "Selected apixaban CYP3A4 substrate pathway; other pathways are not exhausted.",
+      "sources": [
+        "apixaban-label"
+      ],
+      "scope_note": "Selected pathway/classification only; professional clinical validation is outside this teaching policy."
+    },
+    {
+      "id": "nti-Warfarin",
+      "kind": "scenario",
+      "statement": "member(Warfarin, NarrowTherapeuticIndexDrugs).",
+      "meaning": "NITYR prescribing information names warfarin and phenytoin as CYP2C9 substrates with a narrow therapeutic index; used only for review priority.",
+      "sources": [
+        "nti-label"
+      ],
+      "scope_note": "Selected pathway/classification only; professional clinical validation is outside this teaching policy."
+    },
+    {
+      "id": "nti-Phenytoin",
+      "kind": "scenario",
+      "statement": "member(Phenytoin, NarrowTherapeuticIndexDrugs).",
+      "meaning": "NITYR prescribing information names warfarin and phenytoin as CYP2C9 substrates with a narrow therapeutic index; used only for review priority.",
+      "sources": [
+        "nti-label"
+      ],
+      "scope_note": "Selected pathway/classification only; professional clinical validation is outside this teaching policy."
+    },
+    {
+      "id": "exposure-Warfarin",
+      "kind": "scenario",
+      "statement": "record(ExposureWarfarin, Warfarin, Adam, ExposureRegister).",
+      "meaning": "Fictional evidence of relevant exposure, distinct from a prescription or administration event.",
+      "sources": [
+        "fictional-scenario"
+      ]
+    },
+    {
+      "id": "episode-Warfarin",
+      "kind": "scenario",
+      "statement": "part(ExposureWarfarin, EpisodeA).",
+      "meaning": "Exposure evidence is scoped to EpisodeA.",
+      "sources": [
+        "fictional-scenario"
+      ]
+    },
+    {
+      "id": "relevant-Warfarin",
+      "kind": "scenario",
+      "statement": "member(ExposureWarfarin, RelevantExposures).",
+      "meaning": "Reviewer accepted this exposure as relevant in this episode.",
+      "sources": [
+        "fictional-scenario"
+      ]
+    },
+    {
+      "id": "exposure-Fluconazole",
+      "kind": "scenario",
+      "statement": "record(ExposureFluconazole, Fluconazole, Adam, ExposureRegister).",
+      "meaning": "Fictional evidence of relevant exposure, distinct from a prescription or administration event.",
+      "sources": [
+        "fictional-scenario"
+      ]
+    },
+    {
+      "id": "episode-Fluconazole",
+      "kind": "scenario",
+      "statement": "part(ExposureFluconazole, EpisodeA).",
+      "meaning": "Exposure evidence is scoped to EpisodeA.",
+      "sources": [
+        "fictional-scenario"
+      ]
+    },
+    {
+      "id": "relevant-Fluconazole",
+      "kind": "scenario",
+      "statement": "member(ExposureFluconazole, RelevantExposures).",
+      "meaning": "Reviewer accepted this exposure as relevant in this episode.",
+      "sources": [
+        "fictional-scenario"
+      ]
+    }
+  ],
+  "corpus_sha256": "0cd9052f5c3edeaacb4a6604584da89baa32ceda33003303a570102014faf44f",
+  "scopes": [
+    {
+      "id": "EpisodeA",
+      "required_assertions": [
+        "episode-a",
+        "exposure-Warfarin",
+        "episode-Warfarin",
+        "relevant-Warfarin",
+        "exposure-Fluconazole",
+        "episode-Fluconazole",
+        "relevant-Fluconazole"
+      ],
+      "unique_fields": [
+        {
+          "name": "patient",
+          "values": [
+            "Adam"
+          ],
+          "predicate": "record",
+          "selector": [
+            "EpisodeA",
+            null,
+            "MedicationReview",
+            "EpisodeRegister"
+          ],
+          "value_index": 1
+        },
+        {
+          "name": "episode",
+          "values": [
+            "EpisodeA"
+          ],
+          "predicate": "record",
+          "selector": [
+            null,
+            "Adam",
+            "MedicationReview",
+            "EpisodeRegister"
+          ],
+          "value_index": 0
+        }
+      ]
+    },
+    {
+      "id": "AssessWarfarin",
+      "required_assertions": [
+        "Warfarin-pair",
+        "Warfarin-assessment",
+        "Warfarin-action"
+      ],
+      "unique_fields": [
+        {
+          "name": "pair",
+          "values": [
+            "PairWarfarin"
+          ],
+          "predicate": "record",
+          "selector": [
+            "AssessWarfarin",
+            null,
+            null,
+            "AssessmentRegister"
+          ],
+          "value_index": 2
+        },
+        {
+          "name": "episode",
+          "values": [
+            "EpisodeA"
+          ],
+          "predicate": "record",
+          "selector": [
+            "AssessWarfarin",
+            null,
+            null,
+            "AssessmentRegister"
+          ],
+          "value_index": 1
+        }
+      ]
+    }
+  ]
+}

@@ -25,11 +25,27 @@ fn is_abstraction_scaffold(rel: &str) -> bool {
 ///
 /// Each root becomes one sentence (capitalized, terminated with `.`).
 pub fn render_logic_buffer(buf: &LogicBuffer, register: Register) -> String {
+    if register == Register::Spec {
+        return crate::overlay::with_overlay(None, || render_logic_buffer_inner(buf, register));
+    }
+    render_logic_buffer_inner(buf, register)
+}
+
+fn render_logic_buffer_inner(buf: &LogicBuffer, register: Register) -> String {
     let mut ctx = Ctx::new(register);
     let sentences: Vec<String> = buf
         .roots
         .iter()
-        .map(|&root| capitalize_terminate(&render_node(buf, root, &mut ctx)))
+        .map(|&root| {
+            if needs_structural_reading(buf, root) {
+                let mut tree =
+                    String::from("Structural reading (shared or incomplete event frame):\n");
+                write_tree(&mut tree, buf, root, 0);
+                tree.trim_end().to_string()
+            } else {
+                capitalize_terminate(&render_node(buf, root, &mut ctx))
+            }
+        })
         .filter(|s| !s.is_empty())
         .collect();
     sentences.join(" ")
@@ -53,6 +69,54 @@ pub fn render_logic_tree(buf: &LogicBuffer, _register: Register) -> String {
         write_tree(&mut out, buf, root, 0);
     }
     out
+}
+
+/// Inspect complete conjunctions without crossing a binder, flavor, or logical
+/// branch. A role-only modifier must not become an independent English frame.
+/// Fall back for the entire root so every binder and shared event stays visible.
+fn needs_structural_reading(buf: &LogicBuffer, id: u32) -> bool {
+    fn gather(
+        buf: &LogicBuffer,
+        id: u32,
+        preds: &mut Vec<(String, Vec<LogicalTerm>)>,
+        extras: &mut Vec<u32>,
+    ) {
+        match buf.nodes.get(id as usize) {
+            Some(LogicNode::AndNode((l, r))) => {
+                gather(buf, *l, preds, extras);
+                gather(buf, *r, preds, extras);
+            }
+            Some(LogicNode::Predicate(p) | LogicNode::ComputeNode(p)) => preds.push(p.clone()),
+            _ => extras.push(id),
+        }
+    }
+    match buf.nodes.get(id as usize) {
+        Some(LogicNode::AndNode(_) | LogicNode::Predicate(_) | LogicNode::ComputeNode(_)) => {
+            let (mut preds, mut extras) = (Vec::new(), Vec::new());
+            gather(buf, id, &mut preds, &mut extras);
+            collect_frames(&preds)
+                .iter()
+                .any(|f| f.has_roles && f.flat_args.is_empty())
+                || extras
+                    .into_iter()
+                    .any(|child| needs_structural_reading(buf, child))
+        }
+        Some(LogicNode::OrNode((l, r))) => {
+            needs_structural_reading(buf, *l) || needs_structural_reading(buf, *r)
+        }
+        Some(
+            LogicNode::ExistsNode((_, child))
+            | LogicNode::ForAllNode((_, child))
+            | LogicNode::CountNode((_, _, child))
+            | LogicNode::NotNode(child)
+            | LogicNode::PastNode(child)
+            | LogicNode::PresentNode(child)
+            | LogicNode::FutureNode(child)
+            | LogicNode::ObligatoryNode(child)
+            | LogicNode::PermittedNode(child),
+        ) => needs_structural_reading(buf, *child),
+        None => false,
+    }
 }
 
 fn write_tree(out: &mut String, buf: &LogicBuffer, id: u32, depth: usize) {

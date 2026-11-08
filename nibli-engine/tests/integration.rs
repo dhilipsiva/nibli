@@ -1,3 +1,5 @@
+// Historical GDPR/DDI proxy pins below deliberately retain defective model semantics.
+// Corrected shipped models are covered by tests/case_studies.rs.
 //! Integration tests for the nibli-engine: full pipeline (parse → compile → reason).
 //!
 //! Each test creates a fresh NibliEngine, asserts Lojban text, and queries with proof.
@@ -9,7 +11,7 @@ use nibli_engine::{
     EngineWitnessOrigin, NibliEngine,
 };
 use nibli_render::{
-    DRUG_INTERACTIONS_OVERLAY, GDPR_OVERLAY, Register, render_collapsed_text_with,
+    LEGACY_DRUG_INTERACTIONS_OVERLAY, LEGACY_GDPR_OVERLAY, Register, render_collapsed_text_with,
     summarize_proof_with,
 };
 use nibli_store::NibliStore;
@@ -4063,7 +4065,7 @@ fn v2_text_row_migrates_via_real_compiler_and_replays() {
 /// Every non-comment line of gdpr.lojban asserts cleanly through the pipeline.
 #[test]
 fn gdpr_file_loads_clean() {
-    let corpus = include_str!("../../gdpr.nibli");
+    let corpus = include_str!("../../examples/case-studies/legacy/gdpr-proxy.nibli");
     let engine = fresh_engine();
     for (line_num, line) in corpus.lines().enumerate() {
         let trimmed = line.trim();
@@ -4186,7 +4188,7 @@ fn gdpr_why_lawful_basis_is_domain_termed() {
     ]);
     let (_r, trace) = engine.query_text_raw_proof("permitted(Adam).").unwrap();
 
-    let overlay = summarize_proof_with(&trace, Register::Spec, Some(&GDPR_OVERLAY))
+    let overlay = summarize_proof_with(&trace, Register::Spec, Some(&LEGACY_GDPR_OVERLAY))
         .expect("lawful-basis proof has a why summary");
     assert!(overlay.contains("Adam consents"), "why: {overlay}");
     assert!(
@@ -4452,7 +4454,7 @@ fn gdpr_erasure_rule_is_per_subject() {
 #[test]
 fn gdpr_full_corpus_lawful_basis_query_completes() {
     let start = std::time::Instant::now();
-    let corpus = include_str!("../../gdpr.nibli");
+    let corpus = include_str!("../../examples/case-studies/legacy/gdpr-proxy.nibli");
     let engine = fresh_engine();
     let mut consent_id = None;
     for (line_num, line) in corpus.lines().enumerate() {
@@ -4931,7 +4933,10 @@ fn pinned_id(ids: &[(String, u64)], line: &str) -> u64 {
 #[test]
 fn gdpr_corpus_transcript_pins() {
     let engine = fresh_engine();
-    let (asserted, skipped, ids) = load_corpus_like_host(&engine, include_str!("../../gdpr.nibli"));
+    let (asserted, skipped, ids) = load_corpus_like_host(
+        &engine,
+        include_str!("../../examples/case-studies/legacy/gdpr-proxy.nibli"),
+    );
     assert_eq!(
         (asserted, skipped),
         (24, 77),
@@ -4959,8 +4964,10 @@ fn gdpr_corpus_transcript_pins() {
 #[test]
 fn ddi_corpus_transcript_pins() {
     let engine = fresh_engine();
-    let (asserted, skipped, ids) =
-        load_corpus_like_host(&engine, include_str!("../../drug-interactions.nibli"));
+    let (asserted, skipped, ids) = load_corpus_like_host(
+        &engine,
+        include_str!("../../examples/case-studies/legacy/drug-proxy.nibli"),
+    );
     assert_eq!(
         (asserted, skipped),
         (16, 78),
@@ -5027,7 +5034,7 @@ fn stacked_where_clauses_conjoin_both() {
 
 /// Load every non-comment line of drug-interactions.lojban into a fresh engine.
 fn engine_with_ddi_corpus() -> NibliEngine {
-    let corpus = include_str!("../../drug-interactions.nibli");
+    let corpus = include_str!("../../examples/case-studies/legacy/drug-proxy.nibli");
     let engine = fresh_engine();
     for (line_num, line) in corpus.lines().enumerate() {
         let trimmed = line.trim();
@@ -5099,8 +5106,12 @@ fn ddi_why_toxicity_is_concrete_and_domain_termed() {
     let engine = engine_with_ddi_corpus();
     let (_r, trace) = engine.query_text_raw_proof("dangerous(Varfarin).").unwrap();
 
-    let overlay = summarize_proof_with(&trace, Register::Spec, Some(&DRUG_INTERACTIONS_OVERLAY))
-        .expect("toxicity proof has a why summary");
+    let overlay = summarize_proof_with(
+        &trace,
+        Register::Spec,
+        Some(&LEGACY_DRUG_INTERACTIONS_OVERLAY),
+    )
+    .expect("toxicity proof has a why summary");
     // Real domain language + real names, sourced from the proof's own entities.
     assert!(
         overlay.contains("fluconazole inhibits CYP2C9"),
@@ -5141,16 +5152,18 @@ fn ddi_why_toxicity_is_concrete_and_domain_termed() {
         "fallback must stay literal: {fallback}"
     );
 
-    // The collapsed tree's universal rule reads "every drug …", not "if X …".
+    // The collapsed tree retains the exact recorded rule source, including all restrictors.
     let tree = render_collapsed_text_with(
         &trace,
         Register::Spec,
         0,
         false,
-        Some(&DRUG_INTERACTIONS_OVERLAY),
+        Some(&LEGACY_DRUG_INTERACTIONS_OVERLAY),
     );
     assert!(
-        tree.contains("every drug that has a raised concentration and has a narrow therapeutic index is at toxicity risk"),
+        tree.contains(
+            "by recorded source #14/0: dangerous(every chemical where increases where thin)."
+        ),
         "tree:\n{tree}"
     );
     assert!(!tree.contains('X'), "bare variable leaked in tree:\n{tree}");
@@ -5162,8 +5175,12 @@ fn ddi_why_toxicity_is_concrete_and_domain_termed() {
 fn ddi_why_alert_chains_to_the_regimen() {
     let engine = engine_with_ddi_corpus();
     let (_r, trace) = engine.query_text_raw_proof("warns(Varfarin).").unwrap();
-    let why = summarize_proof_with(&trace, Register::Spec, Some(&DRUG_INTERACTIONS_OVERLAY))
-        .expect("alert proof has a why summary");
+    let why = summarize_proof_with(
+        &trace,
+        Register::Spec,
+        Some(&LEGACY_DRUG_INTERACTIONS_OVERLAY),
+    )
+    .expect("alert proof has a why summary");
     assert!(why.contains("warfarin is at toxicity risk"), "why: {why}");
     assert!(why.contains("Adam takes warfarin"), "why: {why}");
     assert!(
@@ -5233,17 +5250,11 @@ fn ddi_toxicity_requires_both_conditions() {
     );
 }
 
-/// Belief revision (non-monotonic), mechanism-side: an alert is not "baked in" —
-/// it is re-derived from current facts. The clinically canonical move: the
-/// interacting drug is discontinued. Retracting "fluconazole inhibits CYP2C9"
-/// removes the mechanism's entry premise, so the concentration rise, the toxicity
-/// risk, and the alert all dissolve in one step. This mirrors the shipped corpus:
-/// warfarin is on Adam's chart (so it alerts), phenytoin is NOT (so it reaches
-/// toxicity RISK but no alert — the regimen gate). The shared inhibitor means
-/// retracting it dissolves the toxicity risk for BOTH substrates at once, and
-/// warfarin's alert with it.
+/// Historical proxy control: withdraw the inhibition knowledge premise.
+/// This removes the proxy chain's support. It does not model discontinuation,
+/// current bodily exposure, concentration, or a clinical outcome.
 #[test]
-fn ddi_belief_revision_discontinue_inhibitor() {
+fn ddi_belief_revision_withdraw_mechanism_premise() {
     let engine = fresh_engine();
     for line in [
         "chemical(Varfarin).",
@@ -5269,7 +5280,7 @@ fn ddi_belief_revision_discontinue_inhibitor() {
         engine.assert_text(line).unwrap();
     }
 
-    // ── Before discontinuation: warfarin alerts; phenytoin is at risk but not on
+    // ── Before mechanism withdrawal: warfarin alerts; phenytoin is at risk but not on
     //    the chart, so it reaches ckape without an alert (the regimen gate) ──
     assert_true(
         &engine.query_holds("warns(Varfarin).").unwrap(),
@@ -5284,36 +5295,32 @@ fn ddi_belief_revision_discontinue_inhibitor() {
         "But phenytoin raises no alert: Adam does not take it (regimen-gated)",
     );
 
-    // ── Discontinue fluconazole: retract the inhibition fact ──
+    // ── Withdraw the inhibition knowledge fact ──
     engine.retract_fact(inhibits_id).unwrap();
 
     assert_false(
         &engine.query_holds("increases(Varfarin).").unwrap(),
-        "After discontinuation, warfarin's concentration no longer rises",
+        "After mechanism withdrawal, warfarin's concentration no longer rises",
     );
     assert_false(
         &engine.query_holds("dangerous(Varfarin).").unwrap(),
-        "After discontinuation, warfarin's toxicity basis is gone",
+        "After mechanism withdrawal, warfarin's toxicity basis is gone",
     );
     assert_false(
         &engine.query_holds("warns(Varfarin).").unwrap(),
-        "After discontinuation, the warfarin alert is automatically withdrawn",
+        "After mechanism withdrawal, the warfarin alert is automatically withdrawn",
     );
     assert_false(
         &engine.query_holds("dangerous(Fenitoin).").unwrap(),
-        "Discontinuing the shared inhibitor also clears phenytoin's toxicity risk",
+        "Withdrawing the shared edge also removes the phenytoin proxy flag",
     );
 }
 
-/// Belief revision (non-monotonic), patient-side: discontinuing a drug from the
-/// REGIMEN withdraws its alert while the drug-level toxicity risk stays derivable.
-/// Retracting "Adam takes warfarin" flips the warfarin alert FALSE, but warfarin is
-/// still pharmacologically at risk (ckape) — the alert is gated on the regimen, the
-/// risk is not. This is the patient-specific belief-revision move the regimen-gated
-/// alert rule enables (and it exercises retract+rebuild over a `pilno` ground fact
-/// without the historical ground-conditional hang).
+/// Historical proxy control: withdraw the substrate regimen premise.
+/// The patient-gated alert proxy disappears; the drug-level proxy remains.
+/// Neither predicate reports a measured physiological state.
 #[test]
-fn ddi_belief_revision_discontinue_drug() {
+fn ddi_belief_revision_withdraw_substrate_premise() {
     let engine = fresh_engine();
     for line in [
         "chemical(Varfarin).",

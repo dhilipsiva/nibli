@@ -16,22 +16,24 @@
 
 use crate::gates::{self, GateError};
 use crate::llm::{LlmConfig, ToolChat, Turn, clean_output, system_prompt};
-use crate::verify;
+use crate::verify::{self, VerificationStatus};
 
 /// One outer-loop iteration: the candidate the LLM produced and the gate error it
-/// hit (`None` = it passed every gate).
+/// hit (`None` = deterministic gates passed and no advisory mismatch).
 #[derive(Clone, Debug)]
 pub struct Attempt {
     pub n: u32,
     pub candidate: String,
     pub error: Option<GateError>,
+    pub verification: VerificationStatus,
 }
 
 /// The result of a formalization run, always carrying the full attempt trace
 /// for the UI.
 #[derive(Debug)]
 pub enum Outcome {
-    /// Converged — the formalized `kr` text passed every gate.
+    /// Draft accepted by deterministic gates; inspect the final attempt for the
+    /// advisory semantic status. This never implies human approval.
     Success { kr: String, attempts: Vec<Attempt> },
     /// Hit the attempt cap or an oscillation without converging; `best` is the last
     /// candidate and `last_error` the gate it failed.
@@ -117,9 +119,18 @@ pub async fn translate_agentic<C: ToolChat, V: ToolChat>(
         // semantic verifier. Folding the verifier's MISMATCH into the same
         // `Err` arm reuses the whole retry machinery (trace, oscillation
         // guard, feedback turns, exhaustion).
-        let gate_result = match gates::validate_kb(&candidate) {
-            Ok(()) => verify_semantics(validator, cfg, source, &candidate).await,
-            Err(e) => Err(e),
+        let (gate_result, verification) = match gates::validate_kb(&candidate) {
+            Ok(()) => {
+                let status = verify_semantics(validator, cfg, source, &candidate).await;
+                let result = match &status {
+                    VerificationStatus::Mismatched(issues) => {
+                        Err(GateError::Verification(issues.clone()))
+                    }
+                    _ => Ok(()),
+                };
+                (result, status)
+            }
+            Err(e) => (Err(e), VerificationStatus::NotRun),
         };
         match gate_result {
             Ok(()) => {
@@ -127,6 +138,7 @@ pub async fn translate_agentic<C: ToolChat, V: ToolChat>(
                     n,
                     candidate: candidate.clone(),
                     error: None,
+                    verification,
                 });
                 return Outcome::Success {
                     kr: candidate,
@@ -139,6 +151,7 @@ pub async fn translate_agentic<C: ToolChat, V: ToolChat>(
                     n,
                     candidate: candidate.clone(),
                     error: Some(err.clone()),
+                    verification,
                 });
                 if oscillated {
                     return Outcome::Exhausted {
@@ -173,9 +186,8 @@ pub async fn translate_agentic<C: ToolChat, V: ToolChat>(
     }
 }
 
-/// The fresh-context semantic verification turn. `Ok(())` = verified or
-/// best-effort skipped; `Err(GateError::Verification)` = the judge reported a
-/// concrete meaning mismatch. Fail-open by design at every non-verdict edge:
+/// The fresh-context semantic verification turn records whether a verdict was
+/// actually obtained. Fail-open by design at every non-verdict edge:
 /// back-translation failure (cannot normally happen — the gates just passed),
 /// validator transport error, tool-call-only reply, or a malformed verdict all
 /// let the gate-clean candidate through — the deterministic gates are the hard
@@ -185,12 +197,12 @@ async fn verify_semantics<V: ToolChat>(
     cfg: &LlmConfig,
     source: &str,
     candidate: &str,
-) -> Result<(), gates::GateError> {
+) -> VerificationStatus {
     let Ok(back) = verify::back_translation(candidate) else {
-        return Ok(());
+        return VerificationStatus::Unavailable("could not build the structural reading".into());
     };
     if back.is_empty() {
-        return Ok(());
+        return VerificationStatus::Unavailable("empty candidate has no claims to compare".into());
     }
     let prompt = verify::judge_prompt(source, &back);
     // A brand-new single-turn conversation: the judge sees only the source,
@@ -205,11 +217,11 @@ async fn verify_semantics<V: ToolChat>(
         .await
     {
         Ok(r) => r,
-        Err(_) => return Ok(()),
+        Err(e) => return VerificationStatus::Unavailable(format!("validator request failed: {e}")),
     };
-    match reply.text.as_deref().and_then(verify::parse_verdict) {
-        Some(issues) => Err(gates::GateError::Verification(issues)),
-        None => Ok(()),
+    match reply.text.as_deref() {
+        Some(text) => verify::parse_review(text),
+        None => VerificationStatus::Unavailable("validator returned no text verdict".into()),
     }
 }
 
@@ -324,6 +336,8 @@ mod tests {
                 assert_eq!(attempts.len(), 2);
                 assert!(attempts[0].error.is_some());
                 assert!(attempts[1].error.is_none());
+                assert_eq!(attempts[0].verification, VerificationStatus::NotRun);
+                assert_eq!(attempts[1].verification, VerificationStatus::Matched);
             }
             other => panic!("expected Success, got {other:?}"),
         }
@@ -382,6 +396,8 @@ mod tests {
                 assert_eq!(kr, "dog(Adam).");
                 assert_eq!(attempts.len(), 2);
                 assert!(matches!(attempts[0].error, Some(GateError::Syntax(_))));
+                assert_eq!(attempts[0].verification, VerificationStatus::NotRun);
+                assert_eq!(attempts[1].verification, VerificationStatus::Matched);
             }
             other => panic!("expected Success, got {other:?}"),
         }
@@ -459,6 +475,11 @@ eats(some person, some food).";
                     other => panic!("attempt 1 must fail the semantic verifier, got {other:?}"),
                 }
                 assert!(attempts[1].error.is_none());
+                assert!(matches!(
+                    attempts[0].verification,
+                    VerificationStatus::Mismatched(_)
+                ));
+                assert_eq!(attempts[1].verification, VerificationStatus::Matched);
             }
             other => panic!("expected Success on the corrected retry, got {other:?}"),
         }
@@ -481,7 +502,10 @@ eats(some person, some food).";
     fn validator_sees_fresh_context_only() {
         let (out, _chat, validator) =
             run_with_validator(vec![text(GOOD)], vec![text("MATCH")], "Adam is a dog", 3);
-        assert!(matches!(out, Outcome::Success { .. }));
+        let Outcome::Success { attempts, .. } = out else {
+            panic!("expected match");
+        };
+        assert_eq!(attempts[0].verification, VerificationStatus::Matched);
         let vseen = validator.seen.borrow();
         assert_eq!(vseen.len(), 1);
         let (system, turns) = &vseen[0];
@@ -511,7 +535,12 @@ eats(some person, some food).";
             3,
         );
         match out {
-            Outcome::Success { attempts, .. } => assert!(attempts[0].error.is_none()),
+            Outcome::Success { attempts, .. } => {
+                assert!(attempts[0].error.is_none());
+                assert!(
+                    matches!(&attempts[0].verification, VerificationStatus::Unavailable(reason) if reason.contains("net down"))
+                );
+            }
             other => panic!("expected best-effort Success, got {other:?}"),
         }
     }
@@ -524,7 +553,13 @@ eats(some person, some food).";
             "Adam is a dog",
             3,
         );
-        assert!(matches!(out, Outcome::Success { .. }));
+        let Outcome::Success { attempts, .. } = out else {
+            panic!("expected advisory fail-open");
+        };
+        assert!(matches!(
+            attempts[0].verification,
+            VerificationStatus::Unavailable(_)
+        ));
     }
 
     #[test]

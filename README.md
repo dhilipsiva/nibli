@@ -300,7 +300,7 @@ just test
 ~/nibli> ? animal(Adam).
 [Query] TRUE
 [Why] Because adam is a dog, adam is an animal.
-  ⊢ adam is an animal  [by the rule: every dog is an animal] -> TRUE
+  ⊢ adam is an animal  [by recorded source #1/0: animal(every dog).] -> TRUE
     ▣ adam is a dog  [given] -> TRUE
 
 ~/nibli> ?? dog($x).

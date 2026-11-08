@@ -17,6 +17,11 @@ use dioxus::prelude::*;
 use nibli_protocol::{KbStatus, LineResult, ProofTrace};
 
 mod examples;
+mod review;
+use review::{ReviewState, Snapshot};
+
+const ENGINE_BUILD: &str = env!("NIBLI_BUILD_ID");
+const REVIEW_PROFILE: bool = false;
 use examples::EXAMPLES;
 use nibli_formalize::llm::{LlmConfig, Provider};
 
@@ -44,13 +49,9 @@ fn back_translate_ir(kb: &str) -> String {
 }
 
 fn render_kb_line(line: &str) -> String {
-    let parsed = nibli_kr::parse_text(line);
-    if parsed.errors.is_empty() {
-        nibli_semantics::compile_from_ast(parsed.buffer)
-            .map(|buf| nibli_render::render_logic_buffer(&buf, nibli_render::Register::Spec))
-            .unwrap_or_else(|_| line.to_string())
-    } else {
-        line.to_string()
+    match nibli_session::CoreSession::new().compile_text(line) {
+        Ok(buf) => nibli_render::render_logic_buffer(&buf, nibli_render::Register::Spec),
+        Err(error) => format!("Cannot compile this line: {error}"),
     }
 }
 
@@ -602,6 +603,7 @@ fn gate_chips(error: &Option<nibli_formalize::gates::GateError>) -> Vec<(String,
     let order = GATE_ORDER;
     let states: [GateState; 3] = match error {
         None => [GateState::Pass; 3],
+        Some(nibli_formalize::gates::GateError::Verification(_)) => [GateState::Pass; 3],
         Some(e) => {
             let fail_idx = order.iter().position(|g| *g == e.gate()).unwrap_or(0);
             std::array::from_fn(|i| {
@@ -638,7 +640,18 @@ fn trace_rows(attempts: &[nibli_formalize::agent::Attempt]) -> Vec<TraceRow> {
             n: a.n,
             ok: a.error.is_none(),
             detail: match &a.error {
-                None => "valid \u{2014} passed the gates".to_string(),
+                None => {
+                    let reason = match &a.verification {
+                        nibli_formalize::verify::VerificationStatus::Unavailable(reason) => {
+                            format!(" ({reason})")
+                        }
+                        _ => String::new(),
+                    };
+                    format!(
+                        "Deterministic gates passed; {}{reason}. Draft awaiting human review.",
+                        a.verification.label()
+                    )
+                }
                 Some(e) => {
                     let msg = e.message();
                     let first = msg.lines().next().unwrap_or(msg);
@@ -680,108 +693,83 @@ struct OutputEntry {
 // logarithm) have no TCP backend in the browser and surface as errors, same
 // as the live demo.
 
-/// Build a fresh session from the KB tab, assert it (recording a per-line
-/// status), then run the query and return the result + proof trace as an
-/// `OutputEntry`. The compile chain is the SHARED `nibli_session::CoreSession`
-/// (the same core the native engine and both wasm surfaces wrap — fail-closed;
-/// the `NibliError` Display carries the `[Syntax Error]` / `[Semantic Error]`
-/// prefixes the output log classifies on). Each compiled source line gets the
-/// pure structural assertion preflight before its per-root loop, so a later
-/// count/flavor rejection cannot leave earlier roots live. Other root-local
-/// reasoning errors retain the existing per-root behavior. A failed source line
-/// is recorded and later lines still run (the KbStatusBar's per-line tolerance).
-fn run_query(kb_text: &str, query_text: &str) -> OutputEntry {
+/// Admit every source line into an isolated candidate, then publish it. The
+/// first error discards the candidate; a query never sees a successful prefix.
+fn admit_kb(kb_text: &str) -> Result<(nibli_session::CoreSession, KbStatus), KbStatus> {
     let session = nibli_session::CoreSession::new();
-    let existential_import = session.is_existential_import();
-
-    let mut asserted = 0u32;
-    let mut errors = 0u32;
-    let mut skipped = 0u32;
-    let mut line_results: Vec<LineResult> = Vec::new();
-    // The nibli KR lint pass (NIBLI_KR §12 L1–L9): a FRESH linter per run
-    // — the stateless-KB model re-asserts the whole tab every query, so
-    // "per session" is "per run" here. Notes ride each LineResult.
+    let mut status = KbStatus {
+        asserted: 0,
+        errors: 0,
+        skipped: 0,
+        line_results: Vec::new(),
+    };
     let mut linter = nibli_kr::lint::Linter::new();
     for (i, raw) in kb_text.lines().enumerate() {
         let line = raw.trim();
         if line.is_empty() || line.starts_with('#') {
-            skipped += 1;
+            status.skipped += 1;
             continue;
         }
-        let line_number = (i + 1) as u32;
-        let notes: Vec<String> = linter.lint(line).into_iter().map(|n| n.message).collect();
-        match session.compile_text(line) {
-            Ok(buf) => {
-                if let Err(e) = session.kb().validate_assertion(&buf) {
-                    errors += 1;
-                    line_results.push(LineResult {
-                        line_number,
-                        text: line.to_string(),
-                        success: false,
-                        fact_id: None,
-                        error: Some(e.to_string()),
-                        notes,
-                    });
-                    continue;
-                }
-                // Each bare-`.i` sentence becomes its OWN fact (connectives stay
-                // whole — they compile to a single root). `asserted` counts facts,
-                // so `A .i B` reads "2 asserted". One `LineResult` per source line
-                // (the KbStatusBar keys on line_number; per-fact rows would collide).
-                let mut first_id: Option<u64> = None;
-                let mut first_err: Option<String> = None;
-                for sub in buf.split_roots() {
-                    match session.kb().assert_fact(sub, line.to_string()) {
-                        Ok(id) => {
-                            asserted += 1;
-                            first_id.get_or_insert(id);
-                        }
-                        Err(e) => {
-                            first_err.get_or_insert_with(|| e.to_string());
-                        }
-                    }
-                }
-                match first_err {
-                    None => line_results.push(LineResult {
-                        line_number,
-                        text: line.to_string(),
-                        success: true,
-                        fact_id: first_id,
-                        error: None,
-                        notes,
-                    }),
-                    Some(e) => {
-                        errors += 1;
-                        line_results.push(LineResult {
-                            line_number,
-                            text: line.to_string(),
-                            success: false,
-                            fact_id: first_id,
-                            error: Some(e),
-                            notes,
-                        });
-                    }
-                }
-            }
-            Err(e) => {
-                errors += 1;
-                line_results.push(LineResult {
-                    line_number,
-                    text: line.to_string(),
-                    success: false,
-                    fact_id: None,
-                    error: Some(e.to_string()),
+        let notes = linter.lint(line).into_iter().map(|n| n.message).collect();
+        match session.assert_text(line) {
+            Ok(facts) => {
+                status.asserted += facts.len() as u32;
+                status.line_results.push(LineResult {
+                    line_number: (i + 1) as u32,
+                    text: line.into(),
+                    success: true,
+                    fact_id: facts.first().map(|f| f.0),
+                    error: None,
                     notes,
                 });
             }
+            Err(error) => {
+                status.errors = 1;
+                status.asserted = 0;
+                status.line_results.push(LineResult {
+                    line_number: (i + 1) as u32,
+                    text: line.into(),
+                    success: false,
+                    fact_id: None,
+                    error: Some(error.to_string()),
+                    notes,
+                });
+                return Err(status);
+            }
         }
     }
-    let kb_status = Some(KbStatus {
-        asserted,
-        errors,
-        skipped,
-        line_results,
-    });
+    Ok((session, status))
+}
+
+fn admission_error(status: &KbStatus) -> String {
+    let failed = status.line_results.iter().find(|line| !line.success);
+    match failed {
+        Some(line) => format!(
+            "KB not loaded: line {}: {}. Candidate discarded; no query was run.",
+            line.line_number,
+            line.error.as_deref().unwrap_or("admission failed")
+        ),
+        None => "KB not loaded; no query was run.".into(),
+    }
+}
+
+fn run_query(kb_text: &str, query_text: &str) -> OutputEntry {
+    let (session, status) = match admit_kb(kb_text) {
+        Ok(loaded) => loaded,
+        Err(status) => {
+            return OutputEntry {
+                input: query_text.into(),
+                result: admission_error(&status),
+                is_error: true,
+                proof_trace: None,
+                proof_trace_data: None,
+                kb_status: Some(status),
+                existential_import: REVIEW_PROFILE,
+            };
+        }
+    };
+    let existential_import = session.is_existential_import();
+    let kb_status = Some(status);
 
     match session.query_text_with_proof(query_text) {
         Ok((result, trace)) => {
@@ -847,6 +835,41 @@ fn result_modifier(result: &str) -> &'static str {
     }
 }
 
+#[derive(Clone, Copy)]
+struct ReviewContext {
+    state: Signal<ReviewState>,
+    source: Signal<String>,
+    kb: Signal<String>,
+    output: Signal<Vec<OutputEntry>>,
+    proof_text: Signal<Option<String>>,
+    proof_data: Signal<Option<ProofTrace>>,
+    kb_status: Signal<Option<KbStatus>>,
+}
+
+impl ReviewContext {
+    fn snapshot(self) -> Snapshot {
+        self.state.read().snapshot(
+            &self.source.read(),
+            &self.kb.read(),
+            ENGINE_BUILD,
+            REVIEW_PROFILE,
+        )
+    }
+    fn clear_results(mut self) {
+        self.output.set(Vec::new());
+        self.proof_text.set(None);
+        self.proof_data.set(None);
+        self.kb_status.set(None);
+    }
+    fn invalidate(mut self) {
+        self.state.write().invalidate();
+        self.clear_results();
+    }
+    fn approved(self) -> bool {
+        self.state.read().is_approved(&self.snapshot())
+    }
+}
+
 // ── Components ──
 
 #[component]
@@ -856,6 +879,17 @@ fn App() -> Element {
     let proof_data: Signal<Option<ProofTrace>> = use_signal(|| None);
     let kb_text: Signal<String> = use_signal(|| DEFAULT_KB.to_string());
     let kb_status: Signal<Option<KbStatus>> = use_signal(|| None);
+    let source_text = use_signal(|| DEFAULT_SOURCE.to_string());
+    let review_state = use_signal(ReviewState::default);
+    let review = use_context_provider(|| ReviewContext {
+        state: review_state,
+        source: source_text,
+        kb: kb_text,
+        output: output_log,
+        proof_text,
+        proof_data,
+        kb_status,
+    });
     // The LLM translate config lives ONLY here, in memory — never persisted to
     // storage, cleared on tab close/reload. `None` until the user configures it.
     let settings: Signal<Option<Settings>> = use_signal(|| None);
@@ -924,9 +958,9 @@ fn App() -> Element {
                 select {
                     class: "nb-select app-header__examples",
                     title: "Load a preloaded example from the book, or Custom to write your own",
-                    onchange: move |e| match e.value().parse::<usize>() {
-                        Ok(i) => example.set(Some(i)),
-                        Err(_) => example.set(None),
+                    onchange: move |e| {
+                        review.invalidate();
+                        example.set(e.value().parse::<usize>().ok().filter(|i| *i < EXAMPLES.len()));
                     },
                     option { value: "custom", selected: example.read().is_none(), "Custom" }
                     for (i, ex) in EXAMPLES.iter().enumerate() {
@@ -971,7 +1005,7 @@ fn App() -> Element {
             footer { class: "app-footer",
                 span { class: "app-footer__text",
                     span { class: "app-footer__brand", "nibli" }
-                    " \u{2014} a Symbolic Reasoning Engine & Hallucination Firewall, built in Rust and compiled to WebAssembly. There are no servers: the engine runs entirely in your browser, and nothing leaves the tab."
+                    " \u{2014} a Symbolic Reasoning Engine & Hallucination Firewall, built in Rust and compiled to WebAssembly. Reasoning runs in your browser. Optional formalization sends source and review text to your configured LLM provider."
                 }
                 a {
                     class: "app-footer__star",
@@ -1020,6 +1054,13 @@ fn KbStatusBar(kb_status: Signal<Option<KbStatus>>) -> Element {
         }
     );
 
+    let summary_text = if s.errors > 0 {
+        format!("KB not loaded; candidate discarded. {summary_text}")
+    } else if s.asserted == 0 {
+        "Empty KB loaded (no assertions).".to_string()
+    } else {
+        format!("Complete KB loaded: {summary_text}")
+    };
     let has_errors = s.errors > 0;
     // Lint notes open the same expandable detail as errors (non-blocking, so
     // they never turn the summary amber).
@@ -1095,6 +1136,8 @@ fn QueryTabs(
     modal_open: Signal<bool>,
     example: Signal<Option<usize>>,
 ) -> Element {
+    let review = use_context::<ReviewContext>();
+    let mut query_review = use_signal(ReviewState::default);
     let mut query_text = use_signal(|| DEFAULT_QUERY.to_string());
     let mut query_source = use_signal(String::new);
     let mut translating = use_signal(|| false);
@@ -1104,6 +1147,19 @@ fn QueryTabs(
     // In example mode the query box is a dropdown; this indexes the active
     // example's `queries`.
     let mut selected_query = use_signal(|| 0usize);
+
+    let query_snapshot = move || {
+        query_review.read().snapshot(
+            &query_source.read(),
+            &query_text.read(),
+            ENGINE_BUILD,
+            REVIEW_PROFILE,
+        )
+    };
+    let mut invalidate_query = move || {
+        query_review.write().invalidate();
+        review.clear_results();
+    };
 
     // Live back-translation of the ACTIVE query — the typed Custom query, or the
     // selected example query. Shown only for a cleanly-parsed query; a transient
@@ -1167,8 +1223,8 @@ fn QueryTabs(
         });
     };
 
-    // Resolve the active (KB, query) by mode, then run it. The editable Custom
-    // query clears after running; an example selection persists.
+    // Resolve the active (KB, query) by mode, enforcing the same approval gate
+    // for both the button and Enter. Keep the reviewed query visible.
     let mut do_submit = move || {
         let ex = *example.read();
         let (kb, query) = match ex {
@@ -1182,10 +1238,23 @@ fn QueryTabs(
             ),
             None => (kb_text.read().clone(), query_text.read().clone()),
         };
-        run_into_log(&kb, &query);
         if ex.is_none() {
-            query_text.set(String::new());
+            if !review.approved() {
+                translate_error.set(Some("Review the KB back-translation and choose Use reviewed encoding before querying.".into()));
+                return;
+            }
+            if !query_source.read().trim().is_empty()
+                && !query_review.read().is_approved(&query_snapshot())
+            {
+                translate_error.set(Some(
+                    "Review the translated query and choose Use reviewed query before running it."
+                        .into(),
+                ));
+                return;
+            }
         }
+        translate_error.set(None);
+        run_into_log(&kb, &query);
     };
 
     // Loading an example auto-runs its first query so a verdict shows at once.
@@ -1219,11 +1288,23 @@ fn QueryTabs(
             modal_open.set(true);
             return;
         };
+        invalidate_query();
+        let requested = query_snapshot();
+        let requested_kb = review.snapshot();
         translating.set(true);
         translate_error.set(None);
         spawn(async move {
-            match formalize_translate(&cfg.llm, &text).await {
+            let result = formalize_translate(&cfg.llm, &text).await;
+            if requested != query_snapshot() || requested_kb != review.snapshot() {
+                translating.set(false);
+                translate_error.set(Some(
+                    "Discarded a stale query formalization because the draft changed.".into(),
+                ));
+                return;
+            }
+            match result {
                 Ok(formal) => {
+                    invalidate_query();
                     query_text.set(formal);
                     query_tab.set(ActiveTab::Kb);
                 }
@@ -1285,7 +1366,7 @@ fn QueryTabs(
                                 class: "source-input",
                                 placeholder: "State the claim to check, e.g. \"Adam eats\"\u{2026}",
                                 value: "{query_source}",
-                                oninput: move |e| query_source.set(e.value()),
+                                oninput: move |e| { invalidate_query(); query_source.set(e.value()); },
                                 onkeydown: on_source_keydown,
                             }
                             if let Some(err) = translate_error.read().as_ref() {
@@ -1337,7 +1418,7 @@ fn QueryTabs(
                                 }
                             }
                             div { class: "query-hint",
-                                "Preset queries \u{2014} pick one to run it against the loaded knowledge base."
+                                "Provided example queries — run against the complete provided KB, without recording personal approval."
                             }
                         } else {
                             div { class: "query-bar",
@@ -1350,13 +1431,37 @@ fn QueryTabs(
                                     id: "query-input".to_string(),
                                     value: query_text.read().clone(),
                                     placeholder: "State a proposition to check \u{2014} Ctrl+K focus".to_string(),
-                                    on_change: move |text: String| query_text.set(text),
+                                    on_change: move |text: String| { invalidate_query(); query_text.set(text); },
                                     onkeydown: on_query_keydown,
                                 }
                                 button { class: "query-btn", onclick: submit_click, "Query" }
                             }
                             div { class: "query-hint",
                                 "State a claim to check \u{2014} e.g. \u{201C}Adam eats\u{201D} \u{2014} not a question (\u{201C}Does Adam eat?\u{201D})."
+                            }
+                        }
+                        if !is_example {
+                            if let Some(error) = translate_error.read().as_ref() {
+                                div { class: "translate-error", "{error}" }
+                            }
+                            if !query_source.read().trim().is_empty() {
+                                button {
+                                    class: "toolbar-btn",
+                                    disabled: *translating.read() || !matches!(&reading, QueryReading::Reads(_)) || query_review.read().is_approved(&query_snapshot()),
+                                    onclick: move |_| {
+                                        // Parsing/compilation is reflected in the live reading. A fresh
+                                        // snapshot is taken at the click, never at formalizer completion.
+                                        if matches!(&*query_reading.read(), QueryReading::Reads(_)) {
+                                            let snapshot = query_snapshot();
+                                            query_review.write().approve(snapshot);
+                                            translate_error.set(None);
+                                        }
+                                    },
+                                    "Use reviewed query"
+                                }
+                                div { class: "query-hint", "Compare the query source, KR, and reading before approving this exact claim." }
+                            } else {
+                                div { class: "query-hint", "Authored KR query; no English-source equivalence is claimed." }
                             }
                         }
                         match reading {
@@ -1488,32 +1593,50 @@ mod semantic_profile_tests {
     }
 
     #[test]
-    fn mixed_line_count_rejection_is_atomic_but_later_lines_still_load() {
-        let output = run_query(
+    fn any_admission_error_blocks_the_whole_kb_and_query() {
+        for kb in [
             "person(Adam). big(exactly 1 dog).\nperson(Bel).",
-            "person(Adam).",
-        );
-        assert_eq!(
-            output.result, "FALSE",
-            "the ordinary root before the rejected count must not land"
-        );
+            "person(Adam).\nbig(exactly 1 dog).\nperson(Bel).",
+            "person(Adam).\nthis is invalid\nperson(Bel).",
+        ] {
+            let output = run_query(kb, "person(Adam).");
+            assert!(output.is_error);
+            assert!(
+                output.result.starts_with("KB not loaded:"),
+                "{}",
+                output.result
+            );
+            assert!(output.proof_trace_data.is_none());
+            let status = output.kb_status.unwrap();
+            assert_eq!(status.asserted, 0);
+            assert_eq!(status.errors, 1);
+            assert!(!status.line_results.last().unwrap().success);
+            assert!(
+                !status
+                    .line_results
+                    .iter()
+                    .any(|line| line.text == "person(Bel).")
+            );
+        }
+    }
 
-        let status = output.kb_status.expect("KB status");
-        assert_eq!(status.asserted, 1, "only the later valid line is asserted");
-        assert_eq!(status.errors, 1);
-        assert!(!status.line_results[0].success);
-        assert_eq!(status.line_results[0].fact_id, None);
-        assert!(
-            status.line_results[0]
-                .error
-                .as_deref()
-                .is_some_and(|error| error.contains("query-only"))
-        );
-        assert_eq!(
-            status.line_results[1].fact_id,
-            Some(0),
-            "the rejected line must not consume the first id"
-        );
+    #[test]
+    fn empty_kb_is_valid_but_carries_no_assertions() {
+        for kb in ["", "# only a comment\n\n"] {
+            let output = run_query(kb, "dog(Rex).");
+            assert!(!output.is_error);
+            assert_eq!(output.result, "FALSE");
+            assert_eq!(output.kb_status.unwrap().asserted, 0);
+        }
+    }
+
+    #[test]
+    fn valid_multiline_and_multiroot_kb_is_completely_loaded() {
+        let output = run_query("dog(Rex). cat(Bel).\nanimal(every dog).", "animal(Rex).");
+        assert_eq!(output.result, "TRUE");
+        let status = output.kb_status.unwrap();
+        assert_eq!(status.asserted, 3);
+        assert_eq!(status.errors, 0);
     }
 }
 
@@ -1526,7 +1649,8 @@ fn SourceTabs(
     modal_open: Signal<bool>,
     example: Signal<Option<usize>>,
 ) -> Element {
-    let mut source_text = use_signal(|| DEFAULT_SOURCE.to_string());
+    let mut review = use_context::<ReviewContext>();
+    let mut source_text = review.source;
     let mut translating = use_signal(|| false);
     let mut translate_error = use_signal(|| Option::<String>::None);
     let mut translate_trace = use_signal(Vec::<TraceRow>::new);
@@ -1556,6 +1680,8 @@ fn SourceTabs(
             modal_open.set(true);
             return;
         };
+        review.invalidate();
+        let requested = review.snapshot();
         translating.set(true);
         translate_error.set(None);
         translate_trace.set(Vec::new());
@@ -1577,11 +1703,19 @@ fn SourceTabs(
                 cfg.max_attempts.max(1),
             )
             .await;
+            if review.snapshot() != requested {
+                translating.set(false);
+                translate_error.set(Some(
+                    "Discarded a stale formalization because the draft changed.".into(),
+                ));
+                return;
+            }
             match outcome {
                 Outcome::Success { kr, attempts } => {
                     translate_trace.set(trace_rows(&attempts));
+                    review.invalidate();
                     kb_text.set(kr);
-                    active_tab.set(ActiveTab::Kb);
+                    active_tab.set(ActiveTab::BackTranslation);
                 }
                 Outcome::Exhausted {
                     best,
@@ -1591,8 +1725,9 @@ fn SourceTabs(
                     let n = attempts.len();
                     translate_trace.set(trace_rows(&attempts));
                     // Show the best effort so the user can edit from there.
+                    review.invalidate();
                     kb_text.set(best);
-                    active_tab.set(ActiveTab::Kb);
+                    active_tab.set(ActiveTab::BackTranslation);
                     translate_error.set(Some(format!(
                         "Couldn't fully validate after {n} attempts \u{2014} showing best effort. Last: {}",
                         last_error.message()
@@ -1657,7 +1792,7 @@ fn SourceTabs(
                 match *active_tab.read() {
                     ActiveTab::Source => {
                         let hint = if is_example {
-                            "loaded example \u{2014} read-only".to_string()
+                            "provided example \u{2014} read-only, not personally reviewed".to_string()
                         } else {
                             match settings.read().as_ref().map(|c| c.llm.provider.short_name()) {
                                 Some(p) => format!("english \u{2192} nibli KR via {p}"),
@@ -1673,6 +1808,9 @@ fn SourceTabs(
                                 readonly: is_example,
                                 oninput: move |e| {
                                     if example.read().is_none() {
+                                        review.invalidate();
+                                        translate_trace.set(Vec::new());
+                                        translate_error.set(None);
                                         source_text.set(e.value());
                                     }
                                 },
@@ -1736,6 +1874,9 @@ fn SourceTabs(
                             button {
                                 class: "toolbar-btn",
                                 onclick: move |_| {
+                                    review.invalidate();
+                                    translate_trace.set(Vec::new());
+                                    translate_error.set(None);
                                     kb_text.set(String::new());
                                     kb_status.set(None);
                                 },
@@ -1747,6 +1888,10 @@ fn SourceTabs(
                                 style: "display: none",
                                 id: "kb-file-input",
                                 onchange: move |_| {
+                                    review.invalidate();
+                                    translate_trace.set(Vec::new());
+                                    translate_error.set(None);
+                                    let requested = review.snapshot();
                                     spawn(async move {
                                         let res = document::eval(r#"
                                             const input = document.getElementById('kb-file-input');
@@ -1758,8 +1903,9 @@ fn SourceTabs(
                                         "#);
                                         if let Ok(val) = res.await
                                             && let Some(text) = val.as_str()
-                                            && !text.is_empty()
+                                            && review.snapshot() == requested
                                         {
+                                            review.invalidate();
                                             kb_text.set(text.to_string());
                                             kb_status.set(None);
                                         }
@@ -1774,6 +1920,9 @@ fn SourceTabs(
                             placeholder: "Enter nibli KR facts and rules (one per line)...".to_string(),
                             on_change: move |text: String| {
                                 if example.read().is_none() {
+                                    review.invalidate();
+                                    translate_trace.set(Vec::new());
+                                    translate_error.set(None);
                                     kb_text.set(text);
                                 }
                             },
@@ -1790,6 +1939,44 @@ fn SourceTabs(
                         let empty = lines.is_empty();
                         rsx! {
                             span { class: "nb-eyebrow", "what nibli understood" }
+                            if is_example {
+                                div { class: "query-hint", "Provided example encoding; personal approval is not recorded." }
+                            } else {
+                                if let Some(last) = translate_trace.read().last() {
+                                    div { class: "query-hint", "{last.detail}" }
+                                }
+                                div { class: "query-hint",
+                                    if review.approved() { "Reviewed encoding ready for queries in this tab." }
+                                    else if source_text.read().trim().is_empty() {
+                                        "Review this authored KR and its reading. Approval records your KR review; there is no source-equivalence claim."
+                                    } else {
+                                        "Compare the exact source, KR, and reading. Automated checks are advisory about meaning; this draft needs your review."
+                                    }
+                                }
+                                button {
+                                    class: "toolbar-btn",
+                                    disabled: review.approved() || *translating.read(),
+                                    onclick: move |_| {
+                                        match admit_kb(&kb_text.read()) {
+                                            Ok((_session, status)) => {
+                                                let snapshot = review.snapshot();
+                                                review.state.write().approve(snapshot);
+                                                kb_status.set(Some(status));
+                                                translate_error.set(None);
+                                            }
+                                            Err(status) => {
+                                                translate_error.set(Some(admission_error(&status)));
+                                                kb_status.set(Some(status));
+                                            }
+                                        }
+                                    },
+                                    "Use reviewed encoding"
+                                }
+                                KbStatusBar { kb_status }
+                                if let Some(error) = translate_error.read().as_ref() {
+                                    div { class: "translate-error", "{error}" }
+                                }
+                            }
                             div { class: "back-translation",
                                 if empty {
                                     span { class: "back-translation__placeholder",
