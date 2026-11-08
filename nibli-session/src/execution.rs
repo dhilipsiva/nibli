@@ -1,5 +1,5 @@
 //! Bounded observations of the actual compiler and reasoner; proofs remain certificates.
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet, hash_map::Entry};
 use std::sync::{Arc, Mutex};
 
 use super::CoreSession;
@@ -332,6 +332,8 @@ impl CoreSession {
     }
     pub fn snapshot(&self) -> Result<SessionSnapshot, NibliError> {
         self.kb.validate_source_snapshot_configuration()?;
+        let assertions = self.kb.snapshot_assertions()?;
+        self.validate_snapshot_sources(&assertions)?;
         let mut compute_predicates: Vec<_> = self.compute_predicates.iter().cloned().collect();
         compute_predicates.sort();
         Ok(SessionSnapshot {
@@ -339,12 +341,48 @@ impl CoreSession {
             engine_version: env!("CARGO_PKG_VERSION").into(),
             profile: self.execution_profile(),
             compute_predicates,
-            assertions: self.kb.snapshot_assertions()?,
+            assertions,
             next_fact_id: self.kb.assertion_id_frontier()?.to_string(),
             derived_only: self.kb.derived_only_relations(),
             admitted: self.kb.admitted_relations(),
         })
     }
+    // Both export and import establish the source-replay contract. Identical
+    // multi-root packets compile once per call; withdrawn labels stay inert.
+    fn validate_snapshot_sources(
+        &self,
+        assertions: &[SnapshotAssertion],
+    ) -> Result<(), NibliError> {
+        let mut compiled: HashMap<&str, Vec<LogicBuffer>> = HashMap::new();
+        for record in assertions {
+            let Some(buffer) = &record.buffer else {
+                continue;
+            };
+            let roots = match compiled.entry(record.label.as_str()) {
+                Entry::Occupied(entry) => entry.into_mut(),
+                Entry::Vacant(entry) => {
+                    let logic = self.compile_text(&record.label).map_err(|_| {
+                        // IDs were minted by the KB or checked before this helper.
+                        // Do not copy arbitrary source/compiler diagnostics into
+                        // the recorder's bounded snapshot-availability summary.
+                        NibliError::Reasoning(format!(
+                            "source snapshot assertion #{} has no recompilable KR label",
+                            record.id
+                        ))
+                    })?;
+                    entry.insert(logic.split_roots())
+                }
+            };
+            if !roots.iter().any(|root| root == buffer) {
+                return Err(NibliError::Reasoning(format!(
+                    "source snapshot assertion #{} does not match its compiled KR root",
+                    record.id
+                )));
+            }
+        }
+        Ok(())
+    }
+
     /// Validate sources and IDs, then rebuild into a fresh unpublished session.
     /// Compiled payloads are checked against canonical compilation, never trusted.
     pub fn from_snapshot(snapshot: &SessionSnapshot) -> Result<Self, NibliError> {
@@ -386,14 +424,9 @@ impl CoreSession {
             if id >= frontier || !identities.insert(id) {
                 return Err(invalid("duplicate ID or invalid frontier"));
             }
-            if let Some(buffer) = &record.buffer {
-                let compiled = session.compile_text(&record.label)?;
-                if !compiled.split_roots().iter().any(|root| root == buffer) {
-                    return Err(invalid("compiled payload does not match its source"));
-                }
-            }
             records.push((id, record));
         }
+        session.validate_snapshot_sources(&snapshot.assertions)?;
         records.sort_by_key(|(id, _)| *id);
         session.kb.transaction(|candidate| {
             for (id, record) in records {

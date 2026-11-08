@@ -394,3 +394,69 @@ fn external_compute_callbacks_follow_the_documented_host_rebind_contract() {
     restored.set_compute_dispatch(evaluate, batch);
     assert!(restored.query_text("sum(Adam, 2, 3).").unwrap().is_true());
 }
+
+#[test]
+fn native_display_only_or_mismatched_labels_cannot_claim_recoverable_snapshots() {
+    fn check(session: CoreSession) {
+        assert!(session.snapshot().is_err());
+        let plain = session.query_text_with_proof("dog(Adam).").unwrap();
+        assert!(plain.0.is_true());
+        let run = session.query_text_recorded("dog(Adam).", RecordingOptions::standard());
+        assert_eq!(format!("{:?}", run.outcome.unwrap()), format!("{plain:?}"));
+        assert_eq!(run.record.status, RecordingStatus::Complete);
+        assert!(run.record.initial_snapshot.is_none());
+        assert!(
+            !run.record
+                .capabilities
+                .iter()
+                .any(|c| c == "recoverable_snapshot")
+        );
+        let reason = run.record.snapshot_unavailable_reason.unwrap();
+        assert!(reason.contains("assertion #0"), "{reason}");
+        assert!(reason.len() < 160, "unbounded snapshot summary");
+        assert!(!run.record.events.is_empty());
+    }
+    let direct = CoreSession::new();
+    direct
+        .assert_fact_direct(
+            "dog",
+            &[nibli_types::logic::LogicalTerm::Constant("adam".into())],
+            None,
+        )
+        .unwrap();
+    check(direct);
+    for label in [
+        "native display label".into(),
+        "invalid_".repeat(1000),
+        "cat(Adam).".into(),
+    ] {
+        let injected = CoreSession::new();
+        let buffer = injected.compile_text("dog(Adam).").unwrap();
+        injected.assert_buffer_with_id(buffer, label, 0).unwrap();
+        check(injected);
+    }
+}
+
+#[test]
+fn repeated_kr_packets_and_withdrawn_native_labels_roundtrip() {
+    let session = CoreSession::new();
+    let packet = "dog(Adam). cat(Bela). animal(every dog).";
+    let first = session.assert_text(packet).unwrap();
+    session.assert_text(packet).unwrap();
+    session.retract_fact(first[0].0).unwrap();
+    session
+        .restore_withdrawn_assertion(100, "this was never KR".into())
+        .unwrap();
+    let snapshot = session.snapshot().unwrap();
+    let restored = CoreSession::from_snapshot(&snapshot).unwrap();
+    assert_eq!(restored.snapshot().unwrap(), snapshot);
+    assert!(restored.query_text("animal(Adam).").unwrap().is_true());
+    let run = restored.query_text_recorded("animal(Adam).", RecordingOptions::standard());
+    assert!(
+        run.record
+            .capabilities
+            .iter()
+            .any(|c| c == "recoverable_snapshot")
+    );
+    assert!(run.record.snapshot_unavailable_reason.is_none());
+}

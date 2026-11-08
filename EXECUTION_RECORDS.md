@@ -81,9 +81,12 @@ admission. Existential-import is applied before replay because it changes derive
 witnesses; materialization restores its configuration with fresh derived caches.
 Withdrawn payloads are never parsed or reactivated.
 
-The source-only snapshot boundary rejects native integrity constraints, sort
-configuration and rule forward/priority overrides, which this schema cannot
-preserve. A recorded operation against such a native KB still runs normally and
+The source-only snapshot boundary checks active labels against their stored KR
+roots on export as well as import; identical labels compile once per call.
+Native direct assertions with display-only labels, arbitrary labels and raw buffers
+that do not match a compilable KR root are explicitly unsupported. It also rejects
+native integrity constraints, sort configuration and rule forward/priority
+overrides, which this schema cannot preserve. A recorded operation against such a native KB still runs normally and
 retains its execution history, but removes the `recoverable_snapshot` capability
 and supplies `snapshot_unavailable_reason`; the successful operation is not
 reported as an error or as truncated. Query caches, host compute callbacks,
