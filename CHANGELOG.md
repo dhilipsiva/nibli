@@ -50,6 +50,9 @@ here first.
 
 ### Changed
 
+- Update Wasmtime/WASI to 49.0.5, Juniper to 0.17.2, and the zstd dependency
+  family to patched releases. This resolves the ten dependency advisories reported
+  by the supply-chain gate without adding advisory ignores or weakening the gate.
 - Grounded witness anchors reuse the existing argument-position index for
   candidate extraction and selectivity. Event-decomposed witness counts and
   exact-count proofs no longer scan the entire relation for each member.

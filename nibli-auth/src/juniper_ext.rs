@@ -37,6 +37,30 @@ mod tests {
     #[test]
     fn ensure_denies_stranger() {
         reset_thread_auth();
-        assert!(ensure_can("Bob", "update", "Doc1", "owns(Alice, Doc1).").is_err());
+        let error = ensure_can("Bob", "update", "Doc1", "owns(Alice, Doc1).")
+            .expect_err("a stranger must receive a GraphQL field error");
+        assert_eq!(error.message(), "forbidden: False");
+        assert_eq!(error.extensions(), &juniper::Value::Null);
+    }
+
+    #[test]
+    fn malformed_context_returns_a_field_error_without_leaking_authority() {
+        reset_thread_auth();
+        let error = ensure_can(
+            "Alice",
+            "read",
+            "Doc1",
+            "owns(Alice, Doc1). uncommitted_auth_predicate(Alice).",
+        )
+        .expect_err("invalid request context must fail closed");
+        assert!(
+            !error.message().starts_with("forbidden:"),
+            "compiler errors must remain distinguishable from a denied decision"
+        );
+        assert_eq!(error.extensions(), &juniper::Value::Null);
+        assert!(
+            ensure_can("Alice", "read", "Doc1", "").is_err(),
+            "a failed context must not grant ownership to the next request"
+        );
     }
 }
