@@ -18,11 +18,11 @@ fn event_content_proof_keeps_opaque_content_inside_its_entitlement() {
     let why = summarize_proof(&trace, Register::Spec).unwrap();
     assert_eq!(
         why,
-        "Because lucy is a person, lucy is entitled to survive."
+        "Because Lucy is a person, Lucy is entitled to survive."
     );
     let proof = render_collapsed_text(&trace, Register::Spec, 0, false);
-    assert!(proof.contains("lucy is entitled to survive"), "{proof}");
-    assert!(proof.contains("lucy is a person"), "{proof}");
+    assert!(proof.contains("Lucy is entitled to survive"), "{proof}");
+    assert!(proof.contains("Lucy is a person"), "{proof}");
     assert!(
         proof.contains("recorded source #1/0: entitled(every person, event { survive() })."),
         "{proof}"
@@ -43,17 +43,17 @@ fn event_content_proofs_preserve_filled_places_negation_and_local_scope() {
         (
             "obliged(every person, event { message() }).",
             "obliged(Lucy, event { message() }).",
-            "lucy is obligated to notify",
+            "Lucy is obligated to notify",
         ),
         (
             "permitted(every person, event { cease() }).",
             "permitted(Lucy, event { cease() }).",
-            "lucy is permitted to cease",
+            "Lucy is permitted to cease",
         ),
         (
             "decide(every person, event { obey() }).",
             "decide(Lucy, event { obey() }).",
-            "lucy decides to obey",
+            "Lucy decides to obey",
         ),
         (
             "entitled(every person, event { message(Bob) }).",
@@ -88,7 +88,7 @@ fn event_content_proofs_preserve_filled_places_negation_and_local_scope() {
             assert!(why.contains(expected), "{source}: {why}");
             assert!(!why.contains("__abs_"), "{source}: {why}");
             if !source.starts_with("entitled(Lucy") {
-                assert!(why.contains("lucy is a person"), "{source}: {why}");
+                assert!(why.contains("Lucy is a person"), "{source}: {why}");
             }
         }
         assert_eq!(
@@ -113,11 +113,11 @@ fn event_content_keeps_each_dependent_referent_with_its_holder() {
         .unwrap();
     let why = summarize_proof(&trace, Register::Spec).unwrap();
     assert!(
-        why.contains("lucy is a person, lucy is entitled to survive"),
+        why.contains("Lucy is a person, Lucy is entitled to survive"),
         "{why}"
     );
     assert!(
-        why.contains("bob is a person, bob is entitled to survive"),
+        why.contains("Bob is a person, Bob is entitled to survive"),
         "{why}"
     );
     assert!(!why.contains("__abs_"), "{why}");
@@ -166,7 +166,7 @@ fn event_content_fallback_preserves_malformed_missing_and_unreachable_evidence()
         "{fallback}"
     );
     assert!(
-        !fallback.contains("lucy is entitled to survive"),
+        !fallback.contains("Lucy is entitled to survive"),
         "{fallback}"
     );
 
@@ -177,7 +177,7 @@ fn event_content_fallback_preserves_malformed_missing_and_unreachable_evidence()
     let fallback = render_collapsed_text(&missing, Register::Spec, 0, false);
     assert!(fallback.contains("__abs_"), "{fallback}");
     assert!(
-        !fallback.contains("lucy is entitled to survive"),
+        !fallback.contains("Lucy is entitled to survive"),
         "{fallback}"
     );
 
@@ -186,6 +186,15 @@ fn event_content_fallback_preserves_malformed_missing_and_unreachable_evidence()
     assert_eq!(
         render_collapsed_text(&extra, Register::Spec, 0, false),
         render_collapsed_text(&trace, Register::Spec, 0, false)
+    );
+
+    // A valid marker outside the reachable proof cannot repair a missing
+    // event package, even when its generated referent matches the consumer.
+    let mut unreachable = missing.clone();
+    unreachable.steps.push(trace.steps[marker_step].clone());
+    assert_eq!(
+        render_collapsed_text(&unreachable, Register::Spec, 0, false),
+        render_collapsed_text(&missing, Register::Spec, 0, false)
     );
 
     let modified = CoreSession::new();

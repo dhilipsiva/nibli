@@ -73,6 +73,19 @@ pub(crate) fn frame_template(relation: &str) -> String {
     }
     let gloss = gloss_for(relation);
     let arity = get_arity(relation).unwrap_or(1).max(1);
+    // A gloss that is the name of the subject's own place ("member" of `[member, set]`) is a
+    // noun, not a verb: "{x1} is a member of {x2}", never "{x1} members {x2}".
+    if arity >= 2
+        && nibli_lexicon::relation_places(relation).and_then(|p| p.first().copied())
+            == Some(gloss.as_str())
+        && !is_adjectival_gloss(&gloss)
+    {
+        let mut t = format!("{{x1}} is {}{gloss} of {{x2}}", indefinite_article(&gloss));
+        for i in 3..=arity {
+            t.push_str(&format!(" {{x{i}}}"));
+        }
+        return t;
+    }
     generic_template(&gloss, arity)
 }
 

@@ -79,6 +79,9 @@ pub(crate) fn humanize_skolem(s: &str) -> String {
     if let Some(name) = crate::overlay::active().and_then(|o| o.name(s)) {
         return name.to_string();
     }
+    if let Some(spelled) = crate::spelling::restore(s) {
+        return spelled;
+    }
     s.to_string()
 }
 

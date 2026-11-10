@@ -13,12 +13,25 @@ use nibli_types::logic::{LogicBuffer, LogicNode, LogicalTerm};
 
 use crate::frame::{deontic_content_phrase, fill_template, frame_template};
 use crate::register::Register;
+use crate::takers::{EventTaker, event_taker};
 use crate::term::{role_base, role_index};
 
 /// Abstraction-type scaffolding predicates (event/fact/property/…) that only
 /// exist to host a nested duty content — never surface as "Y is event".
 fn is_abstraction_scaffold(rel: &str) -> bool {
     matches!(rel, "event" | "fact" | "property" | "amount" | "concept")
+}
+
+/// As [`render_logic_buffer`], with the KR the buffer was compiled from: constants keep the
+/// spelling the author typed (`StrawHatCrew`, `NixOS`) instead of a title-cased lowercase form.
+pub fn render_logic_buffer_with_source(
+    buf: &LogicBuffer,
+    register: Register,
+    source: &str,
+) -> String {
+    let mut table = std::collections::BTreeMap::new();
+    crate::spelling::learn(&mut table, source);
+    crate::spelling::with_spelling(table, || render_logic_buffer(buf, register))
 }
 
 /// Render a compiled `LogicBuffer` as readable English.
@@ -463,48 +476,6 @@ fn inline_duty_abstraction<'a>(
     }
 }
 
-/// Predicates with a place that holds an event a party stands toward. An abstraction bound in
-/// that place, and used nowhere else, is read as an infinitive after the phrase, with the party
-/// as the subject: "Lucy is entitled to continue", as `obliged` always was ("Alis is obligated
-/// to notify"). `permitted` is the lexicon's swap of `permits`, so the event sits in its first
-/// place and the party in its second.
-pub(crate) struct EventTaker {
-    relation: &'static str,
-    pub(crate) event_place: usize,
-    pub(crate) party_place: usize,
-    pub(crate) phrase: &'static str,
-}
-const EVENT_TAKERS: &[EventTaker] = &[
-    EventTaker {
-        relation: "obliged",
-        event_place: 2,
-        party_place: 1,
-        phrase: "is obligated to",
-    },
-    EventTaker {
-        relation: "entitled",
-        event_place: 2,
-        party_place: 1,
-        phrase: "is entitled to",
-    },
-    EventTaker {
-        relation: "permits",
-        event_place: 1,
-        party_place: 2,
-        phrase: "is permitted to",
-    },
-    EventTaker {
-        relation: "decide",
-        event_place: 2,
-        party_place: 1,
-        phrase: "decides to",
-    },
-];
-
-pub(crate) fn event_taker(relation: &str) -> Option<&'static EventTaker> {
-    EVENT_TAKERS.iter().find(|t| t.relation == relation)
-}
-
 /// Reuse the IR event-content reading only after the complete lossless marker
 /// has decoded to a closed body. Shared modifiers retain structural fallback.
 pub(crate) fn proof_event_content(marker: &str, register: Register) -> Option<String> {
@@ -863,9 +834,13 @@ fn render_term(t: &LogicalTerm, ctx: &mut Ctx) -> Option<String> {
     }
 }
 
-/// Constants arrive lowercased from the IR (`bela`, `highsec`). Title-case the
-/// first letter for readable English; leave mixed/upper inputs alone.
+/// Constants arrive lowercased from the IR (`bela`, `highsec`). The author's spelling wins
+/// when a spelling table is active (`render_logic_buffer_with_source`); otherwise title-case
+/// the first letter for readable English; leave mixed/upper inputs alone.
 fn display_constant(s: &str) -> String {
+    if let Some(spelled) = crate::spelling::restore(s) {
+        return spelled;
+    }
     let mut chars = s.chars();
     match chars.next() {
         Some(c)

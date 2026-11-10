@@ -374,7 +374,7 @@ smoke-host-quiet: build-wasm build-host
         | NIBLI_QUIET=1 NIBLI_WASM_PATH={{wasm_dir}}/nibli.wasm ./target/{{profile}}/nibli-host 2>&1); \
         echo "$q"; \
         echo "$q" | grep -qF '[Query] TRUE' || { echo 'FAIL: quiet-mode query lost its verdict'; exit 1; }; \
-        echo "$q" | grep -qF 'adam is an animal' || { echo 'FAIL: quiet-mode query lost its proof trace'; exit 1; }; \
+        echo "$q" | grep -qF 'Adam is an animal' || { echo 'FAIL: quiet-mode query lost its proof trace'; exit 1; }; \
         if echo "$q" | grep -qE '\[(Fact|Skolem|Rule)'; then echo 'FAIL: NIBLI_QUIET=1 did not suppress the per-assertion bookkeeping'; exit 1; fi; \
         v=$(printf 'dog(Adam).\nanimal(every dog).\n? animal(Adam).\n' \
         | NIBLI_WASM_PATH={{wasm_dir}}/nibli.wasm ./target/{{profile}}/nibli-host 2>&1); \

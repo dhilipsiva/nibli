@@ -12,6 +12,7 @@
 //! verdict or a proof's tree shape. Unknown predicates fall back to a generic
 //! `relation(args)` / gloss-based frame — never invented English.
 
+mod abstraction;
 mod collapse;
 mod corpus_overlay;
 mod fact;
@@ -21,19 +22,22 @@ mod opaque;
 mod overlay;
 mod proof;
 mod register;
+mod spelling;
 mod summary;
+mod tables;
+mod takers;
 mod term;
 
 pub use collapse::{
     collapse_proof, collapse_proof_with, render_collapsed_text, render_collapsed_text_with,
-    render_node_text,
+    render_collapsed_text_with_source, render_node_text,
 };
 pub use corpus_overlay::{
     DRUG_INTERACTIONS_OVERLAY, GDPR_OVERLAY, LEGACY_DRUG_INTERACTIONS_OVERLAY, LEGACY_GDPR_OVERLAY,
     UTOPIA_OVERLAY,
 };
 pub use fact::humanize_fact;
-pub use logic::{render_logic_buffer, render_logic_tree};
+pub use logic::{render_logic_buffer, render_logic_buffer_with_source, render_logic_tree};
 pub use overlay::DomainGloss;
 pub use proof::{
     RenderedNode, css_class, icon, label, render_proof, render_proof_text,
@@ -42,7 +46,7 @@ pub use proof::{
 pub use register::Register;
 pub use summary::{
     VerdictKind, fact_to_english, summarize_proof, summarize_proof_with, summarize_verdict,
-    verdict_kind,
+    summarize_verdict_with_source, verdict_kind,
 };
 
 /// True for relations that are internal reasoning artifacts, not surface content —

@@ -36,6 +36,10 @@ const MAX_DEPTH: usize = 64;
 /// Collapse a verbose proof trace into a macro-logical DAG (a [`RenderedNode`]
 /// tree). Render-only; the trace is unchanged.
 pub fn collapse_proof(trace: &ProofTrace, register: Register) -> RenderedNode {
+    crate::tables::with_trace_tables(trace, None, || collapse_proof_inner(trace, register))
+}
+
+fn collapse_proof_inner(trace: &ProofTrace, register: Register) -> RenderedNode {
     if trace.steps.is_empty() {
         return build_node(trace, trace.root);
     }
@@ -217,6 +221,29 @@ pub fn render_collapsed_text(
     base_indent: usize,
     include_detail: bool,
 ) -> String {
+    render_collapsed_text_with_source(trace, register, base_indent, include_detail, None)
+}
+
+/// As [`render_collapsed_text`], with the query's KR when the caller has it, so constants keep
+/// the author's spelling throughout (see [`crate::summarize_verdict_with_source`]).
+pub fn render_collapsed_text_with_source(
+    trace: &ProofTrace,
+    register: Register,
+    base_indent: usize,
+    include_detail: bool,
+    source: Option<&str>,
+) -> String {
+    crate::tables::with_trace_tables(trace, source, || {
+        render_collapsed_text_inner(trace, register, base_indent, include_detail)
+    })
+}
+
+fn render_collapsed_text_inner(
+    trace: &ProofTrace,
+    register: Register,
+    base_indent: usize,
+    include_detail: bool,
+) -> String {
     let mut out = String::new();
     if trace.naf_dependent {
         out.push_str(NAF_NOTE);
@@ -311,6 +338,8 @@ fn collapse_goal_steps(
             .map(|&g| raw_step(build_structural_node(trace, g)))
             .collect();
     }
+    // Retain marker/type evidence until event_packages has checked the complete
+    // reachable package, its holder, and its recorded provenance.
     let mut order: Vec<LeafKey> = Vec::new();
     let mut buckets: BTreeMap<LeafKey, Vec<u32>> = BTreeMap::new();
     let mut singles: Vec<u32> = Vec::new();
@@ -388,7 +417,7 @@ fn event_packages(
         }
         let mut consumers = Vec::new();
         for (key, steps) in buckets {
-            let Some(taker) = crate::logic::event_taker(&key.1) else {
+            let Some(taker) = crate::takers::event_taker(&key.1) else {
                 continue;
             };
             if &key.0 != wrapper {

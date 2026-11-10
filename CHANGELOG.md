@@ -45,6 +45,11 @@ here first.
 
 ### Changed
 
+- Grounded witness anchors reuse the existing argument-position index for
+  candidate extraction and selectivity. Event-decomposed witness counts and
+  exact-count proofs no longer scan the entire relation for each member.
+  Equality keeps its complete scan fallback; witness ordering, count semantics,
+  and proof certificates are unchanged and compared against that scan in tests.
 - Stratification and materialization share an indexed, iterative Tarjan kernel
   that can be extracted from production Rust into Lean. The new
   `verify-self-check-scc-stack` gate proves component-removal termination, exact
@@ -173,6 +178,16 @@ here first.
   `deny` job is blocking.
 
 ### Fixed
+
+- Proof rendering combines original constant spelling with recorded source
+  citations and checked opaque-event packages. Shared modifiers and missing or
+  unreachable event evidence retain structural fallback instead of introducing
+  independent claims.
+- The native query fuzz host uses the engine's cooperative cancellation API
+  with a 100 ms per-input deadline, retaining quantified corpus seeds that
+  previously exhausted the runner's memory. Native engine defaults are unchanged.
+- Update Juniper to 0.17.2, Wasmtime/WASI to 49.0.5, and the zstd dependency
+  family to patched releases; the advisory gate passes without new ignores.
 
 - **Raw witness collections now fail closed on every non-definitive final leaf.**
   `KnowledgeBase::query_find`, `count_witnesses`, and `aggregate` return the existing

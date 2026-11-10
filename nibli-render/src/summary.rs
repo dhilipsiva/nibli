@@ -61,6 +61,10 @@ pub fn verdict_kind(result: &nibli_types::logic::QueryResult) -> VerdictKind {
 /// use [`summarize_verdict`], which renders UNKNOWN and RESOURCE_EXCEEDED
 /// honestly instead of letting them fall into the FALSE arms.
 pub fn summarize_proof(trace: &ProofTrace, register: Register) -> Option<String> {
+    crate::tables::with_trace_tables(trace, None, || summarize_proof_inner(trace, register))
+}
+
+fn summarize_proof_inner(trace: &ProofTrace, register: Register) -> Option<String> {
     let root = trace.steps.get(trace.root as usize)?;
     if root.holds {
         summarize_true(trace, register)
@@ -74,6 +78,28 @@ pub fn summarize_proof(trace: &ProofTrace, register: Register) -> Option<String>
 /// RESOURCE_EXCEEDED as a budget cutoff — never the closed-world
 /// non-derivability sentence, which is only true of ordinary CWA FALSE.
 pub fn summarize_verdict(
+    kind: &VerdictKind,
+    trace: &ProofTrace,
+    register: Register,
+) -> Option<String> {
+    summarize_verdict_with_source(kind, trace, register, None)
+}
+
+/// As [`summarize_verdict`], with the query's KR when the caller has it: constants then keep
+/// the author's spelling even when no citation in the trace carries them (a FALSE verdict's
+/// query, for one). The trace's own citations always contribute.
+pub fn summarize_verdict_with_source(
+    kind: &VerdictKind,
+    trace: &ProofTrace,
+    register: Register,
+    source: Option<&str>,
+) -> Option<String> {
+    crate::tables::with_trace_tables(trace, source, || {
+        summarize_verdict_inner(kind, trace, register)
+    })
+}
+
+fn summarize_verdict_inner(
     kind: &VerdictKind,
     trace: &ProofTrace,
     register: Register,
@@ -131,8 +157,9 @@ pub fn fact_to_english(raw: &str, _register: Register) -> Option<String> {
         // An event-type predicate `base(event)` -> existence.
         format!("there is {}", a_noun(&relation))
     } else {
-        // A flat fact -> fill the frame with all args directly.
-        let slots: Vec<Option<String>> = args.iter().map(|a| Some(humanize_skolem(a))).collect();
+        // A flat fact -> fill the frame with all args directly; an unspecified place (`_`)
+        // stays unfilled, so a trailing one is elided and an interior one reads "something".
+        let slots: Vec<Option<String>> = args.iter().map(|a| filler_text(a)).collect();
         fill_template(&frame_template(&relation), &slots)
     };
     if clause.trim().is_empty() {
@@ -314,7 +341,8 @@ fn summarize_false(trace: &ProofTrace, register: Register) -> Option<String> {
     for step in &trace.steps {
         match &step.rule {
             ProofRule::PredicateNotFound { predicate } => {
-                let what = fact_to_english(predicate, register)
+                let what = not_found_event(trace, predicate, register)
+                    .or_else(|| fact_to_english(predicate, register))
                     .unwrap_or_else(|| humanize_fact(predicate));
                 return Some(format!("Nothing known establishes that {what}."));
             }
@@ -323,9 +351,10 @@ fn summarize_false(trace: &ProofTrace, register: Register) -> Option<String> {
                     nibli_protocol::WitnessOrigin::KnowledgeBase => String::new(),
                     other => format!(" [{}]", other.label()),
                 };
+                let shown = entity.term.display();
                 return Some(format!(
                     "It is not true for every case — counterexample: {}{}.",
-                    entity.term.display(),
+                    crate::spelling::restore(&shown).unwrap_or(shown),
                     origin
                 ));
             }
@@ -342,6 +371,45 @@ fn summarize_false(trace: &ProofTrace, register: Register) -> Option<String> {
         // genuinely false, not an absence of derivation.
         Some("This is false as a decided matter — not closed-world non-derivability.".to_string())
     }
+}
+
+/// A place's filler as English, or `None` for the unspecified placeholder `_`.
+fn filler_text(arg: &str) -> Option<String> {
+    (arg != "_").then(|| humanize_skolem(arg))
+}
+
+/// A missing role of an event the trace otherwise describes, read as the whole event with the
+/// missing role's filler in its place. Opaque event referents remain structural;
+/// only a complete, reachable proof package may substitute their content.
+fn not_found_event(trace: &ProofTrace, predicate: &str, register: Register) -> Option<String> {
+    let (_, relation, args) = parse_raw_fact(predicate)?;
+    let base = role_base(&relation)?;
+    role_index(&relation)?;
+    if args.len() < 2 || !is_event_skolem_arg(&args[0]) {
+        return None;
+    }
+    let event = &args[0];
+    let mut facts: Vec<String> = Vec::new();
+    for step in &trace.steps {
+        let fact = match &step.rule {
+            ProofRule::Asserted { fact, .. }
+            | ProofRule::Derived { fact, .. }
+            | ProofRule::Presupposed { fact, .. }
+            | ProofRule::ProofRef { fact } => fact,
+            _ => continue,
+        };
+        if let Some((_, r, a)) = parse_raw_fact(fact)
+            && role_base(&r) == Some(base)
+            && a.first() == Some(event)
+            && !facts.contains(fact)
+        {
+            facts.push(fact.clone());
+        }
+    }
+    facts.push(predicate.to_string());
+    let (groups, _) = regroup_event_leaves(&facts, register);
+    let (key, pm) = groups.first()?;
+    render_group(key.0.as_deref(), &key.1, pm)
 }
 
 /// Key for an event group: (tense/deontic wrapper, base relation, event Skolem).
@@ -379,10 +447,10 @@ pub(crate) fn regroup_event_leaves(
             if !places.contains_key(&key) {
                 order.push(key.clone());
             }
-            places
-                .entry(key)
-                .or_default()
-                .insert(idx, humanize_skolem(&args[1]));
+            let slots = places.entry(key).or_default();
+            if let Some(text) = filler_text(&args[1]) {
+                slots.insert(idx, text);
+            }
             continue;
         }
         // Event-type predicate `base(event)` — registers the group (no place).
@@ -776,6 +844,78 @@ mod tests {
         // Permitted likewise.
         let p = fact_to_english("Permitted(person(adam))", Register::Spec).unwrap();
         assert!(p.contains("it is permitted that"), "mood dropped: {p}");
+    }
+
+    #[test]
+    fn an_unspecified_place_is_elided_not_printed() {
+        assert_eq!(
+            fact_to_english("makes(dhilipsiva, nibli, _)", Register::Spec).as_deref(),
+            Some("dhilipsiva makes nibli")
+        );
+        assert_eq!(
+            fact_to_english("writes(oda, onepiece, _, _, _)", Register::Spec).as_deref(),
+            Some("oda writes onepiece")
+        );
+        let (groups, _) = regroup_event_leaves(
+            &[
+                "entitled_x1(sk_36(lucy), lucy)".into(),
+                "entitled_x3(sk_36(lucy), _)".into(),
+            ],
+            Register::Spec,
+        );
+        let (key, pm) = &groups[0];
+        assert_eq!(
+            pm.len(),
+            1,
+            "the unspecified standard leaves no place: {pm:?}"
+        );
+        assert_eq!(
+            render_group(key.0.as_deref(), &key.1, pm).as_deref(),
+            Some("lucy is entitled")
+        );
+    }
+
+    #[test]
+    fn a_noun_gloss_reads_nominally() {
+        assert_eq!(
+            fact_to_english("member(luffy, strawhatcrew)", Register::Spec).as_deref(),
+            Some("luffy is a member of strawhatcrew")
+        );
+        assert_eq!(
+            fact_to_english("fiction(onepiece, oda)", Register::Spec).as_deref(),
+            Some("onepiece is a fiction by oda")
+        );
+    }
+
+    #[test]
+    fn a_rule_with_an_abstraction_reads_its_taker_with_the_content() {
+        for (source, query, reading) in [
+            (
+                "entitled(every person, event { protest() }).",
+                "entitled(Lucy, event { protest() }).",
+                "Lucy is entitled to protest",
+            ),
+            (
+                "decide(every person, event { obey() }).",
+                "decide(Lucy, event { obey() }).",
+                "Lucy decides to obey",
+            ),
+        ] {
+            let session = nibli_session::CoreSession::new();
+            session.assert_text("person(Lucy).").unwrap();
+            session.assert_text(source).unwrap();
+            let (verdict, trace) = session.query_text_with_proof(query).unwrap();
+            assert_eq!(verdict, nibli_types::logic::QueryResult::True);
+            let why = summarize_proof(&trace, Register::Spec).unwrap();
+            assert!(why.contains(reading), "{why}");
+            let proof = crate::render_collapsed_text(&trace, Register::Spec, 0, false);
+            assert!(proof.contains(reading), "{proof}");
+            assert!(
+                proof.contains(&format!("recorded source #1/0: {source}")),
+                "{proof}"
+            );
+            assert!(!proof.contains("__abs_"), "{proof}");
+        }
     }
 
     #[test]

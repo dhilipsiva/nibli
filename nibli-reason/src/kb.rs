@@ -4214,10 +4214,15 @@ fn estimated_anchor_candidate_cost(
     inner: &KnowledgeBaseInner,
     member_count: usize,
 ) -> usize {
-    let mut cost = inner
-        .fact_store
-        .lookup_predicate(anchor.relation.as_str())
-        .map_or(0, |facts| facts.len());
+    let mut cost = anchor_position_facts(anchor, inner).map_or_else(
+        || {
+            inner
+                .fact_store
+                .lookup_predicate(anchor.relation.as_str())
+                .map_or(0, |facts| facts.len())
+        },
+        <[StoredFact]>::len,
+    );
     let global_pool = inner
         .skolem_fn_registry
         .iter()
@@ -4495,6 +4500,48 @@ fn anchor_other_arguments_match(
             })
 }
 
+/// The smallest existing argument-position bucket for a grounded sibling.
+/// Every matching fact must occur in this bucket; the ordinary arity, flavor,
+/// and remaining-argument filters still decide which rows contribute candidates.
+///
+/// Equality deliberately keeps the full scan: its candidate superset also
+/// admits equivalent siblings, and a raw-value lookup would silently omit them.
+/// Unbound and unspecified siblings likewise cannot narrow the relation.
+fn anchor_position_facts<'a>(
+    anchor: &PredicateAnchor,
+    inner: &'a KnowledgeBaseInner,
+) -> Option<&'a [StoredFact]> {
+    #[cfg(test)]
+    if !ANCHOR_POSITION_INDEX_ENABLED.get() {
+        return None;
+    }
+    if !inner.equivalence_parent.is_empty() {
+        return None;
+    }
+    let args = anchor.ground_args.as_ref()?;
+    args.iter()
+        .enumerate()
+        .filter(|(position, value)| {
+            *position != anchor.var_position
+                && **value != GroundTerm::Unspecified
+                && !term_contains_pattern_var(value)
+        })
+        .map(|(position, value)| {
+            inner
+                .arg_position_index
+                .get(&(anchor.relation.clone(), position))
+                .and_then(|values| values.get(value))
+                .map_or(&[][..], Vec::as_slice)
+        })
+        .min_by_key(|facts| facts.len())
+}
+
+#[cfg(test)]
+thread_local! {
+    pub(super) static ANCHOR_POSITION_INDEX_ENABLED: Cell<bool> = const { Cell::new(true) };
+    pub(super) static ANCHOR_FACT_VISITS: Cell<usize> = const { Cell::new(0) };
+}
+
 /// Extract candidates from the typed fact index for a predicate anchor.
 fn extract_from_index_bounded(
     anchor: &PredicateAnchor,
@@ -4502,12 +4549,32 @@ fn extract_from_index_bounded(
     candidates: &mut HashSet<GroundTerm>,
     stop_at: Option<usize>,
 ) -> bool {
+    if let Some(facts) = anchor_position_facts(anchor, inner) {
+        return extract_anchor_candidates_from_facts(
+            anchor,
+            inner,
+            facts.iter(),
+            candidates,
+            stop_at,
+        );
+    }
     let facts = match inner.fact_store.lookup_predicate(anchor.relation.as_str()) {
         Some(f) => f,
         None => return false,
     };
+    extract_anchor_candidates_from_facts(anchor, inner, facts.iter(), candidates, stop_at)
+}
 
+fn extract_anchor_candidates_from_facts<'a>(
+    anchor: &PredicateAnchor,
+    inner: &KnowledgeBaseInner,
+    facts: impl Iterator<Item = &'a StoredFact>,
+    candidates: &mut HashSet<GroundTerm>,
+    stop_at: Option<usize>,
+) -> bool {
     for stored_fact in facts {
+        #[cfg(test)]
+        ANCHOR_FACT_VISITS.set(ANCHOR_FACT_VISITS.get() + 1);
         // Check tense matches
         #[allow(clippy::match_like_matches_macro)] // one arm per tense reads as the table it is
         let tense_matches = match (anchor.tense, stored_fact) {
