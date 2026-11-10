@@ -28,9 +28,20 @@ A rejection feeds the gate's own message back through `gates::feedback_for`.
 The LLM retries up to `max_attempts`, with an oscillation guard. A gate-clean
 candidate then faces the semantic verification turn (`verify.rs`): a fresh
 context judge reads the engine's IR-level back-translation of each KB line.
-A mismatch retries through the same loop; verifier transport or parse failure
-is best-effort/fail-open. This runs before the KB text is shown and is separate
-from the engine's later nibli-kr → nibli-semantics → nibli-reason execution.
+A mismatch retries through the same loop. Every attempt records an advisory
+`VerificationStatus`, separately from its deterministic gate result:
+
+| Status | Meaning |
+| --- | --- |
+| `NotRun` | Local validation failed before semantic verification ran. |
+| `Matched` | The verifier returned the exact `MATCH` response. |
+| `Mismatched(issues)` | The verifier returned `MISMATCH`; its feedback enters the retry loop. |
+| `Unavailable(reason)` | The verifier could not run or its reply was unparseable. A gate-clean draft can still be returned, with this status visible. |
+
+Unavailable verification is never reported as matched. Neither a model's match
+judgment nor local validity establishes that a draft captures the intended source.
+This check runs before the draft is shown and is separate from the engine's later
+nibli-kr → nibli-semantics → nibli-reason execution.
 
 ```mermaid
 flowchart TD
@@ -43,7 +54,9 @@ flowchart TD
     g2 -->|ok| g3{"gate 3 · render round-trip<br/>same LogicBuffer"}
     g3 -->|ok| g4{"gate 4 · KB assertability<br/>reject outer exactly N / no"}
     g4 -->|ok| ver{"semantic verification turn<br/>IR back-translation (advisory)"}
-    ver -->|"MATCH / fail-open"| ok["Success<br/>validated KB text → KB tab"]
+    ver -->|MATCH| ok["Success<br/>candidate + advisory status → KR tab"]
+    ver -->|"unavailable / unparseable"| ok
+    ok --> human["Human compares source, KR and reading<br/>Use reviewed encoding"]
 
     g1 -->|reject| osc
     g2 -->|reject| osc
@@ -64,6 +77,14 @@ flowchart TD
 
 The compiler and round-trip portion is `gates::local_gates`; the full
 assertion-authoring contract is `gates::validate` / `gates::validate_kb`.
+
+In `nibli-ui`, custom KB drafts require **Use reviewed encoding** before a query
+runs. Review is bound to the exact source and KR, the current edit revision,
+engine build and reasoning profile, and lasts only in that tab. An edit requires
+fresh review even if the text is later restored. Translated queries have their
+own **Use reviewed query** step. Provided examples are labeled as provided and
+do not record personal approval. Complete KB admission must succeed before
+reasoning; an invalid line cannot leave a partially loaded KB available to query.
 
 ## Test discipline
 

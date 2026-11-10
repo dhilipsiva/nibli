@@ -366,3 +366,114 @@ general evaluator, and a composed Stage 1 theorem remain unproved. The initial
 extraction feasibility milestone is therefore blocked; the full-equivalence
 proof gate and certified CLI are not implemented. The existing Stage 1/Stage 2
 regression gate remains `just verify-self-check`.
+
+## Independent Nibli verification of Rust verdicts
+
+`just verify-self-check-nibli-verdicts` checks the production Rust functions
+`combine_conjunction`, `combine_disjunction`, and `negate_result`, including
+their reachable helpers. This is a separate pilot alongside the Lean verdict
+gate. The older meta-circular checker above analyzes Nibli syntax; this pilot
+analyzes a structural extraction of Rust implementation bodies.
+
+The pipeline is:
+
+1. Freshly extract production Rust to LLBC with the existing pinned Charon.
+2. Decode LLBC using Charon's own version-pinned Rust library and compiler.
+3. Export expressions, enum definitions, calls, guards, return paths, and source
+   locations as structural facts. Enumerate the entire input domain from the
+   extracted enum types.
+4. Evaluate those expressions and guards with
+   `nibli-verify/spec/rust_verdicts.nibli`. Separately, its handwritten contract
+   defines definitive conjunction/disjunction, identities, resource-over-unknown
+   precedence, left bias at equal ranks, and NAF negation with payload preservation.
+5. Require complete Nibli materialization, exactly one selected execution path,
+   one result, and one matching contract result for every input combination.
+
+No Rust execution result or Lean theorem outcome is supplied as an input fact.
+The derived predicates reject direct assertions. Python substitutes local
+bindings and expands acyclic calls, preserving every branch; Nibli decides which
+guards hold and what values expressions produce. A missing case or definition,
+uncovered switch, selected unsupported operation, ambiguous result, incomplete
+materialization, or exhausted runner prevents success. An unsupported path that
+Nibli establishes is unreachable does not prevent verification. A selected
+panic or a result disagreeing with the contract is a counterexample.
+
+The supported Rust profile is intentionally narrow: finite verdict enums,
+immutable references, local copies/moves and assignments, tuple construction and
+projection, enum tags and payloads, equality, Boolean negation, switches, acyclic
+static calls, and returns. Unsupported loops, generics, opaque calls, arithmetic,
+and mutation through references become explicit barriers. This is not a general
+Rust verifier. New payload enum values expand the checked domain automatically;
+new top-level `QueryResult` constructors require contract review.
+
+The gate also creates isolated Rust mutation fixtures from the freshly extracted
+function text, using the real `nibli-types` crate. An unchanged fixture must pass.
+Wrong Boolean branches, resource precedence, resource payloads, negation, and a
+reachable panic must each produce a concrete counterexample after fresh
+extraction. The production Rust source is never mutated by these controls.
+
+Run both independent gates from the repository root:
+
+```sh
+nix develop --command just verify-self-check-nibli-verdicts
+nix develop --command just verify-self-check-verdicts
+nix develop --command just ci
+```
+
+The Nibli gate writes `target/self-check-proof/nibli-verdicts/report.json`, with
+source, rule, tool configuration, binary, and artifact hashes, coverage, mutation
+outcomes, and timings. `bundle.json` and `facts.nibli` contain the structural
+input, `rules.nibli` the exact specification, and `result.json` the per-case
+results. Selected paths link to Rust functions, files, statement IDs, and spans;
+their structural dependencies and ground Nibli observations explain the execution.
+Mutation directories retain their Rust source, LLBC, bundle, and result.
+Exit codes are 0 for verified, 1 for a counterexample, and 2 for inconclusive.
+Runs clear previous success before beginning and reject source drift.
+
+Replay the saved observations with provenance checks on the same source tree:
+
+```sh
+python3 proofs/self-check/verify_nibli_verdicts.py --replay
+```
+
+Replay rebuilds the Nibli model from structural input and compares all saved
+observations and coverage. It never asserts the report's conclusions. A source,
+binary, LLBC, rule, or result mismatch requires a fresh gate run. The lower-level
+`nibli-verify-rust --replay BUNDLE.json RESULT.json` checks observations only;
+it does not establish production-source provenance.
+
+These are replayable evaluation traces, not independent proof-kernel
+certificates. Nibli's backward proof reconstruction was impractical for this
+expanded control-flow graph; the pilot uses complete finite materialization
+and ground queries instead. The trusted boundary includes Rust/MIR, Charon and
+its typed decoder, the structural normalizer, the contract, Nibli's compiler
+and evaluator, and the coverage/report driver. Checking the engine with itself
+does not eliminate common-mode errors. Lean remains the separate kernel-checked
+gate and shares the Rust/Charon extraction boundary.
+
+The pilot adds an executable Nibli specification for actual Rust and source-linked
+regression diagnostics. Its additional coverage is limited here because Lean
+and the existing native exhaustive tests already cover the verdict algebra.
+It does not establish compiler/checker equivalence, a verified general evaluator,
+or the SCC/stratification components. Expanding the approach needs a separate
+assessment of useful new properties and verification cost.
+
+### Pilot result — 2026-10-28
+
+The production run covered all 10 input values and 210 executions. Nibli evaluation and trace collection took 3.70 seconds; the full gate including extraction, the unchanged control, and mutations took 33.01 seconds with cached build dependencies on the development machine. Initial toolchain
+installation/build time is excluded; these are local measurements, not benchmarks.
+
+| Rust mutation | Concrete counterexamples |
+| --- | ---: |
+| `wrong_boolean_branch` | 19 |
+| `wrong_resource_precedence` | 54 |
+| `wrong_payload` | 36 |
+| `wrong_negation` | 1 |
+| `reachable_panic` | 19 |
+
+The unchanged control, replay, native `just ci`, and the existing Lean verdict
+gate passed. Both production gates were checked against the same Rust source
+hashes. The pilot exposed no new production defect. Its useful addition is the
+independent Nibli contract and source-linked diagnostics; the core correctness
+coverage overlaps the existing checks. Keep the full extraction gate optional
+while evaluating which new properties would justify extending this approach.

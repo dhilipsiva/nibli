@@ -7,11 +7,10 @@
 //! `None`) keeps the editable behavior. Examples compile with the nibli KR
 //! front-end.
 //!
-//! The KB corpora are the SAME committed `.nibli` files the engine's
-//! regression tests pin (`gdpr_*` / `ddi_*` / `utopia_*` in
-//! `nibli-engine/tests/integration.rs`), pulled in via `include_str!` so
-//! the UI examples cannot drift from the tested corpora. The `shipped_examples_compile` guard test below
-//! pins every KB line + query through the nibli KR front-end.
+//! The corrected case-study KBs are embedded from the same root files exercised
+//! by `nibli-engine/tests/case_studies.rs`. Historical proxy regressions load
+//! separate legacy files; the Utopia integration tests retain their own corpus.
+//! The guard below also compiles every KB line and preset query.
 //!
 //! NOTE: Syllogism/GDPR/Drug `name` strings are quoted by the book (Ch 18/19/20)
 //! — keep them byte-stable. Extra playground corpora (if any) are not book chapters.
@@ -56,17 +55,7 @@ dog(Adam).
 ";
 
 // ── GDPR — English rendering of `gdpr.nibli` ──
-const GDPR_SOURCE: &str = "\
-Names, addresses, and special-category data (health, religion, ethnicity) are personal data.
-Personal data must be accurate, kept secure, and limited to what is necessary (Art 5).
-Special-category data needs a stricter, specific basis (Art 9).
-A subject who has consented — or is bound by a contract or a legal obligation — has a lawful basis for processing (Art 6).
-Every data subject has the right to access their data (Art 15).
-A controller that has suffered a breach must notify (Art 33).
-
-Adam is a data subject. AkmeCorp and Google are controllers.
-AkmeCorp holds Adam's health record and an ordinary record.
-Adam has given consent. AkmeCorp suffered a breach; Google did not.";
+const GDPR_SOURCE: &str = "A reviewed processing case binds ControllerA, Adam, RecordsA, and ResearchPurpose. Article 6 consent is scoped to this case. Article 9 has a separate review condition. Controller duties and subject rights name actions; no action is inferred to have happened. Article 17 requires explicit withdrawal plus completed basis and exception reviews. Article 33 uses a reviewed breach-risk input. This bounded teaching model is not a compliance verdict.";
 
 // ── Extra playground corpus (utopia.nibli) — not a book chapter ──
 // Clinical Source-tab prose. Book legal case study is GDPR (Ch 19) only.
@@ -82,15 +71,7 @@ Article 7: suspended office (broken), multi-sig void, and whistleblower protecti
 Scenario cast: Adam is a prisoner. Bela taught Cira and was voided by Gia and Hex dual-sign. Dev judged child Esa and is voided. Mira teaches honestly; Lupo falsely accused her and is voided. Hano is home-confined; Jala harmed without court and stays free; Nia is freed on appeal. Lalo (severe domestic) and Nando (non-severe domestic) are placed by grade. Quin works the Census and is rewarded. Boss fails to solo-void or imprison Rebel (whistleblower shield; Boss suspended by recall).";
 
 // ── Drug interactions — English rendering of `drug-interactions.nibli` ──
-const DRUG_SOURCE: &str = "\
-Warfarin, fluconazole, apixaban, and phenytoin are drugs.
-Fluconazole inhibits the CYP2C9 enzyme.
-Warfarin and phenytoin are metabolized by CYP2C9; apixaban is metabolized by CYP3A4.
-Warfarin and phenytoin have a narrow therapeutic index.
-Adam is co-prescribed warfarin and fluconazole.
-When an inhibited enzyme metabolizes a drug, that drug's blood concentration rises.
-A drug whose concentration rises and has a narrow therapeutic index is at toxicity risk.
-Any drug at toxicity risk warrants a safety alert.";
+const DRUG_SOURCE: &str = "Candidate interaction assessments bind a patient, episode, and drug pair. Fluconazole has selected CYP2C9 and CYP3A4 inhibition edges. Warfarin and phenytoin have selected CYP2C9 pathways; apixaban has a CYP3A4 pathway. A shared pathway and relevant exposure to both drugs in the same patient and episode produce a review duty. Narrow therapeutic index adds priority. No concentration, toxicity, safety, or treatment result is inferred.";
 
 /// The preloaded examples, in dropdown order.
 pub const EXAMPLES: &[Example] = &[
@@ -120,20 +101,20 @@ pub const EXAMPLES: &[Example] = &[
         kb: include_str!("../../gdpr.nibli"),
         queries: &[
             ExampleQuery {
-                label: "lawful basis? (Art 6)",
-                query: "permitted(Adam).",
+                label: "scoped consent route (Article 6)",
+                query: "permits(ControllerA, CaseA, Article6Consent).",
             },
             ExampleQuery {
-                label: "right to erasure? (Art 17)",
-                query: "~permitted(Adam).",
+                label: "erasure duty requires withdrawal and reviews",
+                query: "obliged(ControllerA, EraseRecords, Article17Withdrawal).",
             },
             ExampleQuery {
-                label: "a controller is not a consenting person—exhaustive FALSE",
-                query: "permitted(Gugli).",
+                label: "subject access right (Article 15)",
+                query: "entitled(Adam, ProvideAccess, Article15).",
             },
             ExampleQuery {
-                label: "health record → personal data (Art 4/9, derived)",
-                query: "data(Kanrek).",
+                label: "Article 9 condition is separate",
+                query: "permits(ControllerA, CaseA, Article9Condition).",
             },
         ],
         overlay: Some(&nibli_render::GDPR_OVERLAY),
@@ -208,20 +189,20 @@ pub const EXAMPLES: &[Example] = &[
         kb: include_str!("../../drug-interactions.nibli"),
         queries: &[
             ExampleQuery {
-                label: "concentration rising?",
-                query: "increases(Varfarin).",
+                label: "selected shared pathway",
+                query: "fit(AssessWarfarin, SharedMechanism, ScreeningPolicy).",
             },
             ExampleQuery {
-                label: "toxicity risk?",
-                query: "dangerous(Varfarin).",
+                label: "same-patient same-episode exposures",
+                query: "fit(AssessWarfarin, ConcurrentExposure, ScreeningPolicy).",
             },
             ExampleQuery {
-                label: "safety alert?—a 3-hop proof",
-                query: "warns(Varfarin).",
+                label: "review duty, not measured toxicity",
+                query: "obliged(ReviewTeam, ReviewWarfarin, ScreeningPolicy).",
             },
             ExampleQuery {
-                label: "negative control—no alert",
-                query: "warns(Apiksaban).",
+                label: "apixaban: mechanism present, exposure absent",
+                query: "obliged(ReviewTeam, ReviewApixaban, ScreeningPolicy).",
             },
         ],
         overlay: Some(&nibli_render::DRUG_INTERACTIONS_OVERLAY),

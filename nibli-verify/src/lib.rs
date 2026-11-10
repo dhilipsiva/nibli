@@ -28,6 +28,7 @@ pub mod oracle;
 pub mod oracle_asp;
 pub mod predilex;
 pub mod retract_diff;
+pub mod rust_verdicts;
 pub mod seam;
 pub mod static_check;
 pub mod strat_diff;

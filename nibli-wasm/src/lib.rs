@@ -371,65 +371,120 @@ mod tests {
         );
     }
 
-    // NOTE: the Ch 20 breach-notification queries (obligated-to-notify) are
-    // deliberately NOT exercised here or in the /nibli demo: against the
-    // FULL gdpr corpus the traced query does not return in bounded time
-    // (confirmed >240s in release, 2026-06-11) — matching the suspicion in
-    // code-review-panel-2026-06-10.json. Upstream pins that query shape only
-    // against smaller inline KBs (nibli-engine/tests/integration.rs).
     #[test]
-    fn gdpr_lawful_basis_and_withdrawal() {
+    fn gdpr_scoped_consent_evidence_and_withdrawal() {
         let session = load(include_str!("../../gdpr.nibli"));
-        // Book Ch 20: consent gives Adam a lawful basis.
-        assert_eq!(status(&session, "permitted(Adam)."), "TRUE");
-        assert_eq!(status(&session, "~permitted(Adam)."), "FALSE");
-        // A controller is not a consenting person — a real, exhaustive FALSE.
-        assert_eq!(status(&session, "permitted(Gugli)."), "FALSE");
-        // Special-category derivation: health record → personal data (Art 4/9).
-        assert_eq!(status(&session, "data(Kanrek)."), "TRUE");
-
-        // Withdraw consent (retract `la .adam. cu zanru`) — basis collapses.
-        let facts = session.list_facts().unwrap();
-        let rows: serde_json::Value = serde_json::from_str(&facts).unwrap();
-        let consent_id = rows
+        assert_eq!(
+            status(&session, "permits(ControllerA, CaseA, Article6Consent)."),
+            "TRUE"
+        );
+        assert_eq!(
+            status(
+                &session,
+                "obliged(ControllerA, EraseRecords, Article17Withdrawal)."
+            ),
+            "FALSE"
+        );
+        assert_eq!(
+            status(&session, "entitled(Adam, ProvideAccess, Article15)."),
+            "TRUE"
+        );
+        assert_eq!(
+            status(&session, "permits(ControllerA, CaseA, Article9Condition)."),
+            "FALSE"
+        );
+        let rows: serde_json::Value = serde_json::from_str(&session.list_facts().unwrap()).unwrap();
+        let id = rows
             .as_array()
             .unwrap()
             .iter()
-            .find(|r| r["label"].as_str().unwrap_or("").contains("approves(Adam)"))
-            .expect("consent fact present")["id"]
+            .find(|r| r["label"].as_str().unwrap_or("") == "member(CaseA, ValidConsentRecorded).")
+            .expect("consent evidence")["id"]
             .as_u64()
             .unwrap();
-        session.retract_fact(consent_id).unwrap();
-        assert_eq!(status(&session, "permitted(Adam)."), "FALSE");
-        assert_eq!(status(&session, "~permitted(Adam)."), "TRUE");
+        session.retract_fact(id).unwrap();
+        assert_eq!(
+            status(&session, "permits(ControllerA, CaseA, Article6Consent)."),
+            "FALSE"
+        );
+        // Missing evidence is not an explicit withdrawal.
+        assert_eq!(
+            status(
+                &session,
+                "obliged(ControllerA, EraseRecords, Article17Withdrawal)."
+            ),
+            "FALSE"
+        );
+        session
+            .assert_text("member(CaseA, ConsentWithdrawalRecorded).")
+            .unwrap();
+        assert_eq!(
+            status(
+                &session,
+                "obliged(ControllerA, EraseRecords, Article17Withdrawal)."
+            ),
+            "TRUE"
+        );
     }
 
     #[test]
-    fn drug_interaction_chain_and_discontinuation() {
+    fn drug_scoped_exposure_reassessment_preserves_mechanism() {
         let session = load(include_str!("../../drug-interactions.nibli"));
-        // Book Ch 21: warfarin chain fires end to end.
-        assert_eq!(status(&session, "increases(Varfarin)."), "TRUE");
-        assert_eq!(status(&session, "dangerous(Varfarin)."), "TRUE");
-        assert_eq!(status(&session, "warns(Varfarin)."), "TRUE");
-        // Negative control: apixaban (CYP3A4) does not alert.
-        assert_eq!(status(&session, "warns(Apiksaban)."), "FALSE");
-
-        // Discontinue fluconazole (retract the inhibition fact) — chain collapses.
-        let facts = session.list_facts().unwrap();
-        let rows: serde_json::Value = serde_json::from_str(&facts).unwrap();
-        let inhibit_id = rows
+        assert_eq!(
+            status(
+                &session,
+                "fit(AssessWarfarin, SharedMechanism, ScreeningPolicy)."
+            ),
+            "TRUE"
+        );
+        assert_eq!(
+            status(
+                &session,
+                "obliged(ReviewTeam, ReviewWarfarin, ScreeningPolicy)."
+            ),
+            "TRUE"
+        );
+        assert_eq!(
+            status(
+                &session,
+                "fit(AssessApixaban, SharedMechanism, ScreeningPolicy)."
+            ),
+            "TRUE"
+        );
+        assert_eq!(
+            status(
+                &session,
+                "obliged(ReviewTeam, ReviewApixaban, ScreeningPolicy)."
+            ),
+            "FALSE"
+        );
+        let rows: serde_json::Value = serde_json::from_str(&session.list_facts().unwrap()).unwrap();
+        let id = rows
             .as_array()
             .unwrap()
             .iter()
             .find(|r| {
-                let l = r["label"].as_str().unwrap_or("");
-                l.contains("prevents(Flukonazol")
+                r["label"].as_str().unwrap_or("")
+                    == "member(ExposureFluconazole, RelevantExposures)."
             })
-            .expect("inhibition fact present")["id"]
+            .expect("relevant exposure")["id"]
             .as_u64()
             .unwrap();
-        session.retract_fact(inhibit_id).unwrap();
-        assert_eq!(status(&session, "warns(Varfarin)."), "FALSE");
+        session.retract_fact(id).unwrap();
+        assert_eq!(
+            status(
+                &session,
+                "obliged(ReviewTeam, ReviewWarfarin, ScreeningPolicy)."
+            ),
+            "FALSE"
+        );
+        assert_eq!(
+            status(
+                &session,
+                "fit(AssessWarfarin, SharedMechanism, ScreeningPolicy)."
+            ),
+            "TRUE"
+        );
     }
 
     /// The exact bytes Chapter 18's Syllogism walkthrough reproduces click-for-
@@ -475,8 +530,8 @@ mod tests {
         );
         assert_eq!(
             proof,
-            "⊢ Adam eats  [by the rule: every animal eats] -> TRUE\n  \
-             ⊢ Adam is an animal  [by the rule: every dog is an animal] -> TRUE\n    \
+            "⊢ Adam eats  [by recorded source #1/0: eats(every animal).] -> TRUE\n  \
+             ⊢ Adam is an animal  [by recorded source #0/0: animal(every dog).] -> TRUE\n    \
              ▣ Adam is a dog  [given] -> TRUE"
         );
 
@@ -486,7 +541,7 @@ mod tests {
         assert_eq!(why, "Because Adam is a dog, Adam is an animal.");
         assert_eq!(
             proof,
-            "⊢ Adam is an animal  [by the rule: every dog is an animal] -> TRUE\n  \
+            "⊢ Adam is an animal  [by recorded source #0/0: animal(every dog).] -> TRUE\n  \
              ▣ Adam is a dog  [given] -> TRUE"
         );
 
@@ -510,14 +565,23 @@ mod tests {
     fn c18_draft_error_glosses_are_verbatim() {
         // Quantifier swap (GDPR Art 33): `some` reads as a flat existential
         // assertion; `every` reads as a universal "For every X, if … then …" rule.
-        assert_eq!(
-            super::back_translate_ir("obliged(some data governs, event { message() })."),
-            "There exists X such that (X governs, X is data, and (X is obligated to notify))."
-        );
-        assert_eq!(
-            super::back_translate_ir("obliged(every data governs, event { message() })."),
-            "For every X, if X governs and X is data, then X is obligated to notify."
-        );
+        for (text, binder) in [
+            ("obliged(some data governs, event { message() }).", "∃ _v0:"),
+            (
+                "obliged(every data governs, event { message() }).",
+                "∀ _v0:",
+            ),
+        ] {
+            let reading = super::back_translate_ir(text);
+            assert!(reading.starts_with("Structural reading"), "{reading}");
+            assert!(reading.contains(binder), "{reading}");
+            assert!(reading.contains("governs_x1("), "{reading}");
+            assert!(reading.contains("data_x1("), "{reading}");
+            assert!(
+                !reading.contains("X is data"),
+                "modifier must not become a standalone assertion: {reading}"
+            );
+        }
         // Missing negation (GDPR Art 17), single-condition restrictor so the
         // dropped `~` is isolated in the antecedent.
         assert_eq!(

@@ -179,6 +179,16 @@ here first.
 
 ### Fixed
 
+- Proof rendering combines original constant spelling with recorded source
+  citations and checked opaque-event packages. Shared modifiers and missing or
+  unreachable event evidence retain structural fallback instead of introducing
+  independent claims.
+- The native query fuzz host uses the engine's cooperative cancellation API
+  with a 100 ms per-input deadline, retaining quantified corpus seeds that
+  previously exhausted the runner's memory. Native engine defaults are unchanged.
+- Update Juniper to 0.17.2, Wasmtime/WASI to 49.0.5, and the zstd dependency
+  family to patched releases; the advisory gate passes without new ignores.
+
 - **Raw witness collections now fail closed on every non-definitive final leaf.**
   `KnowledgeBase::query_find`, `count_witnesses`, and `aggregate` return the existing
   `witness enumeration incomplete` reasoning error whenever any evaluated candidate

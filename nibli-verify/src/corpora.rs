@@ -1,15 +1,12 @@
-//! The shipped case-study corpora, embedded so the differential gate can check their mappable
-//! sub-slice. These are the same repo-root files the `gdpr_*` / `ddi_*` / `utopia_*`
-//! nibli-engine tests `include_str!`, so the gate tracks exactly what ships. KR corpora
-//! since THE DROP (the former `.lojban` sources retired with the Lojban front-end;
-//! per-line equality of the twins was CI-pinned by the corpora-twins gate up to the
-//! switchover).
+//! Shipped scoped corpora and isolated historical controls for independent
+//! verification of their supported classical sub-slices. The corrected defaults
+//! also have native scenario matrices; legacy inputs retain their original pins.
 
-/// EU GDPR compliance knowledge base (`gdpr.nibli`).
+/// Scoped GDPR prerequisite teaching model (`gdpr.nibli`).
 #[cfg(feature = "repo-corpora")]
 pub const GDPR: &str = include_str!("../../gdpr.nibli");
 
-/// Drug-drug interaction safety knowledge base (`drug-interactions.nibli`).
+/// Patient-and-episode interaction-review teaching model (`drug-interactions.nibli`).
 #[cfg(feature = "repo-corpora")]
 pub const DDI: &str = include_str!("../../drug-interactions.nibli");
 
@@ -47,3 +44,9 @@ mod tests {
         }
     }
 }
+
+/// Historical defect controls remain separately available to oracle regressions.
+#[cfg(feature = "repo-corpora")]
+pub const LEGACY_GDPR: &str = include_str!("../../examples/case-studies/legacy/gdpr-proxy.nibli");
+#[cfg(feature = "repo-corpora")]
+pub const LEGACY_DDI: &str = include_str!("../../examples/case-studies/legacy/drug-proxy.nibli");

@@ -64,11 +64,6 @@ pub(crate) fn is_event_skolem_arg(s: &str) -> bool {
 /// overlay first (`varfarin` -> "warfarin") — `None` overlay = verbatim.
 pub(crate) fn humanize_skolem(s: &str) -> String {
     if let Some(rest) = s.strip_prefix("sk_") {
-        // An event the active trace describes reads as its content ("protest"), never as
-        // the witness' number.
-        if let Some(content) = crate::abstraction::content_for(s) {
-            return content;
-        }
         // Bare `sk_N`.
         if !rest.is_empty() && rest.bytes().all(|b| b.is_ascii_digit()) {
             return format!("#{rest}");
@@ -143,11 +138,11 @@ mod tests {
 
     #[test]
     fn overlay_name_override_then_restores() {
-        use crate::corpus_overlay::DRUG_INTERACTIONS_OVERLAY;
+        use crate::corpus_overlay::LEGACY_DRUG_INTERACTIONS_OVERLAY;
         use crate::overlay::with_overlay;
         // Fallback: the raw cmevla passes through verbatim.
         assert_eq!(humanize_skolem("varfarin"), "varfarin");
-        with_overlay(Some(&DRUG_INTERACTIONS_OVERLAY), || {
+        with_overlay(Some(&LEGACY_DRUG_INTERACTIONS_OVERLAY), || {
             assert_eq!(humanize_skolem("varfarin"), "warfarin");
             assert_eq!(humanize_skolem("siptucin"), "CYP2C9");
             // Non-name tokens still pass through; Skolems still humanize.

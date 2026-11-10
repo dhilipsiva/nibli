@@ -18,6 +18,7 @@ mod corpus_overlay;
 mod fact;
 mod frame;
 mod logic;
+mod opaque;
 mod overlay;
 mod proof;
 mod register;
@@ -31,7 +32,10 @@ pub use collapse::{
     collapse_proof, collapse_proof_with, render_collapsed_text, render_collapsed_text_with,
     render_collapsed_text_with_source, render_node_text,
 };
-pub use corpus_overlay::{DRUG_INTERACTIONS_OVERLAY, GDPR_OVERLAY, UTOPIA_OVERLAY};
+pub use corpus_overlay::{
+    DRUG_INTERACTIONS_OVERLAY, GDPR_OVERLAY, LEGACY_DRUG_INTERACTIONS_OVERLAY, LEGACY_GDPR_OVERLAY,
+    UTOPIA_OVERLAY,
+};
 pub use fact::humanize_fact;
 pub use logic::{render_logic_buffer, render_logic_buffer_with_source, render_logic_tree};
 pub use overlay::DomainGloss;
@@ -439,14 +443,13 @@ mod tests {
 
         // The deontic collapse names the party, not the event scaffold.
         let duty = render("obliged(every data governs, event { message() }).");
-        assert_eq!(
-            duty,
-            "For every X, if X governs and X is data, then X is obligated to notify.",
-            "{}",
-            render_logic_tree(
-                &compile_kr("obliged(every data governs, event { message() })."),
-                Register::Spec
-            )
+        assert!(duty.starts_with("Structural reading"), "{duty}");
+        assert!(duty.contains("governs_x1("), "{duty}");
+        assert!(duty.contains("data_x1("), "{duty}");
+        assert!(duty.contains("obliged_x1("), "{duty}");
+        assert!(
+            !duty.contains("X is data"),
+            "a modifier is not an independent type: {duty}"
         );
     }
 
@@ -481,7 +484,14 @@ mod tests {
         let domain = crate::overlay::with_overlay(Some(&UTOPIA_OVERLAY), || {
             render("building(HighSec, Lalo).")
         });
-        assert_eq!(domain, "Lalo is placed at Highsec.");
+        assert_eq!(
+            domain, "Highsec is a building for Lalo.",
+            "Spec must ignore active domain overlays"
+        );
+        let fluent = crate::overlay::with_overlay(Some(&UTOPIA_OVERLAY), || {
+            render_logic_buffer(&compile_kr("building(HighSec, Lalo)."), Register::Fluent)
+        });
+        assert_eq!(fluent, "Lalo is placed at Highsec.");
         assert_eq!(render("building(Adam)."), "Adam is a building.");
     }
 
@@ -636,3 +646,6 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod review_regressions;

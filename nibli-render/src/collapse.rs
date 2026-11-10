@@ -1,14 +1,14 @@
 //! Macro-logical DAG collapse: a render-only transform from the verbose
 //! Neo-Davidsonian [`ProofTrace`] into a compressed [`RenderedNode`] tree of
-//! surface-level inference steps ("adam is an animal — by the rule: every dog is
-//! an animal — └ adam is a dog (given)"), with the low-level role/event
+//! surface-level inference steps ("adam is an animal — recorded source #1/0:
+//! animal(every dog). — └ adam is a dog (given)"), with the low-level role/event
 //! scaffolding folded into expandable `proof-role-detail` clusters.
 //!
 //! DRY by construction: it emits the SAME [`RenderedNode`] the verbose renderer
 //! and the Dioxus UI already consume (so the UI reuses `RenderedNodeView`
 //! unchanged and only a tiny [`render_node_text`] is added for the text
 //! surfaces), and it reuses the `[Why]`-summary regroup + English helpers
-//! ([`regroup_event_leaves`], [`render_group`], [`rule_to_english`]) — one place
+//! ([`regroup_event_leaves`], [`render_group`]) — one place
 //! that turns role predicates back into surface facts.
 //!
 //! The transform is TOTAL: anything it cannot cleanly collapse degrades to the
@@ -18,17 +18,16 @@
 use std::collections::BTreeMap;
 
 use nibli_protocol::{ProofRule, ProofTrace};
+use nibli_types::logic::RuleCitation;
 
 use crate::fact::humanize_fact;
 use crate::overlay::DomainGloss;
-use crate::proof::{
-    CWA_FALSE_NOTE, NAF_NOTE, RenderedNode, build_node, collapse_rule_roles, humanize_rule_label,
-};
+use crate::proof::{CWA_FALSE_NOTE, NAF_NOTE, RenderedNode, build_node, build_structural_node};
 use crate::register::Register;
 use crate::summary::{
-    LeafKey, fact_to_english, parse_raw_fact, regroup_event_leaves, render_group, rule_to_english,
+    LeafKey, fact_to_english, parse_raw_fact, prefix_wrapper, regroup_event_leaves, render_group,
 };
-use crate::term::{is_event_skolem_arg, role_base, role_index};
+use crate::term::{humanize_skolem, is_event_skolem_arg, role_base, role_index};
 
 /// Recursion backstop (proofs are depth-limited at ~10; this only guards a
 /// malformed trace from unbounded recursion).
@@ -84,7 +83,7 @@ pub(crate) struct MacroStep {
 #[derive(Clone)]
 pub(crate) enum MacroKind {
     Given,
-    /// Derived by a rule; the string is the (relation-only) rule label.
+    /// Derived by a rule; the string records exact source citations or raw facts.
     Derived(String),
     /// Minted by the optional legacy existential-import profile; the string is
     /// the rule label that licensed the presupposition.
@@ -99,7 +98,7 @@ pub(crate) enum MacroKind {
     /// A back-reference to a statement already shown (deduped).
     Reference,
     /// A shape the collapse could not phrase: keep the verbose rendering verbatim
-    /// (never fabricate English). The narrative skips these.
+    /// (never fabricate English). The narrative retains the full structural detail.
     Raw(Box<RenderedNode>),
 }
 
@@ -111,6 +110,9 @@ pub(crate) fn collapse_to_macrosteps(trace: &ProofTrace, register: Register) -> 
     }
     let mut seen: Vec<String> = Vec::new();
     let leaves = collect_goal_leaves(trace, trace.root, 0);
+    if needs_structural_proof(trace, &leaves) {
+        return vec![raw_step(build_structural_node(trace, trace.root))];
+    }
     collapse_goal_steps(trace, &leaves, register, &mut seen, 0)
 }
 
@@ -330,23 +332,14 @@ fn collapse_goal_steps(
     seen: &mut Vec<String>,
     depth: usize,
 ) -> Vec<MacroStep> {
-    if depth > MAX_DEPTH {
+    if depth > MAX_DEPTH || needs_structural_proof(trace, goals) {
         return goals
             .iter()
-            .map(|&g| raw_step(build_node(trace, g)))
+            .map(|&g| raw_step(build_structural_node(trace, g)))
             .collect();
     }
-    // An event's marker and type predicate are plumbing once the taker reads its content;
-    // they are folded away here rather than shown as derived lines of their own.
-    let kept: Vec<u32> = goals
-        .iter()
-        .copied()
-        .filter(|&g| {
-            !goal_fact(&trace.steps[g as usize].rule)
-                .is_some_and(|f| crate::abstraction::is_event_plumbing(&f))
-        })
-        .collect();
-    let goals: &[u32] = if kept.is_empty() { goals } else { &kept };
+    // Retain marker/type evidence until event_packages has checked the complete
+    // reachable package, its holder, and its recorded provenance.
     let mut order: Vec<LeafKey> = Vec::new();
     let mut buckets: BTreeMap<LeafKey, Vec<u32>> = BTreeMap::new();
     let mut singles: Vec<u32> = Vec::new();
@@ -360,6 +353,20 @@ fn collapse_goal_steps(
             singles.push(g);
         }
     }
+    // A proven event marker and its type describe the filler of one event-taking
+    // role, not two independent claims. Move their proof steps into that role's
+    // group only when every part of the package is present and unambiguous.
+    let packages = event_packages(trace, goals, &buckets, register);
+    let mut statements = BTreeMap::new();
+    for package in packages {
+        for scaffold in package.scaffolds {
+            if let Some(steps) = buckets.remove(&scaffold) {
+                buckets.get_mut(&package.consumer).unwrap().extend(steps);
+            }
+            order.retain(|key| key != &scaffold);
+        }
+        statements.insert(package.consumer, package.statement);
+    }
     let mut out = Vec::new();
     for key in &order {
         out.push(build_macro_step(
@@ -368,12 +375,157 @@ fn collapse_goal_steps(
             register,
             seen,
             depth,
+            statements.get(key).cloned(),
         ));
     }
     for &g in &singles {
         out.push(build_single_step(trace, g, register, seen, depth));
     }
     out
+}
+
+struct EventPackage {
+    consumer: LeafKey,
+    scaffolds: Vec<LeafKey>,
+    statement: String,
+}
+
+fn event_packages(
+    trace: &ProofTrace,
+    goals: &[u32],
+    buckets: &BTreeMap<LeafKey, Vec<u32>>,
+    register: Register,
+) -> Vec<EventPackage> {
+    let mut packages = Vec::new();
+    for marker_key in buckets
+        .keys()
+        .filter(|(_, rel, _)| crate::is_internal_relation(rel))
+    {
+        let (wrapper, marker, referent) = marker_key;
+        let Some(content) = crate::logic::proof_event_content(marker, register) else {
+            continue;
+        };
+        let event_key = (wrapper.clone(), "event".to_owned(), referent.clone());
+        if !buckets.contains_key(&event_key)
+            || buckets
+                .keys()
+                .filter(|(w, r, e)| w == wrapper && e == referent && crate::is_internal_relation(r))
+                .count()
+                != 1
+        {
+            continue;
+        }
+        let mut consumers = Vec::new();
+        for (key, steps) in buckets {
+            let Some(taker) = crate::takers::event_taker(&key.1) else {
+                continue;
+            };
+            if &key.0 != wrapper {
+                continue;
+            }
+            let facts: Vec<_> = steps
+                .iter()
+                .filter_map(|&g| goal_fact(&trace.steps[g as usize].rule))
+                .collect();
+            let mut raw_places = BTreeMap::new();
+            let ambiguous = facts
+                .iter()
+                .filter_map(|f| parse_raw_fact(f))
+                .any(|(_, rel, args)| {
+                    let Some(place) = role_index(&rel) else {
+                        return false;
+                    };
+                    let [_, value] = args.as_slice() else {
+                        return true;
+                    };
+                    raw_places
+                        .insert(place, value.clone())
+                        .is_some_and(|previous| previous != *value)
+                });
+            if ambiguous || raw_places.get(&taker.event_place) != Some(referent) {
+                continue;
+            }
+            let (groups, flat) = regroup_event_leaves(&facts, register);
+            let Some((_, places)) = groups.first() else {
+                continue;
+            };
+            if groups.len() != 1
+                || !flat.is_empty()
+                || places.get(&taker.event_place) != Some(&humanize_skolem(referent))
+                || places.iter().any(|(p, value)| {
+                    *p != taker.event_place && *p != taker.party_place && value != "_"
+                })
+            {
+                continue;
+            }
+            let Some(party) = places
+                .get(&taker.party_place)
+                .filter(|p| !p.starts_with('#') && p.as_str() != "_")
+            else {
+                continue;
+            };
+            consumers.push((
+                key.clone(),
+                prefix_wrapper(
+                    wrapper.as_deref(),
+                    format!("{party} {} {content}", taker.phrase),
+                ),
+            ));
+        }
+        let [(consumer, statement)] = consumers.as_slice() else {
+            continue;
+        };
+        // Do not hide a marker participating in any other surface relation.
+        // The exact generated term (including its dependencies) is the join key.
+        let unrelated_use = goals.iter().any(|&g| {
+            ![marker_key, &event_key, consumer]
+                .iter()
+                .any(|key| buckets[*key].contains(&g))
+                && {
+                    goal_fact(&trace.steps[g as usize].rule)
+                        .and_then(|f| parse_raw_fact(&f))
+                        .is_some_and(|(_, _, args)| args.contains(referent))
+                }
+        });
+        if unrelated_use
+            || [marker_key, &event_key, consumer].iter().any(|key| {
+                buckets[*key]
+                    .iter()
+                    .any(|&g| !trace.steps[g as usize].holds)
+            })
+        {
+            continue;
+        }
+        packages.push(EventPackage {
+            consumer: consumer.clone(),
+            scaffolds: vec![marker_key.clone(), event_key],
+            statement: statement.clone(),
+        });
+    }
+    packages
+}
+
+/// A role without its own type anchor is part of a shared event (or an
+/// incomplete frame). Rendering it as an independent predicate invents a claim.
+fn needs_structural_proof(trace: &ProofTrace, goals: &[u32]) -> bool {
+    if goals.iter().any(|&g| trace.steps.get(g as usize).is_none()) {
+        return true;
+    }
+    let facts: Vec<_> = goals
+        .iter()
+        .filter_map(|&g| goal_fact(&trace.steps[g as usize].rule).and_then(|f| parse_raw_fact(&f)))
+        .collect();
+    facts.iter().any(|(wrapper, relation, args)| {
+        let Some(base) = role_base(relation) else {
+            return false;
+        };
+        args.first().is_some_and(|event| {
+            is_event_skolem_arg(event)
+                && !facts
+                    .iter()
+                    .any(|(w, r, a)| w == wrapper && r == base && a == std::slice::from_ref(event))
+        })
+    })
 }
 
 /// A leaf macro-step (no premises).
@@ -451,22 +603,30 @@ enum GroupKind {
 }
 
 fn classify_group(trace: &ProofTrace, steps: &[u32]) -> GroupKind {
-    let mut derived: Option<String> = None;
+    let mut derived = false;
+    let mut citations = Vec::new();
+    let mut derived_facts = Vec::new();
     let mut presupposed: Option<String> = None;
     let mut computed_method: Option<String> = None;
     let (mut given, mut checked, mut notfound, mut nonref) = (false, false, false, false);
     for &g in steps {
         match &trace.steps[g as usize].rule {
-            ProofRule::Derived { label, .. } => {
-                derived = Some(label.clone());
+            ProofRule::Derived { fact, sources, .. } => {
+                derived = true;
+                derived_facts.push(fact.clone());
+                for citation in sources {
+                    if !citations.contains(citation) {
+                        citations.push(citation.clone());
+                    }
+                }
                 nonref = true;
             }
             ProofRule::Asserted { .. } => {
                 given = true;
                 nonref = true;
             }
-            ProofRule::Presupposed { label, .. } => {
-                presupposed = Some(label.clone());
+            ProofRule::Presupposed { fact, sources, .. } => {
+                presupposed = Some(citation_caption(sources, std::slice::from_ref(fact)));
                 nonref = true;
             }
             ProofRule::ComputeCheck { method, .. } => {
@@ -487,8 +647,8 @@ fn classify_group(trace: &ProofTrace, steps: &[u32]) -> GroupKind {
             _ => nonref = true,
         }
     }
-    if let Some(l) = derived {
-        GroupKind::Derived(l)
+    if derived {
+        GroupKind::Derived(citation_caption(&citations, &derived_facts))
     } else if let Some(l) = presupposed {
         GroupKind::Presupposed(l)
     } else if given {
@@ -513,13 +673,14 @@ fn build_macro_step(
     register: Register,
     seen: &mut Vec<String>,
     depth: usize,
+    statement_override: Option<String>,
 ) -> MacroStep {
     let facts: Vec<String> = steps
         .iter()
         .filter_map(|&g| goal_fact(&trace.steps[g as usize].rule))
         .collect();
     let holds = steps.iter().all(|&g| trace.steps[g as usize].holds);
-    let Some(statement) = surface_statement(&facts, register) else {
+    let Some(statement) = statement_override.or_else(|| surface_statement(&facts, register)) else {
         return raw_step(verbose_group(trace, steps, holds)); // degrade, never fabricate
     };
     if seen.contains(&statement) {
@@ -625,15 +786,20 @@ fn build_single_step(
             holds,
             None,
         ),
-        ProofRule::Presupposed { label, fact, .. } => {
+        ProofRule::Presupposed { sources, fact, .. } => {
             let stmt = flat_statement(fact, register);
             if seen.contains(&stmt) {
                 return leaf_step(stmt, MacroKind::Reference, true, None);
             }
             seen.push(stmt.clone());
-            leaf_step(stmt, MacroKind::Presupposed(label.clone()), holds, None)
+            leaf_step(
+                stmt,
+                MacroKind::Presupposed(citation_caption(sources, std::slice::from_ref(fact))),
+                holds,
+                None,
+            )
         }
-        ProofRule::Derived { label, fact, .. } => {
+        ProofRule::Derived { sources, fact, .. } => {
             let stmt = flat_statement(fact, register);
             if seen.contains(&stmt) {
                 return leaf_step(stmt, MacroKind::Reference, true, None);
@@ -646,7 +812,7 @@ fn build_single_step(
             let premises = collapse_goal_steps(trace, &cond_leaves, register, seen, depth + 1);
             MacroStep {
                 statement: stmt,
-                kind: MacroKind::Derived(label.clone()),
+                kind: MacroKind::Derived(citation_caption(sources, std::slice::from_ref(fact))),
                 holds,
                 premises,
                 role_detail: None,
@@ -654,7 +820,7 @@ fn build_single_step(
         }
         // Negation / ForallCounterexample / CountResult / … : keep the honest
         // functional rendering rather than invent English.
-        _ => raw_step(build_node(trace, g)),
+        _ => raw_step(build_structural_node(trace, g)),
     }
 }
 
@@ -676,21 +842,30 @@ fn flat_statement(fact: &str, register: Register) -> String {
     fact_to_english(fact, register).unwrap_or_else(|| humanize_fact(fact))
 }
 
-/// "by the rule: every dog is an animal" (or the functional label when the rule
-/// has no clean English form, e.g. an abstraction conclusion).
-fn rule_justification(label: &str) -> String {
-    match rule_to_english(&collapse_rule_roles(label)) {
-        Some(e) => format!("by the rule: {e}"),
-        None => format!("by rule: {}", humanize_rule_label(label)),
+/// Source labels are recorded provenance, not reconstructed universal claims.
+/// Raw-buffer clients can supply arbitrary labels, so name them as recorded.
+fn citation_caption(sources: &[RuleCitation], facts: &[String]) -> String {
+    if sources.is_empty() {
+        return format!("uncited derivation of {}", facts.join(" ∧ "));
     }
+    sources
+        .iter()
+        .map(|s| {
+            format!(
+                "recorded source #{}/{}: {}",
+                s.assertion_id, s.rule_ordinal, s.assertion_label
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("; ")
 }
 
-fn presupposition_justification(label: &str) -> String {
-    let humanized = humanize_rule_label(label);
-    match rule_to_english(&collapse_rule_roles(label)) {
-        Some(rule) => format!("presupposed by legacy existential import: {rule}"),
-        None => format!("presupposed by legacy existential import: {humanized}"),
-    }
+fn rule_justification(caption: &str) -> String {
+    format!("by {caption}")
+}
+
+fn presupposition_justification(caption: &str) -> String {
+    format!("presupposed by legacy existential import; {caption}")
 }
 
 fn macro_leaf(
@@ -752,7 +927,7 @@ fn role_detail(trace: &ProofTrace, steps: &[u32]) -> Option<RenderedNode> {
 /// phrase as a surface clause.
 fn verbose_group(trace: &ProofTrace, steps: &[u32], holds: bool) -> RenderedNode {
     if steps.len() == 1 {
-        return build_node(trace, steps[0]);
+        return build_structural_node(trace, steps[0]);
     }
     RenderedNode {
         icon: "∧",
@@ -761,7 +936,10 @@ fn verbose_group(trace: &ProofTrace, steps: &[u32], holds: bool) -> RenderedNode
         holds,
         is_leaf: false,
         inline: false,
-        children: steps.iter().map(|&g| build_node(trace, g)).collect(),
+        children: steps
+            .iter()
+            .map(|&g| build_structural_node(trace, g))
+            .collect(),
     }
 }
 
@@ -848,7 +1026,7 @@ mod tests {
         assert!(node.holds);
         assert!(node.label.contains("animal"), "label: {}", node.label);
         assert!(
-            node.label.contains("by the rule") && node.label.contains("dog"),
+            node.label.contains("uncited derivation of") && node.label.contains("animal"),
             "label: {}",
             node.label
         );
@@ -877,7 +1055,7 @@ mod tests {
         assert!(!text.contains("(see above)"), "text:\n{text}");
         // Two macro lines: the conclusion, then the given premise.
         assert!(text.contains("animal"), "text:\n{text}");
-        assert!(text.contains("by the rule"), "text:\n{text}");
+        assert!(text.contains("uncited derivation of"), "text:\n{text}");
         assert!(text.contains("dog"), "text:\n{text}");
         assert!(text.contains("given"), "text:\n{text}");
         assert_eq!(text.lines().count(), 2, "text:\n{text}");

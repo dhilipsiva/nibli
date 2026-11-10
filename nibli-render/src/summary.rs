@@ -17,18 +17,12 @@ use std::collections::BTreeMap;
 
 use nibli_protocol::{ProofRule, ProofTrace};
 
-use crate::abstraction::{
-    content_for, content_phrase, content_relations, is_marker, is_type_predicate,
-};
 use crate::collapse::{MacroKind, MacroStep, collapse_to_macrosteps};
 use crate::fact::humanize_fact;
-use crate::frame::{
-    fill_template, frame_template, gloss_for, strip_trailing_particle, template_max_place,
-};
+use crate::frame::{fill_template, frame_template, gloss_for};
 use crate::overlay::DomainGloss;
 use crate::register::Register;
-use crate::takers::taker_of;
-use crate::term::{humanize_skolem, is_event_skolem_arg, role_base, role_index};
+use crate::term::{humanize_skolem, is_event_skolem, is_event_skolem_arg, role_base, role_index};
 
 /// The verdict class driving the `[Why]` sentence. The trace alone cannot
 /// distinguish an UNKNOWN or RESOURCE_EXCEEDED query from an ordinary FALSE
@@ -155,30 +149,18 @@ pub fn summarize_proof_with(
 /// frames. `None` when it cannot be rendered (caller falls back to functional).
 pub fn fact_to_english(raw: &str, _register: Register) -> Option<String> {
     let (wrapper, relation, args) = parse_raw_fact(raw)?;
-    let clause = if let (Some(base), Some(idx)) = (role_base(&relation), role_index(&relation)) {
-        // A single role predicate `base_xN(event, filler)` -> fill place N only.
-        if args.len() < 2 || !is_event_skolem_arg(&args[0]) {
-            return None;
-        }
-        let mut slots: Vec<Option<String>> = vec![None; idx];
-        slots[idx - 1] = filler_text(&args[1]);
-        fill_template(&frame_template(base), &slots)
-    } else if args.len() == 1 && is_event_skolem_arg(&args[0]) {
+    let clause = if role_base(&relation).is_some() {
+        // A role alone does not establish its base predicate. It might be a
+        // modifier sharing a different head's event; keep its exact atom.
+        return None;
+    } else if args.len() == 1 && is_event_skolem(&args[0]) {
         // An event-type predicate `base(event)` -> existence.
         format!("there is {}", a_noun(&relation))
     } else {
         // A flat fact -> fill the frame with all args directly; an unspecified place (`_`)
         // stays unfilled, so a trailing one is elided and an interior one reads "something".
         let slots: Vec<Option<String>> = args.iter().map(|a| filler_text(a)).collect();
-        let place_map: BTreeMap<usize, String> = slots
-            .iter()
-            .enumerate()
-            .filter_map(|(i, s)| s.clone().map(|s| (i + 1, s)))
-            .collect();
-        match taker_statement(&relation, &place_map) {
-            Some(s) => s,
-            None => fill_template(&frame_template(&relation), &slots),
-        }
+        fill_template(&frame_template(&relation), &slots)
     };
     if clause.trim().is_empty() {
         None
@@ -221,13 +203,15 @@ fn narrate_steps(steps: &[MacroStep], out: &mut Vec<String>) {
     for s in steps {
         collect_derived_clauses(s, out, &mut any_derived);
     }
-    if !any_derived {
-        for s in steps {
-            if matches!(s.kind, MacroKind::Given | MacroKind::Presupposed(_)) {
-                let stmt = narrative_statement(s);
-                if !stmt.is_empty() && !out.contains(&stmt) {
-                    out.push(stmt);
-                }
+    for s in steps {
+        // A raw restriction still supports a mixed natural/structural proof.
+        // Never omit it just because a neighboring conclusion has good prose.
+        if matches!(s.kind, MacroKind::Raw(_))
+            || (!any_derived && matches!(s.kind, MacroKind::Given | MacroKind::Presupposed(_)))
+        {
+            let stmt = narrative_statement(s);
+            if !stmt.is_empty() && !out.contains(&stmt) {
+                out.push(stmt);
             }
         }
     }
@@ -260,6 +244,10 @@ fn collect_derived_clauses(step: &MacroStep, out: &mut Vec<String>, any_derived:
 }
 
 fn narrative_statement(step: &MacroStep) -> String {
+    if let MacroKind::Raw(node) = &step.kind {
+        let text = crate::collapse::render_node_text(node, 0, true);
+        return format!("structural proof:\n{}", text.trim());
+    }
     let statement = step.statement.trim();
     match &step.kind {
         MacroKind::Presupposed(_) => {
@@ -391,8 +379,8 @@ fn filler_text(arg: &str) -> Option<String> {
 }
 
 /// A missing role of an event the trace otherwise describes, read as the whole event with the
-/// missing role's filler in its place: `entitled_x1(sk_10(lucy), hostwsl)` beside
-/// `entitled_x2(sk_10(lucy), <protest>)` reads "HostWsl is entitled to protest".
+/// missing role's filler in its place. Opaque event referents remain structural;
+/// only a complete, reachable proof package may substitute their content.
 fn not_found_event(trace: &ProofTrace, predicate: &str, register: Register) -> Option<String> {
     let (_, relation, args) = parse_raw_fact(predicate)?;
     let base = role_base(&relation)?;
@@ -448,14 +436,6 @@ pub(crate) fn regroup_event_leaves(
             flat.push(humanize_fact(fact));
             continue;
         };
-        // An event's marker and type predicate only carry the event; its content is read
-        // into the taker's place (`is entitled to protest`), so they are folded away.
-        if args.len() == 1
-            && content_for(&args[0]).is_some()
-            && (is_marker(&relation) || is_type_predicate(&relation))
-        {
-            continue;
-        }
         // Role predicate `base_xN(event, filler)` — the arg0 event may be a bare
         // (`sk_N`) OR a dependent (`sk_N(rex)`, a universal rule's conclusion
         // event) Skolem, hence the loose check.
@@ -506,9 +486,6 @@ pub(crate) fn render_group(
     base: &str,
     place_map: &BTreeMap<usize, String>,
 ) -> Option<String> {
-    if let Some(s) = taker_statement(base, place_map) {
-        return Some(prefix_wrapper(wrapper, s));
-    }
     let max = *place_map.keys().max()?; // empty (event-type only) -> None, skip
     // Skip a group whose SUBJECT (x1) is an internal witness Skolem (`#N`): these
     // are presupposition / existential witnesses (e.g. the witness an existential
@@ -528,178 +505,6 @@ pub(crate) fn render_group(
     } else {
         Some(prefix_wrapper(wrapper, filled))
     }
-}
-
-/// A taker whose event place holds a described event reads with the taker's own phrase
-/// ("Lucy decides to obey"), the one every rendering path shares, not its corpus frame.
-fn taker_statement(base: &str, place_map: &BTreeMap<usize, String>) -> Option<String> {
-    let taker = taker_of(base)?;
-    let content = place_map.get(&taker.event_place)?;
-    if !crate::abstraction::is_content(content) {
-        return None;
-    }
-    let party = place_map
-        .get(&taker.party_place)
-        .cloned()
-        .unwrap_or_else(|| "something".to_string());
-    Some(format!("{party} {} {content}", taker.phrase))
-}
-
-/// `dog → animal` -> "every dog is an animal"; `increases ∧ cinla ∧ chemical → dangerous`
-/// -> "every chemical that increases and is thin is in danger". When the rule's
-/// conditions carry a class restrictor ("{x1} is a &lt;noun&gt;") it heads the
-/// reading ("every &lt;noun&gt; …"); otherwise it falls back to "anything that …".
-/// Either way the bare algebra variable `X` is gone. Each side may carry several
-/// base predicates; abstraction operators (`nu`/`du'u`/…) are dropped.
-///
-/// HONEST LIMIT: the rule LABEL has lost variable identity, so the reading treats
-/// the rule as a single-variable universal. For the common case (`ro lo X cu Y`,
-/// `ganai P gi Q`) that is correct; a multi-variable prenex join is an
-/// approximation — `:proof-verbose` is the authoritative view.
-pub(crate) fn rule_to_english(label: &str) -> Option<String> {
-    let (lhs, rhs) = label.split_once(" → ")?;
-    let conds: Vec<&str> = lhs.split(" ∧ ").map(str::trim).collect();
-    let concls = conclusion_phrases(rhs);
-    if concls.is_empty() {
-        return None;
-    }
-    // A class restrictor ("{x1} is a <noun>") among the conditions heads the
-    // universal as "every <noun> that …"; the rest become subject-elided phrases.
-    let mut head: Option<String> = None;
-    let mut cond_phrases: Vec<String> = Vec::new();
-    for &c in &conds {
-        if head.is_none()
-            && let Some(noun) = class_noun(c)
-        {
-            head = Some(noun);
-            continue;
-        }
-        if let Some(p) = relation_predicate(c) {
-            cond_phrases.push(p);
-        }
-    }
-    let subject_clause = match head {
-        Some(noun) if cond_phrases.is_empty() => format!("every {noun}"),
-        Some(noun) => format!("every {noun} that {}", join_and(&cond_phrases)),
-        None if cond_phrases.is_empty() => return None,
-        None => format!("anything that {}", join_and(&cond_phrases)),
-    };
-    Some(format!("{subject_clause} {}", join_and(&concls)))
-}
-
-/// The conclusion phrases of a rule label. A conclusion that packages an event abstraction
-/// (`event ∧ __abs_… ∧ protest ∧ entitled`) reads as its taker with the content in the event's
-/// place ("is entitled to protest"): the marker, the type predicate and the content's own
-/// relations are folded into that one phrase rather than read as separate conclusions.
-fn conclusion_phrases(rhs: &str) -> Vec<String> {
-    let tokens: Vec<&str> = rhs.split(" ∧ ").map(str::trim).collect();
-    let marker = tokens.iter().copied().find(|t| is_marker(t));
-    let content = marker.and_then(content_phrase);
-    let content_bases: Vec<String> = marker.map(content_relations).unwrap_or_default();
-    let base_of = |t: &str| -> String {
-        match (role_base(t), role_index(t)) {
-            (Some(b), Some(_)) => b.to_string(),
-            _ => t.to_string(),
-        }
-    };
-    let mut out: Vec<String> = Vec::new();
-    let mut taker_done = false;
-    for t in tokens {
-        if is_marker(t) {
-            continue;
-        }
-        let base = base_of(t);
-        if let Some(c) = &content {
-            if is_type_predicate(&base) || content_bases.contains(&base) {
-                continue;
-            }
-            if let Some(taker) = taker_of(&base) {
-                if !taker_done {
-                    out.push(format!("{} {c}", taker.phrase));
-                    taker_done = true;
-                }
-                continue;
-            }
-        }
-        if let Some(p) = relation_predicate(t)
-            && !out.contains(&p)
-        {
-            out.push(p);
-        }
-    }
-    out
-}
-
-/// The subject-stripped predicate phrase of a rule clause ("increases", "permits
-/// something") — the universal reading elides the shared subject. `None` for an
-/// abstraction operator or an empty fill.
-///
-/// A `se`-converted overlay template ("{x2} is metabolized by {x1}") puts the
-/// subject in x2, so eliding x1 leaves a spurious leading "something" and a now-
-/// dangling trailing particle ("something is metabolized by"); both are trimmed so
-/// the phrase reads "is metabolized".
-fn relation_predicate(relation: &str) -> Option<String> {
-    let phrase = relation_clause(relation, "")?;
-    let phrase = phrase.trim();
-    let phrase = phrase.strip_prefix("something ").unwrap_or(phrase);
-    let phrase = strip_trailing_particle(phrase).trim();
-    if phrase.is_empty() {
-        None
-    } else {
-        Some(phrase.to_string())
-    }
-}
-
-/// If `relation`'s frame is a class predicate ("{x1} is a/an &lt;noun&gt;"),
-/// return the bare noun ("dog", "chemical"); otherwise `None`. Drives the
-/// "every &lt;noun&gt; …" universal heading.
-fn class_noun(relation: &str) -> Option<String> {
-    if is_abstraction(relation) {
-        return None;
-    }
-    let phrase = relation_predicate(relation)?;
-    for prefix in ["is a ", "is an "] {
-        if let Some(noun) = phrase.strip_prefix(prefix) {
-            return Some(noun.to_string());
-        }
-    }
-    None
-}
-
-/// Render a single rule-clause predicate with `subject` in x1 and a generic
-/// "something" in every other place of its frame, so a multi-place predicate
-/// reads "permits something" / "is a rule about something" instead of collapsing
-/// to the bare subject. Called with an empty `subject` by [`relation_predicate`]
-/// to get the subject-elided phrase for the universal "every …/anything that …"
-/// reading. `None` for an abstraction operator (no surface frame) or an empty fill.
-fn relation_clause(relation: &str, subject: &str) -> Option<String> {
-    if is_abstraction(relation) {
-        return None;
-    }
-    let tmpl = frame_template(relation);
-    let n = template_max_place(&tmpl).max(1);
-    let mut places = vec![Some("something".to_string()); n];
-    places[0] = Some(subject.to_string());
-    let filled = fill_template(&tmpl, &places);
-    let trimmed = filled.trim();
-    // Reject a degenerate fill that is just the bare subject (the relation had no
-    // usable gloss/frame text) — dropping the clause beats emitting "X".
-    if trimmed.is_empty() || trimmed == subject {
-        None
-    } else {
-        Some(trimmed.to_string())
-    }
-}
-
-/// Abstraction type predicates (the `AbstractionKind` set — `event`/`fact`/
-/// `property`/`amount`/`concept`): they wrap an event/property and have no
-/// surface place-frame, so they are skipped when glossing a rule.
-fn is_abstraction(relation: &str) -> bool {
-    crate::is_internal_relation(relation)
-        || matches!(
-            relation,
-            "event" | "fact" | "property" | "amount" | "concept"
-        )
 }
 
 /// `[Why]` supporting-clause phrasing for a computed result, distinguishing a
@@ -755,7 +560,7 @@ fn join_and(items: &[String]) -> String {
     }
 }
 
-fn prefix_wrapper(wrapper: Option<&str>, clause: String) -> String {
+pub(crate) fn prefix_wrapper(wrapper: Option<&str>, clause: String) -> String {
     match wrapper {
         Some("past") => format!("in the past, {clause}"),
         Some("present") => format!("currently, {clause}"),
@@ -857,24 +662,15 @@ mod tests {
     }
 
     #[test]
-    fn fact_to_english_role_predicate() {
-        // Robust across XML (curated "adam is a dog") and no-XML fallback
-        // ("adam is dog") builds — assert the subject + the gloss noun.
-        let dog = fact_to_english("dog_x1(sk_2, adam)", Register::Spec).unwrap();
-        assert!(dog.starts_with("adam"), "got: {dog}");
-        assert!(dog.contains("dog"), "got: {dog}");
-        let animal = fact_to_english("animal_x1(sk_3, adam)", Register::Spec).unwrap();
-        assert!(animal.starts_with("adam"), "got: {animal}");
-        assert!(animal.contains("animal"), "got: {animal}");
-    }
-
-    #[test]
-    fn fact_to_english_unknown_relation_returns_none_or_generic() {
-        // An uncurated relation falls back to its generic gloss frame, never an
-        // S-expr or panic. (`frobnicatezzzz` has no gloss -> "X is frobnicatezzzz".)
-        let out = fact_to_english("frobnicatezzzz_x1(sk_9, adam)", Register::Spec);
-        assert!(out.is_some(), "should produce a generic frame");
-        assert!(out.unwrap().starts_with("adam"));
+    fn isolated_roles_do_not_claim_independent_predicates() {
+        for fact in [
+            "dog_x1(sk_2, adam)",
+            "fast_x1(sk_3, rex)",
+            "frobnicatezzzz_x1(sk_9, adam)",
+        ] {
+            assert!(fact_to_english(fact, Register::Spec).is_none(), "{fact}");
+        }
+        assert!(fact_to_english("frobnicatezzzz(adam)", Register::Spec).is_some());
     }
 
     #[test]
@@ -941,7 +737,7 @@ mod tests {
         let s = summarize_proof(&trace, Register::Spec).unwrap();
         // The negation root is unphraseable as a derivation, so the fallback lists
         // the asserted given; the NAF caveat is still appended.
-        assert!(s.contains("adam is a dog"), "given missing: {s}");
+        assert!(s.contains("dog_x1(sk_2, adam)"), "given missing: {s}");
         assert!(
             s.contains("closed-world assumption"),
             "naf note missing: {s}"
@@ -1014,18 +810,6 @@ mod tests {
     }
 
     #[test]
-    fn rule_multi_predicate_conclusion_renders_each() {
-        // `dog → animal ∧ alive`: the universal rule reading renders both
-        // conclusion predicates, joined. (The "why" narrative shows the
-        // instantiated fact; the multi-conclusion lives in the rule justification.)
-        let e = rule_to_english("dog → animal ∧ alive").expect("renders");
-        assert!(e.starts_with("every dog"), "type head missing: {e}");
-        assert!(e.contains("animal"), "animal missing: {e}");
-        assert!(e.contains("alive"), "alive missing: {e}");
-        assert!(e.contains(" and "), "multi-conclusion not joined: {e}");
-    }
-
-    #[test]
     fn rule_skips_abstraction_operators_no_broken_output() {
         // `person → nu ∧ animal`: the abstraction `nu` is dropped (no surface
         // frame); the conclusion never leaks a raw `∧` or a dangling subject.
@@ -1047,36 +831,6 @@ mod tests {
         assert!(!s.contains('∧'), "abstraction/raw-conjunction leaked: {s}");
         assert!(!s.contains(" X and X"), "broken output: {s}");
         assert!(s.contains("animal"), "animal conclusion missing: {s}"); // nu skipped, animal kept
-    }
-
-    #[test]
-    fn rule_multi_place_predicate_keeps_its_object() {
-        // A 2-place rule (`permits → rule`) with no class restrictor reads as
-        // "anything that …"; multi-place predicates keep a generic object rather
-        // than collapsing to a dangling verb.
-        let e = rule_to_english("permits → rule").expect("multi-place rule now renders");
-        assert!(e.starts_with("anything that "), "got: {e}");
-        assert!(e.contains("permits something"), "permits truncated: {e}");
-        assert!(
-            e.contains("is a rule about something"),
-            "javni truncated: {e}"
-        );
-        // No bare variable, and no dangling multi-place verb with no object.
-        assert!(!e.contains('X'), "bare variable leaked: {e}");
-        assert!(!e.ends_with("permits"), "dangling: {e}");
-    }
-
-    #[test]
-    fn rule_single_place_reads_as_every_type() {
-        // A class restrictor heads the universal: "every dog is an animal" — no
-        // bare `X`, no spurious "something" filler.
-        assert_eq!(
-            rule_to_english("dog → animal").as_deref(),
-            Some("every dog is an animal")
-        );
-        let e = rule_to_english("dog → animal").unwrap();
-        assert!(!e.contains("something"), "1-place leaked a filler: {e}");
-        assert!(!e.contains('X'), "bare variable leaked: {e}");
     }
 
     #[test]
@@ -1135,18 +889,33 @@ mod tests {
 
     #[test]
     fn a_rule_with_an_abstraction_reads_its_taker_with_the_content() {
-        let m = crate::abstraction::tests::marker_in("entitled(Lucy, event { protest() }).");
-        let label = format!("person → event ∧ {m} ∧ protest ∧ entitled");
-        assert_eq!(
-            rule_to_english(&label).as_deref(),
-            Some("every person is entitled to protest")
-        );
-        let m = crate::abstraction::tests::marker_in("decide(Lucy, event { obey() }).");
-        let label = format!("person → event ∧ {m} ∧ obey ∧ decide");
-        assert_eq!(
-            rule_to_english(&label).as_deref(),
-            Some("every person decides to obey")
-        );
+        for (source, query, reading) in [
+            (
+                "entitled(every person, event { protest() }).",
+                "entitled(Lucy, event { protest() }).",
+                "Lucy is entitled to protest",
+            ),
+            (
+                "decide(every person, event { obey() }).",
+                "decide(Lucy, event { obey() }).",
+                "Lucy decides to obey",
+            ),
+        ] {
+            let session = nibli_session::CoreSession::new();
+            session.assert_text("person(Lucy).").unwrap();
+            session.assert_text(source).unwrap();
+            let (verdict, trace) = session.query_text_with_proof(query).unwrap();
+            assert_eq!(verdict, nibli_types::logic::QueryResult::True);
+            let why = summarize_proof(&trace, Register::Spec).unwrap();
+            assert!(why.contains(reading), "{why}");
+            let proof = crate::render_collapsed_text(&trace, Register::Spec, 0, false);
+            assert!(proof.contains(reading), "{proof}");
+            assert!(
+                proof.contains(&format!("recorded source #1/0: {source}")),
+                "{proof}"
+            );
+            assert!(!proof.contains("__abs_"), "{proof}");
+        }
     }
 
     #[test]

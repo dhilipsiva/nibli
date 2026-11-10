@@ -45,12 +45,14 @@ def exclusive_output():
         yield
 
 
-def environment(config):
+def environment(config, required_tools=("charon", "aeneas")):
     """Reject ambient/mismatched tools instead of attributing them to our pins."""
     lock = json.loads(CONFIG.with_name("flake.lock").read_text())["nodes"]
     for tool in ("charon", "aeneas"):
         if lock[tool]["locked"]["rev"] != config[f"{tool}_revision"]:
             raise RuntimeError(f"{tool} revision differs between extraction.toml and flake.lock")
+        if tool not in required_tools:
+            continue
         expected = os.environ.get(f"NIBLI_{tool.upper()}_BIN")
         actual = shutil.which(tool)
         if not expected or not actual or os.path.realpath(actual) != os.path.realpath(expected):
@@ -159,11 +161,12 @@ def diagnostics(log):
     return match.group(0).strip() if match else None
 
 
-def extract(probe, config, env, timeout):
+def extract_llbc(probe, config, env, timeout, directory=None):
+    """Extract structure only, independently of any proof backend."""
     module = probe.get("lean_module", "Input")
     if not re.fullmatch(r"[A-Z][A-Za-z0-9]*", module):
         raise ValueError("Lean module must be a single capitalized identifier")
-    directory = OUTPUT / "probes" / probe["name"]
+    directory = directory or OUTPUT / "probes" / probe["name"]
     # Only remove this probe's generated output. Failed runs cannot reuse stale
     # successful files; no checked-in proof or source is an extraction target.
     if directory.exists():
@@ -197,6 +200,18 @@ def extract(probe, config, env, timeout):
     result["llbc_sha256"] = hashlib.sha256(llbc.read_bytes()).hexdigest()
     result["llbc_file"] = str(llbc.relative_to(ROOT))
     result["lean_module"] = module
+    result["status"] = "extracted"
+    return result
+
+
+def extract(probe, config, env, timeout):
+    result = extract_llbc(probe, config, env, timeout)
+    if result["status"] != "extracted":
+        return result
+    result["status"] = "blocked"
+    module = result["lean_module"]
+    llbc = ROOT / result["llbc_file"]
+    directory = llbc.parent
     # With split files Aeneas names imports after the LLBC file. Distinct
     # modules let component proofs coexist in one Lake project.
     lean = directory / "lean" / module

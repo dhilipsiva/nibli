@@ -80,6 +80,8 @@ All commands must run inside the Nix dev shell. Use `just` as the primary task r
 | `just fuzz-ci [SECS]` | Unattended fuzz gate: `fuzz-seed` + all three targets × SECS (default 120) each; non-zero on crash/OOM/leak. Runs as a parallel `fuzz` job in the GitHub workflow. |
 | `just mutants [JOBS]` | Mutation-testing gate over the soundness paths (scope + per-mutant test set in `.cargo/mutants.toml`: nibli-reason/nibli-semantics/nibli-engine/nibli-kr suites per mutant — nibli-kr carries the shape_tests kill power). The recipe caps each process at 12 GiB virtual (`ulimit -v`) so a runaway-allocation mutant dies alone as a CATCH instead of OOMing the box; JOBS defaults to 3; raise it on a machine with more RAM. Diffs survivors against `mutants-baseline.txt` (line:col-stripped): fails on any NEW survivor, prompts a shrink for killed ones. On-demand (~3 h full sweep of 1592 mutants at -j3), not in the per-push gate. Baseline RE-CUT **2026-08-17** from ONE COMPLETE run (a stitched union of an interrupted sweep plus a scoped gap-closing run was tried first and was WRONG — it recorded 13 mutants as caught that a full run found missed; a baseline is a claim about a whole sweep and must come from one), 241 normalized survivors, 11 KILLED by new tests (three real soundness gaps: a constant in a rule body had stopped filtering the semi-naive join; `~($a = $b)` had stopped restricting; and collapsing `RuleIdentityNormalizer`'s alpha-renaming dropped a genuinely different rule as a duplicate), 247 baselined with per-category reasons in the file's own header. Survivors kept were reproduced BY HAND and, where the argument was "unreachable", the surviving face was instrumented with a panic and the suite re-run — assertion is not evidence, and one face filed that way turned out to be REACHED. **Scoping gotcha:** `cargo mutants -f <path>` is IGNORED when `examine_globs` is set (the config wins); edit `examine_globs` temporarily instead, and check the "Found N mutants to test" line before walking away. Between re-cuts, verify soundness-path changes with `cargo mutants --in-diff`. |
 
+The `fuzz_query` assertion/query pair has a 100 ms cooperative deadline through the engine's host cancellation API, so expensive quantified seeds exercise cancellation instead of unbounded domain enumeration. Completed inputs disconnect and join their watchdog immediately. This is a fuzz-host budget; native engine defaults are unchanged, and crashes/OOMs still fail the gate.
+
 **Important:**
 - The component's WIT exports, whose symbol names carry the package's `@version`, are compiled only for wasm32, so a native `cargo test` links for every crate (`cargo test --workspace --no-run` passes; before 2026-10-22 the `@` symbols broke the native linker and `--lib` was required). The recipes still scope their runs (thread counts, oracles).
 - `ci` is the fast native gate (no WASM build). The WASM component + nibli-host fuel/memory/trap-recovery behavior is gated by `ci-wasm` (the six smokes); run `ci-all` (= `ci` + `ci-wasm`) as the comprehensive pre-push gate.
@@ -270,6 +272,13 @@ When analyzing or searching the codebase:
   not verify Rust std internals, concrete allocator behavior, SipHash, or quotation
   identities. Full compiler/checker equivalence remains unproved. See
   `mdbook/src/developer/self-check.md`; keep that boundary explicit.
+  `just verify-self-check-nibli-verdicts` is a separate finite-domain pilot over
+  fresh production verdict LLBC, interpreted by independently written Nibli
+  rules. It checks all enum inputs and freshly extracted Rust mutation controls,
+  with source-bound replayable model observations. It does not replace Lean,
+  produce independent proof-kernel certificates, or verify the general evaluator.
+  Its report is `target/self-check-proof/nibli-verdicts/report.json`; the lightweight
+  runner controls also run under `just verify-self-check` and therefore `just ci`.
 
 ## Docs Conventions
 

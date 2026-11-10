@@ -1,0 +1,535 @@
+[
+  {
+    "name": "Consent is a reviewed scoped basis, not proof of erasure",
+    "steps": [
+      {
+        "op": "query",
+        "text": "permits(ControllerA, CaseA, Article6Consent).",
+        "expected": "TRUE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      },
+      {
+        "op": "query",
+        "text": "obliged(ControllerA, EraseRecords, Article17Withdrawal).",
+        "expected": "FALSE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      },
+      {
+        "op": "query",
+        "text": "entitled(Adam, EraseRecords, Article17Withdrawal).",
+        "expected": "FALSE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      },
+      {
+        "op": "query",
+        "text": "obliged(ControllerA, CheckAccuracy, Article5).",
+        "expected": "TRUE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      },
+      {
+        "op": "query",
+        "text": "obliged(RecordsA, CheckAccuracy, Article5).",
+        "expected": "FALSE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      },
+      {
+        "op": "query",
+        "text": "obliged(ControllerA, SecureRecords, Article5).",
+        "expected": "TRUE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      },
+      {
+        "op": "query",
+        "text": "obliged(ControllerA, ReviewMinimization, Article5).",
+        "expected": "TRUE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      }
+    ]
+  },
+  {
+    "name": "Missing consent is not recorded withdrawal",
+    "steps": [
+      {
+        "op": "retract",
+        "id": "valid-consent"
+      },
+      {
+        "op": "query",
+        "text": "permits(ControllerA, CaseA, Article6Consent).",
+        "expected": "FALSE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      },
+      {
+        "op": "query",
+        "text": "obliged(ControllerA, EraseRecords, Article17Withdrawal).",
+        "expected": "FALSE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      }
+    ]
+  },
+  {
+    "name": "Explicit withdrawal with completed review",
+    "steps": [
+      {
+        "op": "assert",
+        "id": "withdrawal",
+        "text": "member(CaseA, ConsentWithdrawalRecorded)."
+      },
+      {
+        "op": "query",
+        "text": "permits(ControllerA, CaseA, Article6Consent).",
+        "expected": "FALSE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      },
+      {
+        "op": "query",
+        "text": "member(CaseA, BasisReviewComplete) & member(CaseA, ExceptionReviewComplete).",
+        "expected": "TRUE",
+        "meaning": "Both required review inventories are complete."
+      },
+      {
+        "op": "query",
+        "text": "obliged(ControllerA, EraseRecords, Article17Withdrawal).",
+        "expected": "TRUE",
+        "meaning": "Controller duty under the scoped withdrawal ground."
+      },
+      {
+        "op": "query",
+        "text": "entitled(Adam, EraseRecords, Article17Withdrawal).",
+        "expected": "TRUE",
+        "meaning": "Subject right to the same action."
+      },
+      {
+        "op": "query",
+        "text": "member(EraseRecords, CompletedActions).",
+        "expected": "FALSE",
+        "meaning": "A duty does not prove performance."
+      }
+    ]
+  },
+  {
+    "name": "A contract ground survives consent withdrawal",
+    "steps": [
+      {
+        "op": "assert",
+        "id": "contract",
+        "text": "member(CaseA, ContractBasisAccepted)."
+      },
+      {
+        "op": "assert",
+        "id": "withdrawal",
+        "text": "member(CaseA, ConsentWithdrawalRecorded)."
+      },
+      {
+        "op": "query",
+        "text": "permits(ControllerA, CaseA, Article6Contract).",
+        "expected": "TRUE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      },
+      {
+        "op": "query",
+        "text": "obliged(ControllerA, EraseRecords, Article17Withdrawal).",
+        "expected": "FALSE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      },
+      {
+        "op": "retract",
+        "id": "contract"
+      },
+      {
+        "op": "query",
+        "text": "obliged(ControllerA, EraseRecords, Article17Withdrawal).",
+        "expected": "TRUE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      }
+    ]
+  },
+  {
+    "name": "Another purpose or subject cannot supply this case basis",
+    "steps": [
+      {
+        "op": "assert",
+        "id": "case-b",
+        "text": "record(CaseB, RecordsB, Bela, CaseRegister)."
+      },
+      {
+        "op": "assert",
+        "id": "controller-b",
+        "text": "governs(ControllerB, CaseB)."
+      },
+      {
+        "op": "assert",
+        "id": "purpose-b",
+        "text": "uses(CaseB, RecordsB, OtherPurpose)."
+      },
+      {
+        "op": "assert",
+        "id": "applicable-b",
+        "text": "member(CaseB, ApplicableGDPRCases)."
+      },
+      {
+        "op": "assert",
+        "id": "other-contract",
+        "text": "member(CaseB, ContractBasisAccepted)."
+      },
+      {
+        "op": "assert",
+        "id": "withdrawal",
+        "text": "member(CaseA, ConsentWithdrawalRecorded)."
+      },
+      {
+        "op": "query",
+        "text": "obliged(ControllerA, EraseRecords, Article17Withdrawal).",
+        "expected": "TRUE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      },
+      {
+        "op": "query",
+        "text": "permits(ControllerA, CaseA, Article6Contract).",
+        "expected": "FALSE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      },
+      {
+        "op": "query",
+        "text": "permits(ControllerB, CaseB, Article6Contract).",
+        "expected": "TRUE",
+        "meaning": "Source-bound case and actor isolation."
+      },
+      {
+        "op": "query",
+        "text": "permits(ControllerA, CaseB, Article6Contract).",
+        "expected": "FALSE",
+        "meaning": "Source-bound case and actor isolation."
+      },
+      {
+        "op": "query",
+        "text": "permits(ControllerB, CaseA, Article6Contract).",
+        "expected": "FALSE",
+        "meaning": "Source-bound case and actor isolation."
+      }
+    ]
+  },
+  {
+    "name": "Applicable exception blocks this erasure ground",
+    "steps": [
+      {
+        "op": "assert",
+        "id": "withdrawal",
+        "text": "member(CaseA, ConsentWithdrawalRecorded)."
+      },
+      {
+        "op": "assert",
+        "id": "exception",
+        "text": "member(CaseA, ErasureExceptionApplies)."
+      },
+      {
+        "op": "query",
+        "text": "obliged(ControllerA, EraseRecords, Article17Withdrawal).",
+        "expected": "FALSE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      }
+    ]
+  },
+  {
+    "name": "Missing basis review is an incomplete workflow",
+    "steps": [
+      {
+        "op": "assert",
+        "id": "withdrawal",
+        "text": "member(CaseA, ConsentWithdrawalRecorded)."
+      },
+      {
+        "op": "retract",
+        "id": "basis-review"
+      },
+      {
+        "op": "query",
+        "text": "member(CaseA, BasisReviewComplete) & member(CaseA, ExceptionReviewComplete).",
+        "expected": "FALSE",
+        "meaning": "Review incomplete; do not present a legal denial."
+      },
+      {
+        "op": "query",
+        "text": "obliged(ControllerA, EraseRecords, Article17Withdrawal).",
+        "expected": "FALSE",
+        "meaning": "No duty derived because a review prerequisite is missing."
+      }
+    ]
+  },
+  {
+    "name": "Missing exception review is an incomplete workflow",
+    "steps": [
+      {
+        "op": "assert",
+        "id": "withdrawal",
+        "text": "member(CaseA, ConsentWithdrawalRecorded)."
+      },
+      {
+        "op": "retract",
+        "id": "exception-review"
+      },
+      {
+        "op": "query",
+        "text": "member(CaseA, BasisReviewComplete) & member(CaseA, ExceptionReviewComplete).",
+        "expected": "FALSE",
+        "meaning": "Review incomplete; do not present a legal denial."
+      },
+      {
+        "op": "query",
+        "text": "obliged(ControllerA, EraseRecords, Article17Withdrawal).",
+        "expected": "FALSE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      }
+    ]
+  },
+  {
+    "name": "Independent basis records survive one withdrawal",
+    "steps": [
+      {
+        "op": "assert",
+        "id": "withdrawal",
+        "text": "member(CaseA, ConsentWithdrawalRecorded)."
+      },
+      {
+        "op": "assert",
+        "id": "contract-one",
+        "text": "member(CaseA, ContractBasisAccepted)."
+      },
+      {
+        "op": "assert",
+        "id": "contract-two",
+        "text": "member(CaseA, ContractBasisAccepted)."
+      },
+      {
+        "op": "retract",
+        "id": "contract-one"
+      },
+      {
+        "op": "query",
+        "text": "obliged(ControllerA, EraseRecords, Article17Withdrawal).",
+        "expected": "FALSE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      },
+      {
+        "op": "retract",
+        "id": "contract-two"
+      },
+      {
+        "op": "query",
+        "text": "obliged(ControllerA, EraseRecords, Article17Withdrawal).",
+        "expected": "TRUE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      }
+    ]
+  },
+  {
+    "name": "Article 7 review must be present",
+    "steps": [
+      {
+        "op": "retract",
+        "id": "consent-review"
+      },
+      {
+        "op": "query",
+        "text": "permits(ControllerA, CaseA, Article6Consent).",
+        "expected": "FALSE",
+        "meaning": "Consent assessment is not inferred from a consent label."
+      }
+    ]
+  },
+  {
+    "name": "Article 6 alone is insufficient for the Article 9 check",
+    "steps": [
+      {
+        "op": "query",
+        "text": "permits(ControllerA, CaseA, Article6Consent).",
+        "expected": "TRUE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      },
+      {
+        "op": "query",
+        "text": "member(RecordsA, SpecialCategoryData).",
+        "expected": "TRUE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      },
+      {
+        "op": "query",
+        "text": "obliged(ControllerA, ReviewArticle9, Article9).",
+        "expected": "TRUE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      },
+      {
+        "op": "query",
+        "text": "permits(ControllerA, CaseA, Article9Condition).",
+        "expected": "FALSE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      },
+      {
+        "op": "assert",
+        "id": "art9-reviewed",
+        "text": "member(CaseA, Article9ReviewComplete)."
+      },
+      {
+        "op": "assert",
+        "id": "accepted-art9-condition",
+        "text": "member(CaseA, Article9ConditionAccepted)."
+      },
+      {
+        "op": "query",
+        "text": "permits(ControllerA, CaseA, Article9Condition).",
+        "expected": "TRUE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      }
+    ]
+  },
+  {
+    "name": "Access separates holder, controller and performance",
+    "steps": [
+      {
+        "op": "query",
+        "text": "entitled(Adam, ProvideAccess, Article15).",
+        "expected": "TRUE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      },
+      {
+        "op": "query",
+        "text": "obliged(ControllerA, ProvideAccess, Article15).",
+        "expected": "TRUE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      },
+      {
+        "op": "query",
+        "text": "entitled(Bela, ProvideAccess, Article15).",
+        "expected": "FALSE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      },
+      {
+        "op": "query",
+        "text": "obliged(Adam, ProvideAccess, Article15).",
+        "expected": "FALSE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      },
+      {
+        "op": "query",
+        "text": "member(ProvideAccess, CompletedActions).",
+        "expected": "FALSE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      }
+    ]
+  },
+  {
+    "name": "Notification duty needs positive reviewed risk evidence",
+    "steps": [
+      {
+        "op": "query",
+        "text": "obliged(ControllerA, NotifyAuthority, Article33).",
+        "expected": "TRUE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      },
+      {
+        "op": "retract",
+        "id": "risk-result"
+      },
+      {
+        "op": "assert",
+        "id": "unlikely-risk",
+        "text": "member(BreachA, UnlikelyRisk)."
+      },
+      {
+        "op": "query",
+        "text": "obliged(ControllerA, NotifyAuthority, Article33).",
+        "expected": "FALSE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      },
+      {
+        "op": "query",
+        "text": "member(NotifyAuthority, CompletedActions).",
+        "expected": "FALSE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      }
+    ]
+  },
+  {
+    "name": "A missing breach risk assessment stays incomplete",
+    "steps": [
+      {
+        "op": "retract",
+        "id": "risk-review"
+      },
+      {
+        "op": "query",
+        "text": "member(BreachA, RiskReviewComplete).",
+        "expected": "FALSE",
+        "meaning": "Review incomplete; absence of risk evidence is not unlikely risk."
+      },
+      {
+        "op": "query",
+        "text": "obliged(ControllerA, NotifyAuthority, Article33).",
+        "expected": "FALSE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      }
+    ]
+  },
+  {
+    "name": "Derived conclusions cannot be submitted as evidence",
+    "steps": [
+      {
+        "op": "reject",
+        "text": "obliged(ControllerA, EraseRecords, Article17Withdrawal)."
+      },
+      {
+        "op": "reject",
+        "text": "entitled(Adam, EraseRecords, Article17Withdrawal)."
+      },
+      {
+        "op": "reject",
+        "text": "permits(ControllerA, CaseA, Article6Consent)."
+      },
+      {
+        "op": "query",
+        "text": "obliged(ControllerA, EraseRecords, Article17Withdrawal).",
+        "expected": "FALSE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      }
+    ]
+  },
+  {
+    "name": "A statutory basis is not inferred from an erasure duty",
+    "steps": [
+      {
+        "op": "assert",
+        "id": "withdrawal",
+        "text": "member(CaseA, ConsentWithdrawalRecorded)."
+      },
+      {
+        "op": "query",
+        "text": "obliged(ControllerA, EraseRecords, Article17Withdrawal).",
+        "expected": "TRUE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      },
+      {
+        "op": "query",
+        "text": "permits(ControllerA, CaseA, Article6LegalObligation).",
+        "expected": "FALSE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      },
+      {
+        "op": "assert",
+        "id": "statutory-basis",
+        "text": "member(CaseA, LegalObligationBasisAccepted)."
+      },
+      {
+        "op": "query",
+        "text": "permits(ControllerA, CaseA, Article6LegalObligation).",
+        "expected": "TRUE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      },
+      {
+        "op": "query",
+        "text": "obliged(ControllerA, EraseRecords, Article17Withdrawal).",
+        "expected": "FALSE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      }
+    ]
+  }
+]

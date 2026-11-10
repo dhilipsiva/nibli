@@ -247,6 +247,8 @@ fn case_study_mappable_slices_agree_with_vampire() {
     for (label, corpus) in [
         ("gdpr", corpora::GDPR),
         ("ddi", corpora::DDI),
+        ("legacy-gdpr", corpora::LEGACY_GDPR),
+        ("legacy-ddi", corpora::LEGACY_DDI),
         ("utopia", corpora::UTOPIA),
     ] {
         let report = run_corpus_slice(label, corpus, &cfg);

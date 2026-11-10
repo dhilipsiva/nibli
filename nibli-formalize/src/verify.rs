@@ -77,31 +77,84 @@ pub fn judge_prompt(source: &str, back: &[(String, String)]) -> String {
     p
 }
 
-/// Read the validator's verdict. `None` = match (proceed); `Some(issues)` =
-/// mismatch with the verifier's discrepancy list. FAIL-OPEN: a reply that
-/// doesn't follow the format is treated as a match — the verification is
-/// best-effort advisory and must never block a gate-clean translation on a
-/// malformed judge reply.
-pub fn parse_verdict(reply: &str) -> Option<String> {
+/// Advisory meaning check, separate from deterministic validity and human review.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum VerificationStatus {
+    NotRun,
+    Matched,
+    Mismatched(String),
+    Unavailable(String),
+}
+
+impl VerificationStatus {
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::NotRun => "semantic check not run",
+            Self::Matched => "advisory semantic check: matched",
+            Self::Mismatched(_) => "advisory semantic check: mismatched",
+            Self::Unavailable(_) => "advisory semantic check: unavailable or unparseable",
+        }
+    }
+}
+
+/// Strict first-line protocol. Fail-open does not mean a malformed reply matched.
+pub fn parse_review(reply: &str) -> VerificationStatus {
     let mut lines = reply.trim().lines();
-    let first = lines.next().unwrap_or("").trim().to_ascii_uppercase();
-    if first.starts_with("MISMATCH") {
-        let issues: String = lines.collect::<Vec<_>>().join("\n").trim().to_string();
-        let issues = if issues.is_empty() {
-            "the verifier judged the meaning does not match the source (no details given)"
-                .to_string()
-        } else {
-            issues
-        };
-        Some(issues)
-    } else {
-        None
+    match lines
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_ascii_uppercase()
+        .as_str()
+    {
+        "MATCH" if lines.all(|line| line.trim().is_empty()) => VerificationStatus::Matched,
+        "MISMATCH" => {
+            let issues = lines.collect::<Vec<_>>().join("\n").trim().to_string();
+            VerificationStatus::Mismatched(if issues.is_empty() {
+                "the verifier judged the meaning does not match the source (no details given)"
+                    .into()
+            } else {
+                issues
+            })
+        }
+        _ => VerificationStatus::Unavailable(
+            "the validator reply did not follow MATCH/MISMATCH format".into(),
+        ),
+    }
+}
+
+/// Compatibility helper for callers interested only in retry-triggering mismatch.
+pub fn parse_verdict(reply: &str) -> Option<String> {
+    match parse_review(reply) {
+        VerificationStatus::Mismatched(issues) => Some(issues),
+        _ => None,
     }
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
+
+    #[test]
+    fn advisory_status_never_calls_an_unparseable_reply_a_match() {
+        assert_eq!(parse_review("MATCH"), VerificationStatus::Matched);
+        assert!(matches!(
+            parse_review("MISMATCH\n1. wrong participant"),
+            VerificationStatus::Mismatched(_)
+        ));
+        for reply in [
+            "",
+            "looks fine",
+            "MATCH because it is fine",
+            "MISMATCHED",
+            "MATCH\nBut something is missing",
+        ] {
+            assert!(
+                matches!(parse_review(reply), VerificationStatus::Unavailable(_)),
+                "{reply}"
+            );
+        }
+    }
 
     #[test]
     fn back_translation_renders_each_line() {

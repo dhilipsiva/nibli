@@ -1669,3 +1669,6 @@ body {
   font-family: var(--font-mono); font-size: var(--fs-code); line-height: var(--lh-code);
   color: var(--text-body); white-space: pre; tab-size: 2;
 }
+
+/* Structural fallbacks preserve line breaks and binder indentation. */
+.back-translation__gloss, .query-gloss__text, .proof-why { white-space: pre-wrap; overflow-wrap: anywhere; }

@@ -1,0 +1,90 @@
+# Finite Rust verdict semantics. Structural inputs are supplied by the pinned
+# LLBC reader and normalizer. No native or Lean outcome is an input predicate.
+admits("rv_argument").
+admits("rv_barrier").
+admits("rv_case").
+admits("rv_construct").
+admits("rv_construct_expr").
+admits("rv_distinct").
+admits("rv_enum").
+admits("rv_equal_expr").
+admits("rv_field_value").
+admits("rv_guard_test").
+admits("rv_guard_join").
+admits("rv_guard_start").
+admits("rv_input").
+admits("rv_literal").
+admits("rv_not_expr").
+admits("rv_path").
+admits("rv_payload_expr").
+admits("rv_tag_expr").
+admits("rv_trap").
+admits("rv_type").
+derived_only("rv_eval").
+derived_only("rv_guard_ok").
+derived_only("rv_path_hit").
+derived_only("rv_return").
+derived_only("rv_barrier_hit").
+derived_only("rv_trap_hit").
+derived_only("rv_blocked").
+derived_only("rv_panicked").
+derived_only("rv_unknown").
+derived_only("rv_resource").
+derived_only("rv_neutral").
+derived_only("rv_indeterminate_case").
+derived_only("rv_expected").
+derived_only("rv_mismatch").
+derived_only("rv_conflict").
+derived_only("rv_case_ok").
+
+# Pure values and expressions; copies/moves and immutable local bindings have
+# been substituted structurally. Every field projection checks its variant.
+all $c, $r, $e, $i, $v: rv_case($c,$r) & rv_argument($e,$r,$i) & rv_input($c,$i,$v) -> rv_eval($c,$e,$v).
+all $c, $r, $e, $v: rv_case($c,$r) & rv_literal($e,$r,$v) -> rv_eval($c,$e,$v).
+all $c, $r, $e, $a, $v, $t: rv_case($c,$r) & rv_tag_expr($e,$r,$a) & rv_eval($c,$a,$v) & rv_enum($v,$t) -> rv_eval($c,$e,$t).
+all $c, $r, $e, $a, $v, $t, $p: rv_case($c,$r) & rv_payload_expr($e,$r,$a,$t) & rv_eval($c,$a,$v) & rv_field_value($v,$t,$p) -> rv_eval($c,$e,$p).
+all $c, $r, $e, $a, $v, $t, $p: rv_case($c,$r) & rv_construct_expr($e,$r,$t,$a) & rv_eval($c,$a,$p) & rv_construct($t,$p,$v) -> rv_eval($c,$e,$v).
+all $c, $r, $e, $a, $b, $v: rv_case($c,$r) & rv_equal_expr($e,$r,$a,$b) & rv_eval($c,$a,$v) & rv_eval($c,$b,$v) -> rv_eval($c,$e,"bool:true").
+all $c, $r, $e, $a, $b, $v, $w: rv_case($c,$r) & rv_equal_expr($e,$r,$a,$b) & rv_eval($c,$a,$v) & rv_eval($c,$b,$w) & rv_distinct($v,$w) -> rv_eval($c,$e,"bool:false").
+all $c, $r, $e, $a: rv_case($c,$r) & rv_not_expr($e,$r,$a) & rv_eval($c,$a,"bool:false") -> rv_eval($c,$e,"bool:true").
+all $c, $r, $e, $a: rv_case($c,$r) & rv_not_expr($e,$r,$a) & rv_eval($c,$a,"bool:true") -> rv_eval($c,$e,"bool:false").
+
+# Guard trees are checked in Nibli, including the residual of exhaustive
+# switches. An unsupported path is accepted only when it is never selected.
+all $c, $r, $g: rv_case($c,$r) & rv_guard_start($g) -> rv_guard_ok($c,$g).
+all $c, $g, $e, $v: rv_guard_test($g,$e,$v) & rv_eval($c,$e,$v) -> rv_guard_ok($c,$g).
+all $c, $g, $l, $r: rv_guard_join($g,$l,$r) & rv_guard_ok($c,$l) & rv_guard_ok($c,$r) -> rv_guard_ok($c,$g).
+all $c, $r, $p, $g, $e: rv_case($c,$r) & rv_path($p,$r,$g,$e) & rv_guard_ok($c,$g) -> rv_path_hit($c,$p).
+all $c, $r, $p, $g, $e, $v: rv_path_hit($c,$p) & rv_path($p,$r,$g,$e) & rv_eval($c,$e,$v) -> rv_return($c,$v).
+all $c, $r, $p, $g, $why: rv_case($c,$r) & rv_barrier($p,$r,$g,$why) & rv_guard_ok($c,$g) -> rv_barrier_hit($c,$p).
+all $c, $r, $p, $g, $why: rv_case($c,$r) & rv_trap($p,$r,$g,$why) & rv_guard_ok($c,$g) -> rv_trap_hit($c,$p).
+all $c, $p: rv_barrier_hit($c,$p) -> rv_blocked($c).
+all $c, $p: rv_trap_hit($c,$p) -> rv_panicked($c).
+
+# Independent contract: classical definitive results, neutral identities,
+# resource-over-unknown ordering, and left bias within an indeterminate rank.
+all $v: rv_enum($v,"QueryResult::Unknown") -> rv_unknown($v).
+all $v: rv_enum($v,"QueryResult::ResourceExceeded") -> rv_resource($v).
+all $v: rv_type($v,"QueryResult") & ~rv_enum($v,"QueryResult::False") -> rv_neutral("and",$v).
+all $v: rv_type($v,"QueryResult") & ~rv_enum($v,"QueryResult::True") -> rv_neutral("or",$v).
+all $c, $r, $a, $b: rv_case($c,$r) & rv_input($c,"0",$a) & rv_input($c,"1",$b) & rv_neutral($r,$a) & rv_neutral($r,$b) -> rv_indeterminate_case($c).
+all $c: rv_case($c,"and") & rv_input($c,"0","QueryResult::False") -> rv_expected($c,"QueryResult::False").
+all $c: rv_case($c,"and") & rv_input($c,"1","QueryResult::False") -> rv_expected($c,"QueryResult::False").
+all $c: rv_case($c,"and") & rv_input($c,"0","QueryResult::True") & rv_input($c,"1","QueryResult::True") -> rv_expected($c,"QueryResult::True").
+all $c: rv_case($c,"or") & rv_input($c,"0","QueryResult::True") -> rv_expected($c,"QueryResult::True").
+all $c: rv_case($c,"or") & rv_input($c,"1","QueryResult::True") -> rv_expected($c,"QueryResult::True").
+all $c: rv_case($c,"or") & rv_input($c,"0","QueryResult::False") & rv_input($c,"1","QueryResult::False") -> rv_expected($c,"QueryResult::False").
+all $c, $a: rv_indeterminate_case($c) & rv_input($c,"0",$a) & rv_resource($a) -> rv_expected($c,$a).
+all $c, $a, $b: rv_indeterminate_case($c) & rv_input($c,"0",$a) & rv_input($c,"1",$b) & ~rv_resource($a) & rv_resource($b) -> rv_expected($c,$b).
+all $c, $a, $b: rv_indeterminate_case($c) & rv_input($c,"0",$a) & rv_input($c,"1",$b) & rv_unknown($a) & ~rv_resource($b) -> rv_expected($c,$a).
+all $c, $a, $b: rv_indeterminate_case($c) & rv_input($c,"0",$a) & rv_input($c,"1",$b) & ~rv_resource($a) & ~rv_unknown($a) & rv_unknown($b) -> rv_expected($c,$b).
+
+# NAF negation preserves resource payloads and labels unknowns NafDependent.
+all $c: rv_case($c,"not") & rv_input($c,"0","QueryResult::True") -> rv_expected($c,"QueryResult::False").
+all $c: rv_case($c,"not") & rv_input($c,"0","QueryResult::False") -> rv_expected($c,"QueryResult::True").
+all $c, $v: rv_case($c,"not") & rv_input($c,"0",$v) & rv_unknown($v) -> rv_expected($c,"QueryResult::Unknown(UnknownReason::NafDependent)").
+all $c, $v: rv_case($c,"not") & rv_input($c,"0",$v) & rv_resource($v) -> rv_expected($c,$v).
+
+all $c, $v, $w: rv_return($c,$v) & rv_expected($c,$w) & rv_distinct($v,$w) -> rv_mismatch($c).
+all $c, $v, $w: rv_return($c,$v) & rv_return($c,$w) & rv_distinct($v,$w) -> rv_conflict($c).
+all $c, $v: rv_return($c,$v) & rv_expected($c,$v) & ~rv_mismatch($c) & ~rv_conflict($c) & ~rv_blocked($c) & ~rv_panicked($c) -> rv_case_ok($c).

@@ -1,0 +1,448 @@
+[
+  {
+    "name": "Shared pathway plus both exposures requires review",
+    "steps": [
+      {
+        "op": "query",
+        "text": "fit(AssessWarfarin, SharedMechanism, ScreeningPolicy).",
+        "expected": "TRUE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      },
+      {
+        "op": "query",
+        "text": "fit(AssessWarfarin, ConcurrentExposure, ScreeningPolicy).",
+        "expected": "TRUE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      },
+      {
+        "op": "query",
+        "text": "obliged(ReviewTeam, ReviewWarfarin, ScreeningPolicy).",
+        "expected": "TRUE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      },
+      {
+        "op": "query",
+        "text": "obliged(ReviewTeam, PriorityWarfarin, PriorityScreeningPolicy).",
+        "expected": "TRUE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      }
+    ]
+  },
+  {
+    "name": "Missing inhibitor exposure prevents the review join",
+    "steps": [
+      {
+        "op": "retract",
+        "id": "relevant-Fluconazole"
+      },
+      {
+        "op": "query",
+        "text": "fit(AssessWarfarin, ConcurrentExposure, ScreeningPolicy).",
+        "expected": "FALSE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      },
+      {
+        "op": "query",
+        "text": "obliged(ReviewTeam, ReviewWarfarin, ScreeningPolicy).",
+        "expected": "FALSE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      },
+      {
+        "op": "query",
+        "text": "fit(AssessWarfarin, SharedMechanism, ScreeningPolicy).",
+        "expected": "TRUE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      }
+    ]
+  },
+  {
+    "name": "Missing substrate exposure prevents the review join",
+    "steps": [
+      {
+        "op": "retract",
+        "id": "relevant-Warfarin"
+      },
+      {
+        "op": "query",
+        "text": "fit(AssessWarfarin, ConcurrentExposure, ScreeningPolicy).",
+        "expected": "FALSE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      },
+      {
+        "op": "query",
+        "text": "obliged(ReviewTeam, ReviewWarfarin, ScreeningPolicy).",
+        "expected": "FALSE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      }
+    ]
+  },
+  {
+    "name": "Another patient exposure cannot complete Adam exposure",
+    "steps": [
+      {
+        "op": "retract",
+        "id": "relevant-Fluconazole"
+      },
+      {
+        "op": "assert",
+        "id": "bela-inhibitor",
+        "text": "record(ExposureBela, Fluconazole, Bela, ExposureRegister)."
+      },
+      {
+        "op": "assert",
+        "id": "bela-part",
+        "text": "part(ExposureBela, EpisodeA)."
+      },
+      {
+        "op": "assert",
+        "id": "bela-relevant",
+        "text": "member(ExposureBela, RelevantExposures)."
+      },
+      {
+        "op": "query",
+        "text": "obliged(ReviewTeam, ReviewWarfarin, ScreeningPolicy).",
+        "expected": "FALSE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      },
+      {
+        "op": "assert",
+        "id": "episode-b",
+        "text": "record(EpisodeB, Bela, MedicationReview, EpisodeRegister)."
+      },
+      {
+        "op": "assert",
+        "id": "assessment-b",
+        "text": "record(AssessBela, EpisodeB, PairWarfarin, AssessmentRegister)."
+      },
+      {
+        "op": "assert",
+        "id": "action-b",
+        "text": "part(ReviewBela, AssessBela)."
+      },
+      {
+        "op": "assert",
+        "id": "action-b-kind",
+        "text": "member(ReviewBela, InteractionReviewActions)."
+      },
+      {
+        "op": "assert",
+        "id": "inhibitor-b-episode",
+        "text": "part(ExposureBela, EpisodeB)."
+      },
+      {
+        "op": "assert",
+        "id": "substrate-b",
+        "text": "record(ExposureBelaWarfarin, Warfarin, Bela, ExposureRegister)."
+      },
+      {
+        "op": "assert",
+        "id": "substrate-b-episode",
+        "text": "part(ExposureBelaWarfarin, EpisodeB)."
+      },
+      {
+        "op": "assert",
+        "id": "substrate-b-relevant",
+        "text": "member(ExposureBelaWarfarin, RelevantExposures)."
+      },
+      {
+        "op": "query",
+        "text": "obliged(ReviewTeam, ReviewBela, ScreeningPolicy).",
+        "expected": "TRUE",
+        "meaning": "The same generic rule works for another patient and episode with complete matching evidence."
+      },
+      {
+        "op": "query",
+        "text": "obliged(ReviewTeam, ReviewWarfarin, ScreeningPolicy).",
+        "expected": "FALSE",
+        "meaning": "Bela evidence still cannot complete Adam assessment."
+      }
+    ]
+  },
+  {
+    "name": "Another episode exposure cannot complete this episode",
+    "steps": [
+      {
+        "op": "retract",
+        "id": "relevant-Fluconazole"
+      },
+      {
+        "op": "assert",
+        "id": "later-inhibitor",
+        "text": "record(ExposureLater, Fluconazole, Adam, ExposureRegister)."
+      },
+      {
+        "op": "assert",
+        "id": "later-part",
+        "text": "part(ExposureLater, EpisodeB)."
+      },
+      {
+        "op": "assert",
+        "id": "later-relevant",
+        "text": "member(ExposureLater, RelevantExposures)."
+      },
+      {
+        "op": "query",
+        "text": "obliged(ReviewTeam, ReviewWarfarin, ScreeningPolicy).",
+        "expected": "FALSE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      }
+    ]
+  },
+  {
+    "name": "Corrected apixaban pathway flags co-exposure for review",
+    "steps": [
+      {
+        "op": "query",
+        "text": "fit(AssessApixaban, SharedMechanism, ScreeningPolicy).",
+        "expected": "TRUE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      },
+      {
+        "op": "query",
+        "text": "obliged(ReviewTeam, ReviewApixaban, ScreeningPolicy).",
+        "expected": "FALSE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      },
+      {
+        "op": "assert",
+        "id": "apix-exposure",
+        "text": "record(ExposureApixaban, Apixaban, Adam, ExposureRegister)."
+      },
+      {
+        "op": "assert",
+        "id": "apix-part",
+        "text": "part(ExposureApixaban, EpisodeA)."
+      },
+      {
+        "op": "assert",
+        "id": "apix-relevant",
+        "text": "member(ExposureApixaban, RelevantExposures)."
+      },
+      {
+        "op": "query",
+        "text": "obliged(ReviewTeam, ReviewApixaban, ScreeningPolicy).",
+        "expected": "TRUE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      },
+      {
+        "op": "query",
+        "text": "obliged(ReviewTeam, PriorityApixaban, PriorityScreeningPolicy).",
+        "expected": "FALSE",
+        "meaning": "No priority classification is not a finding of safety."
+      }
+    ]
+  },
+  {
+    "name": "Missing narrow-index classification does not clear ordinary review",
+    "steps": [
+      {
+        "op": "retract",
+        "id": "nti-Warfarin"
+      },
+      {
+        "op": "query",
+        "text": "obliged(ReviewTeam, ReviewWarfarin, ScreeningPolicy).",
+        "expected": "TRUE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      },
+      {
+        "op": "query",
+        "text": "obliged(ReviewTeam, PriorityWarfarin, PriorityScreeningPolicy).",
+        "expected": "FALSE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      }
+    ]
+  },
+  {
+    "name": "Prescription stop does not erase residual exposure",
+    "steps": [
+      {
+        "op": "assert",
+        "id": "stopped",
+        "text": "record(StopFluconazole, Fluconazole, Adam, PrescriptionStopRegister)."
+      },
+      {
+        "op": "query",
+        "text": "obliged(ReviewTeam, ReviewWarfarin, ScreeningPolicy).",
+        "expected": "TRUE",
+        "meaning": "Reviewed relevant exposure remains; a stop event is not exposure clearance."
+      },
+      {
+        "op": "assert",
+        "id": "clearance",
+        "text": "record(ExposureReassessment, ExposureFluconazole, NoLongerRelevant, ReviewRegister)."
+      },
+      {
+        "op": "retract",
+        "id": "relevant-Fluconazole"
+      },
+      {
+        "op": "query",
+        "text": "obliged(ReviewTeam, ReviewWarfarin, ScreeningPolicy).",
+        "expected": "FALSE",
+        "meaning": "No encoded review flag in the revised episode; not proof of clinical safety."
+      },
+      {
+        "op": "query",
+        "text": "fit(AssessWarfarin, SharedMechanism, ScreeningPolicy).",
+        "expected": "TRUE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      }
+    ]
+  },
+  {
+    "name": "Mechanism correction is distinct from medication discontinuation",
+    "steps": [
+      {
+        "op": "retract",
+        "id": "inhibit-2c9"
+      },
+      {
+        "op": "query",
+        "text": "fit(AssessWarfarin, SharedMechanism, ScreeningPolicy).",
+        "expected": "FALSE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      },
+      {
+        "op": "query",
+        "text": "obliged(ReviewTeam, ReviewWarfarin, ScreeningPolicy).",
+        "expected": "FALSE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      },
+      {
+        "op": "query",
+        "text": "fit(AssessWarfarin, ConcurrentExposure, ScreeningPolicy).",
+        "expected": "TRUE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      }
+    ]
+  },
+  {
+    "name": "Independent exposure evidence survives one withdrawal",
+    "steps": [
+      {
+        "op": "assert",
+        "id": "exposure-copy",
+        "text": "member(ExposureFluconazole, RelevantExposures)."
+      },
+      {
+        "op": "retract",
+        "id": "relevant-Fluconazole"
+      },
+      {
+        "op": "query",
+        "text": "obliged(ReviewTeam, ReviewWarfarin, ScreeningPolicy).",
+        "expected": "TRUE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      },
+      {
+        "op": "retract",
+        "id": "exposure-copy"
+      },
+      {
+        "op": "query",
+        "text": "obliged(ReviewTeam, ReviewWarfarin, ScreeningPolicy).",
+        "expected": "FALSE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      }
+    ]
+  },
+  {
+    "name": "Phenytoin reuses the general rule without a new grounded rule",
+    "steps": [
+      {
+        "op": "query",
+        "text": "fit(AssessPhenytoin, SharedMechanism, ScreeningPolicy).",
+        "expected": "TRUE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      },
+      {
+        "op": "query",
+        "text": "obliged(ReviewTeam, ReviewPhenytoin, ScreeningPolicy).",
+        "expected": "FALSE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      },
+      {
+        "op": "assert",
+        "id": "phenytoin-exposure",
+        "text": "record(ExposurePhenytoin, Phenytoin, Adam, ExposureRegister)."
+      },
+      {
+        "op": "assert",
+        "id": "phenytoin-part",
+        "text": "part(ExposurePhenytoin, EpisodeA)."
+      },
+      {
+        "op": "assert",
+        "id": "phenytoin-relevant",
+        "text": "member(ExposurePhenytoin, RelevantExposures)."
+      },
+      {
+        "op": "query",
+        "text": "obliged(ReviewTeam, ReviewPhenytoin, ScreeningPolicy).",
+        "expected": "TRUE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      }
+    ]
+  },
+  {
+    "name": "A fictional unmatched pathway is only a model negative",
+    "steps": [
+      {
+        "op": "assert",
+        "id": "mock-pair",
+        "text": "record(PairMock, MockDrug, MockInhibitor, InteractionPairs)."
+      },
+      {
+        "op": "assert",
+        "id": "mock-case",
+        "text": "record(AssessMock, EpisodeA, PairMock, AssessmentRegister)."
+      },
+      {
+        "op": "assert",
+        "id": "mock-inhibitor",
+        "text": "record(MockInhibition, MockInhibitor, MockEnzymeA, MechanismRegister)."
+      },
+      {
+        "op": "assert",
+        "id": "mock-inhibit-kind",
+        "text": "member(MockInhibition, InhibitionEdges)."
+      },
+      {
+        "op": "assert",
+        "id": "mock-substrate",
+        "text": "record(MockSubstrate, MockDrug, MockEnzymeB, MechanismRegister)."
+      },
+      {
+        "op": "assert",
+        "id": "mock-substrate-kind",
+        "text": "member(MockSubstrate, SubstrateEdges)."
+      },
+      {
+        "op": "query",
+        "text": "fit(AssessMock, SharedMechanism, ScreeningPolicy).",
+        "expected": "FALSE",
+        "meaning": "Different fictional enzymes do not join; no clinical safety claim."
+      }
+    ]
+  },
+  {
+    "name": "Derived review evidence cannot be injected",
+    "steps": [
+      {
+        "op": "reject",
+        "text": "obliged(ReviewTeam, ReviewWarfarin, ScreeningPolicy)."
+      },
+      {
+        "op": "reject",
+        "text": "fit(AssessWarfarin, SharedMechanism, ScreeningPolicy)."
+      },
+      {
+        "op": "query",
+        "text": "obliged(ReviewTeam, ReviewWarfarin, ScreeningPolicy).",
+        "expected": "TRUE",
+        "meaning": "Model-relative result; not a real-world clearance."
+      }
+    ]
+  }
+]
