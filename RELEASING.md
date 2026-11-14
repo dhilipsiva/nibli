@@ -6,7 +6,7 @@ docs and release tracks landed; the still-live half moved here.)
 
 ## Invariants
 
-- **Lockstep.** All 13 publishable (Tier A) crates share one version. There is
+- **Lockstep.** All 14 publishable (Tier A) crates share one version. There is
   no per-crate semver.
 - **Tags are `vX.Y.Z`.** The tag carries the `v`; the manifest never does.
 - **The WIT ABI version is independent** of crate semver (`nibli:engine@…` in
@@ -26,10 +26,13 @@ repeats its own reason in a comment at the top.
 
 | Tier | Crates | Ships as |
 |------|--------|----------|
-| **A — published**, in dependency order | `nibli-types` → `nibli-lexicon` → `nibli-protocol` → `nibli-kr` → `nibli-semantics` → `nibli-reason` → `nibli-render` → `nibli-session` → `nibli-store` → **`nibli-engine`** → `nibli-formalize` / `nibli-import` / `nibli` | crates.io → docs.rs |
+| **A — published**, in dependency order | `nibli-types` → `nibli-lexicon` → `nibli-protocol` → `nibli-kr` → `nibli-semantics` → `nibli-reason` → `nibli-render` → `nibli-session` → `nibli-store` → **`nibli-engine`** → `nibli-db` / `nibli-formalize` / `nibli-import` / `nibli` | crates.io → docs.rs |
 | **Z — `publish = false`** | `nibli-pipeline`, `nibli-host`, `nibli-ui`, `nibli-wasm`, `nibli-verify`, `tools/lexigen`, `fuzz` | GitHub Release, the site, or repo-only |
 
 `nibli-auth` and `nibli-auth-py` are also `publish = false` for now.
+
+`nibli-db` (2026-11-14, `roadmap/DB1.md`) joined Tier A before its first release: it is not on
+crates.io yet, so its first publish is the one-time manual step noted under "Two gotchas" below.
 
 **Out of scope for any release:** manuscript / Orange AVA material in a release
 asset; crates.io for the ui/wasm/playground bundles (site only); and equating
@@ -82,7 +85,7 @@ step summary, without creating a release or publishing anything.
 | docs.rs build | no (follows crates.io) | — | rebuildable, not deletable |
 
 This is why the workflow does every reversible thing first and keeps the
-release a **draft** until crates.io has succeeded. Once even one of the 13
+release a **draft** until crates.io has succeeded. Once even one of the 14
 crates is live at X.Y.Z, the tag is frozen: it must keep pointing at exactly
 what was published, and the only way forward is another version.
 
@@ -113,7 +116,7 @@ version number — that last one does not work.
 first makes fresh resolution fall back to the previous version, which during
 0.x can drop a consumer across an API break they never asked for.
 
-**Yank all 13 or none.** A partial yank leaves an incoherent lockstep tuple.
+**Yank all 14 or none.** A partial yank leaves an incoherent lockstep tuple.
 Yank top-down (`nibli`, `nibli-engine` first; `nibli-types` last) so no
 intermediate moment resolves to a half-yanked graph.
 
@@ -133,10 +136,10 @@ auditable delta from what shipped.
 4. **Merge back to `main` immediately** (below).
 
 **The cost, stated honestly.** Lockstep means a one-line fix in one crate
-republishes **all 13** at 0.2.1 — 13 crates.io versions and 13 docs.rs builds,
-12 of which have an empty diff. That is the deliberate price of the lockstep
+republishes **all 14** at 0.2.1 — 14 crates.io versions and 14 docs.rs builds,
+13 of which have an empty diff. That is the deliberate price of the lockstep
 decision: any `(nibli-*, X.Y.Z)` tuple is a coherent set, so nobody ever has to
-reason about a compatibility matrix across 13 crates. If that price becomes
+reason about a compatibility matrix across 14 crates. If that price becomes
 intolerable, the exit is per-crate semver — a change to the Invariants above,
 made deliberately, not an improvisation during a hotfix.
 
@@ -152,7 +155,7 @@ made deliberately, not an improvisation during a hotfix.
 
 ## Partial-publish recovery
 
-**Symptom:** the `publish` job aborted after N of 13.
+**Symptom:** the `publish` job aborted after N of 14.
 
 **First response: re-run the job.** `just release-publish` probes the sparse
 index and excludes what is already live, so a re-run resumes. Most aborts
@@ -165,7 +168,7 @@ X.Y.Z are permanent, and bumping orphans them forever.
 tarball):
 
 1. Fix on `main`, or on a hotfix branch off the tag.
-2. `just release-prep X.Y.(Z+1)` and release the full 13 at the new version.
+2. `just release-prep X.Y.(Z+1)` and release the full 14 at the new version.
 3. **Yank all N partial uploads at X.Y.Z.** This is the case where yanking is
    mandatory: the X.Y.Z tuple can never be completed, so a consumer who
    resolves one crate and cannot get its sibling is stuck permanently.
@@ -175,7 +178,7 @@ tarball):
 
 `just ci-all` and the rehearsal's `cargo publish --dry-run` exist to prevent
 this. A tarball-verification failure caught in rehearsal costs five minutes;
-caught at crate 7 of 13 it costs a version number and 13 yanks.
+caught at crate 7 of 14 it costs a version number and 14 yanks.
 
 ## Two gotchas that have bitten real projects
 
@@ -206,7 +209,7 @@ caught at crate 7 of 13 it costs a version number and 13 yanks.
 ## After a release
 
 - Spot-check docs.rs builds a few hours later — the `finalize` job writes the
-  13 build URLs into the run summary.
+  14 build URLs into the run summary.
 - README badges are live shields.io endpoints; they need no edit.
 - The playground redeploys via the existing `nibli-updated` dispatch on the
   push to `main`, not the tag.

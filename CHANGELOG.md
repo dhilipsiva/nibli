@@ -27,7 +27,8 @@ here first.
   pre-registered tests, including 10,000 seeded convergence histories checked against
   an independent reference projection and 500 SIGKILLs of a real child process) and
   `just verify-db-broken` (three deliberately broken builds must each fail their
-  check); both run in `ci`. Evidence: `roadmap/DB1-evidence.json`.
+  check); both run in `ci`. Evidence: `roadmap/DB1-evidence.json`. Tier A: on
+  crates.io from this release.
 - Lucy's empirical self-model: immutable forecasts and observed outcomes in the
   shared private store; deterministic reification into the new committed `sl_*`
   predicates; independent Rust/Nibli evidence checks; retrospective prediction

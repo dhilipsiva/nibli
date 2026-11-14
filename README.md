@@ -88,6 +88,7 @@ Supporting crates:
 |-------|------|
 | **nibli-lexicon** | The committed English corpus — strongly-typed predicate + compound entries (name, named places, gloss, template, gismu provenance), const-validated; the single vocabulary source for every stage |
 | **nibli-engine** | Native in-process embedding of the pipeline — **the crate to depend on when embedding nibli in Rust** ([Install](#install)) |
+| **nibli-db** | A nibli-kr-native database: ACID on each replica, CRDT between replicas, no transaction across replicas — signed operations in redb, projected to a nibli-kr snapshot the engine loads ([`roadmap/DB1.md`](roadmap/DB1.md)). New; on crates.io from the next release |
 | **nibli-ui** | Standalone Dioxus web UI — the engine is compiled in and runs fully in-browser |
 | **nibli-wasm** | wasm-bindgen wrapper exposing the in-browser pipeline (the site's demo page; broken until the site repository migrates, [`DEPLOY.md`](DEPLOY.md)) |
 | **nibli** | Native debug REPL and the `nibli-validate` / `nibli-import` / `nibli-pin` tooling |
