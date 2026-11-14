@@ -15,6 +15,19 @@ here first.
 
 ### Added
 
+- **`nibli-db`** (`roadmap/DB1.md`, slice DB1): a nibli-kr-native database that is
+  ACID on each replica and convergent between replicas, with no transaction across
+  replicas. Its only authority is a set of Ed25519-signed operations, each carrying
+  one nibli-kr statement (assert, correct, retract, restore; parents and a batch);
+  the projection is a pure function of that set, concurrent changes stay as flagged
+  conflicts that no clock resolves, statements that break a constraint only once
+  merged leave reasoning together, and every snapshot is nibli-kr the engine loads.
+  redb-backed transactions commit whole or not at all; `merge`/`sync` over a `Peer`
+  trait, in one process (no network yet). Gated by `just test-db` (the nine
+  pre-registered tests, including 10,000 seeded convergence histories checked against
+  an independent reference projection and 500 SIGKILLs of a real child process) and
+  `just verify-db-broken` (three deliberately broken builds must each fail their
+  check); both run in `ci`. Evidence: `roadmap/DB1-evidence.json`.
 - Lucy's empirical self-model: immutable forecasts and observed outcomes in the
   shared private store; deterministic reification into the new committed `sl_*`
   predicates; independent Rust/Nibli evidence checks; retrospective prediction
