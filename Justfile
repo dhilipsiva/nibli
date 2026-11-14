@@ -590,9 +590,28 @@ test-persistence-replay:
 # Run every test suite (unit + integration + Python + store)
 test-all: test test-engine test-store test-backend test-validate
 
+# nibli-db (roadmap/DB1.md): the nine tests, in release because test 1 runs 10,000
+# seeded histories and test 3 kills a real process 500 times.
+test-db:
+    cargo test -p nibli-db --release -- --nocapture
+
+# Anti-fake for nibli-db: each deliberately broken build must FAIL the check that guards
+# it. A broken build that passes means the check proves nothing. Own target dir, so the
+# changed RUSTFLAGS do not evict the ordinary build.
+verify-db-broken:
+    @for pair in "lww:concurrent_corrections_are_a_conflict" "lww:replicas_converge" "nonatomic:a_killed_process" "nosig:what_must_be_refused"; do \
+        broken=${pair%%:*}; check=${pair#*:}; \
+        if RUSTFLAGS="--cfg nibli_db_broken=\"$broken\"" CARGO_TARGET_DIR=target/db-broken \
+            cargo test -p nibli-db --release --test db1 -- "$check" >target/db-broken-$broken.log 2>&1; then \
+            echo "FAIL: the build broken by '$broken' passes '$check'"; exit 1; \
+        fi; \
+        grep -q 'test result: FAILED' target/db-broken-$broken.log || { echo "FAIL: '$broken' did not build or run; see target/db-broken-$broken.log"; exit 1; }; \
+        echo "ok: broken '$broken' fails '$check'"; \
+    done
+
 # CI gate for the hardened runtime surface (fast; native only — no WASM build).
 # For the WASM behavioral smokes too, run `just ci-all`.
-ci: fmt-check release-check clippy-workspace test test-engine test-host test-validate test-ui test-formalize test-backend test-store test-persistence-replay verify-harness verify-soundness verify-self-check verify-alias-map verify-nibli-kr-seam verify-dict verify-pins verify-adjudication verify-proofs verify-grammar-parity verify-doc-fences verify-book-vocab
+ci: fmt-check release-check clippy-workspace test test-engine test-host test-validate test-ui test-formalize test-backend test-store test-db verify-db-broken test-persistence-replay verify-harness verify-soundness verify-self-check verify-alias-map verify-nibli-kr-seam verify-dict verify-pins verify-adjudication verify-proofs verify-grammar-parity verify-doc-fences verify-book-vocab
 
 # WASM behavioral gate (pre-push, NOT part of `ci` — needs the WASM build, like
 # verify-book-capture). Bundles the gasnu smokes; each depends on

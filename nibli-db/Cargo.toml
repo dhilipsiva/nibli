@@ -1,0 +1,24 @@
+[package]
+name = "nibli-db"
+description = "A nibli-kr-native database: ACID on each replica, CRDT between replicas"
+version.workspace = true
+rust-version.workspace = true
+edition = "2024"
+license.workspace = true
+readme.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+nibli-engine = { workspace = true }
+nibli-kr = { workspace = true }
+redb = "2"
+ed25519-dalek = "2"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints.rust]
+# The three deliberately broken builds of roadmap/DB1.md (Anti-fake). They are never a
+# feature: only `RUSTFLAGS="--cfg nibli_db_broken=\"…\""` reaches them, as `just verify-db-broken` does.
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(nibli_db_broken, values("lww", "nonatomic", "nosig"))'] }
