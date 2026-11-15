@@ -9,7 +9,11 @@ tracker. Lucy has moved to [dhilipsiva/lucy](https://github.com/dhilipsiva/lucy)
 Layout: `nibli-kr` (the KR front-end), `nibli-semantics`, `nibli-reason`, `nibli-session`
 and `nibli-engine` are the engine; `nibli-pipeline` is the one WASM component
 (`wit/world.wit`) and `nibli-host` its Wasmtime host and REPL; `nibli-verify` holds the
-differential soundness gates and `proofs/` the Lean 4 proofs.
+differential soundness gates and `proofs/` the Lean 4 proofs; `nibli-db` is the
+nibli-kr-native replicated database (ACID per replica, CRDT between them), and `roadmap/`
+holds the pre-registrations and evidence of its slices (`DB1.md`, `DB1-evidence.json`), in
+the format of dhilipsiva/lucy's `roadmap/README.md`: written before the code, never edited
+after the slice's branch exists.
 `mdbook/src/` is the docs source. `book/` is a private manuscript: no docs diff cites it.
 
 The toolchain comes from `nix develop`. The gates are `just ci` (native: fmt, clippy with

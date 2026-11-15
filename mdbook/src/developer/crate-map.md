@@ -1,6 +1,6 @@
 # Crate map
 
-The workspace has **22 member crates** plus the deliberately excluded `fuzz/`
+The workspace has **23 member crates** plus the deliberately excluded `fuzz/`
 crate (root `Cargo.toml`: `exclude = ["fuzz"]`). Arrows below mean **“depends
 on”** (normal `[dependencies]` only — dev-dependencies are covered separately).
 
@@ -31,6 +31,7 @@ flowchart TD
     protocol["nibli-protocol<br/><i>proof-trace wire format</i>"]
     render["nibli-render<br/><i>English rendering</i>"]
     store["nibli-store<br/><i>redb persistence</i>"]
+    db["nibli-db<br/><i>replicated nibli-kr database</i>"]
   end
 
   subgraph runtimes ["Runtime surfaces"]
@@ -62,6 +63,8 @@ flowchart TD
   session --> semantics
   session --> reason
   store --> reason
+  db --> engine
+  db --> kr
   engine --> session
   engine --> store
   engine --> render
@@ -128,6 +131,7 @@ GitHub Release / site / repo only.
 | `nibli-render` | lib | The one place engine output becomes English; rendering is pure — never mutates a verdict | A |
 | `nibli-session` | lib | `CoreSession`: the single compile/assert/query chain every surface wraps — native↔WASM agreement by construction | A |
 | `nibli-store` | lib (+ a v2-fixture seed bin) | Persistent redb store: ACID, postcard-serialized, tombstone retraction | A (parenthesized) |
+| `nibli-db` | lib | A nibli-kr-native database: ACID on each replica, CRDT between replicas, no transaction across replicas — a set of Ed25519-signed operations in redb, projected to a deterministic nibli-kr snapshot the engine loads; concurrent changes stay as flagged conflicts that no clock resolves (`roadmap/DB1.md`); `git::GitPeer` (the default `git` feature) gives two machines the same convergence through a branch of any Git remote, pushes never forced, Git deciding nothing (`roadmap/DB2.md`) | A (first published with the next release) |
 | `nibli-engine` | lib | Native in-process embedding — no WASM, full stack traces; the anchor of the publish order | **A** |
 | `nibli-formalize` | lib | The agentic English→KR formalizer engine (LLM behind real compile gates); UI shell lives in nibli-ui | A (optional) |
 | `nibli-import` | lib | RDF Turtle / OWL import + fail-closed N-Triples export (refuses unrepresentable facts with reasons; independent-parser round-trip pinned; the `nibli-import` *binary* lives in the `nibli` crate) | A (optional) |

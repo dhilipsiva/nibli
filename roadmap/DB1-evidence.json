@@ -1,0 +1,35 @@
+[
+  {
+    "date": "2026-11-14",
+    "commit": "7c98b63",
+    "by": "Lucy",
+    "where": "one desktop, one process and one disk; no network, no Git host, no second machine",
+    "gate": "nix develop --command just ci: exit 0 (clippy 0.1.96, the repository's dev shell)",
+    "tests": {
+      "1 convergence": "seeds 0..10000, 2 to 5 replicas each: every replica's view identical after full delivery; 97918 commits, 11750 refused commits, 110543 deliveries, 32948 steps with a held operation, 6574 conflicts and 9377 constraint-flagged statements at the end, 1270 conflict resolutions",
+      "2 second projection": "agreed on all 255352 states checked in test 1",
+      "3 atomicity and durability": "500 SIGKILLs after 3..42 ms, batches of 6: 1186 commits returned and all were found, no partial batch; 72 times a whole batch was on disk before its return was written down",
+      "4 consistency": "7 kinds of refused batch, a refused change and a dropped transaction: file byte-identical each time",
+      "5 every snapshot is nibli-kr": "all 255352 snapshots passed parse_checked and loaded into the engine",
+      "6 conflicts stay out": "checked on all 255352 states, and directly with clocks 5 and 9",
+      "7 retract is never-asserted": "784 retractions, 35 distinct answer rows over 11 queries, equal to a fresh database each time",
+      "8 refusals": "every single-bit forgery of an operation, an impostor, an unenrolled key, another scope, bad payloads and bad shapes refused; missing parent and half a batch held; a peer of another scope refused",
+      "9 merged constraint violation": "both replicas report the same flagged statements and reason from none of them"
+    },
+    "broken builds": {
+      "lww (latest by clock wins)": "fails tests 2 and 6",
+      "nonatomic (one write per operation)": "fails test 3; in three earlier runs at kill 41, 156 and 160 of 500",
+      "nosig (no signature check)": "fails test 8"
+    },
+    "departures from DB1.md": [
+      "An id reused with different content is not refused: both contents are kept as evidence and neither counts. Refusing the second would make the outcome depend on arrival order.",
+      "Integrity constraints are what nibli-kr text can state today: a contradiction the engine's scan finds, and a load refusal such as derived_only. Constraints registered through the engine's Rust API are not persisted and are not used.",
+      "Statements with the same text are flagged or kept together. A statement whose removal alone does not change the trouble, because the same fact is derivable another way, is not flagged."
+    ],
+    "not shown": [
+      "Power loss: SIGKILL leaves the operating system's cache intact.",
+      "Speed: the whole state is recomputed after every change.",
+      "Anything about a real network or two machines."
+    ]
+  }
+]

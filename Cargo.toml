@@ -14,6 +14,7 @@ members = [
     "nibli-kr",
     "nibli-session",
     "nibli-store",
+    "nibli-db",
     "nibli-types",
     "nibli-import",
     "nibli-wasm",

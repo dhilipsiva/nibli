@@ -590,9 +590,31 @@ test-persistence-replay:
 # Run every test suite (unit + integration + Python + store)
 test-all: test test-engine test-store test-backend test-validate
 
+# nibli-db (roadmap/DB1.md): the nine tests, in release because test 1 runs 10,000
+# seeded histories and test 3 kills a real process 500 times.
+test-db:
+    cargo test -p nibli-db --release -- --nocapture
+
+# Anti-fake for nibli-db: each deliberately broken build must FAIL the check that guards
+# it. A broken build that passes means the check proves nothing. Own target dir, so the
+# changed RUSTFLAGS do not evict the ordinary build. `broken:test file:check`; the DB2
+# convergence check runs on fewer histories, which can only make a broken build pass more
+# easily, never fail more easily.
+verify-db-broken:
+    @for triple in "lww:db1:concurrent_corrections_are_a_conflict" "lww:db1:replicas_converge" "nonatomic:db1:a_killed_process" "nosig:db1:what_must_be_refused" \
+                   "force:db2:replicas_converge_through_git" "force:db2:a_push_race" "onescope:db2:the_transport_refuses" "stale:db2:replicas_converge_through_git" "stale:db2:syncing_twice"; do \
+        broken=${triple%%:*}; rest=${triple#*:}; file=${rest%%:*}; check=${rest#*:}; log=target/db-broken-$broken-$check.log; \
+        if NIBLI_DB_GIT_HISTORIES=64 RUSTFLAGS="--cfg nibli_db_broken=\"$broken\"" CARGO_TARGET_DIR=target/db-broken \
+            cargo test -p nibli-db --release --test $file -- "$check" >$log 2>&1; then \
+            echo "FAIL: the build broken by '$broken' passes '$check'"; exit 1; \
+        fi; \
+        grep -q 'test result: FAILED' $log || { echo "FAIL: '$broken' did not build or run; see $log"; exit 1; }; \
+        echo "ok: broken '$broken' fails '$check'"; \
+    done
+
 # CI gate for the hardened runtime surface (fast; native only — no WASM build).
 # For the WASM behavioral smokes too, run `just ci-all`.
-ci: fmt-check release-check clippy-workspace test test-engine test-host test-validate test-ui test-formalize test-backend test-store test-persistence-replay verify-harness verify-soundness verify-self-check verify-alias-map verify-nibli-kr-seam verify-dict verify-pins verify-adjudication verify-proofs verify-grammar-parity verify-doc-fences verify-book-vocab
+ci: fmt-check release-check clippy-workspace test test-engine test-host test-validate test-ui test-formalize test-backend test-store test-db verify-db-broken test-persistence-replay verify-harness verify-soundness verify-self-check verify-alias-map verify-nibli-kr-seam verify-dict verify-pins verify-adjudication verify-proofs verify-grammar-parity verify-doc-fences verify-book-vocab
 
 # WASM behavioral gate (pre-push, NOT part of `ci` — needs the WASM build, like
 # verify-book-capture). Bundles the gasnu smokes; each depends on

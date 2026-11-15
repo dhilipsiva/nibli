@@ -15,6 +15,20 @@ here first.
 
 ### Added
 
+- **`nibli-db`** (`roadmap/DB1.md`, slice DB1): a nibli-kr-native database that is
+  ACID on each replica and convergent between replicas, with no transaction across
+  replicas. Its only authority is a set of Ed25519-signed operations, each carrying
+  one nibli-kr statement (assert, correct, retract, restore; parents and a batch);
+  the projection is a pure function of that set, concurrent changes stay as flagged
+  conflicts that no clock resolves, statements that break a constraint only once
+  merged leave reasoning together, and every snapshot is nibli-kr the engine loads.
+  redb-backed transactions commit whole or not at all; `merge`/`sync` over a `Peer`
+  trait, in one process (no network yet). Gated by `just test-db` (the nine
+  pre-registered tests, including 10,000 seeded convergence histories checked against
+  an independent reference projection and 500 SIGKILLs of a real child process) and
+  `just verify-db-broken` (three deliberately broken builds must each fail their
+  check); both run in `ci`. Evidence: `roadmap/DB1-evidence.json`. Tier A: on
+  crates.io from this release.
 - Lucy's empirical self-model: immutable forecasts and observed outcomes in the
   shared private store; deterministic reification into the new committed `sl_*`
   predicates; independent Rust/Nibli evidence checks; retrospective prediction
@@ -42,6 +56,18 @@ here first.
   hooks stay fast as her record grows. The capsule opens on what she learned and
   decided, then the conversation, and leaves her `progress` narration in the
   archive (2026-10-19).
+- **`nibli-db` Git transport** (`roadmap/DB2.md`, slice DB2): `nibli_db::git::GitPeer`, a
+  `Peer` on any Git remote (SSH, HTTPS, a path) driven through the `git` command line, on
+  by default behind the `git` feature with no dependency of its own. One branch per scope
+  with a `scope` file, one file per signed operation content, pushes never forced (a
+  rejected push is answered by fetch, recommit and retry), set union both ways. Git
+  decides nothing and is trusted with nothing: every fetched byte still passes
+  `Database::merge`, enrollment stays local, and what a rewritten branch loses the next
+  sync puts back. Gated by the DB2 tests in `just test-db` (1,000 seeded histories through
+  a real `git` checked step by step against in-process `sync`, a push race from threads and
+  processes, refusals, loss recovery, idempotence and killed syncs) and three more broken
+  builds in `just verify-db-broken` (`force`, `onescope`, `stale`). Evidence:
+  `roadmap/DB2-evidence.json`. `examples/git-sync.rs` is the hand tool for two machines.
 
 ### Changed
 
