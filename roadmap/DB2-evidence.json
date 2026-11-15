@@ -1,0 +1,33 @@
+[
+  {
+    "date": "2026-11-15",
+    "commit": "6641a92",
+    "by": "Claude, in a session with dhilipsiva; he approved roadmap/DB2.md on 2026-11-15, settling its open question as the feature-gated module",
+    "where": "one desktop; a real git 2.54.0 and bare repositories on its own disk; no second machine yet",
+    "gate": "nix develop --command just ci: exit 0 (clippy 0.1.96, the repository's dev shell)",
+    "tests": {
+      "1 convergence through Git": "seeds 0..1000, 2 to 5 replicas each (3494 in all), one bare repository per history, each replica its own clone: 13316 commits, 6598 syncs, 4324 deliberately stale pushes of which the remote rejected 1322 and the adapter fetched and pushed again; after every step and after the final round each replica identical to its in-process twin, which synced through a replica standing for the branch; 24765 operations and 1027 conflicts at the end; the branch holds the union, every move in its reflog a fast-forward, every pushed commit in its history",
+      "2 push race": "6 threads and 3 processes, 6 rounds each, plus one stale push that is certain: 56 commits pushed, 158 pushes rejected and retried, 49 syncs gave up after three attempts with Failure::Contended and were simply run again; all 56 operations on the branch, none lost, no move in the reflog other than a fast-forward",
+      "3 refusals": "another scope's branch (renamed on the remote), a scope file that disagrees, a non-empty branch without one, a tampered .op (one bit of its body, the path kept), a stranger's operation pushed by its own honest peer, five paths that are not operations, an operation of another scope offered to send, a git that is not there, four scopes that cannot name a branch: each refused with its own error or reported, the replica's redb file byte-identical and its view unchanged every time, the branch unmoved",
+      "4 loss recovery": "the branch rewound to drop the other replica's operation, then deleted altogether: the next sync from a replica that holds them put them back, the scope file first; both replicas and the branch ended with the same 3 operations",
+      "5 idempotence and interruption": "two more syncs on each of two converged replicas: no commit, no move of the branch, views and pushed commits unchanged; a sync SIGKILLed between fetch and push kept its merge in the file and pushed nothing; a sync killed in its push by a pre-receive hook that then let the update through, and one by a hook that refused it: the next sync completed each time, sent exactly what was still missing, five replicas identical, every pushed commit in the branch's history",
+      "6 two machines": "not yet run. The hand tool is examples/git-sync.rs; two replicas of it on this desktop converged through a local bare repository with identical output (2 commits on nibli-db/demo, one file per operation, a scope file). SSH from this desktop to itself is refused for the key here, so the SSH and GitHub legs wait for the owner's laptop and are to be appended here with the date and the machines"
+    },
+    "broken builds": {
+      "force (the push is --force)": "fails test 1 at the step comparison with in-process sync (the clobbered operations are missing from the replica that syncs next) and test 2 at the stale push that is certain (it is not rejected)",
+      "onescope (no scope is checked)": "fails test 3: another scope's branch is not refused",
+      "stale (have lists the branch once and never fetches again)": "fails test 1 (the stale push gives up with Contended; a replica differs from in-process sync) and test 5 (the two replicas never converge)"
+    },
+    "departures and clarifications": [
+      "The git feature is on by default (default-features = false turns it off), so that the workspace's clippy, cargo test and docs.rs cover the module without a flag. The module, its tests and its gate lines are still one deletion, as Undo says.",
+      "Test 1 also checks the branch's reflog and the pushed commits, and compares with in-process sync after every step, not only at the end: convergence at the end alone cannot see a forced push, because the replica that lost the race is its own outbox and puts the clobbered operations back on its next sync.",
+      "Under nine concurrent writers to one branch on one disk, three attempts are often too few: 49 of 54 syncs in test 2 gave up with Failure::Contended. Nothing was lost and the next sync completed, as the pre-registration promises for that error; whether a later slice wants more attempts or a backoff is for a DB2.v2 or DB3 to say.",
+      "A rejected push is told from a failed one by looking again at the branch: if it moved, it was a race and the adapter tries again; if it did not, the error is reported with the stage and what git said. No error text of git's is parsed."
+    ],
+    "not shown": [
+      "Two real machines, SSH and GitHub: test 6, by hand, still to come.",
+      "A hostile Git operator who serves different histories to different replicas.",
+      "Bandwidth, latency, and a partition longer than a test."
+    ]
+  }
+]
