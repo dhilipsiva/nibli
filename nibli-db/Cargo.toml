@@ -15,10 +15,25 @@ nibli-kr = { workspace = true }
 redb = "2"
 ed25519-dalek = "2"
 
+[features]
+default = ["git"]
+# The Git transport of roadmap/DB2.md (`src/git.rs`): `git::GitPeer`, a `Peer` on any Git
+# remote, driven through the `git` command line. No dependency of its own; off with
+# `default-features = false`.
+git = []
+
 [dev-dependencies]
 tempfile = "3"
 
+[[example]]
+name = "git-sync"
+required-features = ["git"]
+
+[package.metadata.docs.rs]
+all-features = true
+
 [lints.rust]
-# The three deliberately broken builds of roadmap/DB1.md (Anti-fake). They are never a
-# feature: only `RUSTFLAGS="--cfg nibli_db_broken=\"…\""` reaches them, as `just verify-db-broken` does.
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(nibli_db_broken, values("lww", "nonatomic", "nosig"))'] }
+# The deliberately broken builds of roadmap/DB1.md and roadmap/DB2.md (Anti-fake). They are
+# never a feature: only `RUSTFLAGS="--cfg nibli_db_broken=\"…\""` reaches them, as
+# `just verify-db-broken` does.
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(nibli_db_broken, values("lww", "nonatomic", "nosig", "force", "onescope", "stale"))'] }

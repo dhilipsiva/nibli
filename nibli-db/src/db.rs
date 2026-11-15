@@ -35,6 +35,9 @@ pub enum Error {
         ours: String,
         theirs: String,
     },
+    /// The Git transport could not do its work. Only with the `git` feature.
+    #[cfg(feature = "git")]
+    Git(crate::git::Failure),
 }
 
 impl fmt::Display for Error {
@@ -57,6 +60,8 @@ impl fmt::Display for Error {
                     "refused: this database keeps scope {ours:?} and the other {theirs:?}"
                 )
             }
+            #[cfg(feature = "git")]
+            Error::Git(e) => write!(f, "git: {e}"),
         }
     }
 }
@@ -100,7 +105,8 @@ pub struct Conflict {
 /// other lacks.
 pub type Have = (OpId, [u8; 64]);
 
-/// Another replica, however it is reached. `Database` is one; a Git remote will be another.
+/// Another replica, however it is reached. `Database` is one; a Git remote is another, as
+/// `git::GitPeer` (with the `git` feature).
 pub trait Peer {
     fn scope(&self) -> String;
     fn have(&self) -> Result<BTreeSet<Have>, Error>;
@@ -124,7 +130,8 @@ pub struct Database {
 
 impl Database {
     /// Open or create the database at `path`. `seed` is this replica's Ed25519 secret key;
-    /// keep it out of the database's directory.
+    /// keep it out of the database's directory, and keep the Git transport's clone
+    /// (`git::GitPeer`) beside the file, never inside that directory either.
     pub fn open(path: &Path, seed: &[u8; 32], scope: &str) -> Result<Self, Error> {
         Self::load(redb::Database::create(path).map_err(storage)?, seed, scope)
     }

@@ -56,6 +56,18 @@ here first.
   hooks stay fast as her record grows. The capsule opens on what she learned and
   decided, then the conversation, and leaves her `progress` narration in the
   archive (2026-10-19).
+- **`nibli-db` Git transport** (`roadmap/DB2.md`, slice DB2): `nibli_db::git::GitPeer`, a
+  `Peer` on any Git remote (SSH, HTTPS, a path) driven through the `git` command line, on
+  by default behind the `git` feature with no dependency of its own. One branch per scope
+  with a `scope` file, one file per signed operation content, pushes never forced (a
+  rejected push is answered by fetch, recommit and retry), set union both ways. Git
+  decides nothing and is trusted with nothing: every fetched byte still passes
+  `Database::merge`, enrollment stays local, and what a rewritten branch loses the next
+  sync puts back. Gated by the DB2 tests in `just test-db` (1,000 seeded histories through
+  a real `git` checked step by step against in-process `sync`, a push race from threads and
+  processes, refusals, loss recovery, idempotence and killed syncs) and three more broken
+  builds in `just verify-db-broken` (`force`, `onescope`, `stale`). Evidence:
+  `roadmap/DB2-evidence.json`. `examples/git-sync.rs` is the hand tool for two machines.
 
 ### Changed
 

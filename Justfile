@@ -597,15 +597,18 @@ test-db:
 
 # Anti-fake for nibli-db: each deliberately broken build must FAIL the check that guards
 # it. A broken build that passes means the check proves nothing. Own target dir, so the
-# changed RUSTFLAGS do not evict the ordinary build.
+# changed RUSTFLAGS do not evict the ordinary build. `broken:test file:check`; the DB2
+# convergence check runs on fewer histories, which can only make a broken build pass more
+# easily, never fail more easily.
 verify-db-broken:
-    @for pair in "lww:concurrent_corrections_are_a_conflict" "lww:replicas_converge" "nonatomic:a_killed_process" "nosig:what_must_be_refused"; do \
-        broken=${pair%%:*}; check=${pair#*:}; \
-        if RUSTFLAGS="--cfg nibli_db_broken=\"$broken\"" CARGO_TARGET_DIR=target/db-broken \
-            cargo test -p nibli-db --release --test db1 -- "$check" >target/db-broken-$broken.log 2>&1; then \
+    @for triple in "lww:db1:concurrent_corrections_are_a_conflict" "lww:db1:replicas_converge" "nonatomic:db1:a_killed_process" "nosig:db1:what_must_be_refused" \
+                   "force:db2:replicas_converge_through_git" "force:db2:a_push_race" "onescope:db2:the_transport_refuses" "stale:db2:replicas_converge_through_git" "stale:db2:syncing_twice"; do \
+        broken=${triple%%:*}; rest=${triple#*:}; file=${rest%%:*}; check=${rest#*:}; log=target/db-broken-$broken-$check.log; \
+        if NIBLI_DB_GIT_HISTORIES=64 RUSTFLAGS="--cfg nibli_db_broken=\"$broken\"" CARGO_TARGET_DIR=target/db-broken \
+            cargo test -p nibli-db --release --test $file -- "$check" >$log 2>&1; then \
             echo "FAIL: the build broken by '$broken' passes '$check'"; exit 1; \
         fi; \
-        grep -q 'test result: FAILED' target/db-broken-$broken.log || { echo "FAIL: '$broken' did not build or run; see target/db-broken-$broken.log"; exit 1; }; \
+        grep -q 'test result: FAILED' $log || { echo "FAIL: '$broken' did not build or run; see $log"; exit 1; }; \
         echo "ok: broken '$broken' fails '$check'"; \
     done
 

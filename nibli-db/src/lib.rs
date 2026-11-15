@@ -31,10 +31,15 @@
 //! A retraction is not an erasure: the retracted operation stays in the set, and in every
 //! replica that has it.
 //!
-//! This is slice DB1 of `roadmap/DB1.md`: no network, and the whole state is recomputed
-//! after every change, so it is correct before it is fast.
+//! Slice DB1 (`roadmap/DB1.md`) is the database in one process: the whole state is
+//! recomputed after every change, so it is correct before it is fast. Slice DB2
+//! (`roadmap/DB2.md`) is the [`git`] module, on by default and behind the `git` feature:
+//! [`git::GitPeer`] is a [`Peer`] on any Git remote, so two replicas on two machines
+//! converge through a branch exactly as two in one process do through [`sync`].
 
 mod db;
+#[cfg(feature = "git")]
+pub mod git;
 mod op;
 mod reason;
 mod state;
