@@ -530,13 +530,40 @@ fn crash_child() {
         .open(dir.join("returned"))
         .unwrap();
     let mut batch = db.all().len() / PER_BATCH;
+    // A prior child may have committed a batch (redb synced it, so its commit
+    // returned) and then been killed before appending that batch's line to
+    // `returned`; this child resumes past it, so without a backfill the line is
+    // never written and the witness drifts permanently below the committed count,
+    // accumulating across the kills that share this directory. Every whole batch
+    // already in the reopened DB had its commit durably complete (the parent's
+    // held()/whole-batch/no-gap asserts enforce that), so record any the log is
+    // missing before continuing. This keeps `batches <= returned + 1` a bound on
+    // the single in-flight batch of THIS child, not an accumulation across restarts.
+    {
+        let logged: BTreeSet<usize> = std::fs::read_to_string(dir.join("returned"))
+            .unwrap_or_default()
+            .lines()
+            .filter_map(|line| line.trim().parse().ok())
+            .collect();
+        for b in 0..batch {
+            if !logged.contains(&b) {
+                returned.write_all(format!("{b}\n").as_bytes()).unwrap();
+            }
+        }
+        returned.sync_data().unwrap();
+    }
     loop {
         let mut tx = db.begin(said(0));
         for part in 0..PER_BATCH {
             tx.assert(&crash_statement(batch, part));
         }
         tx.commit().unwrap();
-        writeln!(returned, "{batch}").unwrap();
+        // One write syscall for the whole "N\n": writeln! emits the number and the
+        // newline separately, so a kill between them leaves a newline-less partial
+        // line that the next append fuses onto ("k" + "k+1\n" -> "kk+1\n"), losing a
+        // line of the count for good. A single write_all of the formatted bytes is
+        // atomic under SIGKILL.
+        returned.write_all(format!("{batch}\n").as_bytes()).unwrap();
         returned.sync_data().unwrap();
         batch += 1;
     }
